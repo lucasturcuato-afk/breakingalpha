@@ -33,10 +33,14 @@ export function Wordmark({
   size,
   weight = 700,
   stop = true,
+  tracking = "-0.02em",
 }: {
   size: number;
   weight?: number;
   stop?: boolean;
+  /* The footer mark sets its own. The design runs -0.02em on the three
+     masthead sizes and -0.01em on the 16px footer one. */
+  tracking?: string;
 }) {
   return (
     <span
@@ -46,7 +50,7 @@ export function Wordmark({
         fontSize: size,
         fontWeight: weight,
         lineHeight: 1,
-        letterSpacing: "-0.02em",
+        letterSpacing: tracking,
       }}
     >
       <span style={{ color: "var(--c-ink)" }}>Signal</span>

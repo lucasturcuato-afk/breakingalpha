@@ -43,6 +43,9 @@ const FIELD = {
 const FIELD_INPUT = {
   flex: 1,
   minWidth: 0,
+  /* The drawn field is 48px and the input is its only control, so the
+     input has to BE the 48px, not sit 17px tall inside it. */
+  alignSelf: "stretch" as const,
   border: 0,
   outline: "none",
   background: "transparent",
@@ -208,9 +211,8 @@ export function MobileAuth({
   });
 
   return (
-    <div className="md:hidden">
+    <div className="md:hidden" data-parity="signin">
       <div
-        data-parity="signin"
         className={`${styles.screen} ${styles.in}`}
         style={{
           minHeight: "100dvh",
@@ -219,6 +221,7 @@ export function MobileAuth({
           padding:
             "8px var(--v3-pad) calc(20px + env(safe-area-inset-bottom, 0px))",
           backgroundColor: "var(--c-bg)",
+          color: "var(--c-ink)",
         }}
       >
         <div
@@ -373,7 +376,7 @@ export function MobileAuth({
 
             <form onSubmit={onSubmit}>
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                <label style={FIELD}>
+                <div style={FIELD}>
                   <svg
                     style={{ flex: "none" }}
                     width="15"
@@ -388,9 +391,9 @@ export function MobileAuth({
                     <rect x="3" y="5" width="18" height="14" rx="2" />
                     <path d="M3 7l9 6 9-6" />
                   </svg>
-                  <span className="sr-only">Email address</span>
                   <input
                     type="email"
+                    aria-label="Email address"
                     value={email}
                     onChange={(e) => onEmail(e.target.value)}
                     placeholder="Email address"
@@ -399,7 +402,7 @@ export function MobileAuth({
                     className={styles.field}
                     style={FIELD_INPUT}
                   />
-                </label>
+                </div>
 
                 <div style={FIELD}>
                   <svg
@@ -416,10 +419,9 @@ export function MobileAuth({
                     <rect x="4" y="10" width="16" height="10" rx="2" />
                     <path d="M8 10V7a4 4 0 0 1 8 0v3" />
                   </svg>
-                  <label style={{ flex: 1, minWidth: 0, display: "flex" }}>
-                    <span className="sr-only">Password</span>
-                    <input
+                  <input
                       type={showPassword ? "text" : "password"}
+                      aria-label="Password"
                       value={password}
                       onChange={(e) => onPassword(e.target.value)}
                       placeholder="Password"
@@ -430,7 +432,6 @@ export function MobileAuth({
                       className={styles.field}
                       style={FIELD_INPUT}
                     />
-                  </label>
                   <button
                     type="button"
                     onClick={onTogglePassword}

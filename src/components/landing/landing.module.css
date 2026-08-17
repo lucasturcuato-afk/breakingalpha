@@ -43,7 +43,7 @@
   background: var(--bg);
   color: var(--ink);
   font-family: var(--ff-sans);
-  min-height: 100vh;
+  min-height: 100dvh;
   position: relative;
 }
 

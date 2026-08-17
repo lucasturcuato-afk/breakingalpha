@@ -168,10 +168,12 @@ export function MobileLanding({
     });
   }, [reduced]);
 
+  // data-parity sits on the GATED element, not inside it. A selector
+  // scoped to a child measures block while its parent is none, which is
+  // the one way a responsive gate can be reported working when it is not.
   return (
-    <div className="md:hidden">
+    <div className="md:hidden" data-parity="landing">
       <div
-        data-parity="landing"
         className={styles.screen}
         style={{
           minHeight: "100dvh",
@@ -1395,15 +1397,15 @@ function WaitlistBlock({ onWaitlist }: { onWaitlist: () => void }) {
         prefer to talk first?{" "}
         <a
           href="mailto:admin@signalera.ai"
+          className={styles.tapInline}
           style={{ color: "var(--c-goldink)", textDecoration: "underline" }}
         >
           contact us
         </a>
       </div>
-      <label>
-        <span className="sr-only">Email address</span>
-        <input
+      <input
           type="email"
+          aria-label="Email address"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           placeholder="you@email.com"
@@ -1423,7 +1425,6 @@ function WaitlistBlock({ onWaitlist }: { onWaitlist: () => void }) {
             color: "var(--c-ink)",
           }}
         />
-      </label>
       <button
         type="submit"
         className={styles.reset}
@@ -1475,7 +1476,7 @@ function Footer() {
         gap: 10,
       }}
     >
-      <Wordmark size={16} weight={500} />
+      <Wordmark size={16} weight={500} tracking="-0.01em" />
       <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
         <Link href="/legal/terms" style={link}>
           Terms of Service

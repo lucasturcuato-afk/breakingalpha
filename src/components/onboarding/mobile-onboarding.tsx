@@ -256,15 +256,15 @@ export function MobileOnboarding(p: MobileOnboardingProps) {
   const workflowChip = p.workflows.find((w) => w.id === p.workflow);
 
   return (
-    <div className="md:hidden">
+    <div className="md:hidden" data-parity="onboard">
       <div
-        data-parity="onboard"
         className={styles.screen}
         style={{
           minHeight: "100dvh",
           display: "flex",
           flexDirection: "column",
           backgroundColor: "var(--c-bg)",
+          color: "var(--c-ink)",
         }}
       >
         <header
@@ -277,7 +277,18 @@ export function MobileOnboarding(p: MobileOnboardingProps) {
           }}
         >
           <Wordmark size={17} />
-          <MonoLabel>{`${p.step} of ${p.totalSteps}`}</MonoLabel>
+          <span
+            style={{
+              fontFamily: FONT_MONO,
+              fontSize: 10,
+              fontWeight: 400,
+              lineHeight: 1,
+              letterSpacing: "0.07em",
+              color: "var(--c-muted)",
+            }}
+          >
+            {`${p.step} of ${p.totalSteps}`}
+          </span>
         </header>
 
         {/* Seven equal segments. A progress figure that describes state is

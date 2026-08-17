@@ -27,7 +27,7 @@ import { MobileOnboarding } from "./mobile-onboarding";
  * the same grounds the rulings were made: its description contained a
  * banned word outright. The design already reads "Multi-asset mandates".
  * Ampersands become "and" to match the design's own strings. */
-const ROLES: { id: UserRole; label: string; description: string }[] = [
+export const ROLES: { id: UserRole; label: string; description: string }[] = [
   { id: "student_analyst", label: "Student Analyst", description: "Learning equity research" },
   { id: "buy_side", label: "Fund Analyst", description: "Fund research and portfolio" },
   { id: "sell_side", label: "Equity Research", description: "Equity research coverage" },
@@ -37,7 +37,7 @@ const ROLES: { id: UserRole; label: string; description: string }[] = [
   { id: "other", label: "Other", description: "Custom investor profile" },
 ];
 
-const STRATEGIES: { id: StrategyType; label: string; description: string }[] = [
+export const STRATEGIES: { id: StrategyType; label: string; description: string }[] = [
   { id: "pe", label: "Private Equity", description: "Durable cash flows, long duration" },
   { id: "equity", label: "Public Equity", description: "Catalyst-driven, valuation-aware" },
   { id: "vc", label: "Venture", description: "Asymmetric upside, runway-sensitive" },
@@ -45,7 +45,7 @@ const STRATEGIES: { id: StrategyType; label: string; description: string }[] = [
   { id: "credit", label: "Credit", description: "Coupon safety, spread and default risk" },
 ];
 
-const SECTORS = [
+export const SECTORS = [
   "Technology",
   "Healthcare & Biotech",
   "Energy & Oil/Gas",
@@ -58,13 +58,13 @@ const SECTORS = [
   "Geopolitics & Macro",
 ];
 
-const HORIZONS: { id: InvestmentHorizon; label: string; description: string }[] = [
+export const HORIZONS: { id: InvestmentHorizon; label: string; description: string }[] = [
   { id: "short", label: "Short", description: "Weeks to a few months" },
   { id: "medium", label: "Medium", description: "6 to 18 months" },
   { id: "long", label: "Long", description: "Multi-year" },
 ];
 
-const WORKFLOWS: { id: WorkflowStyle; label: string; description: string }[] = [
+export const WORKFLOWS: { id: WorkflowStyle; label: string; description: string }[] = [
   { id: "deep_dive", label: "Deep-dive", description: "Single-name research" },
   { id: "screening", label: "Screening", description: "Systematic shortlists" },
   { id: "monitoring", label: "Monitoring", description: "Existing positions" },
@@ -82,7 +82,7 @@ const WORKFLOWS: { id: WorkflowStyle; label: string; description: string }[] = [
  * here and are ruling 7b's own workstream. */
 const RISK_DEFAULT: RiskAppetite = "balanced";
 
-const TOTAL_STEPS = 7;
+export const TOTAL_STEPS = 7;
 
 /* Gold on buttons — user specified this specific hex, inline override allowed. */
 const CTA_BG = "#C9A84C";

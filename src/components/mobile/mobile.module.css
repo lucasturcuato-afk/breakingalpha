@@ -196,6 +196,17 @@
   background-clip: content-box;
 }
 
+/* An anchor sitting inside flowing prose cannot be given 44px of height
+   without opening the line it sits in. Vertical padding on a non-replaced
+   INLINE box is painted and hit-tested but contributes nothing to the line
+   box, so the target grows to 44 and the paragraph does not move. The
+   element must stay `display: inline` for that to hold. */
+.tapInline {
+  display: inline;
+  padding-top: 15px;
+  padding-bottom: 15px;
+}
+
 /* ── Scroll lock, desktop only ─────────────────────────────────────────
    The signal-wall intro gate is a desktop-scale device and is NOT PORTED
    to mobile, so its body scroll lock must not reach mobile either. The
