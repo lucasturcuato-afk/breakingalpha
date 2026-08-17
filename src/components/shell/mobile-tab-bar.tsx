@@ -82,10 +82,16 @@ const POLES: Pole[] = [
     owns: ["/dashboard"],
   },
   {
+    /* The pole's destination is the Ledger itself as of PR 622. It pointed at
+       /morning-brief while that screen did not exist. The brief and the wrap
+       stay in `owns` because the pole still owns them: reaching a brief from
+       elsewhere must light Ledger, not nothing. `owns` carries /ledger
+       explicitly since isActive reads `owns` alone and never `href`, so a pole
+       whose destination is missing from its own list goes dark on arrival. */
     label: "Ledger",
-    href: "/morning-brief",
+    href: "/ledger",
     icon: IconLedger,
-    owns: ["/morning-brief", "/evening-wrap", "/radar/calls"],
+    owns: ["/ledger", "/morning-brief", "/evening-wrap", "/radar/calls"],
   },
   {
     label: "Watch",
