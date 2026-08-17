@@ -200,7 +200,7 @@
    without opening the line it sits in. Vertical padding on a non-replaced
    INLINE box is painted and hit-tested but contributes nothing to the line
    box, so the target grows to 44 and the paragraph does not move. The
-   element must stay `display: inline` for that to hold. */
+   element must stay `display: inline` for that to be true. */
 .tapInline {
   display: inline;
   padding-top: 15px;
