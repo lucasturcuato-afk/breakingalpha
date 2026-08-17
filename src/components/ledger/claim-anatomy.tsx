@@ -114,7 +114,7 @@ const LABEL: Record<OutcomeState, string> = {
 };
 
 /**
- * The state dot, its word, and an optional right-aligned instrument.
+ * The state dot, its word, and an optional instrument on the trailing edge.
  *
  * transition:none is load bearing. The four words are non-interchangeable, so
  * easing between two semantic hues renders one state's word in another

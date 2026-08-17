@@ -68,6 +68,15 @@
   --c-oninv-body: #c9bda6;
   --c-oninv-dim: #a2937a;
   --c-oninv-mono: #e8dcc4;
+  /* Gold as TYPE on a pinned espresso surface.
+     The on-inverse ink family exists for type that sits on espresso, and it
+     had no gold member even though the design puts gold type there: the
+     wordmark renders "Signal" in cream and "era" in gold on the masthead.
+     Writing that as --c-gold is an ink/base swap, and --c-goldink is #7a5f18
+     in light, which is near black on espresso. This is the missing member.
+     Pinned identical across themes, for the same reason the masthead itself is
+     pinned: the surface does not flip, so its type must not either. */
+  --c-oninv-gold: #d4a84b;
   --c-red: #dc2626;
   --c-redink: #b91c1c;
   --c-green: #16a34a;
@@ -381,6 +390,15 @@ html.dark {
   --c-oninv-body: #c9bda6;
   --c-oninv-dim: #a2937a;
   --c-oninv-mono: #e8dcc4;
+  /* Gold as TYPE on a pinned espresso surface.
+     The on-inverse ink family exists for type that sits on espresso, and it
+     had no gold member even though the design puts gold type there: the
+     wordmark renders "Signal" in cream and "era" in gold on the masthead.
+     Writing that as --c-gold is an ink/base swap, and --c-goldink is #7a5f18
+     in light, which is near black on espresso. This is the missing member.
+     Pinned identical across themes, for the same reason the masthead itself is
+     pinned: the surface does not flip, so its type must not either. */
+  --c-oninv-gold: #d4a84b;
   --c-red: #f87171;
   --c-redink: #fca5a5;
   --c-green: #4ade80;

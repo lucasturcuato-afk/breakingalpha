@@ -19,7 +19,7 @@ import styles from "./ledger.module.css";
 
 export interface LedgerEntryRowProps {
   state: OutcomeState;
-  /** Ticker or instrument, right aligned on the state row. */
+  /** Ticker or instrument, on the trailing edge of the state row. */
   instrument?: string;
   /** The claim as it was made, before the outcome was known. */
   claim: string;

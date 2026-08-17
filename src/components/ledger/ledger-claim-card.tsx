@@ -138,7 +138,7 @@ export function LedgerClaimCard({
               }}
             >
               <span aria-hidden="true" style={{ marginRight: "6px" }}>
-                &#9670;
+                {"\u25C6"}
               </span>
               On your ledger
             </div>

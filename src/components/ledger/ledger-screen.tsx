@@ -199,7 +199,7 @@ function Masthead({ data }: { data: LedgerData }) {
     <div style={{ backgroundColor: "var(--c-inverse)", padding: `11px ${PAD} 12px`, marginTop: "10px" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <span style={{ font: "700 19px/1 'Playfair Display', serif", letterSpacing: "-0.01em", color: "var(--c-oninv)" }}>
-          Signal<span style={{ color: "var(--c-gold)" }}>era</span>
+          Signal<span style={{ color: "var(--c-oninv-gold)" }}>era</span>
         </span>
         <span
           style={{
