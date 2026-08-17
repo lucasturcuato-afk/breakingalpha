@@ -310,7 +310,7 @@ function Continuity({ data }: { data: LedgerData }) {
         padding: "13px 14px 12px",
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
         <span style={{ font: "400 10px/1 'JetBrains Mono', monospace", letterSpacing: "0.07em", color: "var(--c-goldink)" }}>
           SINCE YOU LAST LOOKED
         </span>
@@ -355,7 +355,16 @@ function Continuity({ data }: { data: LedgerData }) {
           ) : null}
         </div>
       ))}
-      <div style={{ paddingTop: "11px", borderTop: "1px solid var(--c-hair)", display: "flex", alignItems: "baseline", gap: "9px" }}>
+      <div
+        style={{
+          paddingTop: "11px",
+          borderTop: "1px solid var(--c-hair)",
+          display: "flex",
+          alignItems: "baseline",
+          justifyContent: "space-between",
+          gap: "9px",
+        }}
+      >
         <span style={{ font: "600 12px/1 Inter, sans-serif", color: "var(--c-ink)" }}>{c.openNow}</span>
         <span style={{ font: "400 10px/1 'JetBrains Mono', monospace", letterSpacing: "0.04em", color: "var(--c-muted)" }}>
           {c.nextIn}
