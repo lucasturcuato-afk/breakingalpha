@@ -1,4 +1,4 @@
--- 0029_watchlist_match.sql
+-- 0030_watchlist_match.sql
 --
 -- HAND-APPLY. Agents do not run migrations.
 --

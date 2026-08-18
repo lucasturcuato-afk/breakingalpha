@@ -251,7 +251,7 @@ def _watchlist_match_column_available():
     except Exception as ex:
         _WATCHLIST_MATCH_COLUMN_AVAILABLE = False
         print("  watchlist: articles.watchlist_match missing "
-              f"(apply sql/0029_watchlist_match.sql) - not recording matches ({ex})")
+              f"(apply sql/0030_watchlist_match.sql) - not recording matches ({ex})")
     return _WATCHLIST_MATCH_COLUMN_AVAILABLE
 
 

@@ -8,6 +8,7 @@ import concurrent.futures
 import threading
 import os, json, re, random, socket, time, urllib.error, urllib.request, requests, feedparser, html as _html
 from datetime import datetime, timezone, timedelta
+from email.utils import parsedate_to_datetime
 from typing import Literal, Optional
 from pydantic import BaseModel, Field
 from supabase import create_client
@@ -368,6 +369,55 @@ def _get_gnews_tickers() -> list[str]:
     return sorted(tickers)
 
 
+def _parse_feed_datetime(entry, published_at):
+    """Timezone-aware datetime for a feed entry, or None if genuinely unparseable.
+
+    WHY THIS EXISTS. Both freshness checks called
+    datetime.fromisoformat(published_at) directly. Google News RSS emits
+    RFC-822 pubDate ("Mon, 18 Aug 2026 02:00:00 GMT"), which fromisoformat
+    CANNOT parse: it raises ValueError, the except branch let the entry
+    through, and so the freshness filter has never dropped a single Google
+    News item. Measured on run 32090228206: 0 of 18,457 entries skipped as
+    stale. The RSS loop had the same defect for any feed not emitting ISO-8601.
+
+    Order:
+      1. feedparser's own published_parsed. feedparser already normalises
+         every date dialect it understands into a struct_time, so this is
+         both the most permissive and the cheapest path.
+      2. email.utils.parsedate_to_datetime for RFC-822/2822.
+      3. datetime.fromisoformat for ISO-8601, preserving the previous
+         behaviour for feeds that were already working.
+
+    Naive results are assumed UTC, because the caller compares against a
+    UTC-aware cutoff and a naive/aware comparison raises TypeError.
+    Returns None when nothing parses, and the caller keeps the existing
+    "let it through" behaviour for that case.
+    """
+    parsed = None
+    try:
+        st = entry.get("published_parsed") or entry.get("updated_parsed")
+        if st:
+            parsed = datetime(*st[:6], tzinfo=timezone.utc)
+    except Exception:
+        parsed = None
+
+    if parsed is None and published_at:
+        try:
+            parsed = parsedate_to_datetime(published_at)
+        except Exception:
+            parsed = None
+
+    if parsed is None and published_at:
+        try:
+            parsed = datetime.fromisoformat(published_at.replace("Z", "+00:00"))
+        except Exception:
+            parsed = None
+
+    if parsed is not None and parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed
+
+
 def _fetch_single_gnews_feed(ticker: str) -> tuple[list[dict], dict[str, int]]:
     """Fetch and parse one Google News RSS feed for a ticker.
 
@@ -399,14 +449,10 @@ def _fetch_single_gnews_feed(ticker: str) -> tuple[list[dict], dict[str, int]]:
             published_at = e.get("published") or None
             # Skip articles older than INGEST_FRESHNESS_DAYS. Mirrors the main
             # RSS loop: if the date is missing or unparseable, let it through.
-            if published_at:
-                try:
-                    pub_dt = datetime.fromisoformat(published_at.replace("Z", "+00:00"))
-                    if pub_dt < freshness_cutoff:
-                        stats["skipped_stale"] += 1
-                        continue
-                except Exception:
-                    pass  # if parsing fails, let the entry through
+            pub_dt = _parse_feed_datetime(e, published_at)
+            if pub_dt is not None and pub_dt < freshness_cutoff:
+                stats["skipped_stale"] += 1
+                continue
             raw_summary = strip_html(e.get("summary", e.get("description", "")))[:500]
             # Detect the headline echo on the RAW title (where the summary still
             # matches the full title text incl. publisher) BEFORE cleaning strips
@@ -1732,14 +1778,10 @@ def fetch_all_articles():
                 published_at = e.get("published") or None
                 # Skip articles older than INGEST_FRESHNESS_DAYS. If the date is
                 # missing or unparseable, let the entry through.
-                if published_at:
-                    try:
-                        pub_dt = datetime.fromisoformat(published_at.replace("Z", "+00:00"))
-                        if pub_dt < freshness_cutoff:
-                            skipped_stale += 1
-                            continue
-                    except Exception:
-                        pass  # if parsing fails, let the entry through
+                pub_dt = _parse_feed_datetime(e, published_at)
+                if pub_dt is not None and pub_dt < freshness_cutoff:
+                    skipped_stale += 1
+                    continue
                 # A configured RSS feed IS its publisher, so `source` is the
                 # honest publisher name here. The domain comes from the item
                 # link, which for these feeds is a real publisher URL (unlike

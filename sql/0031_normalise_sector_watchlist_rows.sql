@@ -1,4 +1,4 @@
--- 0030_normalise_sector_watchlist_rows.sql
+-- 0031_normalise_sector_watchlist_rows.sql
 --
 -- HAND-APPLY, AFTER REVIEW. Agents do not run migrations.
 -- Mutates live user rows. Read section 1, eyeball the output, then run section 2.
