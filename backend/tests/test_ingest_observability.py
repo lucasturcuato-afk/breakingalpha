@@ -389,3 +389,133 @@ class ArticleRowGradeSourceTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# ---------------------------------------------------------------------------
+# 5. Feed date parsing (_parse_feed_datetime)
+# ---------------------------------------------------------------------------
+class FeedDateParsingTest(unittest.TestCase):
+    """Google News RSS emits RFC-822 pubDate. datetime.fromisoformat raises on
+    it, and the old except branch let the entry through, so the freshness gate
+    never dropped a single gnews item: 0 of 18,457 on run 32090228206."""
+
+    def test_rfc822_parses(self):
+        dt = ingest._parse_feed_datetime({}, "Mon, 18 Aug 2026 02:00:00 GMT")
+        self.assertIsNotNone(dt, "RFC-822 must parse; this is the live defect")
+        self.assertEqual((dt.year, dt.month, dt.day), (2026, 8, 18))
+        self.assertIsNotNone(dt.tzinfo, "must be aware to compare with the cutoff")
+
+    def test_rfc822_is_exactly_what_fromisoformat_rejects(self):
+        raw = "Mon, 18 Aug 2026 02:00:00 GMT"
+        with self.assertRaises(ValueError):
+            datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        self.assertIsNotNone(ingest._parse_feed_datetime({}, raw))
+
+    def test_iso8601_still_parses(self):
+        """The RSS feeds that already worked must keep working."""
+        for raw in ("2026-08-18T02:00:00+00:00", "2026-08-18T02:00:00Z"):
+            with self.subTest(raw=raw):
+                dt = ingest._parse_feed_datetime({}, raw)
+                self.assertIsNotNone(dt)
+                self.assertEqual(dt.year, 2026)
+
+    def test_feedparser_struct_time_wins(self):
+        """feedparser normalises dialects we do not have to enumerate."""
+        import time as _t
+        st = _t.struct_time((2026, 8, 18, 2, 0, 0, 0, 230, 0))
+        dt = ingest._parse_feed_datetime({"published_parsed": st}, "nonsense")
+        self.assertEqual((dt.year, dt.month, dt.day), (2026, 8, 18))
+
+    def test_naive_input_is_assumed_utc(self):
+        """A naive datetime compared against the aware cutoff raises TypeError."""
+        dt = ingest._parse_feed_datetime({}, "2026-08-18T02:00:00")
+        self.assertIsNotNone(dt.tzinfo)
+
+    def test_unparseable_returns_none_and_caller_lets_it_through(self):
+        for raw in ("", None, "not a date", "yesterday"):
+            with self.subTest(raw=raw):
+                self.assertIsNone(ingest._parse_feed_datetime({}, raw))
+
+
+class GnewsStaleNowActuallyDropsTest(unittest.TestCase):
+    """End-to-end: an RFC-822 stale entry must now be counted and dropped."""
+
+    def _run(self, entries):
+        with patch.object(ingest, "_fetch_feed_bytes", return_value=b""), \
+             patch.object(ingest.feedparser, "parse", return_value=_FakeFeed(entries)):
+            return ingest._fetch_single_gnews_feed("AAPL")
+
+    def test_rfc822_stale_entry_is_dropped(self):
+        old = (datetime.now(timezone.utc) - timedelta(days=400))
+        stale = old.strftime("%a, %d %b %Y %H:%M:%S GMT")
+        fresh = datetime.now(timezone.utc).strftime("%a, %d %b %Y %H:%M:%S GMT")
+        articles, stats = self._run([
+            _entry("fresh", "http://x/1", fresh),
+            _entry("stale", "http://x/2", stale),
+        ])
+        self.assertEqual(stats["skipped_stale"], 1)
+        self.assertEqual(len(articles), 1)
+        self.assertEqual(articles[0]["title"], "fresh")
+
+
+# ---------------------------------------------------------------------------
+# 6. Freshness threshold as config, and kept-age buckets
+# ---------------------------------------------------------------------------
+class IntEnvTest(unittest.TestCase):
+    """schedule.yml deliberately leaves int-parsed flags unmapped because an
+    unset repo Variable renders as "" and int("") raises at import time, killing
+    the run. _int_env is what makes INGEST_FRESHNESS_DAYS safe to map."""
+
+    def test_empty_string_falls_back_to_default(self):
+        with patch.dict(os.environ, {"X_FRESH": ""}):
+            self.assertEqual(ingest._int_env("X_FRESH", 7), 7)
+
+    def test_unset_falls_back_to_default(self):
+        os.environ.pop("X_FRESH_UNSET", None)
+        self.assertEqual(ingest._int_env("X_FRESH_UNSET", 7), 7)
+
+    def test_valid_value_is_used(self):
+        with patch.dict(os.environ, {"X_FRESH": "3"}):
+            self.assertEqual(ingest._int_env("X_FRESH", 7), 3)
+
+    def test_garbage_falls_back_rather_than_raising(self):
+        with patch.dict(os.environ, {"X_FRESH": "not-a-number"}):
+            self.assertEqual(ingest._int_env("X_FRESH", 7), 7)
+
+    def test_whitespace_is_stripped(self):
+        with patch.dict(os.environ, {"X_FRESH": "  5  "}):
+            self.assertEqual(ingest._int_env("X_FRESH", 7), 5)
+
+    def test_default_is_still_seven(self):
+        self.assertEqual(ingest.INGEST_FRESHNESS_DAYS, 7)
+
+
+class KeptAgeBucketTest(unittest.TestCase):
+    def _stats(self):
+        return {"kept_lt_1d": 0, "kept_1_3d": 0, "kept_3_7d": 0,
+                "kept_gt_7d": 0, "kept_no_date": 0}
+
+    def test_buckets_by_age(self):
+        now = datetime.now(timezone.utc)
+        cases = [(0.5, "kept_lt_1d"), (2, "kept_1_3d"), (5, "kept_3_7d"), (9, "kept_gt_7d")]
+        for days, key in cases:
+            with self.subTest(days=days):
+                s = self._stats()
+                ingest._bucket_kept_age(s, now - timedelta(days=days))
+                self.assertEqual(s[key], 1, f"{days}d should land in {key}")
+                self.assertEqual(sum(s.values()), 1, "exactly one bucket per entry")
+
+    def test_missing_date_has_its_own_bucket(self):
+        s = self._stats()
+        ingest._bucket_kept_age(s, None)
+        self.assertEqual(s["kept_no_date"], 1)
+
+    def test_kept_entries_are_bucketed_end_to_end(self):
+        fresh = datetime.now(timezone.utc).strftime("%a, %d %b %Y %H:%M:%S GMT")
+        with patch.object(ingest, "_fetch_feed_bytes", return_value=b""), \
+             patch.object(ingest.feedparser, "parse",
+                          return_value=_FakeFeed([_entry("a", "http://x/1", fresh)])):
+            _articles, stats = ingest._fetch_single_gnews_feed("AAPL")
+        self.assertEqual(stats["kept_lt_1d"], 1)
+        self.assertEqual(stats["kept_gt_7d"], 0,
+                         "an entry over the cutoff must never be kept")

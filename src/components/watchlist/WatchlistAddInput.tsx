@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { cn } from "@/lib/utils";
+import { resolveSectorEntry } from "@/lib/watchlist-utils";
 
 const SECTORS = [
   "Technology",
@@ -227,13 +228,18 @@ export function WatchlistAddInput({
     }
 
     if (addType === "sector") {
-      const sectorMatch = SECTORS.find(
-        (s) => s.toLowerCase() === query.trim().toLowerCase(),
-      );
-      const value = sectorMatch ?? query.trim();
-      if (!value) return;
+      // Canonical values only. This used to fall through to raw query.trim()
+      // when nothing matched, which is how "Finance", "Consumer", "Healthcare"
+      // and "Public Markets" reached the watchlist table -- none of them a
+      // member of the taxonomy the articles are actually tagged with, so they
+      // could never match on industry_verticals / activity_types.
+      // resolveSectorEntry accepts a canonical value or a known shorthand and
+      // returns the canonical form; anything else is rejected rather than
+      // stored as free text.
+      const resolved = resolveSectorEntry(query.trim());
+      if (!resolved) return;
       setSubmitting(true);
-      await onAdd(value);
+      await onAdd(resolved.value);
       setQuery("");
       setSubmitting(false);
       return;
@@ -260,6 +266,11 @@ export function WatchlistAddInput({
 
   // Validation hint for ticker mode
   const needsSelection = addType === "ticker" && query.length > 0 && !selectedTicker;
+
+  // Sector mode rejects anything outside the taxonomy, so say so rather than
+  // letting submit silently do nothing.
+  const needsCanonicalSector =
+    addType === "sector" && query.trim().length > 0 && !resolveSectorEntry(query.trim());
 
   return (
     <div>
@@ -412,6 +423,12 @@ export function WatchlistAddInput({
         {needsSelection && !addError && (
           <p className="font-sans text-[11px] text-amber-600 mt-1.5">
             Select a ticker from the dropdown
+          </p>
+        )}
+
+        {needsCanonicalSector && !addError && (
+          <p className="font-sans text-[11px] text-amber-600 mt-1.5">
+            Pick a sector from the list
           </p>
         )}
 
