@@ -456,3 +456,66 @@ class GnewsStaleNowActuallyDropsTest(unittest.TestCase):
         self.assertEqual(stats["skipped_stale"], 1)
         self.assertEqual(len(articles), 1)
         self.assertEqual(articles[0]["title"], "fresh")
+
+
+# ---------------------------------------------------------------------------
+# 6. Freshness threshold as config, and kept-age buckets
+# ---------------------------------------------------------------------------
+class IntEnvTest(unittest.TestCase):
+    """schedule.yml deliberately leaves int-parsed flags unmapped because an
+    unset repo Variable renders as "" and int("") raises at import time, killing
+    the run. _int_env is what makes INGEST_FRESHNESS_DAYS safe to map."""
+
+    def test_empty_string_falls_back_to_default(self):
+        with patch.dict(os.environ, {"X_FRESH": ""}):
+            self.assertEqual(ingest._int_env("X_FRESH", 7), 7)
+
+    def test_unset_falls_back_to_default(self):
+        os.environ.pop("X_FRESH_UNSET", None)
+        self.assertEqual(ingest._int_env("X_FRESH_UNSET", 7), 7)
+
+    def test_valid_value_is_used(self):
+        with patch.dict(os.environ, {"X_FRESH": "3"}):
+            self.assertEqual(ingest._int_env("X_FRESH", 7), 3)
+
+    def test_garbage_falls_back_rather_than_raising(self):
+        with patch.dict(os.environ, {"X_FRESH": "not-a-number"}):
+            self.assertEqual(ingest._int_env("X_FRESH", 7), 7)
+
+    def test_whitespace_is_stripped(self):
+        with patch.dict(os.environ, {"X_FRESH": "  5  "}):
+            self.assertEqual(ingest._int_env("X_FRESH", 7), 5)
+
+    def test_default_is_still_seven(self):
+        self.assertEqual(ingest.INGEST_FRESHNESS_DAYS, 7)
+
+
+class KeptAgeBucketTest(unittest.TestCase):
+    def _stats(self):
+        return {"kept_lt_1d": 0, "kept_1_3d": 0, "kept_3_7d": 0,
+                "kept_gt_7d": 0, "kept_no_date": 0}
+
+    def test_buckets_by_age(self):
+        now = datetime.now(timezone.utc)
+        cases = [(0.5, "kept_lt_1d"), (2, "kept_1_3d"), (5, "kept_3_7d"), (9, "kept_gt_7d")]
+        for days, key in cases:
+            with self.subTest(days=days):
+                s = self._stats()
+                ingest._bucket_kept_age(s, now - timedelta(days=days))
+                self.assertEqual(s[key], 1, f"{days}d should land in {key}")
+                self.assertEqual(sum(s.values()), 1, "exactly one bucket per entry")
+
+    def test_missing_date_has_its_own_bucket(self):
+        s = self._stats()
+        ingest._bucket_kept_age(s, None)
+        self.assertEqual(s["kept_no_date"], 1)
+
+    def test_kept_entries_are_bucketed_end_to_end(self):
+        fresh = datetime.now(timezone.utc).strftime("%a, %d %b %Y %H:%M:%S GMT")
+        with patch.object(ingest, "_fetch_feed_bytes", return_value=b""), \
+             patch.object(ingest.feedparser, "parse",
+                          return_value=_FakeFeed([_entry("a", "http://x/1", fresh)])):
+            _articles, stats = ingest._fetch_single_gnews_feed("AAPL")
+        self.assertEqual(stats["kept_lt_1d"], 1)
+        self.assertEqual(stats["kept_gt_7d"], 0,
+                         "an entry over the cutoff must never be kept")

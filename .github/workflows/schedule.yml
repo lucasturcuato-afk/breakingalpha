@@ -71,6 +71,19 @@ jobs:
           # enable it on the next run.
           TAGGING_PRIMARY_FOLD_ENABLED: ${{ vars.TAGGING_PRIMARY_FOLD_ENABLED }}
           RELEVANCE_GRADE_MODE: ${{ vars.RELEVANCE_GRADE_MODE }}
+          # INGEST_FRESHNESS_DAYS, read at backend/ingest.py via _int_env.
+          # Repo VARIABLE, not a secret (a small integer). Feed-entry age cutoff
+          # in days; default 7, unchanged from the previous hardcoded constant.
+          #
+          # SAFE TO MAP, unlike the other int-parsed flags listed further down:
+          # the read site goes through _int_env, which treats the EMPTY STRING
+          # (what an unset repo Variable renders as) as "use the default" and
+          # never calls int(""). That coercion is precisely the precondition
+          # this file's own comment says those flags are waiting on.
+          #
+          # This gate did nothing until the RFC-822 parsing fix; it now removes
+          # ~59% of the Google News leg at 7 days. Retune here, not in a merge.
+          INGEST_FRESHNESS_DAYS: ${{ vars.INGEST_FRESHNESS_DAYS }}
           INGEST_BLOCKLIST_MODE: ${{ vars.INGEST_BLOCKLIST_MODE }}
           FILTER_PROMPT_CACHE: ${{ vars.FILTER_PROMPT_CACHE }}
           GRADER_SKIP_IRRELEVANT: ${{ vars.GRADER_SKIP_IRRELEVANT }}

@@ -418,6 +418,29 @@ def _parse_feed_datetime(entry, published_at):
     return parsed
 
 
+def _bucket_kept_age(stats: dict, pub_dt) -> None:
+    """Tally the age of an entry we KEPT.
+
+    The stale counter alone says how many were dropped; it cannot say how close
+    the survivors are to the line. These buckets make the effect of retuning
+    INGEST_FRESHNESS_DAYS predictable from the last run instead of requiring a
+    re-pull. kept_gt_7d is expected to stay 0 while the threshold is 7; a
+    non-zero value means an entry outlived the cutoff, which would be a bug.
+    """
+    if pub_dt is None:
+        stats["kept_no_date"] += 1
+        return
+    age = (datetime.now(timezone.utc) - pub_dt).total_seconds() / 86400.0
+    if age < 1:
+        stats["kept_lt_1d"] += 1
+    elif age < 3:
+        stats["kept_1_3d"] += 1
+    elif age < 7:
+        stats["kept_3_7d"] += 1
+    else:
+        stats["kept_gt_7d"] += 1
+
+
 def _fetch_single_gnews_feed(ticker: str) -> tuple[list[dict], dict[str, int]]:
     """Fetch and parse one Google News RSS feed for a ticker.
 
@@ -431,7 +454,11 @@ def _fetch_single_gnews_feed(ticker: str) -> tuple[list[dict], dict[str, int]]:
     """
     url = _build_gnews_url(ticker)
     articles = []
-    stats = {"entries": 0, "skipped_stale": 0, "skipped_no_link_or_title": 0}
+    stats = {"entries": 0, "skipped_stale": 0, "skipped_no_link_or_title": 0,
+             # Age distribution of what we KEEP, so the effect of a threshold
+             # change is visible without re-running the pull.
+             "kept_lt_1d": 0, "kept_1_3d": 0, "kept_3_7d": 0,
+             "kept_gt_7d": 0, "kept_no_date": 0}
     try:
         raw = _fetch_feed_bytes(url)
         feed = feedparser.parse(raw)
@@ -453,6 +480,7 @@ def _fetch_single_gnews_feed(ticker: str) -> tuple[list[dict], dict[str, int]]:
             if pub_dt is not None and pub_dt < freshness_cutoff:
                 stats["skipped_stale"] += 1
                 continue
+            _bucket_kept_age(stats, pub_dt)
             raw_summary = strip_html(e.get("summary", e.get("description", "")))[:500]
             # Detect the headline echo on the RAW title (where the summary still
             # matches the full title text incl. publisher) BEFORE cleaning strips
@@ -527,17 +555,31 @@ def fetch_gnews_per_ticker_feeds() -> tuple[list[dict], dict[str, dict[str, int]
             except Exception as ex:
                 print(f"  gnews: worker error for {ticker}: {ex}")
                 gnews_stats[ticker] = {"fetched": 0, "entries": 0,
-                                       "skipped_stale": 0, "skipped_no_link_or_title": 0}
+                                       "skipped_stale": 0, "skipped_no_link_or_title": 0,
+                                       "kept_lt_1d": 0, "kept_1_3d": 0, "kept_3_7d": 0,
+                                       "kept_gt_7d": 0, "kept_no_date": 0}
 
     elapsed = time.time() - t0
     print(f"  gnews: {len(all_articles)} articles from {len(tickers)} tickers in {elapsed:.1f}s")
     # Mirrors the RSS loop's stale accounting, but aggregate only: this leg runs
     # ~800 ticker feeds against the RSS loop's ~10, so a per-feed line would bury
     # the run log. Per-ticker numbers stay available in gnews_stats.
-    if total_stale or total_no_link:
-        print(f"  gnews total: skipped {total_stale} stale articles "
-              f"(>{INGEST_FRESHNESS_DAYS}d old) and {total_no_link} with no link/title, "
-              f"of {total_entries} entries seen across {len(tickers)} tickers")
+    # Printed unconditionally. It was behind `if total_stale or total_no_link`,
+    # which meant that while the parser was broken and both counters read zero,
+    # the line never appeared at all: the absence of output looked like the
+    # absence of a problem. A zero is now stated rather than implied.
+    print(f"  gnews total: skipped {total_stale} stale "
+          f"(>{INGEST_FRESHNESS_DAYS}d old) and {total_no_link} with no link/title, "
+          f"of {total_entries} entries seen across {len(tickers)} tickers "
+          f"({total_stale / max(total_entries, 1) * 100:.1f}% stale)")
+    kept = {k: sum(v.get(k, 0) for v in gnews_stats.values())
+            for k in ("kept_lt_1d", "kept_1_3d", "kept_3_7d", "kept_gt_7d", "kept_no_date")}
+    n_kept = max(sum(kept.values()), 1)
+    print(f"  gnews kept age: <1d {kept['kept_lt_1d']} ({kept['kept_lt_1d']/n_kept*100:.0f}%), "
+          f"1-3d {kept['kept_1_3d']} ({kept['kept_1_3d']/n_kept*100:.0f}%), "
+          f"3-7d {kept['kept_3_7d']} ({kept['kept_3_7d']/n_kept*100:.0f}%), "
+          f"no-date {kept['kept_no_date']}"
+          + (f", OVER-CUTOFF {kept['kept_gt_7d']} (BUG)" if kept["kept_gt_7d"] else ""))
     if all_stale_tickers:
         print(f"  gnews total: {all_stale_tickers} tickers returned entries but kept "
               f"none of them (every entry stale)")
@@ -1745,7 +1787,33 @@ def fetch_watchlist_finnhub_articles() -> list[dict]:
     return out
 
 
-INGEST_FRESHNESS_DAYS = 7
+def _int_env(name: str, default: int) -> int:
+    """int() from the environment, safe against the EMPTY STRING.
+
+    An unmapped GitHub repo Variable renders as "" in the workflow env, not as
+    unset, so os.getenv(name, "7") returns "" and int("") raises ValueError at
+    import time, killing the run before ingest starts. schedule.yml documents
+    exactly this trap and lists the int-parsed flags it deliberately does NOT
+    map for that reason. This coercion is what makes mapping safe.
+    """
+    raw = (os.getenv(name) or "").strip()
+    if not raw:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        print(f"  [config] {name}={raw!r} is not an int, using {default}")
+        return default
+
+
+#: Age cutoff for feed entries, in days. Repo VARIABLE so the threshold can be
+#: retuned without a merge. Default 7, unchanged.
+#:
+#: This gate did nothing until the RFC-822 parsing fix: fromisoformat raised on
+#: every Google News pubDate and the except branch let the entry through, so 0
+#: of 18,457 entries were dropped on run 32090228206. Measured on a live
+#: 2,308-entry sample, at 7 days it now removes ~59% of the gnews leg.
+INGEST_FRESHNESS_DAYS = _int_env("INGEST_FRESHNESS_DAYS", 7)
 
 def fetch_all_articles():
     articles = []
@@ -1819,11 +1887,15 @@ def fetch_all_articles():
         if skipped_stale:
             print(f"  RSS {source}: skipped {skipped_stale} stale articles (>{INGEST_FRESHNESS_DAYS}d old)")
             total_skipped_stale += skipped_stale
-        source_fetch_stats[source] = {"fetched": feed_total, "fresh": feed_added}
+        # "stale" is the only reason the loop above skips an entry, so
+        # fetched - fresh == stale; carried explicitly so run_ingestion can
+        # persist it without re-deriving.
+        source_fetch_stats[source] = {"fetched": feed_total, "fresh": feed_added,
+                                      "stale": skipped_stale}
         rss_added += feed_added
     print(f"  RSS total: {rss_added} articles from {len(RSS_FEEDS)} feeds in {time.time() - rss_t0:.2f}s")
-    if total_skipped_stale:
-        print(f"  RSS total: skipped {total_skipped_stale} stale articles across all feeds")
+    print(f"  RSS total: skipped {total_skipped_stale} stale articles across all feeds "
+          f"(>{INGEST_FRESHNESS_DAYS}d old)")
 
     # NewsAPI
     try:
@@ -3224,7 +3296,9 @@ def run_ingestion():
         )
 
     # Google News per-ticker funnel
-    gnews_totals = {"entries": 0, "skipped_stale": 0, "skipped_no_link_or_title": 0, "fetched": 0}
+    gnews_totals = {"entries": 0, "skipped_stale": 0, "skipped_no_link_or_title": 0,
+                    "fetched": 0, "kept_lt_1d": 0, "kept_1_3d": 0, "kept_3_7d": 0,
+                    "kept_gt_7d": 0, "kept_no_date": 0}
     if gnews_stats:
         # .get() defaults keep this working against any gnews_stats shape that
         # predates the freshness counters.
@@ -3271,6 +3345,7 @@ def run_ingestion():
     # Persist the run's funnel so the drop rates are trendable instead of living
     # only in one run's stdout. Fully guarded, additive, and last: nothing above
     # depends on it.
+    rss_skipped_stale = sum(v.get("stale", 0) for v in source_fetch_stats.values())
     _persist_ingest_run_stats({
         "run_started_at": run_started_at.isoformat(),
         "duration_s": round(time.time() - t_total, 2),
@@ -3291,6 +3366,13 @@ def run_ingestion():
             1 for s in gnews_stats.values()
             if s.get("skipped_stale", 0) and not s.get("fetched", 0)
         ),
+        # Age distribution of KEPT entries. Makes the effect of retuning
+        # INGEST_FRESHNESS_DAYS readable from the last run. sql/0032.
+        "gnews_kept_age_buckets": {
+            k: gnews_totals[k] for k in
+            ("kept_lt_1d", "kept_1_3d", "kept_3_7d", "kept_gt_7d", "kept_no_date")
+        },
+        "rss_skipped_stale": rss_skipped_stale,
         "grade_source_counts": grade_sources,
         "articles_stored": stored,
     })
