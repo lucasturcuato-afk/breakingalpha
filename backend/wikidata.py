@@ -655,7 +655,7 @@ def is_valid_company(name: str, supabase) -> bool:
         print(f"  Wikidata cache read error [{name!r}]: {ex}")
         return True  # Cache error → keep
 
-    # 2. Cache miss — ask Wikidata
+    # 2. Cache miss, so ask Wikidata
     lookup = _lookup_wikidata(name)
 
     # 2b. A FAILED fetch is NOT a verdict, so it gets no cache row.
