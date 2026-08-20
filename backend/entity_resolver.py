@@ -63,6 +63,27 @@ except ImportError:
 _MAX_RACE_RETRIES = 3
 
 
+# LANE C CONTRACT. This module's own machine-readable description of how wide
+# its resolution surface is. Read by backend/wikidata_cache_rebuild.py, which
+# refuses to rewrite the Wikidata cache while this reports version 1.
+#
+# Why the rebuild cares. Rebuilding the cache recovers names the entity gate is
+# currently dropping. Every recovered name goes straight through resolve_entity.
+# If the resolver has not been widened and its indexes merged first, roughly 60%
+# of those recoveries land as DUPLICATE companies rows rather than resolving to
+# an existing canonical, and the rebuild silently converts one data-quality
+# problem into a worse one that is far harder to unwind.
+#
+# LANE C (resolver widening and index merge) MUST update this dict in the same
+# commit. Set version to 2 and both flags True once the widened lookup and the
+# merged index are live.
+RESOLVER_CONTRACT = {
+    "version": 1,
+    "widened": False,
+    "index_merged": False,
+}
+
+
 def resolve_entity(
     surface_form: str,
     supabase,

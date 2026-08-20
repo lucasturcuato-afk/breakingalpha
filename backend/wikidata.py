@@ -8,13 +8,45 @@ Public API:
         Defaults to True (keep) on ambiguous results or API errors.
 """
 
+import ast
+import hashlib
+import inspect
 import re
+import textwrap
 import time
+
 import requests
 
 WIKIDATA_API = "https://www.wikidata.org/w/api.php"
 _USER_AGENT = "BreakingAlpha/1.0 (company intel entity quality; contact via github)"
 _REQUEST_DELAY = 0.15  # seconds between uncached API calls — well within Wikidata limits
+
+# LANE D CONTRACT. This dict is this module's own honest, machine-readable
+# description of how _fetch_wikidata_description behaves. It is read by
+# backend/wikidata_cache_rebuild.py, which REFUSES to make any network call
+# unless the values below clear the measured Wikidata budget.
+#
+# The values are correct as written for the CURRENT fetcher, and the current
+# fetcher is broken:
+#   * min_interval_s 0.15 is 400 calls/min against a measured anonymous budget
+#     of 10 to 11 calls per 52 seconds. That is roughly 35x over budget and it
+#     is why 76.34% of wikidata_entity_cache rows carry a NULL description.
+#   * honors_retry_after is False. The except branch swallows HTTP 429 and
+#     returns None, indistinguishable from a genuine "Wikidata has no entry".
+#   * reports_http_status is False, for the same reason: one None means both
+#     "no such entity" and "we got throttled".
+#
+# LANE D (the 429 fetch fix) MUST update this dict in the same commit that
+# fixes the fetcher. Until version reaches 2 with honors_retry_after and
+# reports_http_status both True, the cache rebuild will not run. That refusal
+# is deliberate: rebuilding into a throttled fetcher re-poisons the cache with
+# the same NULLs, at scale, and burns the budget doing it.
+FETCH_CONTRACT = {
+    "version": 1,
+    "min_interval_s": _REQUEST_DELAY,
+    "honors_retry_after": False,
+    "reports_http_status": False,
+}
 
 # Descriptions that confirm the entity is NOT a company. Checked as substrings on
 # the lowercased Wikidata description. Change (2) splits the original single drop
@@ -239,6 +271,81 @@ def _classify(description: str | None, name: str) -> bool | None:
             return False
 
     return None  # Ambiguous
+
+
+# ---------------------------------------------------------------------------
+# CLASSIFIER VERSION STAMP
+# ---------------------------------------------------------------------------
+# wikidata_entity_cache stores _classify's verdict, not its inputs' meaning. So
+# when _classify changes, every row written under the old rules is wrong and
+# nothing notices. That is not hypothetical: PR #358 shipped the HARD/SOFT split
+# on 2026-06-13 specifically so that "american company that operates a
+# cryptocurrency exchange platform" would classify as a company, and 68 days
+# later Coinbase is still cached False on that exact string, because
+# is_valid_company returns from the cache branch without re-classifying.
+#
+# classifier_version() is the fix for the general case. It fingerprints
+# everything that can change a verdict:
+#   * all four keyword lists, in order
+#   * the parsed logic of _classify itself, so a structural change (a new
+#     anchored regex, a reordering, a ticker guard) bumps the version even when
+#     no keyword list moved
+#   * CLASSIFIER_EPOCH, a manual escape hatch for the rare case where behavior
+#     changes from outside this function
+#
+# Fingerprinting the parsed AST rather than the raw source is deliberate: the
+# whole point is that nobody has to remember to bump a number. A hand-bumped
+# integer is exactly the discipline that failed for 68 days. Comment and
+# docstring edits are stripped before hashing so cosmetic churn does not bump
+# the version; a spurious bump would only cost one zero-network re-classify
+# pass over the ~5.8k rows that hold a description, which takes under a minute.
+#
+# NONE_KEEP_MODE is deliberately NOT in the fingerprint. It is applied by
+# _resolve_keep at read time and never stored, so changing it invalidates
+# nothing in the cache.
+CLASSIFIER_EPOCH = 1
+
+_CLASSIFIER_VERSION_CACHE = None
+
+
+def _classify_logic_fingerprint() -> str:
+    """Hash the parsed body of _classify, docstring stripped. Returns the
+    sentinel "unavailable" if the source cannot be read (frozen or exec'd
+    module). This runs on a background path only; it must never raise into
+    ingest, so every failure degrades to the sentinel."""
+    try:
+        tree = ast.parse(textwrap.dedent(inspect.getsource(_classify)))
+        fn = tree.body[0]
+        body = getattr(fn, "body", [])
+        if (body and isinstance(body[0], ast.Expr)
+                and isinstance(getattr(body[0], "value", None), ast.Constant)
+                and isinstance(body[0].value.value, str)):
+            fn.body = body[1:]
+        return hashlib.sha256(ast.dump(tree).encode("utf-8")).hexdigest()[:16]
+    except Exception:
+        return "unavailable"
+
+
+def classifier_version() -> str:
+    """Stable identifier for the current _classify behavior, e.g. "v1-8f3a...".
+
+    A cache row stamped with a different value was produced by a different
+    classifier and is stale by definition. Computed once and memoized; import
+    cost is zero because nothing calls this at import time."""
+    global _CLASSIFIER_VERSION_CACHE
+    if _CLASSIFIER_VERSION_CACHE is not None:
+        return _CLASSIFIER_VERSION_CACHE
+    parts = [
+        f"epoch={CLASSIFIER_EPOCH}",
+        "hard=" + "\x1f".join(_HARD_DROP_DESCRIPTION_KEYWORDS),
+        "soft=" + "\x1f".join(_SOFT_DROP_DESCRIPTION_KEYWORDS),
+        "keep=" + "\x1f".join(_KEEP_DESCRIPTION_KEYWORDS),
+        "noresult=" + "\x1f".join(_NO_RESULT_DROP_SUBSTRINGS),
+        "logic=" + _classify_logic_fingerprint(),
+    ]
+    digest = hashlib.sha256("\x1e".join(parts).encode("utf-8")).hexdigest()[:16]
+    _CLASSIFIER_VERSION_CACHE = f"v{CLASSIFIER_EPOCH}-{digest}"
+    return _CLASSIFIER_VERSION_CACHE
 
 
 def is_valid_company(name: str, supabase) -> bool:
