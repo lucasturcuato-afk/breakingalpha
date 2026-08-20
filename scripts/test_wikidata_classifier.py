@@ -86,8 +86,11 @@ class _FakeSupabase:
         return types.SimpleNamespace(data=[])
 
 
-# Avoid the real network and the rate-limit sleep.
-wikidata._fetch_wikidata_description = lambda name: "recording by kate bush from the 2011 album"
+# Avoid the real network and the rate-limit sleep. _fetch_wikidata_description is
+# gone: is_valid_company now calls _lookup_wikidata, which returns a status as well
+# as a description so a failed fetch can never be cached as a verdict.
+wikidata._lookup_wikidata = lambda name: wikidata.WikidataLookup(
+    wikidata.STATUS_OK, "recording by kate bush from the 2011 album")
 wikidata.time.sleep = lambda *_a: None
 wikidata._INDEXED_NAMES_CACHE = {wikidata._normalize_company_name("Snowflake")}
 

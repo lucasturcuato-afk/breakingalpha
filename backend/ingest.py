@@ -21,7 +21,7 @@ from watchlist import (
     _build_identifier_matcher,
     _matched_identifiers,
 )
-from wikidata import is_valid_company
+from wikidata import is_valid_company, reset_run_fetch_budget
 from fulltext import fetch_full_text, SCRAPEABLE_SOURCES
 from publishers import (
     extract_publisher,
@@ -2383,6 +2383,11 @@ def _reset_run_entity_caches() -> None:
     # against a stale index.
     _PRIMARY_INDEXED_CACHE.clear()
     _ENTITY_SNAPSHOT = None
+    # Wikidata outbound-call budget. is_valid_company paces itself to the
+    # measured anonymous budget (about 10 calls/min) and stops calling out after
+    # a per-run cap, so a long-lived process has to clear that counter per run or
+    # the second run makes zero Wikidata calls.
+    reset_run_fetch_budget()
 
 
 def _resolve_company_valid(company: str) -> bool:

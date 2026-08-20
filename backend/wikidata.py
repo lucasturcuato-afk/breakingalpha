@@ -5,16 +5,186 @@ Public API:
     is_valid_company(name: str, supabase) -> bool
         Returns True if name is (or likely is) a real operating company.
         Checks Supabase cache first; calls Wikidata API on cache miss.
-        Defaults to True (keep) on ambiguous results or API errors.
+
+THE FETCH BUG THIS MODULE USED TO HAVE (fixed here, read before changing pacing).
+    The old _fetch_wikidata_description caught EVERY exception and returned None,
+    and is_valid_company then wrote that None into wikidata_entity_cache, a table
+    with no TTL and no invalidation path. So a single throttled second produced a
+    permanent verdict about a company that Wikidata never actually answered for.
+    The cache physically could not tell "Wikidata says there is no such entity"
+    apart from "we failed to ask". Measured on the live table on 2026-08-20:
+      24,537 cache rows, 18,732 with a NULL description = 76.34%
+      is_company verdicts: True 2,587 (10.5%), None 21,668 (88.3%), False 282 (1.1%)
+    and the NULL writes cluster at exactly 60.0 second periodicity, which is the
+    signature of a per-minute token bucket. No property of a NAME produces
+    60-second periodicity. The old _REQUEST_DELAY = 0.15 was believed to be
+    "well within Wikidata limits"; its measured SUSTAINED rate is 3.62 req/s,
+    roughly 214 requests per minute against an anonymous budget of about 10 to 11
+    successful wbsearchentities calls per minute. About 19x over.
+
+Four things follow from that, and all four live below:
+    1. Retries that honor Retry-After in full, with bounded attempts.
+    2. A FAILED fetch is never written to the cache as a verdict. Only an answer
+       from Wikidata is cacheable. See STATUS_OK / STATUS_NO_RESULT / STATUS_FAILED.
+    3. Pacing matched to the MEASURED budget, not to a guess. Note that
+       scripts/validate_wikidata_gate.py already paces at 1.2s with 429 backoff
+       and says so in a comment; that is still ~50/min, about 5x the real budget,
+       so do not copy it.
+    4. A top-N scan with an exact label check, because result[0] is often the
+       wrong entity and a naive "any company in the top N" scan is worse than
+       trusting result[0]. See _pick_description.
 """
 
+import os
 import re
+import threading
 import time
+from collections import deque
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
+from typing import NamedTuple
+
 import requests
 
 WIKIDATA_API = "https://www.wikidata.org/w/api.php"
 _USER_AGENT = "BreakingAlpha/1.0 (company intel entity quality; contact via github)"
-_REQUEST_DELAY = 0.15  # seconds between uncached API calls — well within Wikidata limits
+
+# --------------------------------------------------------------------------
+# Fetch pacing, retry and per-run budget.
+# --------------------------------------------------------------------------
+# _REQUEST_DELAY = 0.15 is GONE. It was a flat pre-sleep whose sustained rate was
+# 3.62 req/s. Pacing now happens per outbound call through _RATE_LIMITER, so a
+# cache HIT still costs nothing and only real network calls are metered.
+#
+# The anonymous budget measured against the live API is 10 to 11 successful
+# wbsearchentities calls per ~52s window. We sit at the bottom of that band.
+_RATE_WINDOW_SECONDS = 60.0
+_DEFAULT_CALLS_PER_WINDOW = 10
+
+# Wall-clock guard. At 10 calls/min a run that misses the cache N times spends
+# N/10 minutes inside this module, so the budget IS the time budget. Measured
+# from wikidata_entity_cache.checked_at (one row written per cache miss) across
+# 107 days with writes: median 195 misses/day, p90 310, recent daily range
+# 62-418. 300 calls is p90 plus headroom, and caps this module at ~30 minutes.
+# Past the budget we stop calling out entirely and cache nothing, so the names
+# we skipped are retried on the next run instead of being permanently mislabeled.
+_DEFAULT_CALLS_PER_RUN = 300
+
+_MAX_ATTEMPTS = 3               # 1 initial + 2 retries
+_BACKOFF_BASE_SECONDS = 1.0     # 1s, then 2s. Deterministic, no jitter.
+_MAX_RETRY_AFTER_SECONDS = 120.0
+_HTTP_TIMEOUT = 8
+_SEARCH_LIMIT = 5               # top-N. Was 1, which is the result[0] bug.
+_RETRY_STATUS_CODES = frozenset({429, 500, 502, 503, 504})
+
+
+def _env_positive_int(var: str, default: int) -> int:
+    """Read a positive int from the environment, falling back on anything
+    unparseable or non-positive. Ops knob, not a code path."""
+    try:
+        value = int((os.environ.get(var) or "").strip())
+    except (TypeError, ValueError):
+        return default
+    return value if value > 0 else default
+
+
+_MAX_CALLS_PER_WINDOW = _env_positive_int(
+    "WIKIDATA_MAX_CALLS_PER_MINUTE", _DEFAULT_CALLS_PER_WINDOW)
+_MAX_CALLS_PER_RUN = _env_positive_int(
+    "WIKIDATA_MAX_CALLS_PER_RUN", _DEFAULT_CALLS_PER_RUN)
+
+
+def _sleep(seconds: float) -> None:
+    """Single choke point for every wait this module takes. Indirection on
+    purpose: tests replace THIS, not time.sleep, so patching a stdlib global
+    never leaks into another test in the same process."""
+    time.sleep(seconds)
+
+
+class _SlidingWindowLimiter:
+    """Meter outbound calls to at most `max_calls` per `window_seconds`.
+
+    A sliding window rather than a flat inter-call sleep because the measured
+    server-side limiter is a per-minute token bucket: a run with 6 cache misses
+    should pay nothing, and a run with 600 should pay the steady-state rate. A
+    flat sleep taxes both equally and still bursts over the bucket.
+
+    acquire() sleeps AT MOST ONCE and then records the call unconditionally. It
+    deliberately does not spin until a slot frees: a retry loop around a patched
+    time.sleep would spin hot, and this is a politeness pacer, not a hard
+    guarantee. Locked because ingest.py runs parallel workers elsewhere in the
+    same process; the validation path is serial today and this keeps it correct
+    if that ever changes.
+    """
+
+    def __init__(self, max_calls: int, window_seconds: float):
+        self._max_calls = max(1, int(max_calls))
+        self._window = float(window_seconds)
+        self._calls: deque = deque()
+        self._lock = threading.Lock()
+
+    def _prune(self, now: float) -> None:
+        while self._calls and (now - self._calls[0]) >= self._window:
+            self._calls.popleft()
+
+    def acquire(self) -> float:
+        """Block until this call fits the window. Returns the seconds slept."""
+        with self._lock:
+            now = time.monotonic()
+            self._prune(now)
+            if len(self._calls) < self._max_calls:
+                self._calls.append(now)
+                return 0.0
+            wait = self._window - (now - self._calls[0])
+        if wait > 0:
+            _sleep(wait)
+        with self._lock:
+            now = time.monotonic()
+            self._prune(now)
+            while len(self._calls) >= self._max_calls:
+                self._calls.popleft()
+            self._calls.append(now)
+        return max(wait, 0.0)
+
+    def reset(self) -> None:
+        with self._lock:
+            self._calls.clear()
+
+
+_RATE_LIMITER = _SlidingWindowLimiter(_MAX_CALLS_PER_WINDOW, _RATE_WINDOW_SECONDS)
+
+# Outbound calls made by THIS process. Each production run is a fresh process,
+# so this is effectively per-run; reset_run_fetch_budget() is called from
+# ingest._reset_run_entity_caches for a long-lived process, matching the
+# belt-and-suspenders pattern the other per-run caches already use.
+_RUN_FETCH_COUNT = 0
+_RUN_BUDGET_EXHAUSTED_LOGGED = False
+_BUDGET_LOCK = threading.Lock()
+
+
+def reset_run_fetch_budget() -> None:
+    """Clear the per-run outbound call counter. Safe to call at run start."""
+    global _RUN_FETCH_COUNT, _RUN_BUDGET_EXHAUSTED_LOGGED
+    with _BUDGET_LOCK:
+        _RUN_FETCH_COUNT = 0
+        _RUN_BUDGET_EXHAUSTED_LOGGED = False
+    _RATE_LIMITER.reset()
+
+
+def _claim_fetch_budget() -> bool:
+    """Reserve one outbound call. False once the per-run budget is spent."""
+    global _RUN_FETCH_COUNT, _RUN_BUDGET_EXHAUSTED_LOGGED
+    with _BUDGET_LOCK:
+        if _RUN_FETCH_COUNT >= _MAX_CALLS_PER_RUN:
+            first = not _RUN_BUDGET_EXHAUSTED_LOGGED
+            _RUN_BUDGET_EXHAUSTED_LOGGED = True
+            if first:
+                print(f"  Wikidata: per-run fetch budget of {_MAX_CALLS_PER_RUN} calls "
+                      f"spent. Remaining names are left UNCACHED and retried next run.")
+            return False
+        _RUN_FETCH_COUNT += 1
+        return True
+
 
 # Descriptions that confirm the entity is NOT a company. Checked as substrings on
 # the lowercased Wikidata description. Change (2) splits the original single drop
@@ -171,32 +341,240 @@ def _resolve_keep(is_co: bool | None, name: str, supabase) -> bool:
     return _name_is_indexed_company(name, supabase)
 
 
-def _fetch_wikidata_description(name: str) -> str | None:
-    """
-    Call Wikidata search API for `name`. Returns the top result's description
-    (lowercased), or None if no results or API error.
-    """
+# --------------------------------------------------------------------------
+# Fetch. THE ONE INVARIANT: an answer from Wikidata and a failure to reach
+# Wikidata are different things, and only the first one is cacheable.
+# --------------------------------------------------------------------------
+STATUS_OK = "ok"                # Wikidata answered, a label-matched entity has a description
+STATUS_NO_RESULT = "no_result"  # Wikidata answered, nothing matched the name. Real information.
+STATUS_FAILED = "failed"        # We never got an answer. NOT information. Never cache this.
+
+
+class WikidataLookup(NamedTuple):
+    status: str
+    description: str | None
+
+
+def _parse_retry_after(value: str | None) -> float | None:
+    """Seconds to wait per an HTTP Retry-After header. Handles both legal forms,
+    delta-seconds and HTTP-date. None when absent or unparseable."""
+    if not value:
+        return None
+    raw = value.strip()
     try:
-        resp = requests.get(
-            WIKIDATA_API,
-            params={
-                "action": "wbsearchentities",
-                "search": name,
-                "language": "en",
-                "format": "json",
-                "limit": 1,
-            },
-            timeout=8,
-            headers={"User-Agent": _USER_AGENT},
-        )
-        resp.raise_for_status()
-        results = resp.json().get("search", [])
-        if not results:
-            return None
-        return (results[0].get("description") or "").lower().strip()
-    except Exception as ex:
-        print(f"  Wikidata API error [{name!r}]: {ex}")
-        return None  # Treat API error as ambiguous → keep
+        return max(0.0, float(int(raw)))
+    except ValueError:
+        pass
+    try:
+        when = parsedate_to_datetime(raw)
+    except (TypeError, ValueError, IndexError):
+        return None
+    if when is None:
+        return None
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=timezone.utc)
+    return max(0.0, (when - datetime.now(timezone.utc)).total_seconds())
+
+
+def _sleep_before_retry(attempt: int, retry_after: float | None,
+                        query: str, reason: str) -> bool:
+    """Wait before the next attempt. Returns False when there is no attempt left,
+    or when the server asked for a longer pause than a pipeline run can hold.
+
+    NEVER sleeps LESS than a Retry-After the server sent. It either waits the
+    full amount or declines to retry at all. Backing off less than asked is how
+    a client earns a longer ban, and the whole point of this module's fix is to
+    stop generating 429s.
+    """
+    if attempt >= _MAX_ATTEMPTS - 1:
+        return False
+    wait = _BACKOFF_BASE_SECONDS * (2 ** attempt)
+    if retry_after is not None:
+        if retry_after > _MAX_RETRY_AFTER_SECONDS:
+            print(f"  Wikidata Retry-After {retry_after:.0f}s exceeds the "
+                  f"{_MAX_RETRY_AFTER_SECONDS:.0f}s ceiling [{query!r}]: giving up, "
+                  f"not caching")
+            return False
+        wait = max(retry_after, wait)  # honor in full, never less
+    print(f"  Wikidata retry {attempt + 2}/{_MAX_ATTEMPTS} in {wait:.1f}s "
+          f"[{query!r}]: {reason}")
+    _sleep(wait)
+    return True
+
+
+def _search_wikidata(query: str) -> tuple[str, list]:
+    """One wbsearchentities query, paced and retried. Returns (status, results).
+
+    STATUS_FAILED is returned for every case where we did not get an answer:
+    429 after the retries, a 5xx, a timeout, a transport error, an unparseable
+    body. The caller must not turn that into a cache row.
+    """
+    last_error: object = None
+    for attempt in range(_MAX_ATTEMPTS):
+        if not _claim_fetch_budget():
+            return STATUS_FAILED, []
+        _RATE_LIMITER.acquire()
+        try:
+            resp = requests.get(
+                WIKIDATA_API,
+                params={
+                    "action": "wbsearchentities",
+                    "search": query,
+                    "language": "en",
+                    "format": "json",
+                    "limit": _SEARCH_LIMIT,
+                },
+                timeout=_HTTP_TIMEOUT,
+                headers={"User-Agent": _USER_AGENT},
+            )
+        except Exception as ex:
+            last_error = f"transport error: {ex}"
+            if not _sleep_before_retry(attempt, None, query, str(last_error)):
+                break
+            continue
+
+        if resp.status_code in _RETRY_STATUS_CODES:
+            retry_after = _parse_retry_after(resp.headers.get("Retry-After"))
+            last_error = (f"HTTP {resp.status_code}"
+                          + (f" Retry-After={retry_after:.0f}s" if retry_after is not None else ""))
+            if not _sleep_before_retry(attempt, retry_after, query, str(last_error)):
+                break
+            continue
+
+        if resp.status_code >= 400:
+            print(f"  Wikidata search failed [{query!r}]: HTTP {resp.status_code} (not cached)")
+            return STATUS_FAILED, []
+
+        try:
+            results = (resp.json() or {}).get("search") or []
+        except Exception as ex:
+            print(f"  Wikidata search failed [{query!r}]: unparseable body: {ex} (not cached)")
+            return STATUS_FAILED, []
+
+        return (STATUS_OK if results else STATUS_NO_RESULT), results
+
+    print(f"  Wikidata search gave up after {_MAX_ATTEMPTS} attempt(s) "
+          f"[{query!r}]: {last_error} (not cached)")
+    return STATUS_FAILED, []
+
+
+# --------------------------------------------------------------------------
+# Label matching and the query ladder.
+# --------------------------------------------------------------------------
+_LEADING_ARTICLE_RE = re.compile(r"^the\s+")
+_LEGAL_TOKENS = r"incorporated|corporation|company|holdings?|limited|inc|corp|co|ltd|plc|ag|nv|sa"
+_TRAILING_LEGAL_RE = re.compile(rf"\s+(?:{_LEGAL_TOKENS})$")
+_QUERY_SUFFIX_RE = re.compile(rf"[,\s]+(?:{_LEGAL_TOKENS})\.?\s*$", re.IGNORECASE)
+
+
+def _normalize_label(value: str | None) -> str:
+    """Normalize a name for label comparison: lowercase, punctuation to space,
+    drop a leading article, then strip the TRAILING run of legal-entity tokens.
+
+    Trailing-only on purpose. Stripping those tokens anywhere in the string
+    folds unrelated names together; stripping them at the end is exactly what
+    makes 'Truist Financial Corporation' equal the label 'Truist Financial' and
+    'The Coca-Cola Company' equal the query 'Coca-Cola', while leaving
+    'Coca-Cola Europacific Partners' different from 'Coca-Cola'.
+
+    Separate from _normalize_company_name on purpose: that one feeds the indexed
+    name set and its behavior is load-bearing for the None policy.
+    """
+    n = (value or "").lower()
+    n = re.sub(r"[^a-z0-9]+", " ", n)
+    n = re.sub(r"\s+", " ", n).strip()
+    n = _LEADING_ARTICLE_RE.sub("", n)
+    while True:
+        stripped = _TRAILING_LEGAL_RE.sub("", n).strip()
+        if stripped == n:
+            return n
+        n = stripped
+
+
+def _strip_query_suffix(name: str) -> str | None:
+    """'Truist Financial Corporation' -> 'Truist Financial'.
+
+    Wikidata's search index does not always carry the full legal name. The
+    corporate form returns ZERO hits for Truist Financial Corporation, while
+    'Truist Financial' returns "american bank holding company". Same for
+    O'Reilly, Republic Services, Howmet, Murphy USA and Corpay. Returns None
+    when there is nothing to strip, so the caller does not issue a duplicate
+    query.
+    """
+    original = (name or "").strip()
+    out = original
+    while True:
+        nxt = _QUERY_SUFFIX_RE.sub("", out).strip()
+        if nxt == out or not nxt:
+            break
+        out = nxt
+    return out if out and out != original else None
+
+
+def _result_labels(result: dict) -> list:
+    """Every string on a search result that names the entity: its label, the
+    text that matched, and its aliases. An alias is an official name for the
+    same entity, so accepting one widens recall without loosening precision."""
+    labels = [result.get("label")]
+    match = result.get("match")
+    if isinstance(match, dict):
+        labels.append(match.get("text"))
+    aliases = result.get("aliases")
+    if isinstance(aliases, list):
+        labels.extend(aliases)
+    return [s for s in labels if isinstance(s, str) and s]
+
+
+def _pick_description(results: list, target: str) -> str | None:
+    """First result whose label or alias normalizes to `target`.
+
+    Returns the lowercased description, "" when a label matched but carries no
+    description (preserving the old empty-string-is-ambiguous behavior), or None
+    when nothing in the top N actually names this company.
+
+    THE LABEL CHECK IS THE POINT. Scanning the top N without it is worse than
+    trusting result[0]: 47.5% of non-top results have labels unrelated to the
+    query. 'Coca-Cola' returns Coca-Cola Europacific Partners, which classifies
+    True and is a DIFFERENT company; 'Raintree' returns a 1957 film. A plain
+    "any True in the top N" scan admits both. Requiring an exact normalized
+    label match is what separates a legal-suffix variant of the same company
+    from extra words that name a different one.
+    """
+    matched_any = False
+    for result in results:
+        if not isinstance(result, dict):
+            continue
+        if not any(_normalize_label(s) == target for s in _result_labels(result)):
+            continue
+        matched_any = True
+        description = (result.get("description") or "").lower().strip()
+        if description:
+            return description
+    return "" if matched_any else None
+
+
+def _lookup_wikidata(name: str) -> WikidataLookup:
+    """Resolve `name` to a Wikidata description, keeping the three outcomes apart.
+
+    Queries the verbatim name first, then the legal-suffix-stripped form if the
+    first query produced no label match. A FAILED first query short-circuits:
+    we cannot tell a real miss from a throttled one, so we do not spend a second
+    call and we do not return a verdict.
+    """
+    target = _normalize_label(name)
+    queries = [name]
+    stripped = _strip_query_suffix(name)
+    if stripped and _normalize_label(stripped) == target:
+        queries.append(stripped)
+
+    for query in queries:
+        status, results = _search_wikidata(query)
+        if status == STATUS_FAILED:
+            return WikidataLookup(STATUS_FAILED, None)
+        description = _pick_description(results, target)
+        if description is not None:
+            return WikidataLookup(STATUS_OK, description)
+    return WikidataLookup(STATUS_NO_RESULT, None)
 
 
 def _classify(description: str | None, name: str) -> bool | None:
@@ -248,8 +626,11 @@ def is_valid_company(name: str, supabase) -> bool:
     Decision logic:
       - Cache hit: apply _resolve_keep to the cached verdict (True keeps, False
         drops, None keeps only an indexed company per NONE_KEEP_MODE)
-      - Cache miss: call Wikidata API, classify, write the verdict to cache, then
-        apply _resolve_keep
+      - Cache miss + Wikidata ANSWERED: classify, write the verdict to cache,
+        then apply _resolve_keep. Both an answer with a description and a
+        genuine no-result are answers and are cached.
+      - Cache miss + fetch FAILED: write NOTHING, apply the ambiguous policy for
+        this run only, retry on the next run. See the branch below.
       - Cache read error: keep (fail-open on infra error, unchanged)
 
     Logs every drop decision with the Wikidata description as evidence.
@@ -274,12 +655,34 @@ def is_valid_company(name: str, supabase) -> bool:
         print(f"  Wikidata cache read error [{name!r}]: {ex}")
         return True  # Cache error → keep
 
-    # 2. Cache miss — call API
-    time.sleep(_REQUEST_DELAY)
-    description = _fetch_wikidata_description(name)
+    # 2. Cache miss — ask Wikidata
+    lookup = _lookup_wikidata(name)
+
+    # 2b. A FAILED fetch is NOT a verdict, so it gets no cache row.
+    #
+    # This branch is the bug fix. Before it existed, a 429 (or a timeout, or an
+    # unparseable body) returned None from the fetcher, fell through _classify as
+    # if Wikidata had answered "no such entity", and was written to a table with
+    # no TTL and no invalidation. One throttled second, one permanently wrong
+    # verdict. Writing nothing means the next run asks again, which is the only
+    # honest thing to do with an unanswered question.
+    #
+    # The in-memory keep/drop for THIS run stays exactly what the ambiguous path
+    # already did (keep only an already-indexed company). Deliberately not
+    # fail-open: fail-open keep would push unvalidated surface forms into
+    # resolve_entity, which INSERTs on a miss, and minting duplicate companies is
+    # the failure mode this whole workstream is trying to shrink.
+    if lookup.status == STATUS_FAILED:
+        keep = _resolve_keep(None, name, supabase)
+        print(f"  ⚠ Wikidata fetch failed, NOT cached "
+              f"({'keep' if keep else 'drop'} for this run only): {name}")
+        return keep
+
+    description = lookup.description
     is_co = _classify(description, name)
 
-    # 3. Write result to cache
+    # 3. Write result to cache. Only reached when Wikidata actually answered:
+    #    either with a label-matched description, or with a genuine no-result.
     try:
         supabase.table("wikidata_entity_cache").upsert({
             "name": name,
