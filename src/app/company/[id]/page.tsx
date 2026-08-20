@@ -5,8 +5,7 @@ import { LiveMoodShell } from "@/components/shell/live-mood-shell";
 import { getSupabaseWithUser } from "@/lib/supabase-server";
 import { CompanyDetailLayout } from "@/components/company/CompanyDetailLayout";
 import { CompanyDetailHeader } from "@/components/company/CompanyDetailHeader";
-import { EmptyState } from "@/components/company/states/EmptyState";
-import { CompanyAutoResolve } from "@/components/company/states/CompanyAutoResolve";
+import { CompanyMissState } from "@/components/company/states/CompanyMissState";
 import { PrimerWebMemo } from "@/components/company/states/PrimerWebMemo";
 import { CompanyAliasRibbon } from "@/components/company/CompanyAliasRibbon";
 import { CompanyKPIStrip } from "@/components/company/CompanyKPIStrip";
@@ -87,14 +86,17 @@ export default async function CompanyDetailPage({
   // fully resolves before render.
   const companyDetail = await getCompanyDetail(supabase, canonicalize(companyName));
 
-  // Null branch: no companies-row match (un-indexed via web-fallback path).
-  // Renders the PR-E1 empty state inside LiveMoodShell so sidebar / topbar
-  // stay rendered. Tab grid is not mounted -- there is no data to populate.
+  // Null branch: resolveAlias found no companies row for this name. That is
+  // the ONLY condition that lands here (getCompanyDetail.ts:97-98); a row with
+  // zero articles yields a detail object and renders the tab grid instead. So
+  // this is an unresolved name, not an uncovered company, and CompanyMissState
+  // is what keeps the copy honest about the difference. Rendered inside
+  // LiveMoodShell so sidebar / topbar stay put. Tab grid is not mounted, there
+  // is no data to populate.
   if (!companyDetail) {
     return (
       <LiveMoodShell pageTitle="Company Intel">
-        <CompanyAutoResolve query={companyName} />
-        <EmptyState canonical={companyName} />
+        <CompanyMissState query={companyName} />
       </LiveMoodShell>
     );
   }
