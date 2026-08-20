@@ -1,6 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveAlias } from "@/lib/data-access/aliasResolver";
-import { buildCompanyContainsOr, getCompanyVariants } from "@/lib/company-intel";
+import { buildCompanyContainsOr } from "@/lib/company-intel";
+import {
+  buildClusterVariants,
+  type ClusterCandidate,
+} from "@/lib/company-cluster-variants";
 import type { Completeness } from "@/lib/article-signal";
 import { computeTone, type SentimentLabel, type ToneSummary } from "@/lib/tone";
 import { computeAttention, type AttentionSummary } from "@/lib/attention";
@@ -97,12 +101,37 @@ export async function getCompanyDetail(
   const resolved = await resolveAlias(supabase, slug);
   if (!resolved) return null;
 
-  const { canonical: head, siblings, aliasMentions } = resolved;
+  const { canonical: head, siblings, aliasMentions, clusterForms } = resolved;
   const cluster = [head, ...siblings];
   // Privacy SOT: a company is private iff no ticker resolves on the canonical
   // row. Derivation extracted to company-privacy.ts so it stays unit-tested.
   const { ticker, isPrivate } = deriveTickerPrivacy(head.ticker);
   const ids = cluster.map((r) => r.id);
+
+  const articleCandidates: ClusterCandidate[] = [
+    { name: head.name, mentionCount: head.mention_count, source: "head" },
+    ...siblings.map((s): ClusterCandidate => ({
+      name: s.name,
+      mentionCount: s.mention_count,
+      source: "sibling",
+    })),
+    ...aliasMentions.map((a): ClusterCandidate => ({
+      name: a.name,
+      mentionCount: a.n,
+      source: "alias",
+    })),
+    ...clusterForms.map((a): ClusterCandidate => ({
+      name: a.name,
+      mentionCount: a.n,
+      source: "widened",
+    })),
+  ];
+  const clusterVariants = buildClusterVariants(head.name, articleCandidates);
+  if (clusterVariants.truncated) {
+    console.warn(
+      `[getCompanyDetail] variant cap hit for "${head.name}": kept ${clusterVariants.variants.length}, dropped ${clusterVariants.droppedVariantCount}, predicate ${clusterVariants.predicateBytes}B`,
+    );
+  }
 
   const sinceDay = utcDayMs(new Date(Date.now() - (DAYS - 1) * DAY_MS));
   const sinceArticles = new Date(Date.now() - ARTICLE_DAYS * DAY_MS).toISOString();
@@ -114,13 +143,19 @@ export async function getCompanyDetail(
       .select("created_at, sentiment")
       .in("company_id", ids)
       .gte("created_at", sinceMentions),
-    // WD136 Phase 1: variant-expansion. Filter articles by ANY known surface
-    // form of `head.name` (case + alias variants from CANONICAL), not just the
-    // single canonical string. See getCompanyVariants() in company-intel.ts.
+    // Cluster-wide variant expansion. `companies.cs.{...}` is EXACT array
+    // containment, so filtering on the head's own variants alone hid every
+    // article ingest happened to tag with a different legal suffix or casing
+    // ("Bank of America Corp", "Wells Fargo & Company", "Sei Investments Co.").
+    // buildClusterVariants unions the head, the ticker-cluster siblings, the
+    // alias rows and the key-matched alias rows, gates every one of them on
+    // normalizeCompanyKey() equality with the head so a contaminated ticker
+    // cannot drag another company onto the page, and hard-caps the predicate.
+    // See src/lib/company-cluster-variants.ts.
     supabase
       .from("articles")
       .select(ARTICLE_COLS)
-      .or(buildCompanyContainsOr(getCompanyVariants(head.name)))
+      .or(buildCompanyContainsOr(clusterVariants.variants))
       .gte("published_at", sinceArticles)
       .order("relevance_score", { ascending: false })
       .order("published_at", { ascending: false })
