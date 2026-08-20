@@ -226,25 +226,71 @@ export default async function CompanyDetailPage({
   // the five reads are mutually independent. Awaited one after another they
   // cost the SUM of their latencies; issued together they cost the MAX. This
   // is purely a scheduling change: same functions, same arguments, same
-  // results. Median of 5 on a warm `next start` against prod, whole data
-  // block: nvidia 883 -> 546ms, apple 857 -> 525ms, microsoft 844 -> 490ms.
-  // The post-resolve block alone goes ~580 -> ~235ms: sequentially it costs
-  // articles 200 + filings 105 + insider 108 + financials 180; together it
-  // costs max(articles, financials).
+  // results.
+  //
+  // Sized against the denominator a reader actually experiences. Median of 5 on
+  // a warm `next start` (Next 16.2.2) against prod, over the DATA BLOCK only:
+  // nvidia 883 -> 546ms, apple 857 -> 525ms, microsoft 844 -> 490ms, samsung
+  // 742 -> 539ms. The post-resolve block alone goes ~580 -> ~235ms:
+  // sequentially it costs articles 200 + filings 105 + insider 108 +
+  // financials 180; together it costs max(articles, financials).
+  //
+  // That is 27-42% OF THE DATA BLOCK, and the data block is not the page. A
+  // real session pays ~250-300ms of auth in front of all of this, none of it
+  // parallelized here: three separate auth.getUser() round trips at 68-84ms
+  // warm (proxy.ts:24, then generateMetadata and this function, each building
+  // its own client via getSupabaseWithUser, so nothing collapses them), plus
+  // the proxy's beta_allowlist and user_profiles reads at ~50-60ms each. Add
+  // that constant to both sides and the honest headline is ~31% user-visible:
+  // ~29-32% on nvidia / apple / microsoft, ~20% on samsung whose block saving
+  // is only ~200ms. Absolute saving ~330-355ms on the first three. It decays to
+  // ~8% at 16 concurrent page views, where connection contention flattens the
+  // gap between SUM and MAX.
   //
   // It stays BELOW the null short-circuit above on purpose. Hoisting the three
   // companyName-only reads over getCompanyDetail would make every un-indexed
   // slug pay for four reads it currently skips; that path is ~50ms / 1 query
   // today and must stay that way.
   //
-  // Promise.all, not allSettled, and that is deliberate. None of the five can
-  // reject: each owns an internal try/catch that degrades to an empty result,
-  // and postgrest-js converts even a network-layer failure into an
-  // { error, data: null } tuple rather than a rejected promise. So one bad tab
-  // still degrades to its own empty state and cannot blank the page, exactly
-  // as it does today. allSettled would additionally swallow a reject that the
-  // sequential version propagates, which would be a behavior change, not a
+  // --------------------------------------------------------------------
+  // Promise.all, not allSettled. READ THIS BEFORE ADDING A MODIFIER TO ANY
+  // QUERY REACHABLE FROM THESE FIVE.
+  //
+  // The safety here is a property of these five call sites, NOT of
+  // postgrest-js. An earlier version of this comment claimed the library
+  // converts even a network-layer failure into an { error, data: null } tuple
+  // so nothing can reject. That is false. In @supabase/postgrest-js 2.101.1,
+  // PostgrestBuilder.then() attaches the converting `.catch()` under
+  // `if (!this.shouldThrowOnError)`, and attaches it AFTER `_fetch(...)` has
+  // already been called. Four real reject paths follow: a .throwOnError() query
+  // on an HTTP 500 (throws PostgrestError inside the response handler), a
+  // .throwOnError() query on connection-refused (no converting catch is
+  // attached at all), .from("") (throws synchronously, before any promise
+  // exists), and a request body JSON.stringify cannot serialize (thrown while
+  // evaluating _fetch's own arguments, so again no catch is attached).
+  //
+  // The real guarantee lives in the call sites. Every await inside
+  // getArticleFallback / fetchCompanyArticles / fetchCompanyFilings /
+  // getInsiderTransactions / fetchCompanyFinancials sits in a try whose catch
+  // yields an empty result instead of rethrowing, and the one await outside a
+  // try -- resolveCompanyCik, shared by filings / insider / financials --
+  // wraps its entire body and yields EMPTY_RESOLUTION. Neither
+  // .throwOnError() nor .abortSignal() appears anywhere in src/ (0 occurrences
+  // of each as of this commit). The invariant survives by accident of style, not
+  // by construction, and nothing enforces it.
+  //
+  // ADD .throwOnError(), or any modifier that lets a reject escape, to a query
+  // reachable from one of these five and you break the PAGE, not a tab. Today a
+  // failing read degrades to its own tab's empty state and the other four still
+  // render. With a reject in this array, Promise.all rejects and /company/[id]
+  // renders the error boundary instead. If you need that modifier, either keep
+  // the swallow at the call site or switch this to allSettled in the SAME
+  // commit.
+  //
+  // allSettled is not the default because it would also swallow a reject the
+  // sequential version propagated, which is a behavior change rather than a
   // scheduling change.
+  // --------------------------------------------------------------------
 
   // Read-only ArticlesTab fallback (ships dark behind the
   // NEXT_PUBLIC_ARTICLES_WEB_FALLBACK_ENABLED flag, default off). When an
@@ -272,11 +318,28 @@ export default async function CompanyDetailPage({
     // resolve to a null CIK and an empty list, which FilingsTab renders as the
     // empty state. See src/lib/sec-filings.ts.
     //
-    // Limit raised from 25 to 100 because the tab now filters client-side. Form
-    // 3/4/5 shells are 735 of 2,069 stored filings and for some companies they are
-    // ALL of the newest 25, so a 25-row window could contain zero material filings
-    // and the default view would render empty while material filings sat just
-    // outside the window.
+    // Limit raised from 25 to 100 because the tab filters client-side: the
+    // server sends one flat newest-first window and applyFilter() partitions
+    // whatever arrived, so the fetch depth caps every chip at once.
+    //
+    // What the raise actually earns, measured read-only against prod on
+    // 2026-08-20 (4,251 sec_filings rows, 667 distinct CIKs): only 9 CIKs carry
+    // more than 25 filings at all, and for 8 of them the DEFAULT material view
+    // gains rows -- 78 additional material filings become visible in total,
+    // cik 1564708 alone going from 23 to 67.
+    //
+    // What it does NOT earn, contrary to the claim this replaces: it rescues
+    // nobody from an empty default view. 25 CIKs have zero material filings in
+    // their newest 25, and every one of those 25 has zero material filings
+    // ANYWHERE in the table, so at limit 100 they render the identical empty
+    // state. Reconstructed from created_at at 2026-06-01 / 07-01 / 08-01, the
+    // count of companies with material filings sitting just outside a 25-row
+    // window was 0 at all three instants. cik 1046179 (TSMC) is the only CIK
+    // past 100 filings: 102 rows, all 102 Form 4, 0 material at any limit.
+    //
+    // Insider shells are 1,364 of those 4,251 rows and every one is a Form 4.
+    // The table carries zero Form 3 and zero Form 5, so filing-categories.ts's
+    // "Form 3/4/5" names a category with exactly one populated member.
     fetchCompanyFilings(supabase, { name: companyName }, 100),
     // Form 4 insider transactions (read-only), same name -> CIK resolution as
     // filings so all three tabs describe the same company row. The SELECT policy
@@ -286,6 +349,18 @@ export default async function CompanyDetailPage({
     getInsiderTransactions(supabase, { name: companyName }),
     // Validated XBRL financials (read-only). Same name -> CIK resolution as
     // filings; companies without a CIK render the tab's empty state.
+    //
+    // This is the ONLY one of the five that leaves our database. When the
+    // sec_filings.primary_doc_url join covers the visible accessions only
+    // partially, resolvePrimaryDocUrls (financial-facts.ts) falls through to a
+    // raw fetch of https://data.sec.gov/submissions/CIK##########.json.
+    // CLAUDE.md, learned the hard way: "SEC 8-K fetches can return 403 and hang
+    // silently. Keep the timeouts in place." That call carried no AbortSignal
+    // and no timeout, so inside a Promise.all a silent SEC hang would have held
+    // all five reads and the whole page open for as long as the socket lived --
+    // strictly worse than the sequential version, where it blocked only the
+    // reads after it. It now carries AbortSignal.timeout; see
+    // SEC_SUBMISSIONS_TIMEOUT_MS in financial-facts.ts.
     fetchCompanyFinancials(supabase, { name: companyName }),
   ]);
 
