@@ -32,7 +32,13 @@ from entity_resolver import resolve_entity, increment_mention_counts
 from normalize import normalize_lookup_key
 # Read-only matching for the primary_company fold. Deliberately NOT the alias
 # write key: see backend/company_match.py's module docstring.
-from company_match import normalize_company_key, looks_like_ticker
+from company_match import (
+    company_key_tokens,
+    index_tokens,
+    looks_like_ticker,
+    normalize_company_key,
+    token_fold_candidates,
+)
 from supabase_client import get_service_client
 try:
     from usage_log import accumulate_gemini_usage
@@ -2502,7 +2508,8 @@ def _load_entity_snapshot() -> dict:
     Fail-soft: on any error returns empty maps, which degrades resolution to
     exactly the pre-existing eq/ilike behavior rather than breaking ingest.
     """
-    snap = {"name_by_id": {}, "by_alias_key": {}, "by_ticker": {}, "by_norm": {}}
+    snap = {"name_by_id": {}, "by_alias_key": {}, "by_ticker": {}, "by_norm": {},
+            "by_name_tokens": {}, "by_token_prefix": {}}
     try:
         companies = _select_all_rows("companies", "id, name, ticker")
         for row in companies:
@@ -2511,6 +2518,8 @@ def _load_entity_snapshot() -> dict:
                 continue
             snap["name_by_id"][cid] = name
             snap["by_norm"].setdefault(normalize_company_key(name), set()).add(cid)
+            index_tokens(snap["by_name_tokens"], snap["by_token_prefix"],
+                         company_key_tokens(name), cid, from_name=True)
             ticker = (row.get("ticker") or "").strip().upper()
             if ticker:
                 snap["by_ticker"].setdefault(ticker, set()).add(cid)
@@ -2525,6 +2534,8 @@ def _load_entity_snapshot() -> dict:
             # Aliases widen the normalized surface too: "Sony Group" reaches
             # Sony through the alias even though no companies.name matches.
             snap["by_norm"].setdefault(normalize_company_key(key), set()).add(cid)
+            index_tokens(snap["by_name_tokens"], snap["by_token_prefix"],
+                         company_key_tokens(key), cid, from_name=False)
 
         print(f"  primary-fold: entity snapshot loaded "
               f"({len(snap['name_by_id'])} companies, {len(snap['by_alias_key'])} alias keys, "
@@ -2566,6 +2577,10 @@ def _resolve_primary_to_canonical(name: str) -> Optional[str]:
                                         "ARM", the join key lives in a column)
       5. suffix/punctuation-normalized (SAP SE -> SAP, The Boeing Company ->
                                         Boeing), over names AND alias keys
+      6. leading-token relationship     (Truist Financial -> Truist, Klaviyo ->
+                                        Klaviyo Inc-A), guarded against generic
+                                        and short stems. See
+                                        company_match.token_fold_candidates.
 
     Steps 1-2 stay live queries rather than reading the snapshot so that a
     company minted earlier in THIS run is still visible, which is how the
@@ -2602,6 +2617,9 @@ def _resolve_primary_to_canonical(name: str) -> Optional[str]:
                 resolved = _unique_company_name(
                     snap, snap["by_norm"].get(normalize_company_key(name))
                 )
+            if resolved is None:
+                resolved = _unique_company_name(snap, token_fold_candidates(
+                    snap["by_name_tokens"], snap["by_token_prefix"], name))
     except Exception as ex:
         print(f"  primary-fold: resolution error [{name!r}]: {ex}")
         resolved = None
