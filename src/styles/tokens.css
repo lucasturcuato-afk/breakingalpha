@@ -36,6 +36,86 @@
   --border-hi: #dccfb6;
   --border-hover: #c9922a44;
 
+  /* ── Mobile design system ──────────────────────────────────────────
+     The colour tokens the mobile handoff defines, light theme, plus the four
+     density properties. Values are read out of the rendered prototype rather
+     than transcribed, so they cannot drift from it.
+
+     Literals rather than aliases onto the desktop tokens: the handoff is
+     explicit that a near value must not be substituted, and several coincide
+     in light while diverging in dark, so an alias would be right on one theme
+     and wrong on the other.
+
+     The --pill-* families are deliberately NOT here. This repo already defines
+     all five in both themes with different values, and restyling a shared
+     component from a screen PR is out of scope. The delta is recorded in the
+     PR body instead. */
+  --c-bg: #fffdf9;
+  --c-surface: #faf7f2;
+  --c-well: #faf5ed;
+  --c-card: #ffffff;
+  --c-ink: #1a1208;
+  --c-body: #3d2b1f;
+  --c-secondary: #6f6248;
+  --c-muted: #786a52;
+  --c-border: #ede8df;
+  --c-hair: #f0ebe0;
+  --c-edge: #ded5c6;
+  --c-frame: #d6cdbc;
+  --c-handle: #e2dbcd;
+  --c-gold: #d4a84b;
+  --c-goldink: #7a5f18;
+  --c-inverse: #1a1208;
+  --c-inverse-well: #241a0e;
+  --c-inverse-border: #3a2c1a;
+  /* The zero-alpha end of --c-inverse, for the ticker's edge fades. Mine, not
+     the design's: the design writes rgba(26,18,8,0), which is the LIGHT
+     inverse spelled out, and leaves it unchanged in dark. Fading a #0c0906 bar
+     out through a #1a1208 hue is a bruise at the edge, so the clear end tracks
+     its own theme. Not `transparent`, which Safari interpolates through black
+     and which puts the same bruise on both themes. */
+  --c-inverse-clear: rgba(26, 18, 8, 0);
+  --c-oninv: #fffdf9;
+  --c-oninv-strong: #faf5ed;
+  --c-oninv-body: #c9bda6;
+  --c-oninv-dim: #a2937a;
+  --c-oninv-mono: #e8dcc4;
+  --c-red: #dc2626;
+  --c-redink: #b91c1c;
+  --c-green: #16a34a;
+  --c-greenink: #15803d;
+  --c-amber: #f59e0b;
+  --c-amberink: #a16207;
+  --c-chrome: #f4efe6;
+  --c-chrome-border: #e2dbcd;
+  --c-red-well: #fdf5f4;
+  --c-red-edge: #f0c9c9;
+  --c-amber-well: #fdf8ef;
+  --c-amber-edge: #f0dfb8;
+  --c-ongold: #1a1208;
+  --c-inv-red: #f87171;
+  --c-inv-green: #4ade80;
+  --c-locked-bg: #e2dbcd;
+  --c-locked-ink: #5f5440;
+  --c-green-surface: #15803d;
+  --c-number: #93866f;
+  /* Gold as TYPE on a pinned espresso surface. The on-inverse ink family
+     exists for type sitting on espresso and had no gold member, though the
+     design puts gold type there: the masthead renders "Signal" in cream and
+     "era" in gold. Writing that as --c-gold is an ink/base swap, and
+     --c-goldink is #7a5f18 in light, which is near black on espresso. Pinned
+     identical across themes for the same reason the masthead is: the surface
+     does not flip, so its type must not either. */
+  --c-oninv-gold: #d4a84b;
+
+  /* Density, tuned globally. */
+  --v3-pad: 20px;
+  --v3-body: 14px;
+  --v3-lead: 1.6;
+  --v3-claim: 17.5px;
+  --v3-clamp: 3;
+
+
   /* ── Text system ──
      Tones picked for WCAG AA against the cream background.
      Verified ratios vs --cream (#fffdf9):
@@ -279,6 +359,62 @@ html.dark {
   --text-primary: #f5e6d3;
   --text-secondary: #9a9a94;
   --text-muted: #8a8a80;
+
+  /* ── Mobile design system, dark ──
+     From the prototype rule scoped to its own root. This repo switches theme
+     on html.dark, so the values move to that mechanism unchanged. */
+  --c-bg: #14100a;
+  --c-surface: #1b1610;
+  --c-well: #221b12;
+  --c-card: #1e1e1e;
+  --c-ink: #f5efe3;
+  --c-body: #dcd2c1;
+  --c-secondary: #b5a88f;
+  --c-muted: #9e9178;
+  --c-border: #2f2920;
+  --c-hair: #282219;
+  --c-edge: #3b3229;
+  --c-frame: #3b3229;
+  --c-handle: #3b3229;
+  --c-gold: #d4a84b;
+  --c-goldink: #d4a84b;
+  --c-inverse: #0c0906;
+  --c-inverse-well: #171009;
+  --c-inverse-border: #3a2c1a;
+  --c-inverse-clear: rgba(12, 9, 6, 0);
+  --c-oninv: #f5efe3;
+  --c-oninv-strong: #faf5ed;
+  --c-oninv-body: #c9bda6;
+  --c-oninv-dim: #a2937a;
+  --c-oninv-mono: #e8dcc4;
+  --c-red: #f87171;
+  --c-redink: #fca5a5;
+  --c-green: #4ade80;
+  --c-greenink: #86efac;
+  --c-amber: #fbbf24;
+  --c-amberink: #fcd34d;
+  --c-chrome: #0f0c07;
+  --c-chrome-border: #2f2920;
+  --c-red-well: #2a1414;
+  --c-red-edge: #5c2a2a;
+  --c-amber-well: #2a2110;
+  --c-amber-edge: #5c4620;
+  --c-ongold: #1a1208;
+  --c-inv-red: #f87171;
+  --c-inv-green: #4ade80;
+  --c-locked-bg: #2a241c;
+  --c-locked-ink: #a89b82;
+  --c-green-surface: #0f5a2b;
+  --c-number: #7d7364;
+  /* Gold as TYPE on a pinned espresso surface. The on-inverse ink family
+     exists for type sitting on espresso and had no gold member, though the
+     design puts gold type there: the masthead renders "Signal" in cream and
+     "era" in gold. Writing that as --c-gold is an ink/base swap, and
+     --c-goldink is #7a5f18 in light, which is near black on espresso. Pinned
+     identical across themes for the same reason the masthead is: the surface
+     does not flip, so its type must not either. */
+  --c-oninv-gold: #d4a84b;
+
   --text-faint: #5a5a54;
 
   --signal-up: #4caf7d;

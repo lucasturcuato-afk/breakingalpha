@@ -1,8 +1,9 @@
-# Rulings on the nine open decisions
+# Rulings on the open decisions
 
-Noah ruled all nine on 2026-08-15. This file is the record. The design handoff
-at `design_handoff_signalera_mobile/README.md` states the conflicts; this states
-what won.
+Noah ruled the first nine on 2026-08-15. Ruling 10 was added on 2026-08-16,
+when the Ledger build produced a deviation that needed a record. This file is
+the record. The design handoff at `design_handoff_signalera_mobile/README.md`
+states the conflicts; this states what won.
 
 ## How to read the "Build step" column
 
@@ -42,6 +43,7 @@ ruling names no step, the work sits off the mobile build path entirely.
 | 7b | Risk appetite consumers. Removal from the prompt builders, the API, the Python pipeline and the DB column is **its own workstream**. Does not gate the redesign. | Off the build path. | Not scheduled. 19 consumers mapped in recon. |
 | 8 | SIGNAL scores. **Stay.** Not a compliance issue. It is a relevance score, not an accuracy figure. Relevance ranking is editorial judgment, not a claim about accuracy, so it does not fall under the compliance rule. | **Lands on step 2, the Ledger card**, not the nav shell. The Ledger is the anatomy every other card reuses, so the design needs a slot for the badge before that card is written. Also touches steps 5, 9 and 10. | No production change. The design carries the deviation, not the code. |
 | 9 | cross-source palette. **Retoken.** One file, no shared surface. | Off the build path, same route as ruling 1. | Queued, own PR. |
+| 10 | Stats band, the VIX label. **Deviate from the design.** One anatomy across all four cells: Inter 700 in `--c-muted`. The design draws three labels in Inter 700 and the fourth in `"JetBrains Mono"` 400 at `--c-oninv-dim`, which is two anatomies in one band of equivalent cells, the thing the README's own responsive rule forbids. It also fails contrast on its own terms: `--c-oninv-dim` `#a2937a` on `--c-bg` `#fffdf9` measures **2.96:1** at a 10px label, against a 4.5 floor. The built `--c-muted` `#786a52` measures **5.19:1**. | Step 2 surface (Ledger). | **Shipped in #622.** Not to be reverted. The design carries the deviation, not the code. |
 
 ## Open items
 
@@ -166,8 +168,17 @@ the prototype.
   owes a slot for it before the Ledger card is written.
 - Ruling 1's column rename is a migration. Per `CLAUDE.md`, agents do not apply
   migrations. That PR ships with the migration written and unapplied.
-- Ruling 1's column rename is a migration. Per `CLAUDE.md`, agents do not apply
-  migrations. That PR ships with the migration written and unapplied.
+- Ruling 10 is the second entry, after ruling 8, where the design carries the
+  deviation rather than the code. Both readings are worth keeping together: a
+  measurement that fails an accessibility floor is not a style preference, and
+  the design does not get to overrule it by having been drawn first. The
+  contrast figures above are `getComputedStyle` values off the rendered
+  prototype and the rendered build, taken through `scripts/parity_harness.py`
+  and `scripts/screen-audit.mjs parity`, not transcribed from either document.
+- The `--pill-*` token conflict surfaced by the same parity run is **open and
+  deliberately unruled**. `SentimentPill` is a shared component and its values
+  differ from the design's in both themes, so restyling it from a screen PR
+  would change every surface that uses it. It needs its own decision.
 
 ## Order of work
 

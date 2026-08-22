@@ -178,13 +178,52 @@ const PROBE = `(sel) => {
   return out;
 }`;
 
+/* `load`, not `networkidle`.
+ *
+ * networkidle waits for every request on the page to go quiet, which on any
+ * route carrying the app shell means waiting on the auth round-trip. Measured
+ * on this repo: the first navigation settles in about a second and every
+ * navigation after it takes 8 to 30, so an audit making eighteen of them either
+ * times out at the 30s default or takes nine minutes. It reproduces identically
+ * on /morning-brief, which this branch does not touch, so it is the shell
+ * rather than any one screen.
+ *
+ * Nothing measured here depends on that traffic. The probe reads computed style
+ * and geometry, which depend on stylesheets, fonts and layout, and `load` is
+ * exactly the event that says those have arrived. The settle after it covers
+ * client effects that mount content, the ticker's first quote among them.
+ */
+/* The two sides switch theme by different mechanisms, and setting only one of
+ * them is how this script spent its whole life auditing the build in light
+ * twice and reporting it as two themes.
+ *
+ *   prototype   [data-theme="dark"] on any ancestor, key signalera-v3-theme
+ *   build       html.dark, key signalera_theme, applied by ThemeProvider
+ *
+ * Set all four. The storage keys matter as well as the live attributes: the
+ * provider reads its key on mount and will undo a class set before hydration.
+ */
+export const APPLY_THEME = `(t) => {
+  const dark = t === 'dark';
+  document.documentElement.setAttribute('data-theme', t);
+  document.documentElement.classList.toggle('dark', dark);
+  const phone = document.getElementById('v3phone');
+  if (phone) phone.setAttribute('data-theme', t);
+  try {
+    localStorage.setItem('signalera-v3-theme', t);
+    localStorage.setItem('signalera_theme', t);
+  } catch (e) {}
+}`;
+
 async function probe(page, url, theme, selector = null) {
-  await page.goto(url, { waitUntil: 'networkidle' });
-  await page.evaluate((t) => {
-    document.documentElement.setAttribute('data-theme', t);
-    try { localStorage.setItem('signalera-v3-theme', t); } catch (e) {}
-  }, theme);
-  await page.waitForTimeout(400);
+  await page.goto(url, { waitUntil: 'load', timeout: 60_000 });
+  /* Twice, on purpose. The first pass seeds the storage keys the provider
+     reads; the reload lets it mount already in the right theme; the second
+     pass covers a shell that applies the class without reading storage. */
+  await page.evaluate(new Function('return ' + APPLY_THEME)(), theme);
+  await page.reload({ waitUntil: 'load', timeout: 60_000 });
+  await page.evaluate(new Function('return ' + APPLY_THEME)(), theme);
+  await page.waitForTimeout(1200);
   return page.evaluate(new Function('return ' + PROBE)(), selector);
 }
 
@@ -216,6 +255,10 @@ async function run() {
   /* Scopes both sides. The prototype and the build rarely carry the same
    * hooks, so --proto-selector overrides the design side when they differ. */
   const selector = takeFlag(argv, '--selector');
+  /* Override the three phone widths. The mobile layout has to be verified
+     ABSENT above the breakpoint as well as correct below it, and a fixed list
+     of phone viewports cannot express that. */
+  const widthFlag = takeFlag(argv, '--width');
   const protoSelector = takeFlag(argv, '--proto-selector') || selector;
   const [mode, ...rest] = argv;
   const browser = await chromium.launch();
@@ -223,7 +266,10 @@ async function run() {
 
   if (mode === 'audit') {
     const url = rest[0];
-    for (const vp of VIEWPORTS) {
+    const viewports = widthFlag
+      ? widthFlag.split(',').map((w) => ({ name: w.trim(), width: Number(w), height: 900 }))
+      : VIEWPORTS;
+    for (const vp of viewports) {
       for (const theme of ['light', 'dark']) {
         const page = await browser.newPage({ viewport: { width: vp.width, height: vp.height } });
         const { violations, missing } = await probe(page, url, theme, selector);
@@ -251,7 +297,7 @@ async function run() {
         await page.close();
       }
     }
-    console.log(`\nscreen-audit: ${failed} violations across 3 widths and 2 themes`);
+    console.log(`\nscreen-audit: ${failed} violations across ${viewports.length} width(s) and 2 themes`);
   }
 
   else if (mode === 'parity') {
@@ -337,7 +383,7 @@ async function run() {
   }
 
   else {
-    console.log('usage: screen-audit.mjs audit <url> [--selector <css>]');
+    console.log('usage: screen-audit.mjs audit <url> [--selector <css>] [--width 390,1440]');
     console.log('       screen-audit.mjs parity <screen> <url> [--selector <css>] [--proto-selector <css>]');
     process.exit(2);
   }

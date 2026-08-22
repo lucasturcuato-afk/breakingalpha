@@ -1,0 +1,133 @@
+/* Ledger motion and the few rules that cannot be expressed inline.
+ *
+ * Nothing here is responsive. That is deliberate: an inline style beats a
+ * class at every breakpoint, so mixing a responsive class with an inline
+ * property is a defect the design lint now rejects. Keeping this module free
+ * of breakpoints means the components can style measured values inline
+ * without ever colliding with it.
+ *
+ * Easing is the design's single curve. Durations are the values measured off
+ * the rendered prototype, which differ from the README where noted. */
+
+.rise {
+  /* Rests in the drawn state and animates FROM the hidden one.
+   *
+   * The prototype writes `animation: v3rise 520ms ... 60ms both` on a card
+   * carrying a claim. With `both` and a delay, the hidden frame becomes the
+   * resting frame, so a subtree that mounts late hides its own data
+   * permanently. The handoff states that rule and then breaks it here. The
+   * drawn state is the base, so a card that never animates is still readable. */
+  opacity: 1;
+  transform: none;
+  animation: ledgerRise 520ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+
+@keyframes ledgerRise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.enter {
+  opacity: 1;
+  transform: none;
+  animation: ledgerIn 240ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+
+@keyframes ledgerIn {
+  from {
+    opacity: 0;
+    transform: translateY(7px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Loading. The shimmer is the design's own, at its own duration. */
+.sk {
+  border-radius: 4px;
+  background: linear-gradient(
+    90deg,
+    var(--c-hair) 0%,
+    var(--c-surface) 50%,
+    var(--c-hair) 100%
+  );
+  background-size: 200% 100%;
+  animation: ledgerShimmer 1.8s ease-in-out infinite;
+}
+
+@keyframes ledgerShimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+/* The desk's reading is clamped until the claim is opened. */
+.clamp {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: var(--v3-clamp);
+  line-clamp: var(--v3-clamp);
+  overflow: hidden;
+}
+
+/* A real button carrying none of the agent's default chrome. Used wherever the
+ * design draws a control that is not shaped like a button, so the element is
+ * still a <button> for keyboard and assistive technology. */
+.bare {
+  appearance: none;
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+/* The ticker track. The keyframe moves it by half its own width, which is why
+ * the strip renders its cell list twice: at -50% the second copy sits exactly
+ * where the first began, so the loop has no seam. */
+.ticker {
+  animation: ledgerTicker 60s linear infinite;
+}
+
+@keyframes ledgerTicker {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Nothing is hidden rather than merely unanimated: every animated rule above
+   * already rests in its drawn state, so removing the animation leaves the
+   * content visible. */
+  .rise,
+  .enter,
+  .sk {
+    animation: none;
+  }
+
+  /* The ticker is the one animation here that is not an entrance, so it is the
+   * one that had to be thought about rather than listed. Stopping it rests the
+   * track at translateX(0), which is the first copy of the cell list in its
+   * drawn position: every symbol the strip has is on screen or reachable by
+   * the strip's own horizontal scroll. Nothing is hidden by stopping it, and a
+   * reader who has asked for less motion does not get a marquee. */
+  .ticker {
+    animation: none;
+  }
+}
