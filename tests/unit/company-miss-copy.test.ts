@@ -61,7 +61,7 @@ describe("the three phases say three different things", () => {
     assert.equal(c.headline, `We could not match ${NAME} to a company we cover.`);
     assert.equal(
       c.body,
-      "Coverage today is public companies. A lookup matches on ticker or on listed company name, so a private or newly formed company often has nothing here to match against. That is a limit of what we index, not a claim about whether the company exists.",
+      "Coverage follows the news we index, not listing status. Most companies here carry no ticker, and a private or newly formed company is here if the news covered it. This name matched nothing in our index, and the listed-company directory we check next had no match either. That is a limit of what we index, not a claim about whether the company exists.",
     );
     assert.equal(
       c.action,
@@ -156,7 +156,16 @@ describe("the vocabulary bans", () => {
 describe("honesty about what is and is not known", () => {
   test("the miss copy states the coverage scope in plain words", () => {
     const c = companyMissCopy("unresolved", NAME);
-    assert.match(c.body, /Coverage today is public companies\./);
+    // The basis is news coverage, not listing status. Measured read-only on
+    // 2026-08-22: 4,533 of 5,496 companies rows carry a NULL or blank ticker
+    // (82.5%), and eight private companies are indexed, so "coverage is public
+    // companies" was false. resolveAlias also
+    // matches on a case-insensitive exact companies.name, which reaches every
+    // one of those NULL-ticker rows, so "matches on ticker or on listed
+    // company name" was false too.
+    assert.match(c.body, /Coverage follows the news we index, not listing status\./);
+    assert.doesNotMatch(c.body, /Coverage today is public companies/);
+    assert.doesNotMatch(c.body, /listed company name/);
   });
 
   test("it never says private companies are impossible or permanent", () => {

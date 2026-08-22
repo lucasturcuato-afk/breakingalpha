@@ -32,6 +32,16 @@
  * private company we do not index versus a name that is not a company at all.
  * Finnhub search is filtered to listed equity types, so a 404 means only "no
  * listed match". The unresolved copy says exactly that and no more.
+ *
+ * What coverage is actually scoped by
+ * -----------------------------------
+ * Not listing status. Measured read-only against prod on 2026-08-22: 4,533 of
+ * 5,496 companies rows carry a NULL or blank ticker (82.5%), and eight private
+ * companies are indexed. A row is here because the news we ingest covered it. resolveAlias reaches those rows: after the UUID and
+ * ticker branches miss, it does a case-insensitive exact ilike on
+ * companies.name (aliasResolver.ts:124-141), which matches NULL-ticker rows
+ * exactly as well as tickered ones. So the earlier copy was wrong twice, once
+ * about the basis of coverage and once about what a lookup can match.
  */
 
 export type ResolvePhase = "checking" | "unresolved" | "failed";
@@ -64,7 +74,7 @@ export function companyMissCopy(phase: ResolvePhase, name: string): MissCopy {
 
   return {
     headline: `We could not match ${name} to a company we cover.`,
-    body: "Coverage today is public companies. A lookup matches on ticker or on listed company name, so a private or newly formed company often has nothing here to match against. That is a limit of what we index, not a claim about whether the company exists.",
+    body: "Coverage follows the news we index, not listing status. Most companies here carry no ticker, and a private or newly formed company is here if the news covered it. This name matched nothing in our index, and the listed-company directory we check next had no match either. That is a limit of what we index, not a claim about whether the company exists.",
     action:
       "Add it to your watchlist so it is there if coverage arrives, or search the directory for a ticker or a different spelling of the name.",
   };

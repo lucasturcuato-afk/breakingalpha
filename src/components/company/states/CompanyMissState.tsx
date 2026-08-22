@@ -9,9 +9,12 @@
  * Signalera, while CompanyAutoResolve was still asking whether it was. Two
  * visible consequences:
  *
- *  1. A name that DOES resolve (four of the eight private controls we probed,
- *     including SpaceX and Anthropic) flashed "isn't on Signalera yet" for the
- *     length of a Finnhub round trip before navigating to its own page.
+ *  1. A name that misses our index but DOES resolve at Finnhub (Weyco Group,
+ *     Rocky Brands, Koss, Flexsteel, Ennis) flashed "isn't on Signalera yet"
+ *     for the length of a Finnhub round trip before navigating to its own
+ *     page. The private controls, SpaceX and Anthropic among them, are not
+ *     examples of this: all nine hit resolveAlias, getCompanyDetail yields a
+ *     detail object, and this component never mounts for them.
  *  2. On a 5xx the reader got the retry banner AND the no-coverage line at the
  *     same time, which cannot both be true.
  *
