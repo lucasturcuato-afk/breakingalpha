@@ -124,6 +124,12 @@ export async function getCompanyDetail(
       .gte("published_at", sinceArticles)
       .order("relevance_score", { ascending: false })
       .order("published_at", { ascending: false })
+      // Deterministic tiebreak. Postgres does not guarantee which rows a LIMIT
+      // keeps among rows tied on every ORDER BY key, so without this the same
+      // call can return a different set. Measured live: 19 of 100 rows swapped
+      // on one company with the data unchanged. `id` is unique, so this pins
+      // the result without changing the ranking.
+      .order("id", { ascending: true })
       .limit(ARTICLE_LIMIT),
   ]);
 
