@@ -9,7 +9,8 @@
  * for a fetch should not touch a single component.
  *
  * Compliance note on sample content. The rule against an aggregate figure
- * reaches sample data too, so nothing here is a rate or an accuracy figure.
+ * reaches sample data too, so nothing here is a rate and nothing aggregates
+ * outcomes into a single figure.
  * The scorecard cells are one instrument's move over one session, the stats
  * band carries counts and one index level, and the reviewed-call block states
  * a count of calls looked at rather than how many of them held.

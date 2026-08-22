@@ -510,7 +510,7 @@ function ReviewedCall({ data }: { data: EveningWrapData }) {
     <div style={{ marginTop: "12px", border: "1px solid var(--c-border)", borderRadius: "12px", backgroundColor: "var(--c-card)", overflow: "hidden" }}>
       <div aria-hidden="true" style={{ height: "2px", backgroundColor: "var(--c-amber)" }} />
       {/* TODO(PR #643): opens Review, which is HELD and has no route. Wired to
-          a no-op so the control renders in its correct visual state rather
+          a no-op so the control is drawn exactly as the design draws it rather
           than aiming at a 404. */}
       {/* The container owns the rhythm, as the entry row does: the anatomy at
           row scale sets no margins, so the 9px between its three slots is a
@@ -607,8 +607,8 @@ function WrapNone() {
         {`Nothing failed to load. The wrap publishes at ${d.publishesAt}, after the close. Anything reviewed today is already on your record.`}
       </p>
       {/* TODO(PR #643 sibling units): the record screen is step 6 and has no
-          route yet, so this renders in its correct visual state on a no-op
-          rather than aiming at a 404. */}
+          route yet, so this is drawn as the design draws it and wired to a
+          no-op rather than aiming at a 404. */}
       <button
         type="button"
         onClick={() => {}}
