@@ -153,6 +153,9 @@ export function selectFacetProtectedPool(
 // to pre-WD129 behavior for now: SpaceX has zero cache rows, so this never
 // fires for the canonical test case. Path 2 (the live path for unwatched
 // companies) is where the WD129 selection runs.
+// Reachable from the /company/[id] Promise.all. Before adding .throwOnError(),
+// .abortSignal(), or an await outside this function's existing trys, read the
+// reject-safety block at the top of src/lib/sec-filings.ts.
 export async function fetchCompanyArticles(
   supabase: SupabaseClient,
   canonicalName: string,

@@ -252,45 +252,11 @@ export default async function CompanyDetailPage({
   // slug pay for four reads it currently skips; that path is ~50ms / 1 query
   // today and must stay that way.
   //
-  // --------------------------------------------------------------------
-  // Promise.all, not allSettled. READ THIS BEFORE ADDING A MODIFIER TO ANY
-  // QUERY REACHABLE FROM THESE FIVE.
-  //
-  // The safety here is a property of these five call sites, NOT of
-  // postgrest-js. An earlier version of this comment claimed the library
-  // converts even a network-layer failure into an { error, data: null } tuple
-  // so nothing can reject. That is false. In @supabase/postgrest-js 2.101.1,
-  // PostgrestBuilder.then() attaches the converting `.catch()` under
-  // `if (!this.shouldThrowOnError)`, and attaches it AFTER `_fetch(...)` has
-  // already been called. Four real reject paths follow: a .throwOnError() query
-  // on an HTTP 500 (throws PostgrestError inside the response handler), a
-  // .throwOnError() query on connection-refused (no converting catch is
-  // attached at all), .from("") (throws synchronously, before any promise
-  // exists), and a request body JSON.stringify cannot serialize (thrown while
-  // evaluating _fetch's own arguments, so again no catch is attached).
-  //
-  // The real guarantee lives in the call sites. Every await inside
-  // getArticleFallback / fetchCompanyArticles / fetchCompanyFilings /
-  // getInsiderTransactions / fetchCompanyFinancials sits in a try whose catch
-  // yields an empty result instead of rethrowing, and the one await outside a
-  // try -- resolveCompanyCik, shared by filings / insider / financials --
-  // wraps its entire body and yields EMPTY_RESOLUTION. Neither
-  // .throwOnError() nor .abortSignal() appears anywhere in src/ (0 occurrences
-  // of each as of this commit). The invariant survives by accident of style, not
-  // by construction, and nothing enforces it.
-  //
-  // ADD .throwOnError(), or any modifier that lets a reject escape, to a query
-  // reachable from one of these five and you break the PAGE, not a tab. Today a
-  // failing read degrades to its own tab's empty state and the other four still
-  // render. With a reject in this array, Promise.all rejects and /company/[id]
-  // renders the error boundary instead. If you need that modifier, either keep
-  // the swallow at the call site or switch this to allSettled in the SAME
-  // commit.
-  //
-  // allSettled is not the default because it would also swallow a reject the
-  // sequential version propagated, which is a behavior change rather than a
-  // scheduling change.
-  // --------------------------------------------------------------------
+  // Promise.all, not allSettled. Before you add .throwOnError(), .abortSignal(),
+  // or any other modifier that lets a reject escape to one of these five reads,
+  // and before you add an await that is not inside their existing trys, read
+  // the reject-safety block at the top of src/lib/sec-filings.ts. A reject in
+  // this array fails the whole page render, not one tab.
 
   // Read-only ArticlesTab fallback (ships dark behind the
   // NEXT_PUBLIC_ARTICLES_WEB_FALLBACK_ENABLED flag, default off). When an

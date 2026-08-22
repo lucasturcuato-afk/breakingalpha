@@ -323,6 +323,10 @@ function upgradeFilingUrls(view: FinancialView, docByAccession: Record<string, s
  * them is how a Postgres statement timeout became the printed sentence
  * "Financials appear after the first periodic report" over an issuer with five
  * years of validated XBRL on file.
+ *
+ * Reachable from the /company/[id] Promise.all. Before adding .throwOnError(),
+ * .abortSignal(), or an await outside this function's existing trys, read the
+ * reject-safety block at the top of src/lib/sec-filings.ts.
  */
 export async function fetchCompanyFinancials(
   supabase: SupabaseClient,
