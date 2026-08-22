@@ -21,6 +21,8 @@ THE FETCH BUG THIS MODULE USED TO HAVE (fixed here, read before changing pacing)
     "well within Wikidata limits"; its measured SUSTAINED rate is 3.62 req/s,
     roughly 214 requests per minute against an anonymous budget of about 10 to 11
     successful wbsearchentities calls per minute. About 19x over.
+    The name _REQUEST_DELAY still exists; it is no longer 0.15 and nothing
+    sleeps on it. See the pacing block below for why it was kept.
 
 Four things follow from that, and all four live below:
     1. Retries that honor Retry-After in full, with bounded attempts.
@@ -52,9 +54,29 @@ _USER_AGENT = "BreakingAlpha/1.0 (company intel entity quality; contact via gith
 # --------------------------------------------------------------------------
 # Fetch pacing, retry and per-run budget.
 # --------------------------------------------------------------------------
-# _REQUEST_DELAY = 0.15 is GONE. It was a flat pre-sleep whose sustained rate was
-# 3.62 req/s. Pacing now happens per outbound call through _RATE_LIMITER, so a
-# cache HIT still costs nothing and only real network calls are metered.
+# _REQUEST_DELAY is no longer a flat pre-sleep. It was 0.15s, a sustained
+# 3.62 req/s, and it is what put this module roughly 19x over the anonymous
+# budget. Pacing now happens per outbound call through _RATE_LIMITER, so a cache
+# HIT costs nothing and only real network calls are metered.
+#
+# THE NAME SURVIVES, redefined below the limiter settings as the sustained
+# seconds per outbound call this module now targets. Two reasons, neither of
+# them sentimentality:
+#
+#   1. It is this module's answer to "how fast does this thing call out", and
+#      that is a question other code asks. Lane E (#637) adds a FETCH_CONTRACT
+#      dict that reads it as min_interval_s. With the name deleted here,
+#      backend/wikidata.py raises NameError at import the moment both branches
+#      are on main, which kills backend/ingest.py. Git merges the two clean
+#      because the deletion and the new reference sit ~200 lines apart, so
+#      nothing catches it until the backend gate drops from 1,539 passing to
+#      collection errors. Keeping the name removes that hazard outright instead
+#      of documenting it and hoping the merge order holds.
+#   2. Deleting a module constant other code reads is a separate change from
+#      fixing the pacing. This branch is the pacing fix.
+#
+# Nothing sleeps on it. Pacing is _RATE_LIMITER's job and only _RATE_LIMITER's,
+# and no behavior on this branch reads _REQUEST_DELAY at all.
 #
 # The anonymous budget measured against the live API is 10 to 11 successful
 # wbsearchentities calls per ~52s window. We sit at the bottom of that band.
@@ -92,6 +114,21 @@ _MAX_CALLS_PER_WINDOW = _env_positive_int(
     "WIKIDATA_MAX_CALLS_PER_MINUTE", _DEFAULT_CALLS_PER_WINDOW)
 _MAX_CALLS_PER_RUN = _env_positive_int(
     "WIKIDATA_MAX_CALLS_PER_RUN", _DEFAULT_CALLS_PER_RUN)
+
+#: Sustained seconds per outbound call. DERIVED from the limiter's own settings
+#: so the two can never disagree, and so the WIKIDATA_MAX_CALLS_PER_MINUTE knob
+#: moves both together. 60.0 / 10 = 6.0s, against the old 0.15s.
+#:
+#: STEADY STATE, not a floor on any single gap: _SlidingWindowLimiter allows up
+#: to _MAX_CALLS_PER_WINDOW calls back to back and then paces, so two adjacent
+#: calls inside a fresh window are not 6s apart. Anything reporting this as the
+#: module's pacing should say sustained, which is the number that has to clear
+#: the server-side per-minute bucket.
+#:
+#: Read by nothing on this branch. It exists so the name keeps meaning something
+#: true after the pacing rewrite, and so Lane E's FETCH_CONTRACT resolves. See
+#: the block above.
+_REQUEST_DELAY = _RATE_WINDOW_SECONDS / _MAX_CALLS_PER_WINDOW
 
 
 def _sleep(seconds: float) -> None:
