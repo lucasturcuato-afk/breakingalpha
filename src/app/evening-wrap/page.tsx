@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect, useMemo, useRef } from "react";
+import { Suspense, useState, useEffect, useMemo, useRef } from "react";
 import { AppShell } from "@/components/shell";
+import { EveningWrapMobile } from "@/components/evening";
 import { PanelWidget } from "@/components/shell/right-panel";
 import { TickerStrip } from "@/components/brief/ticker-strip";
 import CatalystStrip, { type CatalystItem } from "@/components/brief/CatalystStrip";
@@ -756,6 +757,31 @@ export default function EveningWrapPage() {
   };
 
   return (
+    <>
+      {/* The mobile Evening Wrap. A new component composed beside the desk
+          layout below, never an edit to it: nothing in the desktop render
+          changes shape, and above the breakpoint this branch does not exist.
+          Gating lives in a CLASS and the wrapper carries no inline style, or
+          the class would be beaten at every width.
+
+          It sits OUTSIDE AppShell rather than inside it, and that is the
+          design rather than a shortcut. The prototype gates its nav on
+          `showNav: ['dash','ledger','watch','ask'].includes(s.screen)` at line
+          3460, so `evening` renders full screen with no bottom bar and no pole
+          lit. That is DECISIONS.md open item O2, a recorded design bug, and
+          this reproduces it rather than resolving it. Mounting the shell here
+          would put a tab bar on a surface the design draws without one, and
+          `mobile-tab-bar.tsx` is not this unit's to edit either way.
+
+          Suspense is required, not decorative: the branch reads `?stage=` with
+          `useSearchParams`, which needs a boundary above whatever calls it. */}
+      <Suspense fallback={null}>
+        <div className="md:hidden">
+          <EveningWrapMobile />
+        </div>
+      </Suspense>
+
+      <div className="hidden md:block">
     <AppShell
       pageTitle="Evening Wrap"
       mood={liveMood.mood}
@@ -1538,6 +1564,8 @@ export default function EveningWrapPage() {
         type="brief"
       />
     </AppShell>
+      </div>
+    </>
   );
 }
 
