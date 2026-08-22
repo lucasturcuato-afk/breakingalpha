@@ -43,6 +43,16 @@ export interface DashStory {
   ordinal: number;
   /** The 3px gold rule down the leading edge of an unread row. */
   unread: boolean;
+  /**
+   * Whether the story survives the For You lens.
+   *
+   * The lens has to filter something. A control that restyles itself and
+   * leaves the identical list is a filter that silently did nothing, which on
+   * a product whose claim is that nothing is curated away is worse than no
+   * control at all. The real screen will read this off the personalization
+   * scorer; the fixture states it per story so the lens is honest today.
+   */
+  forYou: boolean;
   tone: SentimentTone;
   toneLabel: string;
   sector: string;
@@ -121,6 +131,7 @@ export const DASH_FIXTURE: DashboardData = {
       id: "s1",
       ordinal: 1,
       unread: true,
+      forYou: true,
       tone: "BULLISH",
       toneLabel: "Bullish",
       sector: "Utilities",
@@ -132,6 +143,7 @@ export const DASH_FIXTURE: DashboardData = {
       id: "s2",
       ordinal: 2,
       unread: false,
+      forYou: false,
       tone: "MIXED",
       toneLabel: "Mixed",
       sector: "Medtech",

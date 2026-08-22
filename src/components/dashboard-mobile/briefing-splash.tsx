@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import styles from "./dashboard.module.css";
 
 /**
@@ -84,7 +85,15 @@ export function BriefingSplash({
 
   if (phase === "idle") return null;
 
-  return (
+  /* Portalled to the body, not rendered in place.
+   *
+   * In place, the nearest ancestor is `PageTransition`'s motion.div, which
+   * carries an inline `transform` while it plays its 200ms enter. A
+   * transformed ancestor is the containing block for a `position: fixed`
+   * descendant, and the `<main>` above it scrolls with `overflow-y-auto`, so
+   * the splash spent the opening frames sized and clipped to the content box
+   * rather than the viewport. The body has neither. */
+  return createPortal(
     <div
       /* Every box property is a class and the element carries no inline
          style at all, so nothing can defeat `md:hidden`: not an inline
@@ -191,6 +200,7 @@ export function BriefingSplash({
       >
         {detail}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

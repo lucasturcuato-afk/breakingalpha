@@ -83,20 +83,31 @@ function BucketLabel({ text, dot }: { text: string; dot?: string }) {
   );
 }
 
-export function RecordBuckets({
-  variant,
-  byResolution,
-  awaiting = 0,
-  total,
-}: {
-  variant: RecordVariant;
+type RecordBucketsProps = {
   byResolution: Record<Resolution, number>;
-  /** Personal only. Replaces the fourth cell, which is never `notGraded`. */
-  awaiting?: number;
-  /** Desk only. The denominator every cell states beside its count. */
-  total?: number;
-}) {
+} & (
+  | {
+      variant: "personal";
+      /** Replaces the fourth cell, which on the personal record is never
+       *  `notGraded` but the count of calls still inside their window. */
+      awaiting: number;
+      total?: never;
+    }
+  | {
+      /** The denominator is not optional here. Every desk cell states it, and
+       *  the bars are drawn against it, so a desk call without one would
+       *  render four zero-width bars and no denominator rather than fail. */
+      variant: "desk";
+      total: number;
+      awaiting?: never;
+    }
+);
+
+export function RecordBuckets({ variant, byResolution, awaiting = 0, total }: RecordBucketsProps) {
   const personal = variant === "personal";
+  /* The union guarantees a denominator on the desk variant, but the destructure
+     loses that narrowing, and a zero denominator would draw NaN-wide bars. */
+  const denominator = total ?? 0;
 
   /* The personal record's fourth cell is the awaiting count, not a bucket.
      Everything else pairs one to one with RESOLUTION_ORDER. */
@@ -108,7 +119,10 @@ export function RecordBuckets({
         fourthIsAwaiting ? YOUR_RECORD_COPY.awaitingLabel : DESK_RECORD_COPY.bucketLabel[key]
       ).toUpperCase(),
       count: fourthIsAwaiting ? awaiting : byResolution[key],
-      delay: BAR_DELAY[i],
+      /* RESOLUTION_ORDER is the source of truth for how many cells there are,
+         so the ladder falls back to its last rung rather than emitting
+         `undefinedms` if a fifth resolution is ever added. */
+      delay: BAR_DELAY[i] ?? BAR_DELAY[BAR_DELAY.length - 1],
     };
   });
 
@@ -133,7 +147,7 @@ export function RecordBuckets({
             }}
           >
             {cell.count}
-            {!personal && total !== undefined ? (
+            {!personal ? (
               <span
                 style={{
                   font: `400 10px/1 ${MONO}`,
@@ -141,7 +155,7 @@ export function RecordBuckets({
                   marginLeft: "4px",
                 }}
               >
-                of {total}
+                of {denominator}
               </span>
             ) : null}
           </span>
@@ -164,7 +178,7 @@ export function RecordBuckets({
                 className={styles.bar}
                 style={{
                   display: "block",
-                  width: total ? `${(cell.count / total) * 100}%` : "0%",
+                  width: denominator > 0 ? `${(cell.count / denominator) * 100}%` : "0%",
                   height: "3px",
                   borderRadius: "4px",
                   backgroundColor: DESK_FILL[cell.key],

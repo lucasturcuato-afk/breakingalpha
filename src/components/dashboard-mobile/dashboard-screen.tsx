@@ -29,7 +29,12 @@ import {
  * diffed with `screen-audit parity`; see the PR body.
  *
  * The desktop dashboard is untouched. It sits beside this, gated above `md`,
- * with its four loaders and its fourteen widgets exactly where they were.
+ * with its four loaders and its widgets exactly where they were.
+ *
+ * Everything on this screen comes from a fixture. Nothing here reads the
+ * database, and the figures it draws are the design's sample content, not the
+ * reader's. That is the unit's scope and it is the first thing to change when
+ * a loader lands; see the PR body.
  */
 
 const MONO = "'JetBrains Mono', monospace";
@@ -69,7 +74,9 @@ export function DashboardScreen({
 }) {
   const d = data ?? (stage === "empty" ? DASH_FIXTURE_EMPTY : DASH_FIXTURE);
   const [editing, setEditing] = useState(false);
+  /* "all" is the resting lens, which is the state the design draws. */
   const [storyLens, setStoryLens] = useState<"you" | "all">("all");
+  const shown = storyLens === "you" ? d.stories.filter((s) => s.forYou) : d.stories;
 
   return (
     <div data-parity="dash" style={{ backgroundColor: "var(--c-bg)", minHeight: "100%" }}>
@@ -234,16 +241,20 @@ export function DashboardScreen({
             <StoryLens label="For You" on={storyLens === "you"} onClick={() => setStoryLens("you")} />
             <StoryLens label="All" on={storyLens === "all"} onClick={() => setStoryLens("all")} />
           </div>
-          {d.stories.length ? (
+          {shown.length ? (
             <div style={{ marginTop: "10px" }}>
-              {d.stories.map((s, i) => (
-                <StoryRow key={s.id} story={s} last={i === d.stories.length - 1} />
+              {shown.map((s, i) => (
+                <StoryRow key={s.id} story={s} last={i === shown.length - 1} />
               ))}
             </div>
           ) : (
             <Absence
-              title="No stories yet."
-              body="The overnight read has not published. Nothing is being filtered out of this list."
+              title={storyLens === "you" ? "Nothing matched your sectors." : "No stories yet."}
+              body={
+                storyLens === "you"
+                  ? "Every story is still here. Switch to All to read the ones the lens set aside."
+                  : "The overnight read has not published. Nothing is being filtered out of this list."
+              }
             />
           )}
           <TailLink label="The whole feed →" href="/live-feed" />
@@ -271,7 +282,11 @@ export function DashboardScreen({
 /* ── head ───────────────────────────────────────────────────────────── */
 
 function ScreenHead() {
-  const { theme, toggleTheme } = useTheme();
+  /* `mounted` is read, not just `theme`. The provider seeds "light" and only
+     learns the real preference in its own effect, so a dark reader would get
+     the moon glyph and the label "Switch to the dark theme" for a frame while
+     already dark. `topbar.tsx` guards the same way. */
+  const { theme, toggleTheme, mounted } = useTheme();
   return (
     <div
       style={{
@@ -293,7 +308,13 @@ function ScreenHead() {
         <button
           type="button"
           onClick={toggleTheme}
-          aria-label={theme === "dark" ? "Switch to the light theme" : "Switch to the dark theme"}
+          aria-label={
+            !mounted
+              ? "Switch the theme"
+              : theme === "dark"
+                ? "Switch to the light theme"
+                : "Switch to the dark theme"
+          }
           className={ledger.bare}
           style={{
             minWidth: "44px",
@@ -303,7 +324,13 @@ function ScreenHead() {
             justifyContent: "center",
           }}
         >
-          {theme === "dark" ? <SunGlyph /> : <MoonGlyph />}
+          {!mounted ? (
+            <span aria-hidden="true" style={{ width: "18px", height: "18px" }} />
+          ) : theme === "dark" ? (
+            <SunGlyph />
+          ) : (
+            <MoonGlyph />
+          )}
         </button>
         <Link
           href="/settings/profile"
@@ -551,7 +578,12 @@ function MarketCell({
 
   /* Pressable only while the band is being arranged. A cursor:pointer element
      with no handler is a defect the runtime audit flags by name, so the
-     resting cell is a plain box. */
+     resting cell is a plain box.
+     TODO: wire the swap and the drag. The desk already carries both, in
+     `market-card-editor.tsx` (MARKET_CARD_OPTIONS, SortableMarketCard) over
+     dnd-kit; this unit draws the arrange state without a store to write to,
+     so the cell is a real control that does nothing yet. The helper copy
+     below is the design's and describes the wired behaviour, not this one. */
   if (!editing) {
     return (
       <div className={cls} style={{ padding: "12px 14px" }}>

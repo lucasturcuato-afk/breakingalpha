@@ -666,8 +666,17 @@ function DashboardPageInner() {
     >
       {/* Today, below md. The mobile drawing of this route, composed beside
           the desktop layout rather than replacing it: every loader, widget and
-          reveal gate below is untouched and still runs the desk at every width
-          above the breakpoint.
+          reveal gate below is untouched.
+
+          Untouched is not unmounted, and the distinction is worth stating
+          rather than glossing. `hidden md:block` is `display:none`, so on a
+          phone the desk's four loaders still run, its market-indices fetch
+          still goes out, and its widgets still render into a hidden subtree
+          that nothing reads. That is the cost of composing instead of
+          rewriting, and it is deliberate for this unit: unmounting the desk
+          below md means branching a 942-line page on a breakpoint, which is
+          the rewrite this was meant to avoid. Worth revisiting once the
+          mobile screen has a loader of its own.
 
           Gating lives in a CLASS, never in an inline style. An inline display
           beats the class at every breakpoint, which is the defect that shipped
