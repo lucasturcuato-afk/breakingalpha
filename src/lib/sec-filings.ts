@@ -216,7 +216,15 @@ export async function fetchCompanyFilings(
     let query = supabase.from("sec_filings").select(FILING_COLS);
     // Prefer the canonical EDGAR key (cik); fall back to company_id when cik is absent.
     query = res.cik != null ? query.eq("cik", res.cik) : query.eq("company_id", res.companyId as string);
-    const { data, error } = await query.order("filing_date", { ascending: false }).limit(limit);
+    // Deterministic tiebreak. Postgres does not guarantee which rows a LIMIT
+    // keeps among rows tied on every ORDER BY key, so without this the same
+    // call can return a different set. Measured live: 19 of 100 rows swapped
+    // on one company with the data unchanged. `id` is unique, so this pins
+    // the result without changing the ranking.
+    const { data, error } = await query
+      .order("filing_date", { ascending: false })
+      .order("id", { ascending: true })
+      .limit(limit);
     if (error) {
       console.error("[sec-filings] fetchCompanyFilings failed:", error.message);
       return { cik: res.cik, companyId: res.companyId, filings: [] };
