@@ -91,19 +91,51 @@ const POLES: Pole[] = [
     label: "Ledger",
     href: "/ledger",
     icon: IconLedger,
-    owns: ["/ledger", "/morning-brief", "/evening-wrap", "/radar/calls"],
+    owns: [
+      "/ledger",
+      "/morning-brief",
+      "/evening-wrap",
+      "/radar/calls",
+      /* Steps 4, 6 and 7. Objects opened out of the record, so they belong to
+         the pole the record lives on. Listed before the screens exist because
+         isActive reads `owns` alone: a route absent from every list lights no
+         pole, and adding it later would mean a screen unit editing this file. */
+      "/review",
+      "/claim",
+      "/entry",
+      "/record",
+      "/compose",
+    ],
   },
   {
+    /* href stays on /radar/watchlist until the Watch screen exists. Pointing
+       it at /watch now would aim a pole at a 404, which is the defect this
+       file shipped once already against /ledger. The unit that builds /watch
+       moves the href; the ownership is already here. */
     label: "Watch",
     href: "/radar/watchlist",
     icon: IconWatch,
-    owns: ["/radar/watchlist", "/radar/following"],
+    owns: ["/radar/watchlist", "/radar/following", "/watch"],
   },
   {
     label: "Ask",
     href: "/intelligence",
     icon: IconAsk,
-    owns: ["/intelligence", "/company", "/deal-flow", "/trends", "/live-feed"],
+    owns: [
+      "/intelligence",
+      "/company",
+      "/deal-flow",
+      "/trends",
+      "/live-feed",
+      /* Step 9 and 10. /trends-mobile is the mobile Trends screen, which lands
+         beside /trends rather than editing it. Without this entry it would
+         light no pole, since the Ask pole owns /trends and not its sibling. */
+      "/ask",
+      "/search",
+      "/trends-mobile",
+      "/signal",
+      "/story",
+    ],
   },
 ];
 
