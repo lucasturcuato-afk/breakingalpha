@@ -29,7 +29,7 @@ _HARD_DROP_DESCRIPTION_KEYWORDS = [
     "country", "sovereign state", "nation state", "government", "federal agency",
     "regulatory agency", "independent agency", "government agency", "central bank",
     "military branch", "armed forces", "intelligence agency",
-    "natural person", "human", "politician", "head of state", "president of",
+    "natural person", "politician", "head of state", "president of",
     "prime minister", "secretary of", "businessman",  # individuals often described as "businessman"
     "political party", "religious organization", "advocacy group",
 ]
@@ -39,6 +39,38 @@ _SOFT_DROP_DESCRIPTION_KEYWORDS = [
     "sovereign wealth fund", "investment trust", "special purpose",
     "news agency", "news wire",
 ]
+
+# Two of the HARD checks above cannot be plain substrings, because a short
+# keyword is a substring of a longer phrase that means something else entirely.
+#
+# (a) "human" was in the HARD list to catch a bare natural person, whose
+#     Wikidata description is the word itself. As a raw substring it also
+#     matched "american human resources management software company" (ADP),
+#     "human settlement in ..." (Madrigal, Seaboard, Peraso, Erasca),
+#     "intended for human use" (Intuitive) and "understood by humans" (xAI).
+#     Every occurrence of "human" in the live cache was one of those, not a
+#     person. It moves out of the substring list into an anchored pattern: the
+#     description must BE the person type, not merely mention humans. The
+#     descriptions that actually identify a person ("american businessman",
+#     "american politician", "natural person") are matched by other keywords
+#     and are unaffected.
+_HARD_DROP_DESCRIPTION_PATTERNS = [
+    re.compile(r"^humans?\b(?!\s+\w)"),
+]
+
+# (b) Wikidata's top search hit for a bare exchange ticker is very often the
+#     ISO 3166 country that shares those letters: GM -> The Gambia, GE ->
+#     Georgia, ARM -> Armenia, MA -> Morocco, VZ -> Venezuela, CZR -> Czechia.
+#     The description really is a country description, so the sovereignty
+#     keywords hard-drop a real company on its own ticker. ISO 3166 codes are
+#     exactly two or three letters, which is also the shape of a short ticker,
+#     so for a name of that shape a sovereignty description is a code collision
+#     rather than evidence, and those keywords are skipped. The verdict falls
+#     through to the rest of the classifier (usually ambiguous, where
+#     NONE_KEEP_MODE decides). Longer names such as "Iraq", "Greece" and
+#     "Vietnam" are not ticker-shaped and still hard-drop.
+_TICKER_SHAPED_NAME_RE = re.compile(r"^[A-Z]{1,3}$")
+_SOVEREIGNTY_DROP_KEYWORDS = frozenset({"country", "sovereign state", "nation state"})
 
 # Descriptions that confirm the entity IS a company.
 _KEEP_DESCRIPTION_KEYWORDS = [
@@ -187,8 +219,15 @@ def _classify(description: str | None, name: str) -> bool | None:
     # Change (2) ordering: HARD drop wins over everything (a categorical
     # non-company). A clear company signal (KEEP) then beats a SOFT sector or
     # instrument word. SOFT drops only when no company signal was found.
+    for pat in _HARD_DROP_DESCRIPTION_PATTERNS:
+        if pat.search(description):
+            return False
+
+    ticker_shaped = bool(_TICKER_SHAPED_NAME_RE.match((name or "").strip()))
     for kw in _HARD_DROP_DESCRIPTION_KEYWORDS:
         if kw in description:
+            if ticker_shaped and kw in _SOVEREIGNTY_DROP_KEYWORDS:
+                continue  # ISO 3166 code collision on a ticker, not evidence
             return False
 
     for kw in _KEEP_DESCRIPTION_KEYWORDS:
