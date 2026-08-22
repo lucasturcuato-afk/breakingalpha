@@ -4,7 +4,13 @@ export type { ChevronDirection } from "./chevron";
    a second one; the design carries one ticker, not two. */
 export { MobileTickerStrip } from "./mobile-ticker-strip";
 export type { TickerCell } from "./mobile-ticker-strip";
-export { ClaimAnatomy, OutcomeLead, OUTCOME_STATES, OUTCOME_TOKENS } from "./claim-anatomy";
+export {
+  ClaimAnatomy,
+  OutcomeLead,
+  OUTCOME_STATES,
+  OUTCOME_TOKENS,
+  OUTCOME_LABEL,
+} from "./claim-anatomy";
 export type { ClaimAnatomyProps, ClaimScale, OutcomeState } from "./claim-anatomy";
 export { LedgerClaimCard } from "./ledger-claim-card";
 export type { LedgerClaimCardProps, ClaimCardVariant } from "./ledger-claim-card";

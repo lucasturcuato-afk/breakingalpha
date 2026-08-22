@@ -6,18 +6,26 @@ import type { ReactNode } from "react";
  * batches consume it and must not rebuild it.
  *
  * The anatomy is four slots in a fixed order, and only the type scale changes
- * between the two object types the Ledger carries:
+ * between the object types the design carries:
  *
  *   lead    an eyebrow on a claim, or a state dot plus its word on an entry
- *   claim   the falsifiable sentence, Playfair 500 in ink
+ *   claim   the falsifiable sentence, Playfair in ink
  *   prose   the supporting reading, Inter 400 in body
  *   meta    the window, the result line, or whatever settles it
  *
  * Every value is measured off the rendered prototype with getComputedStyle,
  * not taken from the README:
  *
- *   scale="card"  claim 17.5px/1.4   prose 14px/1.6
- *   scale="row"   claim 15px/1.42    prose 12.5px/1.5
+ *   scale="card"    claim 17.5px/1.4 500   prose 14px/1.6
+ *   scale="row"     claim 15px/1.42 500    prose 12.5px/1.5
+ *   scale="screen"  claim 21px/1.32 600    prose 13.5px/1.6
+ *
+ * `screen` is the full-screen expansion of a settled entry, measured off the
+ * prototype's isEntry block. It is a third value on the axis this primitive is
+ * already parameterised by, not a branch: every per-scale number now lives in
+ * the table below, so adding one adds no code path. The card and row rows carry
+ * exactly the values they resolved to before, so nothing that consumed them
+ * moves.
  *
  * The container is deliberately NOT part of this primitive. A claim sits in a
  * bordered, filled, 12px-radius card and an entry sits in a ruled row with no
@@ -25,18 +33,31 @@ import type { ReactNode } from "react";
  * Each wrapper owns its own container and passes its content through here.
  */
 
-export type ClaimScale = "card" | "row";
+export type ClaimScale = "card" | "row" | "screen";
 
 const SCALE = {
   card: {
     claim: "500 var(--v3-claim)/1.4 var(--font-playfair-display), serif",
+    claimTracking: "normal",
+    claimMargin: "10px 0 0",
     prose: "400 var(--v3-body)/var(--v3-lead) var(--font-inter), sans-serif",
-    gap: "10px",
+    proseMargin: "11px 0 0",
   },
   row: {
+    /* The row's own 7px column gap belongs to LedgerEntryRow's frame, which is
+       why nothing here sets a margin: the flex column already spaces it. */
     claim: "500 15px/1.42 var(--font-playfair-display), serif",
+    claimTracking: "normal",
+    claimMargin: "0",
     prose: "400 12.5px/1.5 var(--font-inter), sans-serif",
-    gap: "7px",
+    proseMargin: "0",
+  },
+  screen: {
+    claim: "600 21px/1.32 var(--font-playfair-display), serif",
+    claimTracking: "-0.01em",
+    claimMargin: "14px 0 0",
+    prose: "400 13.5px/1.6 var(--font-inter), sans-serif",
+    proseMargin: "9px 0 0",
   },
 } as const;
 
@@ -78,7 +99,7 @@ export function ClaimAnatomy({
     <p
       className={proseClassName}
       style={{
-        margin: proseTrailing ? 0 : scale === "card" ? "11px 0 0" : 0,
+        margin: proseTrailing ? 0 : s.proseMargin,
         /* The clamp needs a definite width to clamp against, which the flex
            row's default `min-width:auto` would not give it: a long unbroken
            reading would push the chevron off the card instead of ellipsing. */
@@ -96,8 +117,9 @@ export function ClaimAnatomy({
       {lead}
       <p
         style={{
-          margin: scale === "card" ? `${s.gap} 0 0` : 0,
+          margin: s.claimMargin,
           font: s.claim,
+          letterSpacing: s.claimTracking,
           color: "var(--c-ink)",
           textWrap: "pretty",
         }}
@@ -107,7 +129,11 @@ export function ClaimAnatomy({
       {proseTrailing && proseParagraph ? (
         <div
           style={{
-            marginTop: "11px",
+            /* The wrapper IS the prose slot when something trails it, so it
+               takes the slot's own margin. The inner paragraph is zeroed above.
+               A literal here was the one per-scale number left outside the
+               table, and it would have given `screen` the card's 11px. */
+            margin: s.proseMargin,
             display: "flex",
             gap: "9px",
             /* Top-aligned, so the chevron sits against the reading's first line
@@ -149,7 +175,13 @@ export const OUTCOME_TOKENS: Record<OutcomeState, { dot: string; text: string }>
   awaiting: { dot: "var(--c-amber)", text: "var(--c-amberink)" },
 };
 
-const LABEL: Record<OutcomeState, string> = {
+/**
+ * The rendered form of each state. Exported so a screen drawing the state at a
+ * size this file does not carry still gets its word from here. There is exactly
+ * one word table, for the same reason there is exactly one state set: a second
+ * one is how a fifth word arrives without this file changing.
+ */
+export const OUTCOME_LABEL: Record<OutcomeState, string> = {
   supported: "Supported",
   challenged: "Challenged",
   developing: "Developing",
@@ -181,7 +213,7 @@ export function OutcomeLead({ state, instrument }: { state: OutcomeState; instru
         }}
       />
       <span style={{ font: "600 11px/1 var(--font-inter), sans-serif", color: t.text, transition: "none" }}>
-        {LABEL[state]}
+        {OUTCOME_LABEL[state]}
       </span>
       {instrument ? (
         <span
