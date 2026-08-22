@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { ClaimAnatomy, CLAIM_TYPE_SCALE, Chevron } from "@/components/ledger";
 import { UNGRADEABLE_REASON } from "@/components/calls/TrackCallControl";
-import { CLAIM_FIXTURE, type ClaimData } from "./fixture";
+import { type ClaimData } from "./fixture";
 import styles from "./claim.module.css";
 
 /**
@@ -61,11 +61,18 @@ const SCREEN_HEIGHT =
  */
 export type ClaimStage = "ready" | "loading" | "error" | "missing" | "stale" | "ungradeable";
 
+/**
+ * `data` is required and has no default. Defaulting it to the fixture would
+ * mean a caller that forgets to pass it, or that passes nothing while a read is
+ * in flight, renders the sample Cash App claim as though it were the reader's
+ * own. Sample content reaches a screen because a page hands it over, never
+ * because a component fell back to it.
+ */
 export function ClaimScreen({
-  data = CLAIM_FIXTURE,
+  data,
   stage = "ready",
 }: {
-  data?: ClaimData;
+  data: ClaimData;
   stage?: ClaimStage;
 }) {
   const showsClaim = stage === "ready" || stage === "stale" || stage === "ungradeable";
@@ -110,15 +117,22 @@ export function ClaimScreen({
           <Chevron direction="left" size={16} stroke="currentColor" />
           Ledger
         </Link>
-        <span
-          style={{
-            font: "400 10.5px/1 'JetBrains Mono', monospace",
-            letterSpacing: "0.045em",
-            color: "var(--c-muted)",
-          }}
-        >
-          {data.position.index} / {data.position.total}
-        </span>
+        {/* The counter is a fact about a claim that was read. On loading, error
+            and missing there is no claim, so a position for it is an assertion
+            the screen cannot make: "2 / 5" sitting above "There is no claim at
+            this address" is the header contradicting the body. Gated on the
+            same condition the claim body is. */}
+        {showsClaim ? (
+          <span
+            style={{
+              font: "400 10.5px/1 'JetBrains Mono', monospace",
+              letterSpacing: "0.045em",
+              color: "var(--c-muted)",
+            }}
+          >
+            {data.position.index} / {data.position.total}
+          </span>
+        ) : null}
       </div>
 
       <div style={{ flex: 1, padding: `22px ${PAD} 24px` }}>
@@ -344,7 +358,11 @@ function ActionBar({ ungradeable }: { ungradeable: boolean }) {
 
 function ClaimSkeleton() {
   return (
-    <div aria-busy="true" aria-label="Loading this claim">
+    /* role="status" is load bearing, not decoration. aria-label on a bare div
+       lands on the generic role, which prohibits an author name, so without
+       the role a screen reader arriving here announces nothing at all: no
+       label, no content, just silence where the claim will be. */
+    <div role="status" aria-busy="true" aria-label="Loading this claim">
       <div className={styles.sk} style={{ height: "11px", width: "38%" }} />
       <div className={styles.sk} style={{ height: "56px", marginTop: "13px" }} />
       <div className={styles.sk} style={{ height: "1px", marginTop: "20px" }} />

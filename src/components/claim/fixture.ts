@@ -61,7 +61,14 @@ export interface ClaimData {
   /** What would settle the claim, and what would remove its premise. */
   settles: string;
   settlement: ClaimSettlement;
-  /** Publication time of the brief this claim came from. Read by the stale state. */
+  /**
+   * When the brief this claim came from was published, date and time.
+   *
+   * The date is not optional. The stale state is the only consumer and its
+   * whole point is that the brief is not today's, so a bare time reads as this
+   * morning and says the opposite of the sentence it sits in. The Ledger's
+   * fixture carries a bare time because there it describes today.
+   */
   generatedAt: string;
 }
 
@@ -85,5 +92,5 @@ export const CLAIM_FIXTURE: ClaimData = {
     window: `${MAX_WINDOW_DAYS} days, fixed at entry`,
     checked: "2026-11-04",
   },
-  generatedAt: "6:45 AM ET",
+  generatedAt: "August 5, 6:45 AM ET",
 };
