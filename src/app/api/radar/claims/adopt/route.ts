@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseWithUser } from "@/lib/supabase-server";
 import { todayPt } from "@/lib/session-date";
 import {
+  isMissingCommitNoteColumn,
+  missingColumnResponse,
+  parseCommitNote,
+} from "@/lib/commit-note";
+import {
   DEFAULT_ADOPT_HORIZON,
   MAX_WINDOW_DAYS,
   isPriceableClaimType,
@@ -11,27 +16,16 @@ import {
 
 export const dynamic = "force-dynamic";
 
-/**
- * Adopt-from-brief: one tap copies a brief call into the user's tracked calls
- * with adopted provenance, AND gives it a real forward window of its own.
- *
- * An adopted claim used to be born with resolution_window_start ===
- * resolution_window_end === the brief's date, and gradeable hardcoded false.
- * That made it a bookmark: it could never resolve, and its verdict was always
- * the original call's. A coherent feature, but not "track this thesis".
- *
- * It is now a FORWARD claim from today. The window runs today -> today +
- * horizon (default one week, caller may override, capped at MAX_WINDOW_DAYS),
- * and gradeable is decided by the SAME server-side rules the authoring route
- * applies, never trusted from the client. adopted_from_call_id is still
- * written, so provenance and the original brief verdict stay joinable.
- */
-
 export async function POST(request: NextRequest) {
   const { supabase, user } = await getSupabaseWithUser();
   if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
-  let body: { call_id?: string; horizon?: string; window_days?: number };
+  let body: {
+    call_id?: string;
+    horizon?: string;
+    window_days?: number;
+    commit_note?: string;
+  };
   try {
     body = await request.json();
   } catch {
@@ -39,6 +33,14 @@ export async function POST(request: NextRequest) {
   }
   const callId = (body.call_id ?? "").trim();
   if (!callId) return NextResponse.json({ error: "call_id required" }, { status: 400 });
+
+  /* The user's own reasoning, written in the Commit sheet. Optional on this
+     route because adoption predates the sheet and the desktop Track control
+     still posts without one. When present it must survive, which is the whole
+     point: see the insert guard below. */
+  const parsed = parseCommitNote(body.commit_note);
+  if (!parsed.ok) return NextResponse.json({ error: parsed.error }, { status: 400 });
+  const commitNote = parsed.note;
 
   const { data: call, error: callError } = await supabase
     .from("morning_brief_calls")
@@ -110,11 +112,23 @@ export async function POST(request: NextRequest) {
       status: "open",
       source: "adopted",
       adopted_from_call_id: callId,
+      ...(commitNote ? { commit_note: commitNote } : {}),
     })
     .select("id, resolution_window_start, resolution_window_end, gradeable")
     .single();
 
   if (error) {
+    /* Checked BEFORE the generic missing-table branch, because that branch
+       matches any "does not exist" and would otherwise swallow this one.
+
+       This refuses rather than retrying without the note. Dropping the column
+       from the insert and succeeding would return 200 to a user who typed
+       their reasoning and watched it vanish, which is the one failure this
+       screen exists to prevent. Better to be unable to commit than to accept
+       a commitment and discard half of it. */
+    if (commitNote && isMissingCommitNoteColumn(error)) {
+      return NextResponse.json(missingColumnResponse(), { status: 503 });
+    }
     const missing = error.code === "42P01" || /does not exist/i.test(error.message ?? "");
     if (missing) {
       return NextResponse.json(

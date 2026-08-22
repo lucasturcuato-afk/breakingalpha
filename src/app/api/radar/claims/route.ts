@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseWithUser } from "@/lib/supabase-server";
+import {
+  isMissingCommitNoteColumn,
+  missingColumnResponse,
+  parseCommitNote,
+} from "@/lib/commit-note";
 import { todayPt } from "@/lib/session-date";
 
 export const dynamic = "force-dynamic";
@@ -177,6 +182,15 @@ export async function POST(request: NextRequest) {
         ? null
         : "Not price-gradeable in v1; tracked as context only.";
 
+  /* The user's own reasoning from the Commit sheet. Note the two are unrelated
+     despite the similar names: gradeabilityNote above is the server explaining
+     itself, this is the user explaining themselves. */
+  const parsedNote = parseCommitNote(body.commit_note);
+  if (!parsedNote.ok) {
+    return NextResponse.json({ error: parsedNote.error }, { status: 400 });
+  }
+  const commitNote = parsedNote.note;
+
   const conf =
     typeof body.confidence_in_reduction === "number" &&
     body.confidence_in_reduction >= 0 &&
@@ -208,11 +222,18 @@ export async function POST(request: NextRequest) {
       confidence_in_reduction: conf,
       status: "open",
       source: "authored",
+      ...(commitNote ? { commit_note: commitNote } : {}),
     })
     .select("id")
     .single();
 
   if (error) {
+    /* Before isMissingTable, which matches any "does not exist" and would
+       otherwise swallow this. Refuses the write rather than storing the claim
+       without the reasoning the user attached to it. */
+    if (commitNote && isMissingCommitNoteColumn(error)) {
+      return NextResponse.json(missingColumnResponse(), { status: 503 });
+    }
     if (isMissingTable(error)) {
       return NextResponse.json(
         { error: "Calls are not set up yet (migration pending)." },
