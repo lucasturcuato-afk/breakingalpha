@@ -404,10 +404,17 @@ class WrongOrderRefusalTest(unittest.TestCase):
                                   fetch_contract=contract)
 
     def test_pacing_below_the_measured_budget_is_refused(self):
-        """The current 0.15 s is 400 calls/min against a measured 10 to 11 per
-        52 s. A lane D that ships everything else but keeps that pacing still
-        cannot run."""
-        contract = dict(LANE_D_SHIPPED, min_interval_s=wikidata._REQUEST_DELAY)
+        """0.15 s is 400 calls/min against a measured 10 to 11 per 52 s. A lane
+        D that ships everything else but keeps that pacing still cannot run.
+
+        The literal 0.15, not wikidata._REQUEST_DELAY. This used to read the
+        live constant, which silently made the test depend on lane D NOT having
+        landed: lane D (#630) redefines _REQUEST_DELAY as
+        _RATE_WINDOW_SECONDS / _MAX_CALLS_PER_WINDOW = 6.0 s, which CLEARS the
+        5.2 s requirement, so the refusal correctly stops being raised and this
+        test failed for a reason that was not a defect. What the test is about
+        is the too-fast pacing value, so it names it."""
+        contract = dict(LANE_D_SHIPPED, min_interval_s=0.15)
         with self.assertRaises(R.PreconditionFailure) as ctx:
             R.check_preconditions(R.MODE_REFETCH, resolver_contract=LANE_C_SHIPPED,
                                   fetch_contract=contract)
