@@ -133,10 +133,20 @@ export function RecordScreen({
           : null}
       </div>
 
-      {/* No trailing spacer under the bar. The shell's scroller already
-          reserves the tab bar and the safe area, and a spacer on top of that
-          opened a gap between the resting bar and the tab bar at full scroll. */}
       {showExport ? <ExportBar count={entries.length} /> : null}
+
+      {/* The tab bar's height, reserved a second time, because the shell's
+          reservation does not reach this content.
+
+          The shell pads its scroller by exactly this, but the record overflows
+          an intermediate `h-full` box, and a scroller's end padding is not
+          added to the scrollable overflow of a descendant that overflows it.
+          Measured at 390x844 with 41 entries: scrollHeight 7346 against a root
+          of 7346, so the padding contributed nothing, the root's last pixel
+          landed at 844 behind the tab bar, and the sticky bar at its resting
+          bottom of 785 covered the final result line, which ended at 727.
+          With this the bar rests flush on the last row instead. */}
+      <div style={{ height: "calc(var(--mobile-tabbar-height) + env(safe-area-inset-bottom))" }} />
     </div>
   );
 }
