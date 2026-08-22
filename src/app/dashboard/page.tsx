@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect, useMemo, type ReactNode } from "react";
+import { useState, useEffect, useMemo, Suspense, type ReactNode } from "react";
 import { createBrowserClient } from "@supabase/ssr";
 import { AppShell } from "@/components/shell";
+import { DashboardScreen, MobileDashboardRoute } from "@/components/dashboard-mobile";
 import { useUserProfile } from "@/hooks/useUserProfile";
 import { DashTile } from "@/components/dashboard/dash-tile";
 import {
@@ -661,7 +662,23 @@ function DashboardPageInner() {
       mood={mood}
       moodHeadline={moodHeadline}
       moodDetails={moodDetails}
+      mobileFullBleed
     >
+      {/* Today, below md. The mobile drawing of this route, composed beside
+          the desktop layout rather than replacing it: every loader, widget and
+          reveal gate below is untouched and still runs the desk at every width
+          above the breakpoint.
+
+          Gating lives in a CLASS, never in an inline style. An inline display
+          beats the class at every breakpoint, which is the defect that shipped
+          the tab bar to desktop once already. */}
+      <div className="md:hidden">
+        <Suspense fallback={<DashboardScreen stage="loading" />}>
+          <MobileDashboardRoute />
+        </Suspense>
+      </div>
+
+      <div className="hidden md:block">
       <DashboardRevealGate>
       <div className="dash-contentwrap dash-dots max-w-[1440px] mx-auto px-6 md:px-12 py-6 md:py-8 pb-16">
         <CursorGlow />
@@ -937,6 +954,7 @@ function DashboardPageInner() {
 
       </div>
       </DashboardRevealGate>
+      </div>
     </AppShell>
   );
 }
