@@ -66,18 +66,25 @@ export function EveningWrapScreen({
   const [closeOpen, setCloseOpen] = useState(false);
   const [bannerShown, setBannerShown] = useState(true);
 
+  /* NO GUTTER ON THE ROOT, and that is the load-bearing part.
+     The prototype's `#v3phone` (line 247) carries no padding; every gutter on
+     this screen is drawn by the block that needs it, and the ticker and the
+     masthead deliberately have none. `parity_harness.py:1062` injects a
+     `padding:0 var(--v3-pad)` onto the phone that the real file does not have,
+     so the design side of a 390 parity run measures a 310px text column
+     against this screen's correct 350. Matching the harness here would ship
+     the wrap 40px too narrow to satisfy a measuring bug. Run the harness at
+     --width 430 instead: 430 minus the injected gutter is 390, and both sides
+     then measure 350. */
   return (
-    <div
-      data-parity="evening"
-      style={{ backgroundColor: "var(--c-bg)", minHeight: "100%", padding: `0 ${PAD}` }}
-    >
+    <div data-parity="evening" style={{ backgroundColor: "var(--c-bg)", minHeight: "100%" }}>
       {/* Built once, in src/components/ledger, and imported here. The barrel
           says so in a comment: the design carries one ticker, not two. */}
       <MobileTickerStrip />
       {bannerShown ? <PersonalizationBanner data={data} onDismiss={() => setBannerShown(false)} /> : null}
 
       {stage === "loading" ? <WrapSkeleton /> : null}
-      {stage === "none" ? <WrapNone /> : null}
+      {stage === "none" ? <WrapNone data={data} /> : null}
       {stage === "error" ? <WrapError /> : null}
 
       {stage === "ready" || stage === "stale" ? (
@@ -96,15 +103,19 @@ export function EveningWrapScreen({
           <p style={{ margin: "18px 0 0", font: `400 17px/1.55 ${PLAYFAIR}`, color: "var(--c-ink)", textWrap: "pretty" }}>
             {data.close.lede}
           </p>
+          {/* Keyed by position, not by content. A prefix of the paragraph is
+              not unique: two paragraphs that open with the same clause collide
+              and React drops one of them. The list is append-only and never
+              reordered, so the index is the stable identity here. */}
           {data.close.body.slice(0, CLOSE_VISIBLE_PARAGRAPHS).map((b, i) => (
-            <p key={b.slice(0, 24)} style={{ margin: `${i === 0 ? 12 : 11}px 0 0`, font: "400 var(--v3-body)/var(--v3-lead) Inter, sans-serif", color: "var(--c-body)", textWrap: "pretty" }}>
+            <p key={i} style={{ margin: `${i === 0 ? 12 : 11}px 0 0`, font: "400 var(--v3-body)/var(--v3-lead) Inter, sans-serif", color: "var(--c-body)", textWrap: "pretty" }}>
               {b}
             </p>
           ))}
           {closeOpen ? (
             <div className={motion.enter}>
-              {data.close.body.slice(CLOSE_VISIBLE_PARAGRAPHS).map((b) => (
-                <p key={b.slice(0, 24)} style={{ margin: "11px 0 0", font: "400 var(--v3-body)/var(--v3-lead) Inter, sans-serif", color: "var(--c-body)", textWrap: "pretty" }}>
+              {data.close.body.slice(CLOSE_VISIBLE_PARAGRAPHS).map((b, i) => (
+                <p key={i} style={{ margin: "11px 0 0", font: "400 var(--v3-body)/var(--v3-lead) Inter, sans-serif", color: "var(--c-body)", textWrap: "pretty" }}>
                   {b}
                 </p>
               ))}
@@ -442,7 +453,13 @@ function CloseHero({ data }: { data: EveningWrapData }) {
         }}
       >
         {c.scorecard.map((cell, i) => (
-          <ScorecardTile key={cell.label} cell={cell} column={i % 3} row={Math.floor(i / 3)} />
+          <ScorecardTile
+            key={cell.label}
+            cell={cell}
+            column={i % 3}
+            row={Math.floor(i / 3)}
+            lastRow={Math.floor((c.scorecard.length - 1) / 3)}
+          />
         ))}
       </div>
     </div>
@@ -452,15 +469,29 @@ function CloseHero({ data }: { data: EveningWrapData }) {
 /**
  * One scorecard cell. The rules between cells are drawn on the trailing and
  * bottom edges only, so no cell carries a coloured rule on its leading edge.
+ *
+ * The bottom rule is read off the grid's own last row rather than hardcoded to
+ * the first, so a loader that answers with anything other than six cells still
+ * draws a rule between every pair of rows and none under the last one.
  */
-function ScorecardTile({ cell, column, row }: { cell: ScorecardCell; column: number; row: number }) {
+function ScorecardTile({
+  cell,
+  column,
+  row,
+  lastRow,
+}: {
+  cell: ScorecardCell;
+  column: number;
+  row: number;
+  lastRow: number;
+}) {
   return (
     <div
       style={{
         backgroundColor: "var(--c-inverse)",
         padding: "11px 12px",
         borderRight: column < 2 ? "1px solid rgba(212,168,75,0.15)" : undefined,
-        borderBottom: row === 0 ? "1px solid rgba(212,168,75,0.15)" : undefined,
+        borderBottom: row < lastRow ? "1px solid rgba(212,168,75,0.15)" : undefined,
       }}
     >
       <div style={{ font: `400 10px/1 ${MONO}`, letterSpacing: "0.07em", color: ON_ESPRESSO.cellLabel }}>{cell.label}</div>
@@ -588,8 +619,7 @@ function WrapSkeleton() {
  * only honest because this branch is now separate from the error branch below.
  * See the PR body: the desktop page cannot currently tell the two apart.
  */
-function WrapNone() {
-  const d = EVENING_FIXTURE;
+function WrapNone({ data }: { data: EveningWrapData }) {
   return (
     <div
       className={motion.enter}
@@ -604,7 +634,7 @@ function WrapNone() {
         No evening wrap available
       </p>
       <p style={{ margin: "10px 0 0", font: "400 13px/1.6 Inter, sans-serif", color: "var(--c-secondary)", maxWidth: "32ch", textWrap: "pretty" }}>
-        {`Nothing failed to load. The wrap publishes at ${d.publishesAt}, after the close. Anything reviewed today is already on your record.`}
+        {`Nothing failed to load. The wrap publishes at ${data.publishesAt}, after the close. Anything reviewed today is already on your record.`}
       </p>
       {/* TODO(PR #643 sibling units): the record screen is step 6 and has no
           route yet, so this is drawn as the design draws it and wired to a

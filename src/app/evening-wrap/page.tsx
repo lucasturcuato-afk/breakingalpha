@@ -195,6 +195,31 @@ function formatTimePretty(d: Date): string {
   });
 }
 
+/**
+ * Whether the mobile redesign's fixture-rendered wrap may draw.
+ *
+ * `/evening-wrap` is not `/ledger`. The Ledger was a new route with no prior
+ * behaviour, so a fixture there regressed nothing. This route is live and
+ * authenticated: it already reads the reader's own wrap off
+ * `/api/briefing?type=evening`. Letting the fixture render unconditionally
+ * would put invented index levels, an invented dateline and an invented call
+ * in front of a real reader on a phone, on a product whose entire claim is
+ * that nothing is fabricated and nothing is hidden. So the fixture is gated
+ * and production keeps exactly the behaviour it has today.
+ *
+ * Only NEXT_PUBLIC_ names survive into the client bundle, so the two signals
+ * below are the only ones this component can read. It fails CLOSED: if
+ * NEXT_PUBLIC_VERCEL_ENV is not exposed to the build, the preview loses the
+ * screen and production still cannot reach it. Never the other way round.
+ *
+ * Delete this constant and render the branch unconditionally the moment the
+ * screen is wired to the real briefing payload. That is one line, and it is
+ * the only thing standing between this screen and production.
+ */
+const MOBILE_FIXTURE_VISIBLE =
+  process.env.NODE_ENV !== "production" ||
+  process.env.NEXT_PUBLIC_VERCEL_ENV === "preview";
+
 export default function EveningWrapPage() {
   const { profile } = useUserProfile();
   const [briefing, setBriefing] = useState<BriefingData | null>(null);
@@ -775,13 +800,15 @@ export default function EveningWrapPage() {
 
           Suspense is required, not decorative: the branch reads `?stage=` with
           `useSearchParams`, which needs a boundary above whatever calls it. */}
-      <Suspense fallback={null}>
-        <div className="md:hidden">
-          <EveningWrapMobile />
-        </div>
-      </Suspense>
+      {MOBILE_FIXTURE_VISIBLE ? (
+        <Suspense fallback={null}>
+          <div className="md:hidden">
+            <EveningWrapMobile />
+          </div>
+        </Suspense>
+      ) : null}
 
-      <div className="hidden md:block">
+      <div className={MOBILE_FIXTURE_VISIBLE ? "hidden md:block" : "contents"}>
     <AppShell
       pageTitle="Evening Wrap"
       mood={liveMood.mood}
