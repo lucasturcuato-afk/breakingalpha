@@ -20,12 +20,16 @@ import type { ReactNode } from "react";
  *   scale="row"     claim 15px/1.42 500    prose 12.5px/1.5
  *   scale="screen"  claim 21px/1.32 600    prose 13.5px/1.6
  *
- * `screen` is the full-screen expansion of a settled entry, measured off the
- * prototype's isEntry block. It is a third value on the axis this primitive is
- * already parameterised by, not a branch: every per-scale number now lives in
- * the table below, so adding one adds no code path. The card and row rows carry
- * exactly the values they resolved to before, so nothing that consumed them
- * moves.
+ * `screen` is the full-screen expansion of a claim-bearing object, drawn by
+ * both the Claim screen and the Entry screen. It is a third value on the axis
+ * this primitive is already parameterised by, not a branch: every per-scale
+ * number lives in the table below, so adding one adds no code path. The card
+ * and row rows carry exactly the values they resolved to before, so nothing
+ * that consumed them moves.
+ *
+ * The table is exported as CLAIM_TYPE_SCALE so a wrapper rendering something
+ * the four slots have no place for, two reading paragraphs rather than one,
+ * still draws it in this file's type rather than in a copy of it.
  *
  * The container is deliberately NOT part of this primitive. A claim sits in a
  * bordered, filled, 12px-radius card and an entry sits in a ruled row with no
@@ -35,9 +39,13 @@ import type { ReactNode } from "react";
 
 export type ClaimScale = "card" | "row" | "screen";
 
-const SCALE = {
+export const CLAIM_TYPE_SCALE = {
   card: {
     claim: "500 var(--v3-claim)/1.4 var(--font-playfair-display), serif",
+    /* normal is the initial value, so naming it here changes nothing that
+       renders. It is written out because the screen scale does track, and a
+       tracked scale sitting beside two that inherit whatever an ancestor set
+       is the shape that drifts. */
     claimTracking: "normal",
     claimMargin: "10px 0 0",
     prose: "400 var(--v3-body)/var(--v3-lead) var(--font-inter), sans-serif",
@@ -56,6 +64,12 @@ const SCALE = {
     claim: "600 21px/1.32 var(--font-playfair-display), serif",
     claimTracking: "-0.01em",
     claimMargin: "14px 0 0",
+    /* 13.5px/1.6, ruled 2026-08-25. 13.5 is what the rendered prototype
+       measures on a detail screen, and a measured value beats the rounder 14
+       the handoff prose reaches for. The lead is 1.6, which is what
+       `--v3-lead` already holds, but it is written as a literal beside the
+       literal size: the token carries the card's density, and a screen that
+       borrowed it would follow the card the next time the card is retuned. */
     prose: "400 13.5px/1.6 var(--font-inter), sans-serif",
     proseMargin: "9px 0 0",
   },
@@ -94,7 +108,7 @@ export function ClaimAnatomy({
   proseClassName,
   proseTrailing,
 }: ClaimAnatomyProps) {
-  const s = SCALE[scale];
+  const s = CLAIM_TYPE_SCALE[scale];
   const proseParagraph = prose ? (
     <p
       className={proseClassName}

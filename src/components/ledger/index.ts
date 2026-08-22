@@ -6,6 +6,7 @@ export { MobileTickerStrip } from "./mobile-ticker-strip";
 export type { TickerCell } from "./mobile-ticker-strip";
 export {
   ClaimAnatomy,
+  CLAIM_TYPE_SCALE,
   OutcomeLead,
   OUTCOME_STATES,
   OUTCOME_TOKENS,

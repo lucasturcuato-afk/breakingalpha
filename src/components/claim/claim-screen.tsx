@@ -1,0 +1,424 @@
+"use client";
+
+import Link from "next/link";
+import { ClaimAnatomy, CLAIM_TYPE_SCALE, Chevron } from "@/components/ledger";
+import { UNGRADEABLE_REASON } from "@/components/calls/TrackCallControl";
+import { CLAIM_FIXTURE, type ClaimData } from "./fixture";
+import styles from "./claim.module.css";
+
+/**
+ * The Claim screen. One call opened out of the Ledger: what the desk sees, what
+ * would settle it, and the benchmark and window it will be judged against.
+ *
+ * Every measurement is taken off the rendered prototype with getComputedStyle.
+ * The prototype's sc-if blocks need a runtime that does not resolve over
+ * file://, so the screen was rendered through `scripts/parity_harness.py`,
+ * which resolves those branches from the design's own state map.
+ *
+ * WHAT THIS SCREEN IS NOT ALLOWED TO DO YET. Its primary action opens the
+ * commit sheet, and the commit sheet is held: the note it requires has no
+ * column to be written to, which is open in PR #643. The button is built in
+ * its drawn state, at its drawn position, with its drawn label, and does
+ * nothing. `src/components/ledger/ledger-claim-card.tsx` set that precedent by
+ * making `onTrack` optional for the same reason; the difference here is that
+ * this screen's whole bottom bar IS the action, so it renders inert rather
+ * than not at all.
+ *
+ * ANATOMY. The eyebrow and the claim come from `ClaimAnatomy` at the `screen`
+ * scale, which is the same four slots the Ledger card and the entry row use.
+ * Everything below the claim sits BESIDE the anatomy rather than inside it:
+ * the design's reading is two paragraphs and the anatomy's prose slot is one
+ * `<p>`, which a second paragraph cannot nest inside. The two paragraphs still
+ * draw in the anatomy's own type, read from `CLAIM_TYPE_SCALE`, so there is no
+ * second copy of the scale to drift from the first.
+ */
+
+const PAD = "var(--v3-pad)";
+
+/* The prototype is a fixed 844px phone and scrolls inside its own body. Here
+   the screen lives in the app shell's scrollport, which is already 100dvh with
+   the tab bar's height reserved at its foot, so a second scroller nested in it
+   would give the screen two scrollbars and hide the action bar behind the tab
+   bar. The screen fills that box instead and lets the shell do the scrolling:
+   the action bar is the last block either way, and on a claim short enough to
+   fit it lands exactly where the design pins it. */
+const SCREEN_HEIGHT =
+  "calc(100dvh - var(--mobile-tabbar-height) - env(safe-area-inset-bottom))";
+
+/**
+ * ready        the claim, with its action bar
+ * loading      the read is in flight
+ * error        the read failed, which is never rendered as emptiness
+ * missing      the read succeeded and there is no such claim
+ * stale        the claim came from a brief that is no longer today's
+ * ungradeable  no honest grader exists for this claim type, so nothing can be
+ *              committed to and the action bar carries the reason instead
+ *
+ * The design draws exactly one of these, `ready`. The prototype's dev strip
+ * enumerates lifecycle states for the brief and the wrap and none for a claim,
+ * so the other five are built from the repo's own copy where it has some and
+ * are flagged as authored where it does not. See the PR body.
+ */
+export type ClaimStage = "ready" | "loading" | "error" | "missing" | "stale" | "ungradeable";
+
+export function ClaimScreen({
+  data = CLAIM_FIXTURE,
+  stage = "ready",
+}: {
+  data?: ClaimData;
+  stage?: ClaimStage;
+}) {
+  const showsClaim = stage === "ready" || stage === "stale" || stage === "ungradeable";
+
+  return (
+    <div
+      data-parity="claim"
+      className={styles.enter}
+      style={{
+        backgroundColor: "var(--c-bg)",
+        minHeight: SCREEN_HEIGHT,
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
+      <div
+        style={{
+          flex: "none",
+          minHeight: "48px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: `0 ${PAD}`,
+          borderBottom: "1px solid var(--c-border)",
+        }}
+      >
+        {/* A real anchor. The design draws a span with a click handler, which
+            is the one thing on this screen that a keyboard and a screen reader
+            both need to be something else. */}
+        <Link
+          href="/ledger"
+          style={{
+            minHeight: "44px",
+            display: "flex",
+            alignItems: "center",
+            gap: "6px",
+            font: "500 13px/1 Inter, sans-serif",
+            color: "var(--c-secondary)",
+            textDecoration: "none",
+          }}
+        >
+          <Chevron direction="left" size={16} stroke="currentColor" />
+          Ledger
+        </Link>
+        <span
+          style={{
+            font: "400 10.5px/1 'JetBrains Mono', monospace",
+            letterSpacing: "0.045em",
+            color: "var(--c-muted)",
+          }}
+        >
+          {data.position.index} / {data.position.total}
+        </span>
+      </div>
+
+      <div style={{ flex: 1, padding: `22px ${PAD} 24px` }}>
+        {stage === "loading" ? <ClaimSkeleton /> : null}
+        {stage === "error" ? <ClaimError /> : null}
+        {stage === "missing" ? <ClaimMissing /> : null}
+        {stage === "stale" ? <StaleNotice generatedAt={data.generatedAt} /> : null}
+
+        {showsClaim ? (
+          <>
+            <ClaimAnatomy
+              scale="screen"
+              lead={
+                <span style={{ font: "600 11px/1 Inter, sans-serif", color: "var(--c-secondary)" }}>
+                  {data.eyebrow}
+                </span>
+              }
+              claim={data.claim}
+            />
+
+            <Hairline marginTop="20px" />
+
+            <div
+              style={{
+                marginTop: "16px",
+                font: "400 italic 12.5px/1 'Playfair Display', serif",
+                color: "var(--c-secondary)",
+              }}
+            >
+              what the desk sees
+            </div>
+            {data.reading.map((paragraph, i) => (
+              <p
+                key={i}
+                style={{
+                  /* 10px under the label, 11px between paragraphs. The design
+                     draws both and they are not the same number. */
+                  margin: `${i === 0 ? "10px" : "11px"} 0 0`,
+                  font: CLAIM_TYPE_SCALE.screen.prose,
+                  color: "var(--c-body)",
+                  textWrap: "pretty",
+                }}
+              >
+                {paragraph}
+              </p>
+            ))}
+
+            <div
+              style={{
+                marginTop: "18px",
+                padding: "14px 15px",
+                border: "1px solid var(--c-border)",
+                borderRadius: "12px",
+                backgroundColor: "var(--c-well)",
+              }}
+            >
+              {/* Capitals, and sanctioned. The design's own carve-out is that
+                  they survive in the monospace machine record and nowhere
+                  else; this is a mono label on a well, set as literal capitals
+                  rather than by text-transform, so it is what it says it is. */}
+              <div style={{ font: "400 11px/1 'JetBrains Mono', monospace", color: "var(--c-muted)" }}>
+                WHAT WOULD SETTLE IT
+              </div>
+              <p
+                style={{
+                  margin: "9px 0 0",
+                  font: "400 13.5px/1.6 Inter, sans-serif",
+                  color: "var(--c-body)",
+                  textWrap: "pretty",
+                }}
+              >
+                {data.settles}
+              </p>
+            </div>
+
+            <Hairline marginTop="18px" />
+
+            <div style={{ marginTop: "14px", display: "flex", flexDirection: "column", gap: "10px" }}>
+              <SettlementRow label="Measured against" value={data.settlement.benchmarks} />
+              <SettlementRow label="Window" value={data.settlement.window} />
+              <SettlementRow label="Checked" value={data.settlement.checked} />
+            </div>
+          </>
+        ) : null}
+      </div>
+
+      {showsClaim ? <ActionBar ungradeable={stage === "ungradeable"} /> : null}
+    </div>
+  );
+}
+
+function Hairline({ marginTop }: { marginTop: string }) {
+  return <div style={{ marginTop, height: "1px", backgroundColor: "var(--c-border)" }} />;
+}
+
+function SettlementRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: "12px" }}>
+      <span style={{ font: "400 12.5px/1 Inter, sans-serif", color: "var(--c-secondary)" }}>{label}</span>
+      <span
+        style={{
+          font: "500 12px/1 'JetBrains Mono', monospace",
+          color: "var(--c-ink)",
+          textAlign: "right",
+        }}
+      >
+        {value}
+      </span>
+    </div>
+  );
+}
+
+/**
+ * The bottom bar. Two controls in the design, and both of them are inert.
+ *
+ * The primary opens the commit sheet, which is held. The secondary is drawn
+ * with no handler, no label and no state anywhere in the prototype: it is a
+ * bordered square carrying the same rotated 12px diamond the design uses as its
+ * "on your ledger" mark, and nothing in the handoff says what pressing it
+ * does. It is built as a real button with an authored label rather than
+ * dropped, because removing it would change the geometry of the bar the
+ * primary sits in, and built as a button rather than a div because a
+ * cursor:pointer element with no control behind it is a defect the runtime
+ * audit rejects. The label is inferred. See the PR body.
+ */
+function ActionBar({ ungradeable }: { ungradeable: boolean }) {
+  function openCommitSheet() {
+    // TODO(PR #643): open the commit sheet. It is not built, and cannot be
+    // until the note it requires has somewhere to persist. Deliberately inert
+    // rather than partially wired: a sheet that takes a note and drops it is
+    // worse than a button that does nothing visible.
+  }
+
+  function saveClaim() {
+    // TODO: no save path exists for a claim. `useSavedDeals` and the
+    // `user_saved_deals` table are deal-shaped, and github.md records that the
+    // live Saved surface covers deals only. Inert until one exists.
+  }
+
+  return (
+    <div
+      style={{
+        flex: "none",
+        padding: `14px ${PAD} 16px`,
+        borderTop: "1px solid var(--c-border)",
+        display: "flex",
+        gap: "9px",
+      }}
+    >
+      {ungradeable ? (
+        <p
+          style={{
+            margin: 0,
+            font: "400 11.5px/1.5 Inter, sans-serif",
+            color: "var(--c-muted)",
+          }}
+        >
+          {UNGRADEABLE_REASON}
+        </p>
+      ) : (
+        <>
+          <button
+            type="button"
+            onClick={saveClaim}
+            aria-label="Save this claim"
+            className={styles.press}
+            style={{
+              flex: "none",
+              minWidth: "52px",
+              minHeight: "52px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              appearance: "none",
+              margin: 0,
+              padding: 0,
+              background: "none",
+              border: "1px solid var(--c-border)",
+              borderRadius: "9px",
+              cursor: "pointer",
+            }}
+          >
+            <span
+              aria-hidden="true"
+              style={{
+                display: "inline-block",
+                width: "12px",
+                height: "12px",
+                border: "1.5px solid var(--c-secondary)",
+                transform: "rotate(45deg)",
+              }}
+            />
+          </button>
+
+          <button
+            type="button"
+            onClick={openCommitSheet}
+            className={styles.press}
+            style={{
+              flex: 1,
+              minHeight: "52px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              appearance: "none",
+              margin: 0,
+              padding: 0,
+              border: 0,
+              backgroundColor: "var(--c-inverse)",
+              borderRadius: "9px",
+              font: "600 14.5px/1 Inter, sans-serif",
+              color: "var(--c-oninv)",
+              cursor: "pointer",
+            }}
+          >
+            Track this call
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
+
+function ClaimSkeleton() {
+  return (
+    <div aria-busy="true" aria-label="Loading this claim">
+      <div className={styles.sk} style={{ height: "11px", width: "38%" }} />
+      <div className={styles.sk} style={{ height: "56px", marginTop: "13px" }} />
+      <div className={styles.sk} style={{ height: "1px", marginTop: "20px" }} />
+      <div className={styles.sk} style={{ height: "92px", marginTop: "16px" }} />
+      <div className={styles.sk} style={{ height: "76px", marginTop: "18px", borderRadius: "12px" }} />
+    </div>
+  );
+}
+
+/**
+ * A failed read is not an empty result, and the copy says so in both
+ * directions. The principle is already stated verbatim in the repo, and the
+ * Ledger's own error block words it the same way, so the two surfaces do not
+ * describe the same failure differently.
+ */
+function ClaimError() {
+  return (
+    <div role="alert">
+      <p style={{ margin: 0, font: "500 17px/1.4 'Playfair Display', serif", color: "var(--c-ink)" }}>
+        We could not load this claim.
+      </p>
+      <p
+        style={{
+          margin: "10px 0 0",
+          font: "400 13px/1.6 Inter, sans-serif",
+          color: "var(--c-secondary)",
+          maxWidth: "32ch",
+        }}
+      >
+        This is a failed read, not an empty result. Nothing is being hidden, and the claim is
+        unchanged on the ledger.
+      </p>
+    </div>
+  );
+}
+
+function ClaimMissing() {
+  return (
+    <div>
+      <p style={{ margin: 0, font: "500 17px/1.4 'Playfair Display', serif", color: "var(--c-ink)" }}>
+        There is no claim at this address.
+      </p>
+      <p
+        style={{
+          margin: "10px 0 0",
+          font: "400 13px/1.6 Inter, sans-serif",
+          color: "var(--c-secondary)",
+          maxWidth: "32ch",
+        }}
+      >
+        Nothing failed to load. A claim is never removed once it is written, so this one was
+        never here. Your open calls are unaffected.
+      </p>
+    </div>
+  );
+}
+
+function StaleNotice({ generatedAt }: { generatedAt: string }) {
+  return (
+    <div
+      style={{
+        marginBottom: "18px",
+        border: "1px solid var(--c-amber-edge)",
+        backgroundColor: "var(--c-amber-well)",
+        borderRadius: "12px",
+        padding: "13px 14px",
+      }}
+    >
+      <div style={{ font: "600 12px/1 Inter, sans-serif", color: "var(--c-ink)" }}>
+        This claim is from yesterday&rsquo;s brief.
+      </div>
+      <div style={{ marginTop: "4px", font: "400 11.5px/1.5 Inter, sans-serif", color: "var(--c-body)" }}>
+        Generated {generatedAt}. Its review date is unaffected.
+      </div>
+    </div>
+  );
+}
