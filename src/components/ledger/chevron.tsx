@@ -2,15 +2,8 @@
  * The design's chevron, in the three forms it actually draws.
  *
  * Every one is a 24-unit viewBox at stroke-width 2 with round caps, rendered at
- * 14px beside body copy and 15px on a tail action.
- *
- * The Ledger draws two, right and down. `left` was added by the Prepared record
- * unit, which is the first screen the design gives a back control to: its
- * masthead opens with a 16px left arrow and the word "Ledger". That is a
- * direction this component did not have, not a second anatomy, so it lands here
- * rather than as a private arrow on one screen. The design strokes the back
- * arrow at 1.8 where every other chevron is 2; kept at 2, since one component
- * drawing one weight is worth more than 0.2 of a pixel.
+ * 14px beside body copy and 15px on a tail action. Two paths, right and down,
+ * and nothing else: the design has no left or up chevron anywhere on the Ledger.
  *
  * The design strokes most of these with a colour literal whose value is exactly
  * `--c-muted` in both themes. Built with the token, per the same ruling that
@@ -23,12 +16,11 @@
  * announcing "chevron" twice per card is worse than announcing nothing.
  */
 
-export type ChevronDirection = "right" | "down" | "left";
+export type ChevronDirection = "right" | "down";
 
 const PATH: Record<ChevronDirection, string> = {
   right: "M9 6l6 6-6 6",
   down: "M6 9l6 6 6-6",
-  left: "M15 6l-6 6 6 6",
 };
 
 export function Chevron({
@@ -38,8 +30,7 @@ export function Chevron({
   style,
 }: {
   direction: ChevronDirection;
-  /** 14 beside body copy, 15 on a tail action, 16 on a back control. */
-  size?: 14 | 15 | 16;
+  size?: 14 | 15;
   /** `--c-gold` on the continuity lead row, `--c-muted` everywhere else. */
   stroke?: string;
   style?: React.CSSProperties;

@@ -4,6 +4,7 @@ import {
   RECORD_EMPTY_FIXTURE,
   RECORD_UNRESOLVED_FIXTURE,
   RECORD_FIXTURE,
+  RECORD_UNAVAILABLE,
   type RecordStage,
 } from "@/components/prepared-record";
 
@@ -31,6 +32,21 @@ import {
 
 const STAGES: RecordStage[] = ["ready", "loading", "error", "empty", "unresolved", "stale"];
 
+/**
+ * The fixture may not reach production. Delete this line and its two uses when
+ * a loader lands.
+ *
+ * /record is a new route, but it is not an anonymous one: the proxy gates it
+ * behind auth outside local dev, so the person who reaches it in production is
+ * a real signed-in user and this screen is a record of THEIR calls under THEIR
+ * name. An ungated fixture would show them forty-one calls they never made,
+ * signed by somebody else. That is a product defect rather than a visual one,
+ * and it does not announce itself. Fails closed: anything that is not
+ * development or a preview deployment gets the unavailable read.
+ */
+const FIXTURE_ALLOWED =
+  process.env.NODE_ENV !== "production" || process.env.NEXT_PUBLIC_VERCEL_ENV === "preview";
+
 export default async function RecordPage({
   searchParams,
 }: {
@@ -38,10 +54,12 @@ export default async function RecordPage({
 }) {
   const params = await searchParams;
   const raw = Array.isArray(params.stage) ? params.stage[0] : params.stage;
-  const stage = STAGES.includes(raw as RecordStage) ? (raw as RecordStage) : "ready";
+  const requested = STAGES.includes(raw as RecordStage) ? (raw as RecordStage) : "ready";
+  const stage = FIXTURE_ALLOWED ? requested : "error";
 
-  const data =
-    stage === "empty"
+  const data = !FIXTURE_ALLOWED
+    ? RECORD_UNAVAILABLE
+    : stage === "empty"
       ? RECORD_EMPTY_FIXTURE
       : stage === "unresolved"
         ? RECORD_UNRESOLVED_FIXTURE

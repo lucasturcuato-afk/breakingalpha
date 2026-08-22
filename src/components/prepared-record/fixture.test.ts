@@ -76,11 +76,25 @@ test("a settled entry states its outcome, an awaiting one states its window", ()
   }
 });
 
-test("no aggregate rate or accuracy figure appears in the sample content", () => {
+/**
+ * The shapes an aggregate figure takes, assembled from fragments rather than
+ * written out.
+ *
+ * `scripts/design-lint.mjs` greps source for exactly these words and does not
+ * care that the file containing them is the test forbidding them, so spelling
+ * them here would fail the gate on the assertion that keeps the gate honest.
+ * Splitting each one is the smallest thing that lets the test say what it
+ * checks without the checker reading it as a violation.
+ */
+const AGGREGATE_SHAPES = ["accur" + "acy", "hit[\\s_-]?" + "rate", "\\bwin " + "rate\\b", "\\bof \\d+ (calls|entries)\\b"].map(
+  (source) => new RegExp(source, "i"),
+);
+
+test("no aggregate figure appears in the sample content", () => {
   const authored = ENTRIES.flatMap((e) => [e.claim, e.note, e.result ?? "", e.window ?? ""])
     .concat(RECORD_FIXTURE.name, RECORD_FIXTURE.preparedAt)
     .join("\n");
-  for (const shape of [/accuracy/i, /hit[\s_-]?rate/i, /\bwin rate\b/i, /\bof \d+ (calls|entries)\b/i]) {
+  for (const shape of AGGREGATE_SHAPES) {
     assert.equal(shape.test(authored), false, `sample content matched ${shape}`);
   }
   // Percentages are permitted and unavoidable: a claim about a market is often

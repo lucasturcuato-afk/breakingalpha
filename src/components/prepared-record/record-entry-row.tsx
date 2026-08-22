@@ -72,7 +72,7 @@ export function RecordEntryRow({ date, state, claim, note, outcome, onOpen }: Re
           </span>
           {/* The dot is this build's, not the design's: the design's record row
               carries the word alone. Compliance fixes state as a dot plus the
-              state word, and it costs nothing to hold to that here. */}
+              state word, and it costs nothing to keep to that here. */}
           <span
             aria-hidden="true"
             style={{

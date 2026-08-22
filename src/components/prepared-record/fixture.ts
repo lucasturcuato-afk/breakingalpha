@@ -4,7 +4,7 @@ import type { OutcomeState } from "@/components/ledger";
  * Sample content for the Prepared record.
  *
  * The screen has no data source in this unit. `src/lib/your-record.ts` is the
- * correct model for it (see the provenance note in the PR body) but it returns
+ * correct model for it (see the provenance note in the PR body) but it yields
  * counts only: no entries list, no date range, no month grouping. So the screen
  * is built against a typed fixture, and the shape below IS the contract a real
  * loader has to satisfy. Swapping the fixture for a query should not touch a
@@ -477,7 +477,7 @@ export const RECORD_FIXTURE: RecordData = {
   preparedAt: "February 21, 2027",
 };
 
-/** The record when the user holds calls but nothing of theirs has resolved. */
+/** The record when the user has calls but nothing of theirs has resolved. */
 export const RECORD_UNRESOLVED_FIXTURE: RecordData = {
   ...RECORD_FIXTURE,
   entries: ENTRIES.filter((e) => e.state === "awaiting"),
@@ -489,4 +489,21 @@ export const RECORD_EMPTY_FIXTURE: RecordData = {
   ...RECORD_FIXTURE,
   entries: [],
   settledSincePrepared: 0,
+};
+
+/**
+ * No record at all: no name, no entries, nothing derived. What production
+ * renders while there is no loader behind this screen.
+ *
+ * Not a spread of the fixture. Everything in it is empty on purpose, because
+ * the one thing this screen must never do is show a person someone else's
+ * name over a record of calls they did not make. It pairs with `stage="error"`,
+ * whose copy is already exactly right for the case: a failed read, not an
+ * empty result, and nothing estimated in its place.
+ */
+export const RECORD_UNAVAILABLE: RecordData = {
+  name: "",
+  entries: [],
+  settledSincePrepared: 0,
+  preparedAt: "",
 };

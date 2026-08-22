@@ -3,8 +3,8 @@
  * flexes to fill the row, and the count of entries in that month.
  *
  * WHY THIS IS NOT `LedgerDateRule`. Same anatomy, different trailing element,
- * and that is the whole difference. The date rule's trailing slot holds a
- * CONTROL (the Evening wrap link, 44px, underlined, focusable). This one holds
+ * and that is the whole difference. The date rule's trailing slot carries a
+ * CONTROL (the Evening wrap link, 44px, underlined, focusable). This one carries
  * a NUMBER, which is not interactive and must not be sized like something that
  * is. Teaching the date rule an alternative trailing slot would be a branch
  * inside a component the Ledger, Dashboard and Evening Wrap all consume. The

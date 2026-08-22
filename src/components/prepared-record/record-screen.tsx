@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Chevron, OUTCOME_STATES } from "@/components/ledger";
+import { OUTCOME_STATES } from "@/components/ledger";
+import { BackChevron } from "./back-chevron";
 import { RecordEntryRow } from "./record-entry-row";
 import { RecordMonthRule } from "./record-month-rule";
 import {
@@ -169,7 +170,7 @@ function BackBar() {
           textDecoration: "none",
         }}
       >
-        <Chevron direction="left" size={16} />
+        <BackChevron />
         Ledger
       </Link>
     </div>
@@ -186,16 +187,21 @@ function Masthead({ data, summarize }: { data: RecordData; summarize: boolean })
       <div style={{ font: "400 11px/1 'JetBrains Mono', monospace", color: "var(--c-muted)" }}>
         PREPARED RECORD
       </div>
-      <h1
-        style={{
-          margin: "11px 0 0",
-          font: "700 25px/1.15 'Playfair Display', serif",
-          letterSpacing: "-0.02em",
-          color: "var(--c-ink)",
-        }}
-      >
-        {data.name}
-      </h1>
+      {/* The name is the signature on the artifact, so an absent one is left
+          absent rather than filled with a placeholder. A record headed by
+          somebody else's name is the one failure this screen cannot have. */}
+      {data.name ? (
+        <h1
+          style={{
+            margin: "11px 0 0",
+            font: "700 25px/1.15 'Playfair Display', serif",
+            letterSpacing: "-0.02em",
+            color: "var(--c-ink)",
+          }}
+        >
+          {data.name}
+        </h1>
+      ) : null}
       {/* The range is derived from the entries, never authored beside them. A
           hand-written range that outlives an edit to the list is how a record
           starts describing something other than itself. With no entries the
