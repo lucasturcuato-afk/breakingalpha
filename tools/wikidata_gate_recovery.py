@@ -152,11 +152,27 @@ def resolve_existing(idx, name):
     return _unique(idx, idx["by_norm"].get(normalize_company_key(name)))
 
 
-def resolve_widened(idx, name):
-    """Steps 1-6: adds the leading-token fold. Mirrors the shipped resolver."""
+def resolve_widened(idx, name, guard_step_five_refusals=True):
+    """Steps 1-6: adds the leading-token fold. Mirrors the shipped resolver,
+    ambiguity guard included.
+
+    THE GUARD. `_unique` yields None both when the candidate set is EMPTY and
+    when it holds more than one id, so `resolve_existing(...) is None` cannot
+    tell "step 5 found nothing" from "step 5 refused because it was
+    ambiguous". Chaining the fold off that None let surface 6 pick, by a weaker
+    relationship, a company surface 5 had already declined to choose between:
+    'Southern Co.' -> 'Southern Tooling, Inc.', 'DOMINOS PIZZA INC' ->
+    "Domino's Pizza China", "Domino's Pizza Group" -> "Domino's Pizza China",
+    'Aecon' -> 'Aecon Utilities'.
+
+    `guard_step_five_refusals=False` reproduces the pre-guard behavior, so the
+    cost of the guard can be measured on the same read rather than argued.
+    """
     canonical = resolve_existing(idx, name)
     if canonical:
         return canonical
+    if guard_step_five_refusals and idx["by_norm"].get(normalize_company_key(name)):
+        return None
     return _unique(idx, token_fold_candidates(
         idx["by_name_tokens"], idx["by_token_prefix"], name))
 
@@ -239,18 +255,22 @@ def gate_loss(articles, wdc, companies, lo, hi):
     return loss
 
 
-def report(idx, loss, label):
+def report(idx, loss, label, guard=True):
     total = sum(loss.values())
     existing = {n: resolve_existing(idx, n) for n in loss}
-    added = {}
+    added, unguarded_added = {}, {}
     for n in loss:
         if existing[n]:
             continue
-        w = resolve_widened(idx, n)
+        w = resolve_widened(idx, n, guard_step_five_refusals=guard)
         if w:
             added[n] = w
+        u = resolve_widened(idx, n, guard_step_five_refusals=False)
+        if u:
+            unguarded_added[n] = u
     n_existing = sum(loss[n] for n, c in existing.items() if c)
     n_added = sum(loss[n] for n in added)
+    n_unguarded = sum(loss[n] for n in unguarded_added)
     print(f"\n=== {label} ===")
     print(f"gate loss                  : {total} articles over {len(loss)} names")
     print(f"recovered, surfaces 1-5    : {n_existing} "
@@ -262,6 +282,15 @@ def report(idx, loss, label):
           f"({(n_existing + n_added) / total * 100:.1f}% of loss)")
     print(f"still unrecoverable        : {total - n_existing - n_added} "
           f"({(total - n_existing - n_added) / total * 100:.1f}% of loss)")
+    if guard:
+        dropped = {n: unguarded_added[n] for n in unguarded_added if n not in added}
+        print(f"COST OF THE AMBIGUITY GUARD: {n_unguarded - n_added} articles "
+              f"({(n_unguarded - n_added) / total * 100:.1f}% of loss) over "
+              f"{len(dropped)} names no longer folded")
+        print(f"  unguarded would have been: {n_existing + n_unguarded} "
+              f"({(n_existing + n_unguarded) / total * 100:.1f}% of loss)")
+        for n, c in sorted(dropped.items(), key=lambda kv: -loss[kv[0]])[:15]:
+            print(f"    {loss[n]:>4}  {n[:44]:<44} would have folded to -> {c[:36]}")
     return added
 
 

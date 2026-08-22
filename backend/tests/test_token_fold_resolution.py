@@ -85,6 +85,19 @@ COMPANIES = [
     {"id": "t15", "name": "Teva Pharms Intl GMBH", "ticker": None},
     # A two-character stem. Too short to fold onto whatever follows it.
     {"id": "t16", "name": "GE", "ticker": "GE"},
+    # --- Step-5 REFUSAL fixtures (see TokenFoldStepFiveRefusalTest) ---
+    # Two rows collapse to the single-token key "southern", so surface 5 is
+    # AMBIGUOUS for anything keying to it. A third, unrelated row extends that
+    # token, which is what direction B used to grab.
+    {"id": "t19", "name": "Southern Co", "ticker": "SO"},
+    {"id": "t20", "name": "Southern Company", "ticker": None},
+    {"id": "t21", "name": "Southern Tooling Inc", "ticker": None},
+    # The same shape with a TWO-token key, so the case is not only about
+    # single-token queries: "dominos pizza" is ambiguous on surface 5, and
+    # "Domino's Pizza China" is the unrelated extension.
+    {"id": "t22", "name": "Domino's Pizza Inc", "ticker": "DPZ"},
+    {"id": "t23", "name": "Domino's Pizza Corp", "ticker": None},
+    {"id": "t24", "name": "Domino's Pizza China", "ticker": None},
 ]
 
 ALIASES = [
@@ -244,6 +257,61 @@ class TokenFoldSafetyTest(_FoldCase):
 
     def test_unresolvable_name_still_returns_none(self):
         self.assertIsNone(self.resolve("Some Company Nobody Indexed"))
+
+
+# ---------------------------------------------------------------------------
+# 4. Surface 6 must not fire on a surface 5 REFUSAL
+# ---------------------------------------------------------------------------
+class TokenFoldStepFiveRefusalTest(_FoldCase):
+    """_unique_company_name yields None for an EMPTY candidate set and for an
+    AMBIGUOUS one alike, so `resolved is None` cannot tell "surface 5 found
+    nothing" from "surface 5 refused to choose". Chaining surface 6 off that
+    None let a weaker relationship pick a company the stronger surface had
+    already declined to pick between.
+
+    Measured false folds this produced in prod:
+        'Southern Co.'          -> 'Southern Tooling, Inc.'
+        'DOMINOS PIZZA INC'     -> "Domino's Pizza China"
+        "Domino's Pizza Group"  -> "Domino's Pizza China"
+        'Aecon'                 -> 'Aecon Utilities'
+    """
+
+    def test_ambiguous_normalized_key_refuses_instead_of_folding(self):
+        """Single-token key. 'Southern Co.' keys to ('southern',), which two
+        indexed rows share. Surface 5 refuses. Surface 6 must not then hand
+        back the unrelated 'Southern Tooling Inc'."""
+        self.assertIsNone(self.resolve("Southern Co."))
+
+    def test_ambiguity_guard_is_not_only_about_single_token_keys(self):
+        """Two-token key. 'DOMINOS PIZZA INC' keys to ('dominos', 'pizza'),
+        shared by two rows, and direction B would reach the three-token
+        "Domino's Pizza China". The apostrophe keeps the exact and
+        case-insensitive name surfaces from short-circuiting the case, exactly
+        as the prod strings did."""
+        self.assertIsNone(self.resolve("DOMINOS PIZZA INC"))
+
+    def test_a_clean_miss_on_surface_five_still_reaches_the_fold(self):
+        """The guard must cost nothing when surface 5 genuinely found nothing.
+        'Truist Financial' keys to ('truist', 'financial'), which no indexed
+        row carries, so the candidate set is empty rather than ambiguous and
+        the fold still runs."""
+        self.assertEqual(self.resolve("Truist Financial"), "Truist")
+
+    def test_the_guard_reads_the_candidate_set_not_the_resolved_value(self):
+        """Direct on the mechanism: the ambiguous key has more than one id, and
+        that is the signal the guard keys on."""
+        snap = ingest._entity_snapshot()
+        from company_match import normalize_company_key as _nk
+
+        self.assertGreater(len(snap["by_norm"].get(_nk("Southern Co."), ())), 1)
+        self.assertIsNone(ingest._unique_company_name(
+            snap, snap["by_norm"].get(_nk("Southern Co."))))
+        # And the fold, run unguarded, WOULD have produced the wrong answer.
+        self.assertEqual(
+            ingest._unique_company_name(snap, token_fold_candidates(
+                snap["by_name_tokens"], snap["by_token_prefix"], "Southern Co.")),
+            "Southern Tooling Inc",
+        )
 
 
 if __name__ == "__main__":
