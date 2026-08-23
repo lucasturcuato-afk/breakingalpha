@@ -72,7 +72,31 @@ export function DashboardScreen({
   stage?: DashStage;
   data?: DashboardData;
 }) {
-  const d = data ?? (stage === "empty" ? DASH_FIXTURE_EMPTY : DASH_FIXTURE);
+  /* The fixture is a development and preview affordance, never a production
+     fallback. `/dashboard` serves a real signed-in reader real data, so an
+     unguarded `data ?? DASH_FIXTURE` puts invented stories, invented record
+     counts and an invented market band in front of someone who will read them
+     as their own. Every other screen in this programme carries this gate; this
+     one shipped without it.
+
+     Falling back to DASH_FIXTURE_EMPTY is NOT sufficient and was the first
+     thing tried here. It zeroes the records and empties `stories`, but it
+     spreads `...DASH_FIXTURE`, so it still carries the invented market band,
+     and its `brief.sub` reads "Five calls, none decided yet", which is a
+     specific claim about a real reader's morning made with no data behind it.
+     An empty state that asserts a fact is not a safe fallback.
+
+     So in production, absent data renders as LOADING, which is the truthful
+     description of the situation: nothing has arrived. The skeleton asserts
+     nothing. `d` still needs a shape to destructure, and DASH_FIXTURE_EMPTY
+     supplies one that is never painted, because every branch below is gated on
+     `effectiveStage`. */
+  const fixturesAllowed =
+    process.env.NODE_ENV !== "production" ||
+    process.env.NEXT_PUBLIC_VERCEL_ENV === "preview";
+  const starved = !data && !fixturesAllowed;
+  const effectiveStage: DashStage = starved ? "loading" : stage;
+  const d = data ?? (stage === "empty" || starved ? DASH_FIXTURE_EMPTY : DASH_FIXTURE);
   const [editing, setEditing] = useState(false);
   /* "all" is the resting lens, which is the state the design draws. */
   const [storyLens, setStoryLens] = useState<"you" | "all">("all");
@@ -81,9 +105,9 @@ export function DashboardScreen({
   return (
     <div data-parity="dash" style={{ backgroundColor: "var(--c-bg)", minHeight: "100%" }}>
       <ScreenHead />
-      {stage === "loading" ? <DashSkeleton /> : null}
-      {stage === "error" ? <DashError /> : null}
-      {stage === "ready" || stage === "stale" || stage === "empty" ? (
+      {effectiveStage === "loading" ? <DashSkeleton /> : null}
+      {effectiveStage === "error" ? <DashError /> : null}
+      {effectiveStage === "ready" || effectiveStage === "stale" || effectiveStage === "empty" ? (
         <div className={styles.dots} style={{ padding: `0 ${PAD} 26px` }}>
           <div className={styles.rise} style={{ display: "flex", alignItems: "center", gap: "11px" }}>
             <span style={{ font: `400 italic 13px/1 ${PLAYFAIR}`, color: "var(--c-secondary)" }}>
@@ -95,7 +119,7 @@ export function DashboardScreen({
             </span>
           </div>
 
-          {stage === "stale" ? <StaleNotice text={d.staleNotice} /> : null}
+          {effectiveStage === "stale" ? <StaleNotice text={d.staleNotice} /> : null}
 
           <p
             className={styles.rise}
