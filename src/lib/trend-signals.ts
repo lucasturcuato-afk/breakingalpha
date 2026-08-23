@@ -76,7 +76,11 @@ export function strengthToLevel(score: number): AnomalyLevel {
  */
 export function timeAgo(dateStr: string | null, now: number = Date.now()): string {
   if (!dateStr) return "";
-  const diff = now - new Date(dateStr).getTime();
+  if (Number.isNaN(new Date(dateStr).getTime())) return "";
+  /* Floored at zero. `now` is the reader's clock and `dateStr` is the
+     server's; a phone running a few minutes behind would otherwise render
+     "-3m ago" on a cluster written seconds ago. */
+  const diff = Math.max(0, now - new Date(dateStr).getTime());
   const mins = Math.floor(diff / 60000);
   if (mins < 60) return `${mins}m ago`;
   const hrs = Math.floor(mins / 60);

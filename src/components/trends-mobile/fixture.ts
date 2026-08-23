@@ -16,6 +16,11 @@ import type { TrendSignal } from "@/lib/trend-signals";
  * signed out, and while `/trends-mobile` is gated in production today, an
  * ungated fixture on a sibling route would be three invented themes served to
  * anyone who reached it.
+ *
+ * On PREVIEW the gate is open but the route does not default to it: the page
+ * requires an explicit `?stage=`, so a reader who arrives at the bare URL gets
+ * the live loader. Only a local development build defaults to these rows, and
+ * only because the parity and audit runs drive the bare URL.
  */
 export const FIXTURE_ALLOWED =
   process.env.NODE_ENV === "development" ||

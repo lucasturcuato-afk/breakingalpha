@@ -63,7 +63,7 @@ export function TrendsScreen({ stage = null }: { stage?: TrendsStage | null }) {
   const [now] = useState(() => Date.now());
   const [lens, setLens] = useState<TrendLens>("all");
   const [live, setLive] = useState<LoadState>({ status: "loading" });
-  const { profile } = useUserProfile();
+  const { profile, loading: profileLoading } = useUserProfile();
 
   /* The fixture is a development and preview affordance only, and the gate
      fails closed. Production always takes the loader below, which means a
@@ -84,6 +84,11 @@ export function TrendsScreen({ stage = null }: { stage?: TrendsStage | null }) {
       .gte("article_count", TREND_MIN_ARTICLES)
       .gte("source_count", TREND_MIN_SOURCES)
       .order("created_at", { ascending: false })
+      /* `created_at` is not unique: one pipeline run stamps every cluster it
+         writes with the same value, so a LIMIT over it alone is free to keep a
+         different subset on each call. Same tiebreak PR #640 put on the three
+         other truncating reads. */
+      .order("id", { ascending: true })
       .limit(TREND_LIMIT)
       .then(({ data, error }) => {
         if (cancelled) return;
@@ -93,7 +98,7 @@ export function TrendsScreen({ stage = null }: { stage?: TrendsStage | null }) {
              which states a fact about the tape on the strength of no data at
              all. This screen says the read failed, because that is what
              happened. */
-          console.error("[trends-mobile] fetch failed");
+          console.error("[trends-mobile] fetch failed:", error?.message ?? "no rows returned");
           setLive({ status: "error" });
           return;
         }
@@ -250,6 +255,21 @@ export function TrendsScreen({ stage = null }: { stage?: TrendsStage | null }) {
 
       <div
         style={{
+          /* The shell does NOT reserve the tab bar, whatever app-shell.tsx:172
+             looks like. `<main>` carries
+             `pb-[calc(var(--mobile-tabbar-height)+env(safe-area-inset-bottom))]`
+             below md, but the overflow comes from inside PageTransition and
+             the padding never lands in the scroll extent.
+
+             Measured on this page, at 390 with the fixture, after scrolling to
+             the bottom. With `24px` alone: last card bottom 791, tab bar top
+             785, scrollHeight 844 against a clientHeight of 844, so the card
+             sits 6px under the bar and the page cannot scroll to free it. With
+             the reserve below: last card bottom 761 against the same bar top
+             of 785, 24px of clearance, scrollHeight 874.
+
+             A code review asked for the reserve to come out as a double count.
+             It is not one. The numbers above are why it stays. */
           padding: `0 ${PAD} calc(24px + var(--mobile-tabbar-height) + env(safe-area-inset-bottom))`,
         }}
       >
@@ -265,10 +285,21 @@ export function TrendsScreen({ stage = null }: { stage?: TrendsStage | null }) {
                 body="Signals appear here once the pipeline has clustered enough coverage to name a theme."
               />
             ) : visible.length === 0 && lens === "mine" && sectors.length === 0 ? (
-              <Notice
-                title="Your sectors are not set yet"
-                body="Set them on your profile and this lens follows them."
-              />
+              /* An unread profile is not an unset one. Until /api/user-profile
+                 answers, `sectors` is empty for a reader who has sectors set,
+                 and telling them to go set them would be a claim made with
+                 nothing to read it from. */
+              profileLoading ? (
+                <Notice
+                  title="Reading your sectors"
+                  body="This lens follows the sectors on your profile."
+                />
+              ) : (
+                <Notice
+                  title="Your sectors are not set yet"
+                  body="Set them on your profile and this lens follows them."
+                />
+              )
             ) : visible.length === 0 ? (
               <Notice title="Nothing under this lens" body="Another lens may carry it." />
             ) : (

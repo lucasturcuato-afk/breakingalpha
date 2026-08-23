@@ -48,6 +48,13 @@ test("timeAgo produces the three shapes the design draws", () => {
   assert.equal(timeAgo(null, NOW), "");
 });
 
+test("timeAgo refuses to render a negative or unparseable age", () => {
+  // The reader's clock, not the server's. A phone running behind must not
+  // render "-3m ago" on a cluster written seconds ago.
+  assert.equal(timeAgo(new Date(NOW + 3 * 60000).toISOString(), NOW), "0m ago");
+  assert.equal(timeAgo("not a date", NOW), "");
+});
+
 test("trendCounts derives every figure the screen renders", () => {
   const signals = [
     row({ id: "1", strength_score: 0.9 }),

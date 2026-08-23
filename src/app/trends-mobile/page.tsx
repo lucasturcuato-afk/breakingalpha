@@ -42,13 +42,22 @@ export default async function TrendsMobilePage({
   const params = await searchParams;
   const raw = Array.isArray(params.stage) ? params.stage[0] : params.stage;
 
-  /* `?stage=live` in development takes the real loader, so the data path this
-     screen ships with can be exercised without a production build. */
+  /* Three cases, and the difference between the last two is the point.
+     - Production: `FIXTURE_ALLOWED` is false, so the fixture is unreachable at
+       any URL and the screen always takes the live loader.
+     - Preview: a named `?stage=` reaches the fixture, and a bare URL does NOT.
+       A reader who taps the Ask pole on a preview build lands on live rows,
+       not on three invented clusters presented as the tape.
+     - Local dev: a bare URL defaults to the fixture, because the parity and
+       audit runs drive the bare URL and have to land on a deterministic
+       screen. `?stage=live` exercises the real loader from here. */
+  const bareDefault: TrendsStage | null =
+    process.env.NODE_ENV === "development" ? "ready" : null;
   const stage: TrendsStage | null =
     FIXTURE_ALLOWED && raw !== "live"
       ? STAGES.includes(raw as TrendsStage)
         ? (raw as TrendsStage)
-        : "ready"
+        : bareDefault
       : null;
 
   return (
