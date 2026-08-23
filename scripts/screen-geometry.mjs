@@ -38,12 +38,20 @@
 
 import { chromium } from 'playwright';
 import { existsSync } from 'node:fs';
+import { pathToFileURL } from 'node:url';
 
 const argv = process.argv.slice(2);
 const protoIdx = argv.indexOf('--proto');
 let proto = null;
 if (protoIdx !== -1) {
   proto = argv[protoIdx + 1];
+  /* A bare trailing `--proto` left this undefined, which is falsy, which
+     skipped the column check in silence and reported 0 problems. A gate that
+     can be switched off by a typo is not a gate. */
+  if (!proto || proto.startsWith('--')) {
+    console.error('screen-geometry: --proto needs a path');
+    process.exit(2);
+  }
   argv.splice(protoIdx, 2);
 }
 const [screen, url] = argv;
@@ -76,7 +84,9 @@ if (proto) {
     process.exit(2);
   }
   const dp = await browser.newPage({ viewport: { width: 390, height: 844 } });
-  await dp.goto('file://' + process.cwd() + '/' + proto);
+  /* Resolved rather than concatenated: an absolute --proto built a
+     `file:///cwd//abs/path` that loads nothing. */
+  await dp.goto(pathToFileURL(proto).href);
   await dp.waitForTimeout(600);
   const design = await dp.evaluate(new Function('return ' + COLUMN)(), SEL);
 
@@ -131,9 +141,19 @@ const tail = await phone.evaluate(async (sel) => {
   if (!nav) return null;
   const navTop = nav.getBoundingClientRect().top;
   const root = document.querySelector(sel);
+  /* Guarded. An unrendered or misspelled parity root used to throw inside the
+     page and surface as an opaque Playwright error, which is exactly the run
+     where the answer matters. */
+  if (!root) return { error: `${sel} matched nothing at 390` };
   const nodes = [...root.querySelectorAll('button, a, p, h1, h2, h3')]
     .filter((el) => el.getBoundingClientRect().height > 0);
-  const last = nodes[nodes.length - 1];
+  if (nodes.length === 0) return { error: `${sel} drew no content at 390` };
+  /* The LOWEST node, not the last in document order. The bar is cleared by
+     whatever sits furthest down the page, and source order does not decide
+     that once anything is floated, ordered or absolutely placed. */
+  const last = nodes.reduce((lo, el) =>
+    el.getBoundingClientRect().bottom > lo.getBoundingClientRect().bottom ? el : lo,
+  );
   const r = last.getBoundingClientRect();
   return {
     navTop: Math.round(navTop),
@@ -145,6 +165,9 @@ const tail = await phone.evaluate(async (sel) => {
 console.log('\nscrolled to the end at 390');
 if (!tail) {
   console.log('  no tab bar on this route, nothing to clear');
+} else if (tail.error) {
+  console.log(`  ${tail.error}`);
+  failed++;
 } else {
   console.log(`  tab bar top ${tail.navTop}px, last element bottom ${tail.lastBottom}px`);
   console.log(`  "${tail.last}"`);

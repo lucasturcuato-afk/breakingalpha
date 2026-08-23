@@ -11,8 +11,10 @@
  *
  * Compliance note on sample content: the rule against an aggregate figure
  * reaches sample data too. Nothing here is a rate. Every figure is a count of
- * things on this screen, and each one is read from the array it counts rather
- * than typed, so the rule and the arithmetic cannot drift apart.
+ * things. Where the screen can derive a count from the array it describes it
+ * does, so the figure and the list cannot drift apart; the two that cannot be
+ * derived from anything rendered, `followsWithCoverage` and `followsQuiet`,
+ * are fields the loader owns and each says what it counts.
  */
 
 /** A view the desk is watching with no direction and no window on it. */
@@ -80,6 +82,13 @@ export interface WatchData {
   /** Names drawn before the "+N more" tail. The prototype draws four. */
   quietShown: number;
   following: FollowCluster[];
+  /**
+   * Follows that produced coverage this week. Not the cluster count and not
+   * the story count: several follows can land in one theme, and one follow can
+   * produce several stories, so neither derivation describes the set the tail
+   * copy speaks about.
+   */
+  followsWithCoverage: number;
   /** Follows with no coverage this week. An empty week, not a failure. */
   followsQuiet: number;
   /**
@@ -207,6 +216,7 @@ export const WATCH_FIXTURE: WatchData = {
       ],
     },
   ],
+  followsWithCoverage: 3,
   followsQuiet: 3,
   followsCouldNotCheck: [],
   lastCheckedLabel: "yesterday at 6:41 PM",
@@ -219,6 +229,7 @@ export const WATCH_EMPTY: WatchData = {
   quietNames: [],
   quietShown: 4,
   following: [],
+  followsWithCoverage: 0,
   followsQuiet: 0,
   followsCouldNotCheck: [],
   lastCheckedLabel: "not yet",

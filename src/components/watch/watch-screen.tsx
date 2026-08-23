@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { SectionRule } from "./section-rule";
 import { WatchNotice, WatchSkeleton } from "./watch-notice";
 import {
-  WATCH_FIXTURE,
   WATCH_RECENCY_DAYS,
   type FollowCluster,
   type TrackedView,
@@ -76,11 +75,18 @@ function matchesLens(item: WatchlistItem, lens: WatchLens): boolean {
 
 export function WatchScreen({
   stage = "ready",
-  data = WATCH_FIXTURE,
+  data,
   onRetry,
 }: {
   stage?: WatchStage;
-  data?: WatchData;
+  /**
+   * Required, never defaulted to the fixture. A default of WATCH_FIXTURE puts
+   * every invented headline in this screen's PRODUCTION client bundle, since a
+   * default parameter is a live reference the bundler cannot drop. The route
+   * above already decides between the fixture and the empty data, and it is
+   * the only caller.
+   */
+  data: WatchData;
   /**
    * Re-read the tiers. Defaults to a router refresh, which is a real retry
    * rather than a control that does nothing: the tiers are supplied by the
@@ -98,8 +104,18 @@ export function WatchScreen({
 
   const visible = data.watchlist.filter((i) => matchesLens(i, lens));
   const hero = visible.find((i) => i.hero);
-  const rest = visible.filter((i) => !i.hero);
-  const coverage = data.following.reduce((n, c) => n + c.rows.length, 0);
+  /* Excluded by identity, not by the flag. Filtering on `!i.hero` drops EVERY
+     flagged item, so a loader that marks two heroes would draw the first and
+     silently delete the second: it is neither the hero nor in the rest. */
+  const rest = visible.filter((i) => i !== hero);
+  /* Follows that produced coverage, which is the count this line and the tail
+     below both speak in. It is neither the cluster count nor the story count:
+     a cluster is a theme, several follows can land in one, and one follow can
+     produce several stories. Summing `rows` said 3 off two clusters and made
+     the tail's "the other three follows" describe a total that never existed;
+     counting clusters says 2 and breaks it the other way. The loader knows
+     this number and the fixture carries it. */
+  const coverage = data.followsWithCoverage;
   /* Quiet names are hidden under the private and industries lenses, matching
      `setWatch` in the prototype: neither lens carries a name that could be
      quiet, so the line would describe a set the screen is not showing. */
@@ -109,6 +125,10 @@ export function WatchScreen({
   return (
     <div
       data-parity="watch"
+      /* The skeletons are aria-hidden, so without this a screen reader gets
+         three section headings with nothing under any of them and no signal
+         that anything is on its way. */
+      aria-busy={loading || undefined}
       className={styles.enter}
       style={{ backgroundColor: "var(--c-bg)", minHeight: "100%" }}
     >
@@ -172,10 +192,16 @@ export function WatchScreen({
         {/* ── watchlist ──────────────────────────────────────────────── */}
         <SectionRule
           label="watchlist"
+          /* Both halves are read off what the screen is actually drawing under
+             the active lens. `data.watchlist.length` here said "5 with news"
+             over a single card once Private was selected, which reads as a
+             broken filter, and the quiet half described a set the lens hides. */
           count={
             loading || failed
               ? undefined
-              : `${data.watchlist.length} with news · ${data.quietNames.length} quiet`
+              : quietVisible
+                ? `${visible.length} with news · ${data.quietNames.length} quiet`
+                : `${visible.length} with news`
           }
           marginTop="26px"
         />
@@ -275,9 +301,17 @@ export function WatchScreen({
         ) : null}
 
         {/* Clearance for the tab bar, as an element rather than as padding on
-            the shell's scroll container. Chrome drops a scroll container's
-            bottom padding once its content overflows, which left the last
-            control on two other screens in this wave sitting behind the bar. */}
+            the shell's scroll container.
+            `app-shell.tsx` already puts
+            `pb-[calc(var(--mobile-tabbar-height)+env(safe-area-inset-bottom))]`
+            on #main-content, and on this route that padding is not honoured at
+            the end of the scroll. Measured on the running page at 390 with
+            `scripts/screen-geometry.mjs`: without this element the last line
+            bottoms out at 820px against a bar top of 785px, so 35px of it sits
+            behind the bar. With it, 761px, clear by the block's own 24px.
+            A synthetic reproduction of the container does honour the padding,
+            which is what makes this worth measuring on the real page rather
+            than reasoning about. */}
         <div
           aria-hidden="true"
           style={{
@@ -729,6 +763,11 @@ function ThemeCluster({ cluster, first }: { cluster: FollowCluster; first: boole
 function FollowingTail({ quiet, couldNotCheck }: { quiet: number; couldNotCheck: string[] }) {
   if (quiet === 0 && couldNotCheck.length === 0) return null;
   const unchecked = couldNotCheck.length > 0;
+  /* The count decides the noun as well as the number. A figure read from state
+     drags its grammar with it, and "The other one follows" is the shape that
+     bug takes if only the number is derived. */
+  const subject =
+    quiet === 1 ? "The other follow" : `The other ${spell(quiet)} follows`;
   return (
     <>
       {quiet > 0 ? (
@@ -741,8 +780,8 @@ function FollowingTail({ quiet, couldNotCheck }: { quiet: number; couldNotCheck:
           }}
         >
           {unchecked
-            ? `The other ${spell(quiet)} follows had no coverage this week.`
-            : `The other ${spell(quiet)} follows had no coverage this week. That is an empty week, not a failed load; your follows are intact.`}
+            ? `${subject} had no coverage this week.`
+            : `${subject} had no coverage this week. That is an empty week, not a failed load; your follows are intact.`}
         </p>
       ) : null}
       {unchecked ? (
