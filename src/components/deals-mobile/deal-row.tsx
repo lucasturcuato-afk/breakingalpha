@@ -18,7 +18,8 @@ import styles from "./deals.module.css";
  * because the design's dated process timeline and all four terms rows
  * (Consideration, Implied EV / EBITDA, Premium to undisturbed, Financing) have
  * no column on `deal_flow`, and the nearest fields are free text. So the
- * control is built, carries its correct visual state and its 44px target, and
+ * control is built, carries the visual treatment the design draws and its 44px
+ * target, and
  * does nothing. See `onOpenDetail` below.
  *
  * The 44px target is reached the way the design reaches it, and the way the

@@ -290,7 +290,7 @@ function DealsSkeleton() {
 }
 
 /**
- * Error. The desktop route logs the failure and returns, which leaves `deals`
+ * Error. The desktop route logs the failure and exits early, which leaves `deals`
  * empty and renders the empty state over a failed read. github.md names that
  * exact substitution as a trust failure, so this screen says which one happened.
  */

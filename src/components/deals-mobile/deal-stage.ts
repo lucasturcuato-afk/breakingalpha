@@ -2,7 +2,7 @@
  * The Deal Flow stage vocabulary, as the mobile screen needs it.
  *
  * The taxonomy itself is not new. `src/app/deal-flow/page.tsx` lines 69 to 76
- * already holds it, and `src/app/saved/page.tsx` lines 13 to 18 holds a second
+ * already carries it, and `src/app/saved/page.tsx` lines 13 to 18 carries a second
  * copy with different casing and different colours. batch-6 open question 9
  * asks who owns it. That question is not settled, and settling it from a screen
  * PR would mean editing two live surfaces, so this module does not try: it
