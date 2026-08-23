@@ -1,0 +1,7 @@
+/* The composer field. The design draws a div with muted placeholder copy in it;
+   production needs a real input, so the muted tone moves to ::placeholder and
+   the element's own colour becomes the ink the user types in. */
+.field::placeholder {
+  color: var(--c-muted);
+  opacity: 1;
+}
