@@ -602,8 +602,8 @@ export default function LiveFeedPage() {
      The profile is part of the first load, not a decoration on top of it:
      until it lands `followsSectors` is false and the untouched default reads
      Everything, so a reader who does follow sectors would get the whole wire
-     and then have it swap to Yours under them a beat later. Hold the skeleton
-     until both the wire and the profile have answered. Neither latch can stick:
+     and then have it swap to Yours under them a beat later. Keep the skeleton
+     up until both the wire and the profile have answered. Neither latch can stick:
      the profile fetch sets loading false in a finally and short-circuits on
      public paths. */
   const mobileStage: FeedStage =

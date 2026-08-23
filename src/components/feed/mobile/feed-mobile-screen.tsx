@@ -231,7 +231,7 @@ export function FeedMobileScreen({
 
         {/* Stale is a ready screen with a warning on it, so it reaches the
             empty placard too. Without the second clause a poll that fails
-            while the chosen lens holds nothing draws the notice over a blank
+            while the chosen lens has nothing in it draws the notice over a blank
             column: `empty` is unreachable once `stale` has won the stage. */}
         {shown === "empty" || (shown === "stale" && view.buckets.length === 0) ? (
           <FeedEmpty
