@@ -108,12 +108,12 @@ const POLES: Pole[] = [
     ],
   },
   {
-    /* href stays on /radar/watchlist until the Watch screen exists. Pointing
-       it at /watch now would aim a pole at a 404, which is the defect this
-       file shipped once already against /ledger. The unit that builds /watch
-       moves the href; the ownership is already here. */
+    /* The Watch screen exists as of this PR, so the href moves to it. It sat
+       on /radar/watchlist while /watch was a 404, which is the defect this
+       file shipped once already against /ledger. The ownership below was
+       already correct and is untouched. */
     label: "Watch",
-    href: "/radar/watchlist",
+    href: "/watch",
     icon: IconWatch,
     owns: ["/radar/watchlist", "/radar/following", "/watch"],
   },

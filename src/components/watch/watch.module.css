@@ -1,0 +1,80 @@
+/* Watch motion and the few rules that cannot be expressed inline.
+ *
+ * Nothing here is responsive, deliberately. An inline style beats a class at
+ * every breakpoint, so mixing a responsive class with an inline property is a
+ * defect design-lint rejects. Keeping this module free of breakpoints lets the
+ * components style their measured values inline without ever colliding with it.
+ *
+ * The shimmer and the bare-button reset repeat what ledger.module.css already
+ * carries. They are copied rather than imported: that module is another
+ * screen's internal file rather than an exported component, and reaching into
+ * it couples two screens through a stylesheet. The duplication is noted in the
+ * PR body.
+ *
+ * Easing is the design's single curve, taken off the prototype's own
+ * `animation:v3in 240ms cubic-bezier(0.16,1,0.3,1)` on the Watch wrapper. */
+
+.enter {
+  /* Rests in the drawn state and animates FROM the hidden one. The prototype
+     writes `both`, which makes the hidden frame the resting frame, so a
+     subtree that mounts late would hide its own content permanently. */
+  opacity: 1;
+  transform: none;
+  animation: watchIn 240ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+
+@keyframes watchIn {
+  from {
+    opacity: 0;
+    transform: translateY(7px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.sk {
+  border-radius: 4px;
+  background: linear-gradient(
+    90deg,
+    var(--c-hair) 0%,
+    var(--c-surface) 50%,
+    var(--c-hair) 100%
+  );
+  background-size: 200% 100%;
+  animation: watchShimmer 1.8s ease-in-out infinite;
+}
+
+@keyframes watchShimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+/* A real button carrying none of the agent's default chrome, so the design's
+   card and row shapes stay a <button> for keyboard and assistive technology. */
+.bare {
+  appearance: none;
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Nothing is hidden rather than merely unanimated: both rules above already
+     rest in their drawn state, so removing the animation leaves the content
+     visible and readable. */
+  .enter,
+  .sk {
+    animation: none;
+  }
+}
