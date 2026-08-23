@@ -138,20 +138,26 @@ function dedupeStories(stories: LiveStory[]): DedupedStory[] {
  * A company name to the slug `/company/[id]` resolves. The route reconstructs
  * the name from the slug and falls back to its own auto-resolve when the name
  * is not indexed, so a miss lands on that screen's empty state rather than on a
- * 404. Local on purpose: the repo has no shared company-slug helper and adding
- * one from a screen PR would put a second opinion beside the route's own.
+ * 404.
+ *
+ * The transform is the shipped one, verbatim: whitespace to hyphens, nothing
+ * else touched. Punctuation is LOAD BEARING on the way back. slugToCompanyName
+ * only swaps hyphens for spaces and then looks the result up in CANONICAL,
+ * whose keys carry their punctuation ("amazon.com, inc.", "apple inc.",
+ * "jpmorgan chase & co"). Stripping it here turns "Amazon.com, Inc." into
+ * "amazon-com-inc", which reconstructs as "Amazon Com Inc", misses CANONICAL,
+ * misses the resolver's exact name match, and lands the reader on the empty
+ * state. Kept local because the shipped copy lives inside a client page
+ * component and importing a page from a page is worse than the duplication.
  */
 function companyHref(name: string): string | undefined {
-  const slug = name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-  return slug ? `/company/${slug}` : undefined;
+  const slug = name.trim().toLowerCase().replace(/\s+/g, "-");
+  return slug ? `/company/${encodeURIComponent(slug)}` : undefined;
 }
 
 export default function LiveFeedPage() {
   const { mood, moodHeadline, moodDetails } = useLiveMood();
-  const { profile } = useUserProfile();
+  const { profile, loading: profileLoading } = useUserProfile();
   const [selectedVerticals, setSelectedVerticals] = useState<string[]>([]);
   const [selectedActivityTypes, setSelectedActivityTypes] = useState<string[]>([]);
   const [showAlertsOnly, setShowAlertsOnly] = useState(false);
@@ -528,8 +534,17 @@ export default function LiveFeedPage() {
     const empty =
       mobileLens === "saved"
         ? {
+            /* The design's copy here is "Tap the bookmark on any article to
+               keep it here." There is no bookmark to tap below md: the design
+               draws a Saved badge on the row but no save control anywhere on
+               this screen, and the save affordance it does draw sits on the
+               Story screen, which is unit 22 and unruled. The saved set is one
+               localStorage key shared with the desk, so what a reader keeps on
+               a wider screen does show up here, and that is what the copy
+               says. Shipping an instruction to press a control that does not
+               exist is worse than deviating from the drawing. */
             title: "Nothing saved yet",
-            body: "Tap the bookmark on any article to keep it here.",
+            body: "Articles you keep on a wider screen show up here.",
           }
         : mobileLens === "alerts"
           ? {
@@ -564,7 +579,6 @@ export default function LiveFeedPage() {
       standfirst,
       buckets,
       counts: { yours: yoursCount, alerts: alertCount, saved: savedCount },
-      newCount: newArticleIds.size,
       gated,
       empty: shownCount === 0 ? empty : null,
     };
@@ -583,9 +597,17 @@ export default function LiveFeedPage() {
 
   /* A failed poll with nothing on screen is an error. A failed poll with the
      last good list still on screen is stale, and the rows stay exactly where
-     they were. */
+     they were.
+
+     The profile is part of the first load, not a decoration on top of it:
+     until it lands `followsSectors` is false and the untouched default reads
+     Everything, so a reader who does follow sectors would get the whole wire
+     and then have it swap to Yours under them a beat later. Hold the skeleton
+     until both the wire and the profile have answered. Neither latch can stick:
+     the profile fetch sets loading false in a finally and short-circuits on
+     public paths. */
   const mobileStage: FeedStage =
-    loading && articles.length === 0
+    (loading || profileLoading) && articles.length === 0
       ? "loading"
       : loadFailed && articles.length === 0
         ? "error"

@@ -107,7 +107,6 @@ export const FEED_FIXTURE: FeedData = {
     { id: "TODAY", label: "Today", stories: [ROW_C, ROW_D] },
   ],
   counts: { yours: 142, alerts: 6, saved: 9 },
-  newCount: 2,
   gated: false,
   empty: null,
 };

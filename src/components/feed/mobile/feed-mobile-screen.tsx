@@ -229,7 +229,11 @@ export function FeedMobileScreen({
 
         {shown === "error" ? <FeedError onRetry={onRetry} /> : null}
 
-        {shown === "empty" ? (
+        {/* Stale is a ready screen with a warning on it, so it reaches the
+            empty placard too. Without the second clause a poll that fails
+            while the chosen lens holds nothing draws the notice over a blank
+            column: `empty` is unreachable once `stale` has won the stage. */}
+        {shown === "empty" || (shown === "stale" && view.buckets.length === 0) ? (
           <FeedEmpty
             title={view.empty?.title ?? "Nothing on the wire"}
             body={view.empty?.body ?? "No stories match this lens right now."}
@@ -242,7 +246,6 @@ export function FeedMobileScreen({
                 key={bucket.id}
                 bucket={bucket}
                 first={i === 0}
-                newCount={i === 0 ? view.newCount : 0}
                 openSources={openSources}
                 onToggleSources={(id) =>
                   setOpenSources((prev) => (prev === id ? null : id))
@@ -378,17 +381,22 @@ function LensChip({
 function Bucket({
   bucket,
   first,
-  newCount,
   openSources,
   onToggleSources,
 }: {
   bucket: FeedBucket;
   first: boolean;
-  newCount: number;
   openSources: string | null;
   onToggleSources: (id: string) => void;
 }) {
   const n = bucket.stories.length;
+  /* Counted off the rows this rule actually sits over, not handed down as one
+     wire-wide total pinned to whichever bucket came first. Those are the same
+     number only on Everything with a populated Last hour. Under Saved, with
+     three unsaved arrivals on the wire and the first bucket reading Earlier,
+     the old form drew "3 new" beside Earlier on a list where nothing had
+     moved. */
+  const newCount = bucket.stories.reduce((k, s) => k + (s.isNew ? 1 : 0), 0);
   return (
     <div>
       {/* The design makes this rule a control that opens a story, which is a
@@ -411,7 +419,7 @@ function Bucket({
         <span style={{ font: `400 10px/1 ${INTER}`, color: "var(--c-muted)" }}>
           {n} {n === 1 ? "article" : "articles"}
         </span>
-        {first && newCount > 0 ? (
+        {newCount > 0 ? (
           <span
             style={{
               display: "inline-flex",
@@ -699,7 +707,11 @@ function Row({
                     color: "var(--c-muted)",
                   }}
                 >
-                  {dup.source.toLocaleUpperCase()} {"·"} {dup.timeAgo}
+                  {/* A duplicate with no published_at arrives here with an
+                      empty timeAgo, and an unconditional separator draws
+                      "BLOOMBERG ·" trailing into nothing. */}
+                  {dup.source.toLocaleUpperCase()}
+                  {dup.timeAgo ? ` · ${dup.timeAgo}` : ""}
                 </p>
               </div>
               {dup.url ? (

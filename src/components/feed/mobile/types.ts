@@ -53,7 +53,11 @@ export interface FeedStory {
   cluster?: string;
   url?: string;
   duplicates: FeedDuplicateSource[];
-  /** Arrived on the last poll. Drives the count on the Last hour rule only. */
+  /**
+   * Arrived on the last poll. The screen counts these per bucket to draw the
+   * new marker, so the number always describes the rows under it: the marker
+   * is not a wire-wide total pinned to whichever bucket happens to be first.
+   */
   isNew: boolean;
 }
 
@@ -74,8 +78,6 @@ export interface FeedData {
   standfirst: string;
   buckets: FeedBucket[];
   counts: { yours: number; alerts: number; saved: number };
-  /** New arrivals since the previous poll, shown on the Last hour rule. */
-  newCount: number;
   /** The signed-out reader saw a truncated feed. */
   gated: boolean;
   empty: { title: string; body: string } | null;
