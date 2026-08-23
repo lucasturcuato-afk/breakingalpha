@@ -1,0 +1,108 @@
+/* Search motion and the two rules that cannot be expressed inline.
+ *
+ * Nothing here is responsive, deliberately. An inline style beats a class at
+ * every breakpoint, so a module carrying breakpoints would collide with the
+ * measured values the components set inline. Gating stays on the wrappers in
+ * `src/app/search/page.tsx`, which carry no inline style at all.
+ *
+ * Easing is the design's single curve. Durations are the prototype's own,
+ * read off the two `animation` declarations on the Search subtree: 200ms on
+ * the screen root and 180ms on each result group.
+ */
+
+.screenIn {
+  /* Rests in the drawn state and animates FROM the hidden one. The prototype
+   * writes `both`, which makes the hidden frame the resting frame, so a
+   * subtree that never runs its animation hides its own content forever.
+   * `backwards` keeps the fill on the pre-start side only. */
+  opacity: 1;
+  transform: none;
+  animation: searchIn 200ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+
+.groupIn {
+  opacity: 1;
+  transform: none;
+  animation: searchIn 180ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+
+@keyframes searchIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Loading. Same shimmer the prototype paints on its own `.sk` class, at the
+ * prototype's own duration. */
+.sk {
+  border-radius: 4px;
+  background: linear-gradient(
+    90deg,
+    var(--c-hair) 0%,
+    var(--c-surface) 50%,
+    var(--c-hair) 100%
+  );
+  background-size: 200% 100%;
+  animation: searchShimmer 1.8s ease-in-out infinite;
+}
+
+@keyframes searchShimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+/* A real button carrying none of the agent's default chrome. The design draws
+ * Cancel as plain type, and it still has to be a <button>. */
+.bare {
+  appearance: none;
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+/* The field. `outline:none` on the input is the prototype's own, and it is a
+ * defect on a real page: it removes the keyboard ring from the one control on
+ * the screen. The ring is put back on the input itself rather than on the
+ * bordered box around it, so the box stays a plain container and never becomes
+ * a second focusable thing wrapping a control.
+ *
+ * Written here rather than inline because `:focus-visible` has no inline form.
+ * The global rule in globals.css already draws a gold ring, but it resolves
+ * `--gold`, which is a different value from `--c-gold` in dark. This screen's
+ * spec names `--c-gold`, so it is spelled out. */
+.field {
+  border: none;
+  background: transparent;
+  padding: 0;
+}
+
+.field:focus-visible {
+  outline: 2px solid var(--c-gold);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Every animated rule above already rests in its drawn state, so removing
+   * the animation leaves the content visible. Nothing here is hidden rather
+   * than merely unanimated. */
+  .screenIn,
+  .groupIn,
+  .sk {
+    animation: none;
+  }
+}
