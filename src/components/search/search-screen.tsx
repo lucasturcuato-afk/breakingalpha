@@ -66,8 +66,8 @@ export function SearchScreen({
     [query],
   );
 
-  /* What the results area is showing right now, resolved once so the branches
-     below read as a list of states rather than a nest of conditions.
+  /* Which branch the results area draws, resolved once so what follows reads
+     as a list of states rather than a nest of conditions.
 
      `results === null` is the production case: the fixture is gated out and no
      search backend exists, so a typed query has nothing to answer it. That

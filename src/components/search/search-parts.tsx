@@ -67,7 +67,7 @@ export function SearchEyebrow({ label, style }: { label: string; style?: React.C
  *                  removes the keyboard ring from the only control on the
  *                  screen. See `search.module.css`.
  *
- * The bordered box holds the input and is NOT itself focusable: a container
+ * The bordered box wraps the input and is NOT itself focusable: a container
  * that already contains a focusable control must never take focus of its own.
  */
 export function SearchField({

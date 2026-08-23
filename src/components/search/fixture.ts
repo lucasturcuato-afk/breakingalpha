@@ -120,8 +120,8 @@ export type SearchFixture = {
 
 /**
  * The design's own result set, transcribed. The prototype resolves it from a
- * prefix test on "constellation" or "ceg" and returns these four objects for
- * every match, which is why the second company is a near-miss on the first.
+ * prefix test on "constellation" or "ceg", answering every match with the same
+ * four objects, which is why the second company is a near-miss on the first.
  *
  * One thing in here is wrong and is kept anyway: Centrus Energy trades as LEU,
  * not CEP. Changing it would put the build's text out of step with the design
