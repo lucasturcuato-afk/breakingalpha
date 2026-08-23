@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { SearchScreen, type SearchStage } from "@/components/search";
 
 /**
@@ -45,27 +46,59 @@ export default async function SearchPage({
   const params = await searchParams;
   const raw = one(params.stage);
   const stage = STAGES.includes(raw as SearchStage) ? (raw as SearchStage) : "ready";
+  const query = one(params.q);
 
   return (
     <>
       {/* Gating lives in a CLASS and this wrapper carries no inline style at
           all. An inline display beats the class at every breakpoint, which is
           the defect that shipped the tab bar to desktop once already. */}
+      {/* `key` remounts the screen when the URL that seeds it changes. The
+          screen keeps the query in its own state, seeded once from this prop,
+          so without the key a client-side move from ?q=constellation to ?q=zzz
+          would leave the previous query in the field and draw against it. The
+          key is computed from the URL alone, so typing never remounts. */}
       <div className="md:hidden">
-        <SearchScreen stage={stage} initialQuery={one(params.q)} />
+        <SearchScreen key={`${stage}:${query}`} stage={stage} initialQuery={query} />
       </div>
 
       {/* Above the breakpoint this route has no layout of its own. The desktop
-          jump surface already exists as the command palette, on every page,
-          and is not being rebuilt or rerouted here. */}
+          jump surface already exists as the command palette, and it is not
+          being rebuilt or rerouted here.
+
+          The palette is NOT on every page. Both the Command K listener and the
+          palette itself are mounted by `AppShell` (`app-shell.tsx` lines 94 and
+          198), and this route mounts no shell, so the shortcut is dead on this
+          page specifically. The copy names a page that has it and links there,
+          rather than telling the reader to press a key that does nothing. That
+          link is also the only way off this surface: with no shell there is no
+          sidebar and no nav here either. */}
       <div className="hidden md:block" style={{ padding: "48px", backgroundColor: "var(--c-bg)" }}>
         <p style={{ margin: 0, font: "500 17px/1.4 'Playfair Display', serif", color: "var(--c-ink)" }}>
           Search is a mobile surface.
         </p>
         <p style={{ margin: "10px 0 0", font: "400 13px/1.6 Inter, sans-serif", color: "var(--c-secondary)" }}>
-          On a wider screen the desk opens the command palette instead. Press Command K, or Control
-          K.
+          On a wider screen the desk opens the command palette instead. It is not on this page:
+          open one that carries the desk chrome, then press Command K, or Control K.
         </p>
+        {/* Its own line rather than a word inside the paragraph. An inline
+            anchor in 13px copy measures about 21px and would sit under the 44px
+            floor the runtime audit enforces at every width, this one included.
+            --c-goldink, never --c-gold: gold is a fill token and may not carry
+            type. */}
+        <Link
+          href="/dashboard"
+          style={{
+            marginTop: "14px",
+            minHeight: "44px",
+            display: "inline-flex",
+            alignItems: "center",
+            font: "600 13px/1 Inter, sans-serif",
+            color: "var(--c-goldink)",
+          }}
+        >
+          Open the Dashboard
+        </Link>
       </div>
     </>
   );

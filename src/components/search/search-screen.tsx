@@ -108,8 +108,19 @@ export function SearchScreen({
         /* The prototype's Cancel fires goAsk. Browser back is the honest
            equivalent for a pushed view, it is what README's gesture rule
            assigns the job to, and it does not aim at a route that is not
-           built yet. */
-        onCancel={() => router.back()}
+           built yet.
+
+           Back alone is not enough. `history.back()` is a no-op on the first
+           entry of a tab, and this screen is reached by URL rather than from a
+           pole, so an opened-directly Search leaves Cancel dead on a surface
+           that mounts no tab bar and has no other way off it. */
+        onCancel={() => {
+          if (typeof window !== "undefined" && window.history.length > 1) {
+            router.back();
+          } else {
+            router.push("/dashboard");
+          }
+        }}
       />
 
       <div
@@ -203,8 +214,13 @@ function Results({
  */
 function NoResults() {
   return (
+    /* role="status" so the sentence is announced when it replaces the list.
+       The results themselves are not in a live region on purpose: reading a
+       whole result list back on every keystroke is worse than silence. An
+       empty answer is one sentence and is the case a reader cannot infer. */
     <div
       className={styles.groupIn}
+      role="status"
       style={{ padding: "44px 8px 0", textAlign: "center" }}
     >
       <p style={{ margin: 0, font: "500 16px/1.45 'Playfair Display', serif", color: "var(--c-ink)" }}>
@@ -227,7 +243,10 @@ function NoResults() {
 
 function SearchSkeleton() {
   return (
-    <div style={{ paddingTop: "4px" }} aria-busy="true" aria-label="Searching">
+    /* role="status", not a bare div. `aria-label` and `aria-busy` on an element
+       with no role are not exposed, so the skeleton announced nothing at all
+       and a screen reader reader was told only that the list had emptied. */
+    <div style={{ paddingTop: "4px" }} role="status" aria-busy="true" aria-label="Searching">
       <div className={styles.sk} style={{ height: "10px", width: "34%" }} />
       {[0, 1].map((i) => (
         <div

@@ -178,13 +178,24 @@ export function matchFixture(query: string, data: SearchFixture = SEARCH_FIXTURE
   const companies = data.companies.filter(
     (c) => c.ticker.toLowerCase().startsWith(q) || hit(c.name),
   );
-  // A ledger entry or a deal surfaces when the query names a company it is
-  // about, which is what makes one keystroke fill three groups at once.
-  const named = companies.length > 0;
+  // A ledger entry surfaces when the query names the company the entry is
+  // ABOUT, which is what makes one keystroke fill three groups at once. Tested
+  // against the companies that actually matched, never against "some company
+  // matched": YOUR LEDGER is a first-person claim that the reader wrote this
+  // about the name they typed, and `cep` must not answer with a claim about
+  // CEG. A ticker query reaches the entry through the matched company's name,
+  // so `ceg` still surfaces it.
+  const about = (text: string) =>
+    hit(text) || companies.some((c) => text.toLowerCase().includes(c.name.toLowerCase()));
   return {
     companies,
-    ledger: data.ledger.filter((l) => named || hit(l.claim)),
-    deals: data.deals.filter((d) => named || hit(d.name)),
+    ledger: data.ledger.filter((l) => about(l.claim)),
+    // DEALS is deliberately looser, and it is the design's own behaviour: the
+    // prototype answers every match with the same four objects, so the drawn
+    // state for `constellation` carries a deal that names no company in it.
+    // A deal row asserts nothing about the reader, so a loose match here is a
+    // weak suggestion rather than a false attribution.
+    deals: data.deals.filter((d) => companies.length > 0 || hit(d.name)),
   };
 }
 
