@@ -1,0 +1,596 @@
+"use client";
+
+import { useRouter } from "next/navigation";
+
+import { ClaimAnatomy, OutcomeLead } from "@/components/ledger";
+import { useCompanyTabState, type CompanyTabId } from "@/hooks/useCompanyTabState";
+
+import styles from "./company-mobile.module.css";
+import { COMPANY_INTEL_EMPTY, COMPANY_INTEL_FIXTURE, type CompanyIntelData } from "./fixture";
+import { EmptyWell, SkeletonBar } from "./parts";
+import {
+  FilingsSection,
+  FinancialsSection,
+  InsiderSection,
+  PrimerSection,
+  ToneSection,
+} from "./sections";
+
+/**
+ * Company Intel, mobile. The prototype's `isCompany` screen.
+ *
+ * ONE SCREEN, FIVE SECTIONS, NOT FIVE ROUTES. The prototype carries a single
+ * flat `coSection` key and swaps the section body with a 200ms fade. Section
+ * state here rides the desktop `?tab=` convention through useCompanyTabState rather
+ * than inventing a second one, so a section chip and a desktop tab are the same
+ * state: they stay in step while both are mounted, and a deep link means the
+ * same thing on either surface.
+ *
+ * GUTTER, and the trap it sits in. The prototype puts `padding:0 var(--v3-pad)`
+ * on the header bar and `padding:22px var(--v3-pad) 24px` on the scroll body,
+ * and NOTHING on the screen root. At 390px that is one 20px gutter a side and a
+ * 350px content column. scripts/parity_harness.py injects a second gutter of
+ * its own onto `#v3phone`, which narrows the design side to 310px, so a build
+ * that measures 350 against a harness measuring 310 is right and the harness is
+ * wrong. The root below therefore carries no horizontal padding at all.
+ *
+ * THE SHELL RESERVES NOTHING FOR ITS OWN TAB BAR. app-shell.tsx puts the
+ * padding on a scrolling <main> while the overflow comes from inside
+ * PageTransition, so the last element of a long screen sits under the bar. Five
+ * stacked sections scroll a long way, so the bottom inset is added here, on the
+ * screen's own scroll body.
+ */
+
+export type CompanyStage = "ready" | "loading" | "error" | "empty";
+
+const PAD = "var(--v3-pad)";
+
+/** The five sections, keyed on the ids the desktop tab vocabulary already uses. */
+const SECTIONS: { id: CompanyTabId; label: string }[] = [
+  { id: "brief", label: "Primer" },
+  { id: "trend", label: "Price & tone" },
+  { id: "filings", label: "Filings" },
+  { id: "financials", label: "Financials" },
+  { id: "insider", label: "Insider" },
+];
+
+const SECTION_IDS = new Set(SECTIONS.map((s) => s.id));
+
+export function CompanyIntelScreen({
+  stage = "ready",
+  data,
+  /**
+   * True when the company resolved to a SEC CIK. Drives which sourced empty
+   * copy the Filings, Financials and Insider sections use, exactly as it does
+   * on the desktop tabs.
+   */
+  hasCik = true,
+}: {
+  stage?: CompanyStage;
+  data?: CompanyIntelData;
+  hasCik?: boolean;
+}) {
+  const router = useRouter();
+  const { activeTab, setActiveTab } = useCompanyTabState();
+
+  const resolved = data ?? (stage === "empty" ? COMPANY_INTEL_EMPTY : COMPANY_INTEL_FIXTURE);
+  /* A desktop deep link can pin a tab this screen has no section for
+     (articles, comps, and the three ids with no button). Fall back to the
+     first section rather than drawing an empty body under no active chip. */
+  const active = SECTION_IDS.has(activeTab) ? activeTab : "brief";
+
+  return (
+    <div
+      data-parity="company"
+      data-fixture="true"
+      className={styles.screenIn}
+      style={{
+        backgroundColor: "var(--c-bg)",
+        minHeight: "100%",
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
+      <div
+        style={{
+          flex: "none",
+          minHeight: "48px",
+          display: "flex",
+          alignItems: "center",
+          padding: `0 ${PAD}`,
+          borderBottom: "1px solid var(--c-border)",
+        }}
+      >
+        {/* The design labels this "Ask" because the prototype reaches Company
+            Intel from the Ask browse screen. `/ask` does not exist on this
+            branch, and a control naming a destination that is not there is a
+            false statement about where it goes, so it steps back through
+            history and says so. Recorded in the PR body. */}
+        <button
+          type="button"
+          onClick={() => router.back()}
+          className={styles.bare}
+          style={{
+            minHeight: "44px",
+            display: "flex",
+            alignItems: "center",
+            gap: "6px",
+            font: "500 13px/1 Inter, sans-serif",
+            color: "var(--c-secondary)",
+          }}
+        >
+          {/* Drawn here rather than through the shared Chevron. That component
+              has no left direction and no 16px size, and adding either would be
+              the shared-component edit two other screens are already blocked
+              on. A wrapper beside it, never a branch inside it. */}
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            aria-hidden="true"
+            style={{ flex: "none" }}
+          >
+            <path d="M15 6l-6 6 6 6" />
+          </svg>
+          Back
+        </button>
+      </div>
+
+      <div
+        style={{
+          flex: 1,
+          minWidth: 0,
+          /* The design's 24px, plus the bar the shell does not reserve for. */
+          padding: `22px ${PAD} calc(24px + var(--mobile-tabbar-height) + env(safe-area-inset-bottom))`,
+        }}
+      >
+        {stage === "loading" ? <CompanySkeleton /> : null}
+        {stage === "error" ? <CompanyError onRetry={() => router.refresh()} /> : null}
+
+        {stage === "ready" || stage === "empty" ? (
+          <>
+            <Masthead data={resolved} />
+            <KpiGrid data={resolved} />
+            <YourEntries data={resolved} />
+
+            <div
+              style={{
+                marginTop: "22px",
+                display: "flex",
+                flexWrap: "wrap",
+                gap: "12px",
+              }}
+            >
+              {SECTIONS.map((section) => (
+                <button
+                  key={section.id}
+                  type="button"
+                  onClick={() => setActiveTab(section.id)}
+                  aria-pressed={active === section.id}
+                  className={styles.bare}
+                  style={{
+                    flex: "none",
+                    minHeight: "44px",
+                    display: "flex",
+                    alignItems: "center",
+                    padding: "0 12px",
+                    borderRadius: "6px",
+                    whiteSpace: "nowrap",
+                    border:
+                      active === section.id
+                        ? "1px solid var(--c-ink)"
+                        : "1px solid var(--c-border)",
+                    font:
+                      active === section.id
+                        ? "600 12px/1 Inter, sans-serif"
+                        : "500 12px/1 Inter, sans-serif",
+                    color: active === section.id ? "var(--c-ink)" : "var(--c-secondary)",
+                    backgroundColor:
+                      active === section.id ? "var(--c-surface)" : "transparent",
+                  }}
+                >
+                  {section.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Keyed on the section so the 200ms fade replays on every swap,
+                which is what the prototype's `sc-if` gives for free. */}
+            <div key={active} className={styles.sectionIn} style={{ marginTop: "18px" }}>
+              {active === "brief" ? <PrimerSection data={resolved} /> : null}
+              {active === "trend" ? <ToneSection data={resolved} /> : null}
+              {active === "filings" ? (
+                <FilingsSection data={resolved} hasCik={hasCik} />
+              ) : null}
+              {active === "financials" ? (
+                <FinancialsSection data={resolved} hasCik={hasCik} />
+              ) : null}
+              {active === "insider" ? (
+                <InsiderSection data={resolved} hasCik={hasCik} />
+              ) : null}
+            </div>
+          </>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+
+function Masthead({ data }: { data: CompanyIntelData }) {
+  return (
+    <>
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
+        <span
+          style={{
+            font: "500 12px/1 'JetBrains Mono', monospace",
+            color: "var(--c-muted)",
+          }}
+        >
+          {data.ticker} · {data.exchange}
+        </span>
+        <span style={{ font: "600 11px/1 Inter, sans-serif", color: "var(--c-secondary)" }}>
+          {data.sector}
+        </span>
+      </div>
+
+      <h1
+        style={{
+          margin: "11px 0 0",
+          font: "700 26px/1.14 'Playfair Display', serif",
+          letterSpacing: "-0.02em",
+          color: "var(--c-ink)",
+        }}
+      >
+        {data.name}
+      </h1>
+
+      <p
+        style={{
+          margin: "12px 0 0",
+          font: "500 17px/1 'JetBrains Mono', monospace",
+          color: "var(--c-ink)",
+        }}
+      >
+        {data.price}{" "}
+        <span style={{ fontSize: "13px", color: "var(--c-greenink)" }}>{data.change}</span>
+      </p>
+
+      <MemoControl corpus={data.memoCorpus} />
+    </>
+  );
+}
+
+/**
+ * The control that opens the company brief.
+ *
+ * NO-OP, DELIBERATELY. Screen unit 16, the Memo surface, is blocked on a ruling
+ * and is not being built: the design's defining interaction is an inline `[n]`
+ * citation opening a source sheet, and there is no data behind it. The live
+ * memo surface is src/components/memo/MemoModal.tsx, which has no inline
+ * anchors at all, and POST /api/memo gives back a markdown string with no
+ * structured source list. Both of those files are propose-only under CLAUDE.md
+ * and neither is touched here.
+ *
+ * TODO(unit 16, Memo): wire this once overlay-versus-route and the source
+ * contract are ruled on. The existing bridge pattern is
+ * src/components/company/CompanyMemoModalListener.tsx, which consumes MemoModal
+ * through a `memo:generate` window event without modifying it.
+ */
+function MemoControl({ corpus }: { corpus: string }) {
+  return (
+    <button
+      type="button"
+      onClick={() => {}}
+      className={styles.bare}
+      style={{
+        width: "100%",
+        marginTop: "16px",
+        minHeight: "50px",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        padding: `0 16px`,
+        backgroundColor: "var(--c-inverse)",
+        borderRadius: "9px",
+      }}
+    >
+      <span style={{ font: "600 14px/1 Inter, sans-serif", color: "var(--c-oninv)" }}>
+        Generate a company brief
+      </span>
+      <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+        <span
+          style={{
+            font: "400 10px/1 'JetBrains Mono', monospace",
+            letterSpacing: "0.07em",
+            color: "var(--c-oninv-dim)",
+          }}
+        >
+          {corpus}
+        </span>
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="var(--c-gold)"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          aria-hidden="true"
+          style={{ flex: "none" }}
+        >
+          <path d="M4 12h15M13 6l6 6-6 6" />
+        </svg>
+      </span>
+    </button>
+  );
+}
+
+function KpiGrid({ data }: { data: CompanyIntelData }) {
+  return (
+    <div
+      style={{
+        marginTop: "18px",
+        display: "grid",
+        gridTemplateColumns: "1fr 1fr",
+        gap: "1px",
+        backgroundColor: "var(--c-border)",
+        border: "1px solid var(--c-border)",
+        borderRadius: "12px",
+        overflow: "hidden",
+      }}
+    >
+      {data.kpis.map((cell) => (
+        <div key={cell.label} style={{ backgroundColor: "var(--c-surface)", padding: "11px 13px" }}>
+          <div
+            style={{
+              font: "400 10px/1 'JetBrains Mono', monospace",
+              letterSpacing: "0.07em",
+              color: "var(--c-muted)",
+            }}
+          >
+            {cell.label}
+          </div>
+          <div
+            style={{
+              marginTop: "6px",
+              font: cell.tone
+                ? "700 15px/1 'Playfair Display', serif"
+                : "700 17px/1 'Playfair Display', serif",
+              color: cell.tone ? "var(--c-greenink)" : "var(--c-ink)",
+            }}
+          >
+            {cell.value}
+          </div>
+          {cell.meta ? (
+            <div
+              style={{
+                marginTop: "4px",
+                font: "400 10px/1 Inter, sans-serif",
+                color: "var(--c-muted)",
+              }}
+            >
+              {cell.meta}
+            </div>
+          ) : null}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * The user's own record on this name.
+ *
+ * Fresh in the design: github.md maps no repo component to it, and the company
+ * page carries no counterpart today. The claim object inside it is not fresh,
+ * so it is composed from the shared anatomy through the slots that anatomy
+ * already exposes rather than by giving that anatomy a third scale. The design
+ * draws the reading in italic Playfair, which the row scale does not carry, so
+ * it goes through the `meta` slot instead of the `prose` slot.
+ */
+function YourEntries({ data }: { data: CompanyIntelData }) {
+  if (!data.entry && !data.following) {
+    return (
+      <>
+        <EntriesRule />
+        <EmptyWell headline="You have no entries on this name yet." />
+      </>
+    );
+  }
+
+  return (
+    <>
+      <EntriesRule />
+
+      {data.entry ? (
+        <div
+          style={{
+            marginTop: "12px",
+            border: "1px solid var(--c-border)",
+            borderRadius: "12px",
+            backgroundColor: "var(--c-card)",
+            overflow: "hidden",
+          }}
+        >
+          {/* State is a 2px TOP edge plus a dot and the state word. Never a
+              coloured left rule, and a challenged entry is never buried. */}
+          <div style={{ height: "2px", backgroundColor: "var(--c-red)" }} />
+          <div style={{ padding: "13px 15px" }}>
+            <ClaimAnatomy
+              scale="row"
+              lead={
+                <div style={{ marginBottom: "9px" }}>
+                  <OutcomeLead state="challenged" instrument={data.entry.date} />
+                </div>
+              }
+              claim={data.entry.claim}
+              meta={
+                <p
+                  style={{
+                    margin: "8px 0 0",
+                    font: "400 italic 13px/1.55 'Playfair Display', serif",
+                    color: "var(--c-body)",
+                    textWrap: "pretty",
+                  }}
+                >
+                  {data.entry.reading}
+                </p>
+              }
+            />
+          </div>
+        </div>
+      ) : null}
+
+      {data.following ? (
+        <div
+          style={{
+            marginTop: data.entry ? "10px" : "12px",
+            padding: "13px 15px",
+            border: "1px solid var(--c-border)",
+            borderRadius: "12px",
+            backgroundColor: "var(--c-surface)",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <span
+              aria-hidden="true"
+              style={{
+                flex: "none",
+                display: "inline-block",
+                width: "9px",
+                height: "9px",
+                border: "1.5px solid var(--c-secondary)",
+                borderRadius: "50%",
+              }}
+            />
+            <span style={{ font: "600 11px/1 Inter, sans-serif", color: "var(--c-secondary)" }}>
+              {data.following.since}
+            </span>
+          </div>
+          <p
+            style={{
+              margin: "8px 0 0",
+              font: "400 12.5px/1.5 Inter, sans-serif",
+              color: "var(--c-body)",
+            }}
+          >
+            {data.following.note}
+          </p>
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+function EntriesRule() {
+  return (
+    <div style={{ marginTop: "24px", display: "flex", alignItems: "center", gap: "11px" }}>
+      <span
+        style={{
+          font: "400 italic 12.5px/1 'Playfair Display', serif",
+          color: "var(--c-secondary)",
+        }}
+      >
+        your entries on this name
+      </span>
+      <span aria-hidden="true" style={{ flex: 1, height: "1px", backgroundColor: "var(--c-border)" }} />
+    </div>
+  );
+}
+
+/**
+ * Loading.
+ *
+ * The handoff specifies no company lifecycle at all: the prototype's dev strip
+ * carries no company jump and README's stage table covers the brief, the wrap,
+ * the dashboard and the memo only. So the shape here is derived from the screen
+ * it is standing in for, not transcribed. It states nothing about the company,
+ * which is the point of preferring a load to an empty state that asserts a
+ * fact.
+ */
+function CompanySkeleton() {
+  return (
+    <div aria-busy="true" aria-live="polite">
+      <span
+        style={{
+          position: "absolute",
+          width: "1px",
+          height: "1px",
+          overflow: "hidden",
+          clip: "rect(0 0 0 0)",
+          whiteSpace: "nowrap",
+        }}
+      >
+        Reading this company.
+      </span>
+      <SkeletonBar width="42%" height={12} />
+      <SkeletonBar width="72%" height={30} marginTop={11} />
+      <SkeletonBar width="34%" height={17} marginTop={12} />
+      <SkeletonBar width="100%" height={50} marginTop={16} />
+      <SkeletonBar width="100%" height={132} marginTop={18} />
+      <SkeletonBar width="100%" height={44} marginTop={22} />
+      <SkeletonBar width="88%" height={13} marginTop={18} />
+      <SkeletonBar width="96%" height={13} marginTop={10} />
+      <SkeletonBar width="64%" height={13} marginTop={10} />
+    </div>
+  );
+}
+
+/**
+ * Error.
+ *
+ * A failed read and an empty result are different facts and this screen says
+ * which one it is, on the governing principle github.md takes from
+ * src/app/cross-source/page.tsx: "This is a failed read, not an empty result.
+ * Nothing is being hidden."
+ */
+function CompanyError({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div role="alert">
+      <div
+        style={{
+          font: "700 21px/1.1 'Playfair Display', serif",
+          letterSpacing: "-0.01em",
+          color: "var(--c-ink)",
+        }}
+      >
+        This company did not come back.
+      </div>
+      <p
+        style={{
+          margin: "10px 0 0",
+          font: "400 13px/1.55 Inter, sans-serif",
+          color: "var(--c-body)",
+          textWrap: "pretty",
+        }}
+      >
+        This is a failed read, not an empty result. Nothing is being hidden, and nothing below is
+        a partial answer.
+      </p>
+      <button
+        type="button"
+        onClick={onRetry}
+        className={styles.bare}
+        style={{
+          marginTop: "18px",
+          minHeight: "44px",
+          display: "flex",
+          alignItems: "center",
+          padding: "0 17px",
+          border: "1px solid var(--c-ink)",
+          borderRadius: "9px",
+          font: "600 13px/1 Inter, sans-serif",
+          color: "var(--c-ink)",
+        }}
+      >
+        Try again
+      </button>
+    </div>
+  );
+}

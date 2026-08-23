@@ -1,0 +1,87 @@
+/* Company Intel, mobile. Motion and the few rules that cannot be expressed
+ * inline.
+ *
+ * Own keyframes rather than shared ones. The Ledger's module carries the same
+ * three shapes, but importing another screen's module to reach them would make
+ * a change there a change here, and the shared-component ruling this branch is
+ * working under is that a screen wraps rather than extends. Nothing in this
+ * file is responsive, so an inline style on a consuming element can never
+ * collide with a breakpoint it sets.
+ *
+ * Easing is the design's single curve. Durations are measured off the rendered
+ * prototype via scripts/parity_harness.py, not transcribed from the README. */
+
+/* The section swap. The prototype writes `animation:v3in 200ms ... both` on the
+ * section body, and `both` with no delay is safe here because the resting frame
+ * is the drawn one. */
+.sectionIn {
+  opacity: 1;
+  transform: none;
+  animation: companyIn 200ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+
+/* The screen itself, on first paint. 240ms on the prototype's screen wrapper. */
+.screenIn {
+  opacity: 1;
+  transform: none;
+  animation: companyIn 240ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+
+@keyframes companyIn {
+  from {
+    opacity: 0;
+    transform: translateY(7px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Loading. The design's own shimmer at the design's own duration. */
+.sk {
+  border-radius: 4px;
+  background: linear-gradient(
+    90deg,
+    var(--c-hair) 0%,
+    var(--c-surface) 50%,
+    var(--c-hair) 100%
+  );
+  background-size: 200% 100%;
+  animation: companyShimmer 1.8s ease-in-out infinite;
+}
+
+@keyframes companyShimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+/* A real button carrying none of the agent's default chrome. The design draws
+ * several controls that are not shaped like buttons; each one is still a
+ * <button> for keyboard and assistive technology. */
+.bare {
+  appearance: none;
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Nothing is hidden rather than merely unanimated. Every rule above already
+   * rests in its drawn state, so dropping the animation leaves the content
+   * on screen and readable. */
+  .sectionIn,
+  .screenIn,
+  .sk {
+    animation: none;
+  }
+}

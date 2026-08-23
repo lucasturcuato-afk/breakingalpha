@@ -10,9 +10,17 @@ import type { ReactNode } from "react";
  */
 export function LiveMoodShell({
   pageTitle,
+  mobileFullBleed = false,
   children,
 }: {
   pageTitle: string;
+  /**
+   * Pass-through to AppShell. Additive, defaulting to false, so every existing
+   * caller keeps the exact chrome it has today at every width. Set it and the
+   * mood bar, topbar and footer are gated out below `md` only, for a page that
+   * draws its own head. See the prop's own documentation on AppShell.
+   */
+  mobileFullBleed?: boolean;
   children: ReactNode;
 }) {
   const { mood, moodHeadline, moodDetails } = useLiveMood();
@@ -23,6 +31,7 @@ export function LiveMoodShell({
       mood={mood}
       moodHeadline={moodHeadline}
       moodDetails={moodDetails}
+      mobileFullBleed={mobileFullBleed}
     >
       {children}
     </AppShell>
