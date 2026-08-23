@@ -69,6 +69,18 @@ export function DealsScreen({
 }: DealsScreenProps) {
   const [lens, setLens] = useState<DealLens>(initialLens);
 
+  /* The seed is a prop, so it can change under a mounted screen: a client-side
+     navigation from /deal-flow to /deal-flow?lens=closed keeps this component
+     mounted and only swaps the prop, and a useState initialiser would ignore
+     it. Adjusting during render rather than in an effect, so the first paint
+     after the navigation already carries the new lens. A tap on a chip still
+     wins until the seed changes again. */
+  const [seededLens, setSeededLens] = useState<DealLens>(initialLens);
+  if (seededLens !== initialLens) {
+    setSeededLens(initialLens);
+    setLens(initialLens);
+  }
+
   const derivedCounts = useMemo(() => {
     const out: Record<string, number> = { all: deals.length };
     for (const stage of DEAL_STAGES) out[stage] = 0;
