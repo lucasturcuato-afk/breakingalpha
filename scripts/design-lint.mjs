@@ -53,20 +53,20 @@ const BANNED_ALLOW = [
   // Platform and language surface that cannot be renamed.
   { pattern: /\bReact\.memo\b/, why: 'React API' },
   { pattern: /@returns/, why: 'JSDoc tag, never rendered' },
+  // Stored enum ids, preserved by open-decision ruling 5. The rendered labels
+  // became Fund Analyst and Equity Research; the ids stay because role is a
+  // TEXT CHECK column and changing them would be a migration plus a backfill
+  // for no compliance gain, since an id is never shown to a user.
+  // Note this is a line-level exemption: a banned substring elsewhere on a
+  // line that also contains one of these ids downgrades to WARN rather than
+  // ERROR. It still prints, so it is visible, not silenced.
+  { pattern: /\b(buy|sell)_side\b/, why: 'stored enum id, never rendered, ruling 5' },
   // Ordinary words that contain a banned substring and carry no claim.
   { pattern: /\bthreshold(s)?\b/i, why: 'contains hold, no claim about a position' },
   { pattern: /\bhousehold(s)?\b/i, why: 'contains hold' },
   { pattern: /\bstakeholder(s)?\b/i, why: 'contains hold' },
   { pattern: /\bplaceholder(s)?\b/i, why: 'contains hold, DOM attribute' },
   { pattern: /\bwithhold(ing)?\b/i, why: 'contains hold, used in the reportable_min_n pattern' },
-  // Persisted enum values. DECISIONS.md ruling 5 changed the two DISPLAY
-  // labels to Fund Analyst and Equity Research and left the ids alone, so
-  // that the change needs no migration and no backfill. The ids are
-  // therefore permanent, and any line that edits a role's label also
-  // carries its id. Allowlisting the ids rather than the bare words keeps
-  // a real "buy" or "sell" on the same line an error.
-  { pattern: /\bbuy_side\b/, why: 'ruling 5: persisted role enum id, deliberately unchanged' },
-  { pattern: /\bsell_side\b/, why: 'ruling 5: persisted role enum id, deliberately unchanged' },
 ];
 
 /* performance.now() is specifically called out in github.md as having been
