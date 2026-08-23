@@ -15,6 +15,10 @@ import { SearchScreen, type SearchStage } from "@/components/search";
  *   /search?q=zzz              no results
  *   /search?stage=loading      in flight
  *   /search?stage=error        a failed read
+ *   /search?stage=unwired      what production draws: no source behind the
+ *                              entity half, so no search ran and none is
+ *                              running. Forced whenever the fixture gate is
+ *                              closed, whatever ?stage= says.
  *
  * NO AppShell. This is the one thing about this file that looks like an
  * omission and is not. The prototype gates its bottom bar on
@@ -32,7 +36,7 @@ import { SearchScreen, type SearchStage } from "@/components/search";
  * `/search`. That file is untouched here.
  */
 
-const STAGES: SearchStage[] = ["ready", "loading", "error"];
+const STAGES: SearchStage[] = ["ready", "loading", "error", "unwired"];
 
 function one(value: string | string[] | undefined): string {
   return (Array.isArray(value) ? value[0] : value) ?? "";

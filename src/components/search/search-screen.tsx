@@ -30,9 +30,20 @@ import styles from "./search.module.css";
  *   queryTyped  the query matched something in the fixture.
  *   queryNone   the query matched nothing.
  *
- * Loading and error are UNSPECIFIED in the design. The prototype resolves
- * synchronously from a prefix regex, so it has no in-flight moment and no
- * failed read. Both are built here because a real search has both.
+ * Loading, error and unwired are UNSPECIFIED in the design. The prototype
+ * resolves synchronously from a prefix regex, so it has no in-flight moment,
+ * no failed read and no notion of a missing source. All three are built here
+ * because a real search has all three.
+ *
+ * `unwired` is the one that took two passes to get right, so it is written
+ * down. Outside development and preview the entity fixture is gated out and
+ * there is no search route behind it, so a typed query has nothing to answer
+ * it. The first build resolved that to `loading`. That is wrong: a skeleton
+ * says something is on its way, and nothing is coming, so it lies in the
+ * opposite direction from the empty state it was avoiding. `none` claims a
+ * search ran and found nothing; `loading` claims a search is running. Neither
+ * is true, so the screen says the third thing instead. The jump list is not
+ * gated and stays rendered, because those destinations are real.
  *
  * THERE IS NO TAB BAR ON THIS SCREEN, and that is reproduced rather than
  * fixed. The prototype gates its nav on
@@ -47,7 +58,7 @@ import styles from "./search.module.css";
  * through `scripts/parity_harness.py --screen search`.
  */
 
-export type SearchStage = "ready" | "loading" | "error";
+export type SearchStage = "ready" | "loading" | "error" | "unwired";
 
 export function SearchScreen({
   stage = "ready",
@@ -66,26 +77,34 @@ export function SearchScreen({
     [query],
   );
 
-  /* Which branch the results area draws, resolved once so what follows reads
-     as a list of states rather than a nest of conditions.
+  /* With the gate closed the screen is unwired whatever `?stage=` says, since
+     that parameter is a way to reach the lifecycle states in development and
+     is not a source. In development and preview `?stage=unwired` reaches this
+     branch on purpose, so it can be audited and captured like the rest. */
+  const effective: SearchStage = SEARCH_FIXTURE_ENABLED ? stage : "unwired";
 
-     `results === null` is the production case: the fixture is gated out and no
-     search backend exists, so a typed query has nothing to answer it. That
-     resolves to `loading`, never to `none`. "No results found" is a claim
-     about a search, and a search that never ran has not earned it. Loading is
-     the truthful description of nothing having arrived. */
-  const view: "jump" | "results" | "none" | "loading" | "error" =
-    stage === "error"
-      ? "error"
-      : stage === "loading"
-        ? "loading"
-        : !typed
-          ? "jump"
-          : results === null
-            ? "loading"
-            : isEmptyResult(results)
-              ? "none"
-              : "results";
+  /* Which branch the results area draws, resolved once so what follows reads
+     as a list of states rather than a nest of conditions. */
+  const view: "jump" | "results" | "none" | "loading" | "error" | "unwired" =
+    effective === "unwired"
+      ? typed
+        ? "unwired"
+        : "jump"
+      : effective === "error"
+        ? "error"
+        : effective === "loading"
+          ? "loading"
+          : !typed
+            ? "jump"
+            : /* Unreachable: `results` is null only when the gate is closed,
+                 and that already resolved to unwired above. Written as unwired
+                 rather than none anyway, so the fallback stays honest if the
+                 two conditions ever come apart. */
+              !results
+              ? "unwired"
+              : isEmptyResult(results)
+                ? "none"
+                : "results";
 
   return (
     <div
@@ -137,6 +156,7 @@ export function SearchScreen({
         {view === "jump" ? <JumpList /> : null}
         {view === "results" && results ? <Results query={query.trim()} results={results} /> : null}
         {view === "none" ? <NoResults /> : null}
+        {view === "unwired" ? <Unwired /> : null}
         {view === "loading" ? <SearchSkeleton /> : null}
         {view === "error" ? <SearchError /> : null}
       </div>
@@ -210,7 +230,7 @@ function Results({
 /**
  * Reached only after a search actually ran and came back with nothing, which
  * is what makes the sentence true. When there is no search to run at all the
- * screen shows the loading state instead; see the `view` resolution above.
+ * screen shows `Unwired` instead; see the `view` resolution above.
  */
 function NoResults() {
   return (
@@ -238,6 +258,45 @@ function NoResults() {
         tracks.
       </p>
     </div>
+  );
+}
+
+/**
+ * The entity half has no source. Not a failed read, not an empty answer, and
+ * not something on its way.
+ *
+ * Every word here is chosen against a sentence it must not say. It does not
+ * say no results, because nothing was searched. It does not say loading,
+ * because nothing is coming. It does not say the name is out of coverage,
+ * because coverage has not been consulted. It says the three groups are not
+ * connected to anything yet, which is the only fact available.
+ *
+ * The jump list stays underneath. Those destinations are live in every
+ * environment and are not part of what is missing.
+ */
+function Unwired() {
+  return (
+    <>
+      <div className={styles.groupIn} style={{ paddingTop: "18px" }} role="status">
+        <p style={{ margin: 0, font: "500 16px/1.45 'Playfair Display', serif", color: "var(--c-ink)" }}>
+          Entity search is not wired yet.
+        </p>
+        <p
+          style={{
+            margin: "10px 0 0",
+            font: "400 13px/1.6 Inter, sans-serif",
+            color: "var(--c-secondary)",
+            textWrap: "pretty",
+          }}
+        >
+          Companies, your entries and deals are not connected to a source on this screen, so nothing
+          has been searched and nothing has been ruled out. The pages below are live.
+        </p>
+      </div>
+      <div style={{ marginTop: "22px" }}>
+        <JumpList />
+      </div>
+    </>
   );
 }
 

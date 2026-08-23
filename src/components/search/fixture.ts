@@ -21,6 +21,11 @@ import type { OutcomeState } from "@/components/ledger/claim-anatomy";
  *
  * Fails closed: anything that is not development and not an explicit preview
  * deploy is treated as production.
+ *
+ * With the gate closed the screen draws its `unwired` state, NOT a skeleton
+ * and NOT an empty result. A skeleton would say something is on its way when
+ * nothing is coming, which is the same shape of untruth as claiming a search
+ * found nothing. See `search-screen.tsx`.
  */
 export const SEARCH_FIXTURE_ENABLED =
   process.env.NODE_ENV !== "production" ||
