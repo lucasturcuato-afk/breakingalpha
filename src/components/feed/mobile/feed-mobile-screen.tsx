@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useMemo, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import styles from "./feed-mobile.module.css";
 import { FEED_FIXTURE } from "./fixture";
@@ -95,6 +95,11 @@ const BADGE: Record<
 
 const STAGES: FeedStage[] = ["ready", "loading", "error", "empty", "stale"];
 
+/* Module scope so the store identity is stable across renders. */
+const subscribeNever = () => () => {};
+const readSearch = () => window.location.search;
+const readNoSearch = () => "";
+
 const MONO = "'JetBrains Mono', monospace";
 const INTER = "Inter, sans-serif";
 const PLAYFAIR = "'Playfair Display', serif";
@@ -116,24 +121,25 @@ export function FeedMobileScreen({
 }) {
   const [openSources, setOpenSources] = useState<string | null>(null);
 
-  /* Both dev switches are read after mount, never during render, so the server
-   * and the first client pass agree and hydration stays quiet. The parity
-   * probe settles for more than a second after load, so the swap has long
-   * happened by the time anything is measured.
+  /* Both dev switches come from the query string, and the query string is a
+   * client-only value on a route the server also renders. useSyncExternalStore
+   * with a server snapshot is the sanctioned way to read one: React hydrates
+   * against the empty snapshot and swaps to the real one, so there is no
+   * mismatch and no setState inside an effect. The store never emits, because
+   * a full navigation remounts the tree anyway.
    *
    * ?state= exists because the lifecycle states cannot be reached by
    * reproducing their conditions on a live wire, and a state that cannot be
    * opened cannot be audited. Same gate as the fixture, same fail-closed
    * behaviour. */
-  const [fixtureOn, setFixtureOn] = useState(false);
-  const [stageOverride, setStageOverride] = useState<FeedStage | null>(null);
-  useEffect(() => {
-    if (!FIXTURE_ALLOWED) return;
-    const q = new URLSearchParams(window.location.search);
-    setFixtureOn(q.get("fixture") === "1");
-    const s = q.get("state");
-    if (s && STAGES.includes(s as FeedStage)) setStageOverride(s as FeedStage);
-  }, []);
+  const search = useSyncExternalStore(subscribeNever, readSearch, readNoSearch);
+  const params = useMemo(() => new URLSearchParams(search), [search]);
+  const fixtureOn = FIXTURE_ALLOWED && params.get("fixture") === "1";
+  const rawStage = params.get("state");
+  const stageOverride: FeedStage | null =
+    FIXTURE_ALLOWED && rawStage && STAGES.includes(rawStage as FeedStage)
+      ? (rawStage as FeedStage)
+      : null;
 
   const view = fixtureOn ? FEED_FIXTURE : data;
   const counts = view.counts;
