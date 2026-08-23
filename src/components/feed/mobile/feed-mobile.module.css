@@ -1,0 +1,107 @@
+/* Live Feed, mobile. Motion and the three rules that cannot be written inline.
+ *
+ * Nothing here is responsive. An inline style beats a class at every
+ * breakpoint, so a module carrying a breakpoint next to components that style
+ * measured values inline is a defect waiting to happen. The screen is gated
+ * below md by its mount site, never from in here.
+ *
+ * Easing is the design's single curve. */
+
+.enter {
+  /* Rests in the drawn state and animates FROM the hidden one, so a subtree
+   * that mounts late is still readable when the animation never runs. */
+  opacity: 1;
+  transform: none;
+  animation: feedIn 240ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+
+@keyframes feedIn {
+  from {
+    opacity: 0;
+    transform: translateY(7px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.reveal {
+  opacity: 1;
+  transform: none;
+  animation: feedReveal 200ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+
+@keyframes feedReveal {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* The summary is clamped to two lines. The design draws two, not the three
+ * --v3-clamp carries, so the count is written here rather than taken from the
+ * token: this is the one surface in the build that clamps to a different
+ * number of lines. */
+.clamp2 {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
+
+/* Loading. The same shimmer the Ledger uses, restated rather than imported.
+ * This screen owns no file under src/components/ledger and does not extend
+ * one. */
+.sk {
+  border-radius: 4px;
+  background: linear-gradient(
+    90deg,
+    var(--c-hair) 0%,
+    var(--c-surface) 50%,
+    var(--c-hair) 100%
+  );
+  background-size: 200% 100%;
+  animation: feedShimmer 1.8s ease-in-out infinite;
+}
+
+@keyframes feedShimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+/* A real button carrying none of the agent's default chrome, so a control the
+ * design draws as bare text is still a button for keyboard and assistive
+ * technology. */
+.bare {
+  appearance: none;
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Nothing is hidden rather than merely unanimated. Both entrances above rest
+   * in their drawn state, so dropping the animation leaves the content on
+   * screen, and the shimmer stops on a flat band that is still a visible
+   * placeholder. */
+  .enter,
+  .reveal,
+  .sk {
+    animation: none;
+  }
+}

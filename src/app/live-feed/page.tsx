@@ -12,6 +12,17 @@ import { getCompleteness, getAdjustedScore } from "@/lib/article-signal";
 import type { StoryData } from "@/components/dashboard";
 import { SignInModal } from "@/components/auth/sign-in-modal";
 import { useLiveMood } from "@/hooks/useLiveMood";
+import { FeedMobileScreen } from "@/components/feed/mobile";
+import type {
+  FeedBucket,
+  FeedData,
+  FeedLens,
+  FeedStage,
+  FeedStory,
+} from "@/components/feed/mobile";
+import { useUserProfile } from "@/hooks/useUserProfile";
+import { sectorMatchesProfile } from "@/lib/personalization";
+import { stripHtml } from "@/lib/strip-html";
 
 interface LiveStory extends StoryData {
   _publishedAt?: string;
@@ -123,8 +134,24 @@ function dedupeStories(stories: LiveStory[]): DedupedStory[] {
   return result;
 }
 
+/**
+ * A company name to the slug `/company/[id]` resolves. The route reconstructs
+ * the name from the slug and falls back to its own auto-resolve when the name
+ * is not indexed, so a miss lands on that screen's empty state rather than on a
+ * 404. Local on purpose: the repo has no shared company-slug helper and adding
+ * one from a screen PR would put a second opinion beside the route's own.
+ */
+function companyHref(name: string): string | undefined {
+  const slug = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return slug ? `/company/${slug}` : undefined;
+}
+
 export default function LiveFeedPage() {
   const { mood, moodHeadline, moodDetails } = useLiveMood();
+  const { profile } = useUserProfile();
   const [selectedVerticals, setSelectedVerticals] = useState<string[]>([]);
   const [selectedActivityTypes, setSelectedActivityTypes] = useState<string[]>([]);
   const [showAlertsOnly, setShowAlertsOnly] = useState(false);
@@ -132,6 +159,11 @@ export default function LiveFeedPage() {
   const [sort, setSort] = useState<SortOption>("newest");
   const [articles, setArticles] = useState<LiveStory[]>([]);
   const [loading, setLoading] = useState(true);
+  /* The desk logs a failed poll and renders the last good list forever, so a
+     wire that has stopped coming back looks identical to a quiet one. Tracking
+     it is what lets the mobile screen tell error from stale. Nothing on the
+     desktop layout reads this, so that layout is unchanged. */
+  const [loadFailed, setLoadFailed] = useState(false);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const [newArticleIds, setNewArticleIds] = useState<Set<string>>(new Set());
   const [savedIds, setSavedIds] = useState<Set<string>>(() => {
@@ -234,8 +266,10 @@ export default function LiveFeedPage() {
 
       setArticles(stories);
       setLastRefresh(new Date());
+      setLoadFailed(false);
     } catch (e) {
       console.error("Failed to fetch articles:", e);
+      setLoadFailed(true);
     } finally {
       setLoading(false);
     }
@@ -380,8 +414,216 @@ export default function LiveFeedPage() {
       .map((b) => ({ label: b, stories: buckets[b] }));
   }, [filtered]);
 
+  /* ── The mobile screen ──────────────────────────────────────────────
+   *
+   * Composed beside the desk, never instead of it. The query, the dedupe, the
+   * time bucketing and the signed-out gate above are reused verbatim; what
+   * follows is a second lens over the same articles and a view model handed to
+   * a component that owns no data of its own.
+   *
+   * The mobile lens is deliberately independent of the desk's vertical and
+   * activity chips. The design draws four exclusive lenses; the desk carries
+   * two independent boolean toggles plus two multi-select chip groups. Driving
+   * both from one state would make one of the two surfaces lie. */
+  const [pickedLens, setPickedLens] = useState<FeedLens | null>(null);
+
+  const followsSectors = (profile?.sectors?.length ?? 0) > 0;
+
+  /* The design opens on Yours. A reader who has told us nothing about their
+     sectors would then open on a screen with nothing in it, so the untouched
+     default falls back to Everything for them. Once the reader picks a lens,
+     their pick wins whatever the profile says. */
+  const mobileLens: FeedLens = pickedLens ?? (followsSectors ? "yours" : "all");
+
+  const mobileData: FeedData = useMemo(() => {
+    const inYours = (s: LiveStory) =>
+      (s.industry_verticals ?? []).some((v) => sectorMatchesProfile(v, profile)) ||
+      sectorMatchesProfile(s.sector ?? null, profile);
+
+    const yoursCount = articles.reduce((n, s) => n + (inYours(s) ? 1 : 0), 0);
+    const savedCount = articles.reduce((n, s) => n + (savedIds.has(s.id) ? 1 : 0), 0);
+
+    const lensed = sortedArticles.filter((s) => {
+      if (mobileLens === "alerts") return !!s.isAlert;
+      if (mobileLens === "saved") return savedIds.has(s.id);
+      if (mobileLens === "yours") return inYours(s);
+      return true;
+    });
+
+    const deduped = dedupeStories(lensed);
+
+    // The same five-story truncation the desk applies. Dropping a shipped gate
+    // is a product change, not a screen port, so mobile carries it.
+    const limit = user === null ? 5 : deduped.length;
+    const visible = deduped.slice(0, limit);
+    const gated = user === null && deduped.length > limit;
+
+    const LABEL: Record<string, string> = {
+      "LAST HOUR": "Last hour",
+      TODAY: "Today",
+      YESTERDAY: "Yesterday",
+      EARLIER: "Earlier",
+    };
+    const bins = new Map<string, FeedStory[]>();
+    for (const s of visible) {
+      const company = (s.companies ?? []).find(
+        (c): c is string => typeof c === "string" && c.trim().length > 0,
+      );
+      const story: FeedStory = {
+        id: s.id,
+        headline: s.title,
+        summary: s.summary ? stripHtml(s.summary) : undefined,
+        source: s.source,
+        timeAgo: s.timestamp,
+        sentiment:
+          s.sentiment === "bullish" || s.sentiment === "bearish"
+            ? s.sentiment
+            : "neutral",
+        /* One badge, highest first, because the design never draws two.
+           `Not followed` only means anything to a reader who told us what they
+           follow, so it is suppressed for everyone else rather than labelling
+           every story on the wire. */
+        badge: s.isAlert
+          ? "alert"
+          : savedIds.has(s.id)
+            ? "saved"
+            : followsSectors && !inYours(s)
+              ? "unfollowed"
+              : null,
+        entity: company
+          ? { label: company, href: companyHref(company) }
+          : undefined,
+        url: s.url,
+        isNew: newArticleIds.has(s.id),
+        duplicates: s.duplicateArticles.map((d) => ({
+          id: d.id,
+          title: d.title,
+          source: d.source,
+          timeAgo: d.publishedAt ? timeAgo(d.publishedAt) : "",
+          url: d.url,
+        })),
+      };
+      const bucket = getTimeBucket(s._publishedAt || "");
+      const arr = bins.get(bucket) ?? [];
+      arr.push(story);
+      bins.set(bucket, arr);
+    }
+
+    const buckets: FeedBucket[] = ["LAST HOUR", "TODAY", "YESTERDAY", "EARLIER"]
+      .filter((b) => bins.get(b)?.length)
+      .map((b) => ({ id: b, label: LABEL[b], stories: bins.get(b) ?? [] }));
+
+    const shownCount = visible.length;
+    const standfirst =
+      mobileLens === "saved"
+        ? `${savedCount} ${savedCount === 1 ? "article" : "articles"} you kept.`
+        : mobileLens === "alerts"
+          ? `${alertCount} bearish ${alertCount === 1 ? "story" : "stories"} from the last 48 hours.`
+          : mobileLens === "yours"
+            ? followsSectors
+              ? `${yoursCount} of ${articles.length} match the ${profile?.sectors?.length} sectors you follow.`
+              : "Choose your sectors and this lens narrows the wire to them."
+            : `The ${articles.length} most recent articles from the last seven days.`;
+
+    const empty =
+      mobileLens === "saved"
+        ? {
+            title: "Nothing saved yet",
+            body: "Tap the bookmark on any article to keep it here.",
+          }
+        : mobileLens === "alerts"
+          ? {
+              title: "No bearish signals in the last 48 hours",
+              body: "The wire is calm. This lens fills as soon as one turns.",
+            }
+          : mobileLens === "yours"
+            ? followsSectors
+              ? {
+                  title: "Nothing in your sectors yet",
+                  body: "Nothing on the wire matched the sectors you follow. Everything shows the rest.",
+                }
+              : {
+                  title: "No sectors chosen yet",
+                  body: "Choose your sectors in settings and this lens narrows the wire to them.",
+                }
+            : {
+                title: "Nothing on the wire",
+                body: "No stories have come through in the last seven days.",
+              };
+
+    return {
+      /* 24 hour, as the design draws it. The desk renders the same instant as
+         "02:55 AM" beside a mono label that is drawn as "UPDATED 12:41". */
+      updatedAt: lastRefresh
+        ? lastRefresh.toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: false,
+          })
+        : null,
+      standfirst,
+      buckets,
+      counts: { yours: yoursCount, alerts: alertCount, saved: savedCount },
+      newCount: newArticleIds.size,
+      gated,
+      empty: shownCount === 0 ? empty : null,
+    };
+  }, [
+    articles,
+    sortedArticles,
+    savedIds,
+    newArticleIds,
+    mobileLens,
+    profile,
+    followsSectors,
+    alertCount,
+    lastRefresh,
+    user,
+  ]);
+
+  /* A failed poll with nothing on screen is an error. A failed poll with the
+     last good list still on screen is stale, and the rows stay exactly where
+     they were. */
+  const mobileStage: FeedStage =
+    loading && articles.length === 0
+      ? "loading"
+      : loadFailed && articles.length === 0
+        ? "error"
+        : loadFailed
+          ? "stale"
+          : mobileData.buckets.length === 0
+            ? "empty"
+            : "ready";
+
   return (
-    <AppShell pageTitle="Live Feed" mood={mood} moodHeadline={moodHeadline} moodDetails={moodDetails}>
+    <AppShell
+      pageTitle="Live Feed"
+      mood={mood}
+      moodHeadline={moodHeadline}
+      moodDetails={moodDetails}
+      mobileFullBleed
+    >
+      {/* Below md the screen is the design's. Gating lives in a class, never in
+          an inline style: an inline display beats the class at every
+          breakpoint. */}
+      <div className="md:hidden">
+        <FeedMobileScreen
+          data={mobileData}
+          stage={mobileStage}
+          lens={mobileLens}
+          onLensChange={setPickedLens}
+          onRetry={() => {
+            setLoading(true);
+            fetchArticles();
+          }}
+          onSignIn={() => setShowSignIn(true)}
+        />
+      </div>
+
+      {/* Above md the desk is untouched. Every element below this line is the
+          layout that shipped, moved behind one breakpoint gate and nothing
+          else. */}
+      <div className="hidden md:block">
       {/* Toolbar */}
       <div className="sticky top-0 z-10 bg-parchment border-b border-border-base">
         <FilterBar
@@ -623,6 +865,7 @@ export default function LiveFeedPage() {
             );
           })()
         )}
+      </div>
       </div>
 
       <SignInModal
