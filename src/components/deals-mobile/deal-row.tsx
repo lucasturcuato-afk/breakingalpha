@@ -19,8 +19,7 @@ import styles from "./deals.module.css";
  * (Consideration, Implied EV / EBITDA, Premium to undisturbed, Financing) have
  * no column on `deal_flow`, and the nearest fields are free text. So the
  * control is built, carries the visual treatment the design draws and its 44px
- * target, and
- * does nothing. See `onOpenDetail` below.
+ * target, and does nothing. See `onOpenDetail` below.
  *
  * The 44px target is reached the way the design reaches it, and the way the
  * handoff requires: content-box padding plus a negative margin. The element
@@ -154,7 +153,18 @@ export function DealRow({
         </p>
       ) : null}
 
-      <button type="button" className={styles.bare} style={memoStyle} onClick={onGenerateMemo}>
+      {/* The visible label is the design's and stays exactly as drawn. The
+          accessible name names the deal, because a list of deals repeats this
+          control once per row and four identical "Generate a deal memo" entries
+          in a controls list say nothing about which deal they belong to. An
+          aria-label does not touch textContent, so parity is unaffected. */}
+      <button
+        type="button"
+        className={styles.bare}
+        style={memoStyle}
+        aria-label={`Generate a deal memo: ${deal.claim}`}
+        onClick={onGenerateMemo}
+      >
         Generate a deal memo
       </button>
     </div>

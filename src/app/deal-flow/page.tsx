@@ -276,6 +276,12 @@ function DealFlowContent() {
 
   /* ── Fetch deals ── */
   const fetchDeals = useCallback(async () => {
+    /* Both flags, every time. Without `setLoading(true)` a retry after a failed
+       read leaves loading false and fetchFailed false while the request is in
+       flight, so the mobile screen computes status "ready" over an empty
+       `deals` and draws "Deal pipeline populating": the exact empty-for-failed
+       substitution the error state exists to prevent. */
+    setLoading(true);
     setFetchFailed(false);
     try {
       const { data, error } = await getSupabase()
