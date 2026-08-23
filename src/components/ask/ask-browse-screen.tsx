@@ -10,11 +10,11 @@ import {
   PAD,
 } from "./ask-parts";
 import { AskComposer } from "./ask-composer";
+import styles from "./ask.module.css";
 import {
   ASK_BROWSE_FIXTURE,
   ASK_DIRECTORY,
   ASK_FIXTURE_ENABLED,
-  SUGGESTED_PROMPTS,
   type AskBrowseData,
   type DirectoryId,
 } from "./fixture";
@@ -58,15 +58,19 @@ export function AskBrowseScreen({
   data?: AskBrowseData;
 }) {
   /* Outside development and preview there is no source for either the counters
-     or the lookups, so the screen renders as if both came back empty: the three
+     or the lookups. That is NOT the same as an empty read, and it must not
+     render as one: "nothing has moved since yesterday's close" is a claim about
+     the market, and asserting it off no source at all is the same fabrication
+     the fixture gate exists to prevent. Unwired says unwired. The three
      destinations stay, their figures do not. */
-  const effective: AskStage = ASK_FIXTURE_ENABLED ? stage : "empty";
+  const effective: AskStage | "unwired" = ASK_FIXTURE_ENABLED ? stage : "unwired";
   const loading = effective === "loading";
   const showDetail = effective === "ready" || effective === "stale";
 
   return (
     <div
       data-parity="ask"
+      className={styles.enter}
       style={{
         display: "flex",
         flexDirection: "column",
@@ -126,6 +130,13 @@ export function AskBrowseScreen({
           <AskNotice>Nothing has moved on any of the three since yesterday&apos;s close.</AskNotice>
         ) : null}
 
+        {effective === "unwired" ? (
+          <AskNotice>
+            These three counts are not wired to a source yet. The destinations are open and current; a missing figure
+            here means unread, not a quiet day.
+          </AskNotice>
+        ) : null}
+
         {effective === "stale" ? <AskNotice>{data.countedAt}</AskNotice> : null}
 
         <AskSectionRule label="company intel" style={{ marginTop: "24px" }} />
@@ -169,6 +180,17 @@ export function AskBrowseScreen({
           <AskNotice>No recent lookups yet. Type a ticker or a company name above and it will land here.</AskNotice>
         ) : null}
 
+        {/* Same distinction as the counters above, and the wording is careful
+            for the same reason. "No lookups yet" would read as a fact about
+            this reader; nothing records lookups for anyone, so the sentence
+            says that instead. */}
+        {effective === "unwired" ? (
+          <AskNotice>
+            Lookups are not recorded yet, so this list is empty for everyone and nothing here has been cleared. Type a
+            ticker or a company name above; the primer is already live.
+          </AskNotice>
+        ) : null}
+
         {showDetail
           ? data.lookups.map((lookup, i) => (
               <AskLookupRow
@@ -184,7 +206,10 @@ export function AskBrowseScreen({
           : null}
       </div>
 
-      <AskComposer prompts={[SUGGESTED_PROMPTS[0], SUGGESTED_PROMPTS[2]]} />
+      {/* The two chips come off the data, not off a second hardcoded pair here.
+          Two sources for one pair means a `data` override silently keeps the
+          fixture's chips. */}
+      <AskComposer prompts={data.prompts} />
     </div>
   );
 }

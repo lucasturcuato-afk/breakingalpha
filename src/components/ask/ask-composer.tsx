@@ -66,6 +66,15 @@ export function AskComposer({ prompts }: { prompts: readonly [string, string] })
           const q = value.trim();
           if (!q) return;
           router.push(askHref(q));
+          /* The field does not clear itself. Measured on the running page:
+             submitting from the answer leaves the last question in the field,
+             because `/ask?q=a` to `/ask?q=b` is a same-pathname navigation and
+             PageTransition keys on pathname; and submitting from browse leaves
+             it too, because this composer is the same element type in the same
+             position in both trees, so React reconciles it rather than
+             remounting it. Both cases left the question sitting under a cursor
+             as though it had not been sent. */
+          setValue("");
         }}
         style={{
           flex: "none",

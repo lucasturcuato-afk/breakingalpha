@@ -1,11 +1,11 @@
 import Link from "next/link";
 import { AskComposer } from "./ask-composer";
 import { AskNotice, AskSkeleton, IconBack, PAD } from "./ask-parts";
+import styles from "./ask.module.css";
 import {
   ASK_ANSWER_FIXTURE,
   ASK_FIXTURE_ENABLED,
   EMPTY_KB_ANSWER,
-  SUGGESTED_PROMPTS,
   type AnswerRecordCitation,
   type AskAnswerData,
 } from "./fixture";
@@ -47,6 +47,10 @@ export function AskAnswerScreen({
   return (
     <div
       data-parity="answer"
+      /* This is the state the entrance exists for. PageTransition keys on
+         pathname and browse to answer is a query change on one path, so
+         without this the answer would arrive with no entrance at all. */
+      className={styles.enter}
       style={{
         display: "flex",
         flexDirection: "column",
@@ -54,6 +58,13 @@ export function AskAnswerScreen({
         backgroundColor: "var(--c-bg)",
       }}
     >
+      {/* The answer screen draws no heading. `mobileFullBleed` gates the
+          topbar out below md, and unlike browse there is no visible h1, so
+          without this the mobile answer document has no heading at all. Costs
+          one unmatched element in the parity fingerprint, named in the PR
+          body, which is the right trade for a document that has a heading. */}
+      <h1 className="sr-only">Ask</h1>
+
       <div
         style={{
           flex: "none",
@@ -64,8 +75,13 @@ export function AskAnswerScreen({
           borderBottom: "1px solid var(--c-border)",
         }}
       >
+        {/* `replace`, not a push. This chevron is the screen's back affordance,
+            and pushing /ask on top of the answer leaves the answer one hardware
+            back-press away, so a reader who taps the chevron and then presses
+            the phone's back button walks forward into the answer they left. */}
         <Link
           href="/ask"
+          replace
           style={{
             minHeight: "44px",
             display: "flex",
@@ -163,7 +179,10 @@ export function AskAnswerScreen({
         </div>
       </div>
 
-      <AskComposer prompts={[SUGGESTED_PROMPTS[1], SUGGESTED_PROMPTS[2]]} />
+      {/* The two chips come off the data, not off a second hardcoded pair here.
+          Two sources for one pair means a `data` override silently keeps the
+          fixture's chips. */}
+      <AskComposer prompts={data.prompts} />
     </div>
   );
 }

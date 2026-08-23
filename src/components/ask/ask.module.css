@@ -5,3 +5,40 @@
   color: var(--c-muted);
   opacity: 1;
 }
+
+/* The screen entrance. The prototype writes
+   `animation:v3in 240ms cubic-bezier(0.16,1,0.3,1) both` on both Ask roots,
+   where v3in is opacity 0 to 1 over translateY(7px) to none.
+
+   `AppShell`'s PageTransition already runs the same curve on a route change,
+   but it keys on `pathname` and browse to answer is a query change on one
+   path, so without this the answer state would arrive with no entrance at all
+   while every other screen has one. The resting state is written first and the
+   fill is `backwards` rather than `both`, so the element is never left holding
+   an opacity of 0 if the animation does not run. Same shape as
+   `ledger.module.css`. */
+.enter {
+  opacity: 1;
+  transform: none;
+  animation: askIn 240ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+
+@keyframes askIn {
+  from {
+    opacity: 0;
+    transform: translateY(7px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Nothing is hidden rather than merely unanimated: the rule above already
+     rests in its drawn state, so removing the animation leaves the screen
+     visible and complete. */
+  .enter {
+    animation: none;
+  }
+}

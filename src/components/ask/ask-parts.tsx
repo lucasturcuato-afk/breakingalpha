@@ -1,6 +1,11 @@
 import Link from "next/link";
 import type { CSSProperties, ReactNode } from "react";
-import { Chevron } from "@/components/ledger";
+/* Deep import, not the barrel. `@/components/ledger` re-exports `LedgerScreen`,
+   which is a 25KB "use client" module, and `ask-composer.tsx` is a client
+   component that imports PAD from this file, so the barrel would drag the whole
+   Ledger into the /ask client graph for the sake of one 14px chevron.
+   `chevron.tsx` carries no "use client" and imports nothing. */
+import { Chevron } from "@/components/ledger/chevron";
 
 /**
  * The pieces both Ask screens are built from.
