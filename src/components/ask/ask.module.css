@@ -14,9 +14,8 @@
    but it keys on `pathname` and browse to answer is a query change on one
    path, so without this the answer state would arrive with no entrance at all
    while every other screen has one. The resting state is written first and the
-   fill is `backwards` rather than `both`, so the element is never left holding
-   an opacity of 0 if the animation does not run. Same shape as
-   `ledger.module.css`. */
+   fill is `backwards` rather than `both`, so an element whose animation never
+   runs is never stuck at an opacity of 0. Same shape as `ledger.module.css`. */
 .enter {
   opacity: 1;
   transform: none;
