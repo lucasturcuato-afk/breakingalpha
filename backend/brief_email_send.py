@@ -373,12 +373,26 @@ def select_last_session_resolutions(
 def eligible_recipients(
     users: Iterable[dict],
     profiles_by_id: dict[str, dict],
+    allowlist_emails: set[str] | None = None,
 ) -> list[dict]:
-    """Users with a real email who have not unsubscribed.
+    """Users with a real email, not unsubscribed, who can actually get in.
 
     A user with no user_profiles row is treated as subscribed, matching the
     column default (brief_email_subscribed boolean NOT NULL DEFAULT true).
     Only an explicit false excludes.
+
+    THE ALLOWLIST INTERSECTION. src/proxy.ts signs a non-allowlisted session
+    straight back out and redirects it to /waitlist, and the OAuth callback and
+    the password sign-in path do the same. Mailing a call CTA to an account that
+    cannot reach the call is worse than not mailing it: the reader clicks,
+    authenticates successfully, and is told they are on a waiting list. So the
+    recipient list is intersected with beta_allowlist here, on lower(email),
+    matching src/lib/allowlist.ts.
+
+    `allowlist_emails=None` means the caller could not read the allowlist. That
+    is NOT treated as "everyone is allowed": the caller is responsible for
+    refusing to send. Passing an explicit empty set excludes everyone, which is
+    the correct reading of an empty allowlist table.
     """
     out: list[dict] = []
     for u in users:
@@ -388,6 +402,8 @@ def eligible_recipients(
             continue
         profile = profiles_by_id.get(uid) or {}
         if profile.get("brief_email_subscribed") is False:
+            continue
+        if allowlist_emails is not None and email.lower() not in allowlist_emails:
             continue
         out.append({"id": uid, "email": email})
     return out
@@ -934,8 +950,27 @@ def _fetch_personal_context(sb: Any, match_pool: list[dict]) -> PersonalContext:
     return ctx
 
 
+def _fetch_allowlist_emails(sb: Any) -> set[str] | None:
+    """Every lowercased email on beta_allowlist, or None if the read failed.
+
+    None is a refusal signal, not an empty allowlist. The caller must not send
+    on None: a read failure that silently degraded to "mail everyone" would put
+    the CTA in front of readers the proxy will bounce to /waitlist.
+    """
+    try:
+        rows = _rows(sb.table("beta_allowlist").select("email").execute())
+    except Exception as exc:  # noqa: BLE001
+        logger.error("[EMAIL DIGEST] beta_allowlist read failed: %s", exc)
+        return None
+    return {
+        str(r.get("email") or "").strip().lower()
+        for r in rows
+        if str(r.get("email") or "").strip()
+    }
+
+
 def _fetch_recipients(sb: Any) -> list[dict]:
-    """Auth users with an email, minus anyone who unsubscribed."""
+    """Auth users with an email, minus unsubscribes, minus the non-allowlisted."""
     try:
         users = _list_all_auth_users(sb)
     except Exception as exc:  # noqa: BLE001
@@ -957,7 +992,26 @@ def _fetch_recipients(sb: Any) -> list[dict]:
         )
         return []
 
-    return eligible_recipients(users, profiles_by_id)
+    allowlist = _fetch_allowlist_emails(sb)
+    if allowlist is None:
+        # Fail closed, same posture as the profiles read above.
+        logger.error(
+            "[EMAIL DIGEST] beta_allowlist unreadable; refusing to send rather than "
+            "risk mailing an account the proxy will bounce to /waitlist"
+        )
+        return []
+
+    subscribed = eligible_recipients(users, profiles_by_id)
+    recipients = eligible_recipients(users, profiles_by_id, allowlist)
+    excluded = len(subscribed) - len(recipients)
+    logger.info(
+        "[EMAIL DIGEST] recipients: %d subscribed, %d on beta_allowlist, "
+        "%d excluded as not allowlisted",
+        len(subscribed),
+        len(recipients),
+        excluded,
+    )
+    return recipients
 
 
 def _fetch_already_sent(sb: Any, brief_id: str) -> set[str]:

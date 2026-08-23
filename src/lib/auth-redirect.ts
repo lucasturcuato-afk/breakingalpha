@@ -62,3 +62,32 @@ export function postAuthDestination(search: string): string {
   if (adopt && CALL_ID.test(adopt)) return callDestination(adopt);
   return safeNext(params.get("next")) ?? POST_AUTH_DEFAULT;
 }
+
+/**
+ * Resolve where a user goes when they finish onboarding.
+ *
+ * The onboarding gate in proxy.ts is the second place an emailed call link used
+ * to die. Signing in was fixed first; a user who had never onboarded was then
+ * redirected to /onboarding with the destination dropped, and the wizard pushed
+ * /dashboard on completion. Thirty-five percent of the accounts we mail have
+ * not onboarded, so for them the CTA still went nowhere.
+ *
+ * The gate now stamps `?next=<original path and query>` and this resolves it.
+ * `next` here is a full relative URL, not a bare path, so its own `adopt` has
+ * to be read out of it: the anchor cannot survive a server hop and is
+ * re-synthesized through callDestination, exactly as postAuthDestination does.
+ *
+ * safeNext is the only gate on the value, so an off-origin `next` degrades to
+ * the dashboard rather than becoming an open redirect.
+ */
+export function postOnboardingDestination(search: string): string {
+  const next = safeNext(new URLSearchParams(search || "").get("next"));
+  if (!next) return POST_AUTH_DEFAULT;
+
+  const queryAt = next.indexOf("?");
+  if (queryAt !== -1) {
+    const adopt = new URLSearchParams(next.slice(queryAt)).get("adopt");
+    if (adopt && CALL_ID.test(adopt)) return callDestination(adopt);
+  }
+  return next;
+}

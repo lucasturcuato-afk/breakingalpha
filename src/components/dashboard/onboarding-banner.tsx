@@ -1,8 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useUserProfile } from "@/hooks/useUserProfile";
 
 export function OnboardingBanner() {
+  const { profile, loading } = useUserProfile();
   const [mounted, setMounted] = useState(false);
   const [show, setShow] = useState(false);
 
@@ -15,6 +17,11 @@ export function OnboardingBanner() {
 
   if (!mounted) return null;
   if (!show) return null;
+  // Gated on localStorage alone, this told a user who had just finished seven
+  // screens of onboarding to go complete their profile. It was the first line
+  // of text on the dashboard and it was wrong for the 70 accounts that had
+  // finished. Read the profile too.
+  if (loading || profile?.onboarding_completed) return null;
 
   return (
     <div className="mb-2 flex items-center gap-2.5 bg-gold-muted/40 border border-gold-border rounded-xl px-3.5 py-2.5">

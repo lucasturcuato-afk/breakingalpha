@@ -1,5 +1,5 @@
 import { createServerClient } from '@supabase/ssr'
-import { postAuthDestination } from '@/lib/auth-redirect'
+import { postAuthDestination, postOnboardingDestination } from '@/lib/auth-redirect'
 import { NextResponse, type NextRequest } from 'next/server'
 import { isAllowlisted } from '@/lib/allowlist'
 
@@ -149,8 +149,16 @@ export async function proxy(request: NextRequest) {
       .eq('id', user.id)
       .maybeSingle()
     if (profile && profile.onboarding_completed === false) {
+      // Carry where they were going. Without this the emailed call link died
+      // here even after the sign-in fix: the clone keeps ?adopt= but nothing
+      // downstream reads it, and the wizard pushed /dashboard unconditionally.
+      // `next` is the full relative URL so the wizard can re-synthesize the
+      // #call- anchor; postOnboardingDestination gates it through safeNext.
       const url = request.nextUrl.clone()
+      const intended = `${path}${request.nextUrl.search}`
       url.pathname = '/onboarding'
+      url.search = ''
+      url.searchParams.set('next', intended)
       return NextResponse.redirect(url)
     }
   }
@@ -163,9 +171,12 @@ export async function proxy(request: NextRequest) {
       .eq('id', user.id)
       .maybeSingle()
     if (profile?.onboarding_completed === true) {
-      const url = request.nextUrl.clone()
-      url.pathname = '/dashboard'
-      return NextResponse.redirect(url)
+      // Already onboarded and asking for /onboarding: honour any ?next= they
+      // arrived with rather than dropping them on the dashboard. This is the
+      // path a user takes when they finish the wizard in one tab and the gate
+      // re-fires in another.
+      const dest = postOnboardingDestination(request.nextUrl.search)
+      return NextResponse.redirect(new URL(dest, request.nextUrl.origin))
     }
   }
 

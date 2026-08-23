@@ -350,7 +350,26 @@ def make_client(
     profiles=None,
     server_page_cap=None,
     extra_tables=None,
+    allowlist=None,
 ):
+    # Recipients are intersected with beta_allowlist before dispatch, because
+    # src/proxy.ts bounces a non-allowlisted session to /waitlist and mailing a
+    # CTA to such an account is worse than not mailing it. The default here
+    # allowlists every fake user, so tests about unrelated behaviour are
+    # unaffected; pass `allowlist=[...]` to exercise the exclusion, or
+    # `allowlist=False` to simulate an unreadable table.
+    resolved_users = _user_rows() if users is None else list(users)
+    if allowlist is None:
+        allowlist_rows = [
+            {"email": (u.get("email") or "").lower()}
+            for u in resolved_users
+            if (u.get("email") or "").strip()
+        ]
+    elif allowlist is False:
+        allowlist_rows = None
+    else:
+        allowlist_rows = [{"email": str(e).lower()} for e in allowlist]
+
     return FakeClient(
         tables={
             "briefings": [_brief_row()],
@@ -367,9 +386,10 @@ def make_client(
             "user_claims": [],
             "user_claim_outcomes": [],
             "watchlist": [],
+            **({} if allowlist_rows is None else {"beta_allowlist": allowlist_rows}),
             **(extra_tables or {}),
         },
-        users=_user_rows() if users is None else list(users),
+        users=resolved_users,
         server_page_cap=server_page_cap,
     )
 
@@ -568,7 +588,15 @@ class TestAuthUserPagination(unittest.TestCase):
         class _StuckAuth:
             admin = NeverEmpty()
 
-        client = make_client()
+        # This test is about the pager, not the allowlist gate, so the
+        # synthetic users the stub invents are allowlisted. Without this they
+        # would all be filtered out and the pager assertion would pass
+        # vacuously against an empty list.
+        client = make_client(
+            allowlist=[
+                f"u{p}@example.com" for p in range(1, send_mod.AUTH_USERS_MAX_PAGES + 1)
+            ]
+        )
         client.auth = _StuckAuth()
         with self.assertLogs("brief_email_send", level="ERROR") as captured:
             got = send_mod._fetch_recipients(client)
