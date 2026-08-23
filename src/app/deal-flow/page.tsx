@@ -561,7 +561,15 @@ function DealFlowContent() {
           beats the breakpoint at every width, which is the defect design-lint
           rule 10 exists to catch. The desktop tree below is untouched apart
           from its own gate. */}
-      <div className="md:hidden">
+      {/* backgroundColor and minHeight live on this wrapper rather than on the
+          screen root. Measured on the empty state at 390: the screen root is
+          283px tall inside an 844px scroll area, and `minHeight: 100%` on it
+          does not resolve because nothing in the chain above has a definite
+          height, so `main`'s own parchment showed under the screen's cream,
+          two different creams stacked. Painting the wrapper covers the tail
+          spacer too, and it leaves the screen root's height content-driven,
+          which is what parity measures. */}
+      <div className="md:hidden" style={{ backgroundColor: "var(--c-bg)", minHeight: "100dvh" }}>
         <DealsScreen
           deals={mobileDeals}
           counts={mobileCounts}
