@@ -1,5 +1,6 @@
 "use client";
 
+import { useCallback } from "react";
 import { useRouter } from "next/navigation";
 
 import { ClaimAnatomy, OutcomeLead } from "@/components/ledger";
@@ -7,12 +8,13 @@ import { useCompanyTabState, type CompanyTabId } from "@/hooks/useCompanyTabStat
 
 import styles from "./company-mobile.module.css";
 import { COMPANY_INTEL_EMPTY, COMPANY_INTEL_FIXTURE, type CompanyIntelData } from "./fixture";
-import { EmptyWell, SkeletonBar } from "./parts";
+import { Chip, EmptyWell, SkeletonBar } from "./parts";
 import {
   FilingsSection,
   FinancialsSection,
   InsiderSection,
   PrimerSection,
+  TONE_INK,
   ToneSection,
 } from "./sections";
 
@@ -34,11 +36,27 @@ import {
  * that measures 350 against a harness measuring 310 is right and the harness is
  * wrong. The root below therefore carries no horizontal padding at all.
  *
- * THE SHELL RESERVES NOTHING FOR ITS OWN TAB BAR. app-shell.tsx puts the
- * padding on a scrolling <main> while the overflow comes from inside
- * PageTransition, so the last element of a long screen sits under the bar. Five
- * stacked sections scroll a long way, so the bottom inset is added here, on the
- * screen's own scroll body.
+ * THE SHELL RESERVES NOTHING FOR ITS OWN TAB BAR, and this was checked rather
+ * than assumed. app-shell.tsx does put
+ * `pb-[calc(var(--mobile-tabbar-height)+env(safe-area-inset-bottom))] md:pb-0`
+ * on the scrolling <main>, and that padding does nothing here: the overflow
+ * comes from inside `PageTransition`, whose `motion.div` is `h-full`, so the
+ * screen spills past <main>'s padding box rather than being laid out after its
+ * block-end padding.
+ *
+ * Measured on the running page at 390x844, scrolled to the end, as
+ * `tabBar.getBoundingClientRect().top` minus the bottom of the LOWEST element
+ * carrying text. Both readings taken in one page load, toggling only this
+ * element's `padding-bottom`:
+ *
+ *              Primer  Tone  Filings  Financials  Insider
+ *   with        +24    +38    +39       +24        +24
+ *   24px only   -35    -21    -20       -35        -35
+ *
+ * Negative is a row sitting UNDER the bar. So the bar is reserved for here, on
+ * this screen's own scroll body, and the shell defect is left for whoever fixes
+ * it once for all six screens. The shipped `/ledger` measures -18 on the same
+ * method, so it carries the defect rather than disproving it.
  */
 
 export type CompanyStage = "ready" | "loading" | "error" | "empty";
@@ -78,6 +96,23 @@ export function CompanyIntelScreen({
      (articles, comps, and the three ids with no button). Fall back to the
      first section rather than drawing an empty body under no active chip. */
   const active = SECTION_IDS.has(activeTab) ? activeTab : "brief";
+
+  /**
+   * Retry.
+   *
+   * A bare `router.refresh()` is guaranteed inert on this screen: the only
+   * thing that produces the error state is `?stage=error`, and a refresh keeps
+   * the query string, so the retry redraws the same error for ever. Clearing
+   * the lifecycle override first is what makes the control real, and it is a
+   * no-op once a loader supplies the state instead of the URL, because there is
+   * no `stage` to clear then.
+   */
+  const retry = useCallback(() => {
+    const url = new URL(window.location.href);
+    url.searchParams.delete("stage");
+    router.replace(url.pathname + url.search);
+    router.refresh();
+  }, [router]);
 
   return (
     <div
@@ -144,12 +179,14 @@ export function CompanyIntelScreen({
         style={{
           flex: 1,
           minWidth: 0,
-          /* The design's 24px, plus the bar the shell does not reserve for. */
+          /* The design's 24px, plus the bar the shell does not reserve for.
+             The measurement that settles which of those two is true is at the
+             top of this file. */
           padding: `22px ${PAD} calc(24px + var(--mobile-tabbar-height) + env(safe-area-inset-bottom))`,
         }}
       >
         {stage === "loading" ? <CompanySkeleton /> : null}
-        {stage === "error" ? <CompanyError onRetry={() => router.refresh()} /> : null}
+        {stage === "error" ? <CompanyError onRetry={retry} /> : null}
 
         {stage === "ready" || stage === "empty" ? (
           <>
@@ -165,36 +202,16 @@ export function CompanyIntelScreen({
                 gap: "12px",
               }}
             >
+              {/* The same square chip the filing filters use. Drawn through
+                  parts.tsx rather than restated inline, so the two rows cannot
+                  drift out of step. */}
               {SECTIONS.map((section) => (
-                <button
+                <Chip
                   key={section.id}
-                  type="button"
+                  label={section.label}
+                  active={active === section.id}
                   onClick={() => setActiveTab(section.id)}
-                  aria-pressed={active === section.id}
-                  className={styles.bare}
-                  style={{
-                    flex: "none",
-                    minHeight: "44px",
-                    display: "flex",
-                    alignItems: "center",
-                    padding: "0 12px",
-                    borderRadius: "6px",
-                    whiteSpace: "nowrap",
-                    border:
-                      active === section.id
-                        ? "1px solid var(--c-ink)"
-                        : "1px solid var(--c-border)",
-                    font:
-                      active === section.id
-                        ? "600 12px/1 Inter, sans-serif"
-                        : "500 12px/1 Inter, sans-serif",
-                    color: active === section.id ? "var(--c-ink)" : "var(--c-secondary)",
-                    backgroundColor:
-                      active === section.id ? "var(--c-surface)" : "transparent",
-                  }}
-                >
-                  {section.label}
-                </button>
+                />
               ))}
             </div>
 
@@ -258,7 +275,19 @@ function Masthead({ data }: { data: CompanyIntelData }) {
         }}
       >
         {data.price}{" "}
-        <span style={{ fontSize: "13px", color: "var(--c-greenink)" }}>{data.change}</span>
+        {/* Tinted off the SIGN, never pinned green. The design draws a company
+            that happened to be up; a hardcoded green would paint a down day as
+            a gain the moment this reads a real quote. */}
+        <span
+          style={{
+            fontSize: "13px",
+            color: data.change.trimStart().startsWith("-")
+              ? "var(--c-redink)"
+              : "var(--c-greenink)",
+          }}
+        >
+          {data.change}
+        </span>
       </p>
 
       <MemoControl corpus={data.memoCorpus} />
@@ -277,57 +306,81 @@ function Masthead({ data }: { data: CompanyIntelData }) {
  * structured source list. Both of those files are propose-only under CLAUDE.md
  * and neither is touched here.
  *
+ * INERT, AND IT SAYS SO. An earlier draft was a live-looking button with an
+ * empty handler, which README's own accessibility rule calls a defect: a
+ * control that looks tappable and does nothing is worse than one that states
+ * its condition. It is `disabled` with `aria-disabled`, it carries the reason
+ * in a line under itself rather than in a tooltip nobody on a phone can open,
+ * and it keeps the design's drawn treatment above that line.
+ *
  * TODO(unit 16, Memo): wire this once overlay-versus-route and the source
- * contract are ruled on. The existing bridge pattern is
+ * contract are ruled on, and drop the `disabled` plus the line below it. The
+ * existing bridge pattern is
  * src/components/company/CompanyMemoModalListener.tsx, which consumes MemoModal
  * through a `memo:generate` window event without modifying it.
  */
 function MemoControl({ corpus }: { corpus: string }) {
   return (
-    <button
-      type="button"
-      onClick={() => {}}
-      className={styles.bare}
-      style={{
-        width: "100%",
-        marginTop: "16px",
-        minHeight: "50px",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        padding: `0 16px`,
-        backgroundColor: "var(--c-inverse)",
-        borderRadius: "9px",
-      }}
-    >
-      <span style={{ font: "600 14px/1 Inter, sans-serif", color: "var(--c-oninv)" }}>
-        Generate a company brief
-      </span>
-      <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-        <span
-          style={{
-            font: "400 10px/1 'JetBrains Mono', monospace",
-            letterSpacing: "0.07em",
-            color: "var(--c-oninv-dim)",
-          }}
-        >
-          {corpus}
+    <>
+      <button
+        type="button"
+        disabled
+        aria-disabled="true"
+        aria-describedby="memo-pending-note"
+        className={styles.bare}
+        style={{
+          width: "100%",
+          marginTop: "16px",
+          minHeight: "50px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: `0 16px`,
+          backgroundColor: "var(--c-inverse)",
+          borderRadius: "9px",
+          cursor: "not-allowed",
+        }}
+      >
+        <span style={{ font: "600 14px/1 Inter, sans-serif", color: "var(--c-oninv)" }}>
+          Generate a company brief
         </span>
-        <svg
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="var(--c-gold)"
-          strokeWidth="1.8"
-          strokeLinecap="round"
-          aria-hidden="true"
-          style={{ flex: "none" }}
-        >
-          <path d="M4 12h15M13 6l6 6-6 6" />
-        </svg>
-      </span>
-    </button>
+        <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <span
+            style={{
+              font: "400 10px/1 'JetBrains Mono', monospace",
+              letterSpacing: "0.07em",
+              color: "var(--c-oninv-dim)",
+            }}
+          >
+            {corpus}
+          </span>
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="var(--c-gold)"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            aria-hidden="true"
+            style={{ flex: "none" }}
+          >
+            <path d="M4 12h15M13 6l6 6-6 6" />
+          </svg>
+        </span>
+      </button>
+      <p
+        id="memo-pending-note"
+        style={{
+          margin: "8px 0 0",
+          font: "400 11px/1.5 Inter, sans-serif",
+          color: "var(--c-muted)",
+          textWrap: "pretty",
+        }}
+      >
+        The memo surface is not built yet, so this does nothing on this screen.
+      </p>
+    </>
   );
 }
 
@@ -362,7 +415,11 @@ function KpiGrid({ data }: { data: CompanyIntelData }) {
               font: cell.tone
                 ? "700 15px/1 'Playfair Display', serif"
                 : "700 17px/1 'Playfair Display', serif",
-              color: cell.tone ? "var(--c-greenink)" : "var(--c-ink)",
+              /* Tinted off the reading, never pinned green. One table, shared
+                 with the Price and tone section, so the KPI cell and the
+                 section body can never disagree about what a reading looks
+                 like. */
+              color: cell.tone ? TONE_INK[cell.tone] : "var(--c-ink)",
             }}
           >
             {cell.value}

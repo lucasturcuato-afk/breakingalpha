@@ -19,13 +19,23 @@
  * `fetchCompanyFinancials`. No new API surface is needed.
  */
 
+/**
+ * How a tone reading is tinted.
+ *
+ * Never a hardcoded green. The design draws a company that happened to be read
+ * constructively, and pinning the colour to that would paint a deteriorating
+ * tone as an improving one the moment this reads a real level. The word always
+ * carries the meaning; the colour only agrees with it.
+ */
+export type ToneDirection = "up" | "down" | "flat";
+
 export interface CompanyKpiCell {
   label: string;
   value: string;
   /** Second line under the value. Absent on a bare count. */
   meta?: string;
-  /** Set only where the design tints the value. */
-  tone?: "up";
+  /** Set only on a cell the design tints, and tinted off the reading. */
+  tone?: ToneDirection;
 }
 
 export interface CompanyPrimerRow {
@@ -122,6 +132,8 @@ export interface CompanyIntelData {
      */
     level: string | null;
     direction: string;
+    /** Tints the level and the direction. Never assumed. */
+    levelTone: ToneDirection;
     evidence: string;
     disclaimer: string;
     rows: ToneEvidenceRow[];
@@ -204,6 +216,7 @@ export const COMPANY_INTEL_FIXTURE: CompanyIntelData = {
   tone: {
     level: "Constructive",
     direction: "▲ improving",
+    levelTone: "up",
     evidence: "Based on 34 articles from 11 sources over the last 7 days.",
     disclaimer:
       "A plain-language reading of how indexed coverage is written, not a price signal and not a score. No number sits behind this label.",
@@ -373,6 +386,15 @@ export const COMPANY_INTEL_FIXTURE: CompanyIntelData = {
  */
 export const COMPANY_INTEL_EMPTY: CompanyIntelData = {
   ...COMPANY_INTEL_FIXTURE,
+  /* The quote and the corpus count are READS, not identity, so they go with
+     everything else that came back absent. Spreading them through from the
+     populated fixture drew a screen that said "0 articles, 7d" and "SOURCES 0"
+     directly above a memo control reading "34 ARTICLES", beside a live price.
+     Ticker, exchange, sector and name stay: those are the company, and they
+     resolved, which is what separates this state from a failed read. */
+  price: "--",
+  change: "",
+  memoCorpus: "0 ARTICLES",
   kpis: [
     { label: "MARKET CAP", value: "--" },
     { label: "MENTIONS · 30D", value: "0" },
@@ -391,6 +413,7 @@ export const COMPANY_INTEL_EMPTY: CompanyIntelData = {
     ...COMPANY_INTEL_FIXTURE.tone,
     level: null,
     direction: "",
+    levelTone: "flat",
     // Both strings are `ToneReadout`'s own insufficient branch, not new copy.
     evidence: "No articles in the last 7 days.",
     rows: [],

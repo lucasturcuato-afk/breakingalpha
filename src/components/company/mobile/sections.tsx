@@ -10,8 +10,21 @@ import {
   insiderEmptyCopy,
 } from "@/components/company/tabs/empty-state-copy";
 
-import type { CompanyIntelData } from "./fixture";
+import type { CompanyIntelData, ToneDirection } from "./fixture";
 import { Chip, EmptyWell, RuledRow, SectionNote, SectionRule } from "./parts";
+
+/**
+ * Ink for a tone reading. ink tokens are text, base tokens are fills, and this
+ * is text, so every entry is an ink.
+ *
+ * flat sits on `--c-secondary` rather than on an amber. Amber is the developing
+ * and awaiting outcome hue, and a tone level is not an outcome.
+ */
+export const TONE_INK: Record<ToneDirection, string> = {
+  up: "var(--c-greenink)",
+  down: "var(--c-redink)",
+  flat: "var(--c-secondary)",
+};
 
 /**
  * The five Company Intel sections, mobile.
@@ -151,7 +164,10 @@ export function PrimerSection({ data }: { data: CompanyIntelData }) {
       <SectionRule marginTop={20}>recent developments</SectionRule>
       {primer.developments.length > 0 ? (
         primer.developments.map((text, i) => (
-          <RuledRow key={text} first={i === 0} last={i === primer.developments.length - 1}>
+          /* Keyed on POSITION. The list is static within a render and two
+             developments can repeat a sentence; a duplicate key silently reuses
+             the wrong row. Same rule on every list on this screen. */
+          <RuledRow key={`${i}-${text}`} first={i === 0} last={i === primer.developments.length - 1}>
             <p
               style={{
                 margin: 0,
@@ -216,12 +232,17 @@ export function ToneSection({ data }: { data: CompanyIntelData }) {
           style={{
             font: "700 21px/1.1 'Playfair Display', serif",
             letterSpacing: "-0.01em",
-            color: "var(--c-greenink)",
+            color: TONE_INK[tone.levelTone],
           }}
         >
           {tone.level}
         </span>
-        <span style={{ font: "600 12.5px/1 'Playfair Display', serif", color: "var(--c-greenink)" }}>
+        <span
+          style={{
+            font: "600 12.5px/1 'Playfair Display', serif",
+            color: TONE_INK[tone.levelTone],
+          }}
+        >
           {tone.direction}
         </span>
       </div>
@@ -251,7 +272,7 @@ export function ToneSection({ data }: { data: CompanyIntelData }) {
       {tone.rows.length > 0 ? (
         tone.rows.map((row, i) => (
           <RuledRow
-            key={row.meta}
+            key={`${i}-${row.meta}`}
             first={i === 0}
             last={i === tone.rows.length - 1}
             style={{ display: "flex", gap: "12px" }}
@@ -354,8 +375,11 @@ export function FilingsSection({
         />
       ) : (
         visible.map((row, i) => (
+          /* Position, not the row's own fields. Form plus date plus category is
+             not unique: the date is a display string with no year, and two 8-Ks
+             on one day is ordinary. */
           <div
-            key={`${row.form}-${row.date}-${row.category}`}
+            key={`${i}-${row.form}-${row.date}`}
             style={{
               marginTop: i === 0 ? "12px" : undefined,
               display: "flex",
@@ -423,6 +447,19 @@ export function FilingsSection({
 /* ------------------------------------------------------------------ */
 
 const GRID = "1.35fr 1fr 1fr";
+const HEAD_FONT = "600 10px/1 Inter, sans-serif";
+
+/**
+ * The missing-cell mark, an EN dash. Named rather than inlined so the one place
+ * it is decided is greppable.
+ *
+ * FinancialsTab renders `&mdash;` here, an EM dash, which the handoff's
+ * compliance rule forbids outright and which scripts/design-lint.mjs rejects on
+ * sight. The prototype draws an en dash and the closing note under the table
+ * says "A dash". Reported in the PR body as a defect in the shipped desktop
+ * file; not fixed from this branch.
+ */
+const EN_DASH = "–";
 
 /**
  * Two period columns, which is the design's own read and a data decision rather
@@ -448,7 +485,25 @@ export function FinancialsSection({
   const [basis, setBasis] = useState<"annual" | "quarterly">("annual");
   const { note } = data.financials;
   const { periods, bands } = data.financials[basis];
-  const hasAnyData = bands.some((b) => b.rows.length > 0);
+  const hasBasisData = bands.some((b) => b.rows.length > 0);
+
+  /* Whether EITHER basis has a table, which is a different question from
+     whether the SELECTED one does, and the distinction is load bearing. The
+     toggle is the only way out of an empty basis, so dropping it on the
+     basis-level empty strands the reader: a filer with annual figures and no
+     quarterly ones taps Quarterly, the toggle disappears with the table, and
+     nothing on the screen gets them back to Annual short of a reload. So the
+     SECTION-level empty keys on both bases, and the BASIS-level empty keeps
+     the toggle above it. */
+  const otherBands = data.financials[basis === "annual" ? "quarterly" : "annual"].bands;
+  const hasAnyData = hasBasisData || otherBands.some((b) => b.rows.length > 0);
+
+  /* No table under either basis means no basis to pick between, so the period
+     toggle does not render over an empty well. FinancialsTab draws its empty
+     state alone for the same reason. */
+  if (!hasCik || !hasAnyData) {
+    return <EmptyWell headline={financialsEmptyCopy(hasCik)} />;
+  }
 
   return (
     <>
@@ -461,8 +516,15 @@ export function FinancialsSection({
         />
       </div>
 
-      {!hasCik || !hasAnyData ? (
-        <EmptyWell headline={financialsEmptyCopy(hasCik)} />
+      {!hasBasisData ? (
+        /* NOT financialsEmptyCopy. "Financials appear after the first periodic
+           report" is false here, because the other basis has figures. Name the
+           basis that is missing and claim nothing else. */
+        <EmptyWell
+          headline={`No ${basis} figures on file. The ${
+            basis === "annual" ? "quarterly" : "annual"
+          } basis has figures.`}
+        />
       ) : (
         <>
           <div
@@ -481,14 +543,14 @@ export function FinancialsSection({
                 borderBottom: "1px solid var(--c-border)",
               }}
             >
-              <div style={{ padding: "9px 12px", font: "600 10px/1 Inter, sans-serif", color: "var(--c-secondary)" }}>
+              <div style={{ padding: "9px 12px", font: HEAD_FONT, color: "var(--c-secondary)" }}>
                 METRIC
               </div>
               <div
                 style={{
                   padding: "9px 8px",
                   textAlign: "right",
-                  font: "600 10px/1 Inter, sans-serif",
+                  font: HEAD_FONT,
                   color: "var(--c-secondary)",
                 }}
               >
@@ -498,7 +560,7 @@ export function FinancialsSection({
                 style={{
                   padding: "9px 12px 9px 8px",
                   textAlign: "right",
-                  font: "600 10px/1 Inter, sans-serif",
+                  font: HEAD_FONT,
                   color: "var(--c-secondary)",
                 }}
               >
@@ -513,7 +575,7 @@ export function FinancialsSection({
                     padding: "9px 12px",
                     backgroundColor: "var(--c-surface)",
                     borderTop: bandIndex > 0 ? "1px solid var(--c-border)" : undefined,
-                    font: "600 10px/1 Inter, sans-serif",
+                    font: HEAD_FONT,
                     color: "var(--c-muted)",
                   }}
                 >
@@ -541,7 +603,7 @@ export function FinancialsSection({
                     </div>
                     {row.values.map((value, i) => (
                       <div
-                        key={periods[i]}
+                        key={`${row.label}-${i}`}
                         style={{
                           padding: i === 0 ? "10px 8px" : "10px 12px 10px 8px",
                           textAlign: "right",
@@ -549,7 +611,7 @@ export function FinancialsSection({
                           color: row.derived ? "var(--c-secondary)" : "var(--c-body)",
                         }}
                       >
-                        {value ?? "–"}
+                        {value ?? EN_DASH}
                       </div>
                     ))}
                   </div>
@@ -609,9 +671,12 @@ export function InsiderSection({
             note="Purchases and sales transacted on the open market, SEC codes P and S."
             marginTop={0}
           />
-          {openMarket.map((row) => (
+          {openMarket.map((row, i) => (
+            /* Position, for the reason the filing rows carry it: one insider
+               disposing in tranches files several code S rows on one date, so
+               name plus date plus code collides. */
             <div
-              key={`${row.name}-${row.date}-${row.code}`}
+              key={`${i}-${row.name}-${row.date}`}
               style={{
                 marginTop: "10px",
                 display: "flex",
@@ -729,7 +794,7 @@ function CompactRows({
     <>
       {rows.map((row, i) => (
         <div
-          key={`${row.name}-${row.date}-${row.code}`}
+          key={`${i}-${row.name}-${row.date}`}
           style={{
             marginTop: i === 0 ? "10px" : undefined,
             display: "flex",

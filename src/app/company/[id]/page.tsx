@@ -154,7 +154,11 @@ export default async function CompanyDetailPage({
               breakpoint. */}
           <div className="md:hidden" style={{ backgroundColor: "var(--c-bg)", minHeight: "100%" }}>
             <FixtureNotice />
-            <CompanyIntelScreen stage={stage} />
+            {/* Stated rather than left to a default. The fixture describes a
+                public filer, so the sourced empty copy this picks is the
+                has-CIK branch. The signed-in path below reads the real
+                resolution instead. */}
+            <CompanyIntelScreen stage={stage} hasCik />
           </div>
           <div className="hidden md:block" style={{ padding: "48px" }}>
             <p style={{ margin: 0, font: "500 17px/1.4 'Playfair Display', serif", color: "var(--c-ink)" }}>

@@ -16,6 +16,25 @@
  * Both reads are `process.env.<LITERAL>`, which Next inlines at build time, so
  * a production bundle carries the constant and the fixture branch is
  * unreachable rather than merely unvisited.
+ *
+ * THE PREVIEW LEG IS UNVERIFIED, and nothing should be claimed for it. Two
+ * things have to be true for it to open a screen on a preview deployment and
+ * neither is confirmed:
+ *
+ *   1. `NEXT_PUBLIC_VERCEL_ENV` appears nowhere else in `src/`. The only
+ *      Vercel variables this repo reads are the server-side `VERCEL_ENV`
+ *      (`src/app/api/brief/export-pdf/route.ts:260`) and
+ *      `VERCEL_AUTOMATION_BYPASS_SECRET`. Vercel only supplies the
+ *      NEXT_PUBLIC_ form when "Automatically expose System Environment
+ *      Variables" is on for the project, and that setting has not been read.
+ *   2. Even with it on, `MOBILE_REDESIGN_DEV_PATHS` in `src/proxy.ts` is
+ *      gated on `NODE_ENV !== 'production'` with no preview clause, so a
+ *      preview deployment sends a signed-out visitor to `/auth` before this
+ *      is ever consulted.
+ *
+ * Both failure modes fail CLOSED, which is why the leg stays as written. The
+ * half that matters is the production half, and that one is verified against a
+ * real production build.
  */
 export function mobileFixtureScreensEnabled(): boolean {
   if (process.env.NEXT_PUBLIC_VERCEL_ENV === "preview") return true;
