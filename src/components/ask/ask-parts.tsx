@@ -238,9 +238,9 @@ export function AskSkeleton({
 
 /**
  * The three directory glyphs, reproduced at 18px on a 24-unit viewBox at stroke
- * 1.7 with round caps. The design strokes them `#6f6248`, which is exactly
- * `--c-secondary` in the light theme; built with the token, per the same ruling
- * the ledger chevron carries.
+ * 1.7 with round caps. The design strokes them with a colour literal whose
+ * value is exactly `--c-secondary` in the light theme; built with the token,
+ * per the same ruling the ledger chevron carries.
  */
 function Glyph({ children }: { children: ReactNode }) {
   return (
