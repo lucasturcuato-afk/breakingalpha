@@ -5,26 +5,8 @@ import { cn } from "@/lib/utils";
 import { onRadarLanded } from "@/lib/radar-landed";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
-import { createBrowserClient } from "@supabase/ssr";
-import {
-  DndContext,
-  type DragEndEvent,
-  KeyboardSensor,
-  PointerSensor,
-  TouchSensor,
-  closestCenter,
-  useSensor,
-  useSensors,
-} from "@dnd-kit/core";
-import {
-  SortableContext,
-  arrayMove,
-  sortableKeyboardCoordinates,
-  useSortable,
-  verticalListSortingStrategy,
-} from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
-
+import { createBrowserClientAsync } from "@/lib/supabase-browser";
+import dynamic from "next/dynamic";
 import {
   LayoutGrid,
   Clock,
@@ -42,16 +24,28 @@ import {
   LogOut,
   Bell,
   X,
-  GripVertical,
-  Eye,
-  EyeOff,
   Pencil,
-  RotateCcw,
   Check,
 } from "lucide-react";
 import { Wordmark } from "@/components/ui/wordmark";
 import { UserAvatar } from "./user-avatar";
 import type { User } from "@supabase/supabase-js";
+
+/**
+ * The reorder/hide panel is loaded on demand, not with the shell.
+ *
+ * It renders only when `customizeMode` is true. That starts false and only
+ * flips on a click of the pencil control, which itself renders only at `lg`
+ * and only for a signed-in reader. Its `@dnd-kit` dependency was therefore
+ * shipping in the AppShell entry chunk that every shell route loads, at every
+ * width, on every cold load, for a panel that is behind a click. `ssr: false`
+ * because there is nothing to server-render: the branch is closed on first
+ * paint, so the initial HTML is byte-identical to before at every width.
+ */
+const SidebarCustomize = dynamic(
+  () => import("./sidebar-customize").then((m) => m.SidebarCustomize),
+  { ssr: false },
+);
 
 interface NavItem {
   id: string;
@@ -156,41 +150,43 @@ export function Sidebar({ unreadCount = 0 }: SidebarProps) {
   const unreadNotifCount = notifications.filter((n) => !n.read).length;
   const unreadBadge = unreadNotifCount > 9 ? "9+" : unreadNotifCount > 0 ? String(unreadNotifCount) : null;
 
-  const getSupabase = useCallback(() => createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-  ), []);
-
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 8 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
-  );
+  // Async now: the Supabase package is imported on demand rather than sitting
+  // in this route's entry chunk. Every consumer below already ran inside an
+  // effect and already rendered a loading state until the client answered, so
+  // awaiting one more promise changes the timing and nothing else.
+  const getSupabase = useCallback(() => createBrowserClientAsync(), []);
 
   // ── Auth + initial loads ─────────────────────────────────────────────────
   useEffect(() => {
-    const supabase = getSupabase();
-    supabase.auth.getUser().then(({ data: { user: authUser } }) => {
-      if (!authUser) {
-        setUser(null);
-        setAuthUser(null);
-        return;
-      }
-      setAuthUser(authUser);
-      setUser({
-        id: authUser.id,
-        name: authUser.user_metadata?.full_name || authUser.email?.split("@")[0] || "User",
-        email: authUser.email || "",
-        role: authUser.user_metadata?.role || "Analyst",
-      });
-      supabase
-        .from("watchlist")
-        .select("identifier, type")
-        .eq("user_id", authUser.id)
-        .then(({ data }) => {
-          if (data) setWatchlistCount(dedupeWatchlistCount(data));
+    let cancelled = false;
+    getSupabase().then((supabase) => {
+      if (cancelled) return;
+      supabase.auth.getUser().then(({ data: { user: authUser } }) => {
+        if (cancelled) return;
+        if (!authUser) {
+          setUser(null);
+          setAuthUser(null);
+          return;
+        }
+        setAuthUser(authUser);
+        setUser({
+          id: authUser.id,
+          name: authUser.user_metadata?.full_name || authUser.email?.split("@")[0] || "User",
+          email: authUser.email || "",
+          role: authUser.user_metadata?.role || "Analyst",
         });
+        supabase
+          .from("watchlist")
+          .select("identifier, type")
+          .eq("user_id", authUser.id)
+          .then(({ data }) => {
+            if (data && !cancelled) setWatchlistCount(dedupeWatchlistCount(data));
+          });
+      });
     });
+    return () => {
+      cancelled = true;
+    };
   }, [getSupabase]);
 
   // Realtime subscription for watchlist count badge. Also listens for a
@@ -199,29 +195,40 @@ export function Sidebar({ unreadCount = 0 }: SidebarProps) {
   // refetch when realtime delivery is delayed or muted.
   useEffect(() => {
     if (!user?.id) return;
-    const supabase = getSupabase();
-    const refetch = () => {
-      supabase
-        .from("watchlist")
-        .select("identifier, type")
-        .eq("user_id", user.id)
-        .then(({ data }) => {
-          if (data) setWatchlistCount(dedupeWatchlistCount(data));
-        });
-    };
-    const channel = supabase
-      .channel(`watchlist-count-${user.id}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "watchlist", filter: `user_id=eq.${user.id}` },
-        refetch,
-      )
-      .subscribe();
+    const userId = user.id;
+    let cancelled = false;
+    // Held so cleanup can tear down whatever the async body managed to set up,
+    // whether it ran before or after the effect was torn down.
+    let teardown: (() => void) | undefined;
+    getSupabase().then((supabase) => {
+      if (cancelled) return;
+      const refetch = () => {
+        supabase
+          .from("watchlist")
+          .select("identifier, type")
+          .eq("user_id", userId)
+          .then(({ data }) => {
+            if (data && !cancelled) setWatchlistCount(dedupeWatchlistCount(data));
+          });
+      };
+      const channel = supabase
+        .channel(`watchlist-count-${userId}`)
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "watchlist", filter: `user_id=eq.${userId}` },
+          refetch,
+        )
+        .subscribe();
 
-    window.addEventListener("watchlist:changed", refetch);
+      window.addEventListener("watchlist:changed", refetch);
+      teardown = () => {
+        window.removeEventListener("watchlist:changed", refetch);
+        supabase.removeChannel(channel);
+      };
+    });
     return () => {
-      window.removeEventListener("watchlist:changed", refetch);
-      supabase.removeChannel(channel);
+      cancelled = true;
+      teardown?.();
     };
   }, [user?.id, getSupabase]);
 
@@ -238,11 +245,13 @@ export function Sidebar({ unreadCount = 0 }: SidebarProps) {
         cancelled = true;
       };
     }
-    const supabase = getSupabase();
-    supabase
+    const userId = user.id;
+    getSupabase().then((supabase) => {
+      if (cancelled) return;
+      supabase
       .from("user_profiles")
       .select("sidebar_section_order")
-      .eq("id", user.id)
+      .eq("id", userId)
       .maybeSingle()
       .then(({ data, error }) => {
         if (cancelled) return;
@@ -270,6 +279,7 @@ export function Sidebar({ unreadCount = 0 }: SidebarProps) {
         }
         setPrefsLoaded(true);
       });
+    });
     return () => {
       cancelled = true;
     };
@@ -285,18 +295,20 @@ export function Sidebar({ unreadCount = 0 }: SidebarProps) {
       prefs.order.every((id, i) => id === DEFAULT_ORDER[i]);
 
     if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
+    const userId = user.id;
     persistTimerRef.current = setTimeout(() => {
-      const supabase = getSupabase();
       const payload = isDefault ? null : prefs;
-      supabase
-        .from("user_profiles")
-        .update({ sidebar_section_order: payload, updated_at: new Date().toISOString() })
-        .eq("id", user.id)
-        .then(({ error }) => {
-          if (error) {
-            console.warn("[sidebar] section order persist failed:", error.message);
-          }
-        });
+      getSupabase().then((supabase) => {
+        supabase
+          .from("user_profiles")
+          .update({ sidebar_section_order: payload, updated_at: new Date().toISOString() })
+          .eq("id", userId)
+          .then(({ error }) => {
+            if (error) {
+              console.warn("[sidebar] section order persist failed:", error.message);
+            }
+          });
+      });
     }, 500);
 
     return () => {
@@ -361,15 +373,11 @@ export function Sidebar({ unreadCount = 0 }: SidebarProps) {
     [orderedSections, prefs.hidden],
   );
 
-  const handleDragEnd = useCallback((e: DragEndEvent) => {
-    const { active, over } = e;
-    if (!over || active.id === over.id) return;
-    setPrefs((prev) => {
-      const oldIdx = prev.order.indexOf(String(active.id));
-      const newIdx = prev.order.indexOf(String(over.id));
-      if (oldIdx < 0 || newIdx < 0) return prev;
-      return { ...prev, order: arrayMove(prev.order, oldIdx, newIdx) };
-    });
+  // The panel resolves the drag itself and hands back the reordered ids, so
+  // no `@dnd-kit` symbol (not even `arrayMove`) is imported here. Importing
+  // one would pull the whole package back into the shell chunk.
+  const handleReorder = useCallback((_activeId: string, _overId: string, nextOrder: string[]) => {
+    setPrefs((prev) => ({ ...prev, order: nextOrder }));
   }, []);
 
   const toggleHidden = useCallback((id: string) => {
@@ -430,37 +438,14 @@ export function Sidebar({ unreadCount = 0 }: SidebarProps) {
             // Customize/reorder UI is desktop-only; the icon-only width has no
             // room for drag handles or hide toggles. dnd-kit setup unchanged.
             <div className="hidden lg:block">
-              <DndContext
-                sensors={sensors}
-                collisionDetection={closestCenter}
-                onDragEnd={handleDragEnd}
-              >
-                <SortableContext items={prefs.order} strategy={verticalListSortingStrategy}>
-                  <ul className="space-y-0.5">
-                    {orderedSections.map((item) => (
-                      <SortableRow
-                        key={item.id}
-                        item={item}
-                        hidden={prefs.hidden.includes(item.id)}
-                        onToggleHidden={() => toggleHidden(item.id)}
-                      />
-                    ))}
-                  </ul>
-                </SortableContext>
-                <button
-                  type="button"
-                  onClick={resetSections}
-                  className={cn(
-                    "flex items-center gap-2 w-full mt-3 px-3 py-2 rounded-lg",
-                    "font-sans text-[11px] font-medium",
-                    "text-text-muted hover:bg-parchment-mid hover:text-espresso",
-                    "transition-colors duration-[var(--duration-base)] cursor-pointer",
-                  )}
-                >
-                  <RotateCcw size={12} />
-                  Reset to default
-                </button>
-              </DndContext>
+              <SidebarCustomize
+                items={orderedSections}
+                order={prefs.order}
+                hidden={prefs.hidden}
+                onReorder={handleReorder}
+                onToggleHidden={toggleHidden}
+                onReset={resetSections}
+              />
             </div>
           ) : (
             <>
@@ -567,7 +552,7 @@ export function Sidebar({ unreadCount = 0 }: SidebarProps) {
                     aria-label="Sign out"
                     className="text-text-faint hover:text-signal-dn transition-colors cursor-pointer"
                     onClick={async () => {
-                      const supabase = getSupabase();
+                      const supabase = await getSupabase();
                       await supabase.auth.signOut();
                       window.location.href = "/";
                     }}
@@ -664,70 +649,6 @@ export function Sidebar({ unreadCount = 0 }: SidebarProps) {
         </div>
       </div>
     </>
-  );
-}
-
-function SortableRow({
-  item,
-  hidden,
-  onToggleHidden,
-}: {
-  item: NavItem;
-  hidden: boolean;
-  onToggleHidden: () => void;
-}) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: item.id });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-  };
-
-  return (
-    <li
-      ref={setNodeRef}
-      style={style}
-      className={cn(
-        "flex items-center gap-1 px-2 py-[7px] rounded-lg bg-parchment-mid/60 border border-border-base",
-        "dark:bg-elevated dark:border-border-default",
-        isDragging && "opacity-70",
-        hidden && "opacity-60",
-      )}
-    >
-      <button
-        type="button"
-        {...attributes}
-        {...listeners}
-        className="p-1 rounded-md cursor-grab active:cursor-grabbing text-text-faint hover:text-text-muted touch-none"
-        aria-label={`Drag ${item.label}`}
-      >
-        <GripVertical size={12} />
-      </button>
-      <span
-        className={cn(
-          "flex items-center gap-2 flex-1 min-w-0 font-sans text-[12px] font-medium text-text-primary",
-          hidden && "line-through text-text-faint",
-        )}
-      >
-        <span className="[&_svg]:text-text-faint">{item.icon}</span>
-        <span className="truncate">{item.label}</span>
-      </span>
-      <button
-        type="button"
-        onClick={onToggleHidden}
-        className="p-1 rounded-md text-text-faint hover:bg-parchment hover:text-espresso cursor-pointer"
-        aria-label={hidden ? `Show ${item.label}` : `Hide ${item.label}`}
-      >
-        {hidden ? <EyeOff size={12} /> : <Eye size={12} />}
-      </button>
-    </li>
   );
 }
 
