@@ -10,6 +10,7 @@ export {
   RECORD_EMPTY_FIXTURE,
   RECORD_UNRESOLVED_FIXTURE,
   RECORD_UNAVAILABLE,
+  RECORD_FIXTURE_ENABLED,
   countsByState,
   groupByMonth,
   longDate,

@@ -58,9 +58,29 @@ test("the counts sum to the list, so the strip cannot disagree with it", () => {
   // either end of it.
   assert.ok(counts.challenged > 0, "an uncurated record carries challenged entries");
   const states = ENTRIES.map((e) => e.state);
+
+  // "In line" means interleaved, and this used to assert less than it read.
+  // `indexOf("challenged") < lastIndexOf("supported")` only checks that the
+  // FIRST challenged sits above the LAST supported, which passes with every
+  // challenged entry clustered at the top of the list. Clustering at the top
+  // is a sort by state, and a sort by state is the change the whole file
+  // exists to catch. These two say what the sentence means.
+  const challengedAt = states.flatMap((s, i) => (s === "challenged" ? [i] : []));
+  const supportedAt = states.flatMap((s, i) => (s === "supported" ? [i] : []));
   assert.ok(
-    states.indexOf("challenged") < states.lastIndexOf("supported"),
-    "challenged entries must sit in line, not be pushed below the supported ones",
+    challengedAt.some(
+      (i) => supportedAt.some((j) => j < i) && supportedAt.some((j) => j > i),
+    ),
+    "a challenged entry must sit between supported ones, not in a block at either end",
+  );
+
+  // Run-length: a state that occupies one contiguous run has been gathered
+  // into a block, whether that block is at an end or in the middle. Challenged
+  // occupies more than one run, so the sequence cannot be a sort by state.
+  const runs = states.filter((s, i) => i === 0 || s !== states[i - 1]);
+  assert.ok(
+    runs.filter((s) => s === "challenged").length > 1,
+    "challenged entries must fall in more than one run, not be gathered into a block",
   );
 });
 

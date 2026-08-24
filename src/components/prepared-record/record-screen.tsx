@@ -8,6 +8,8 @@ import { RecordEntryRow } from "./record-entry-row";
 import { RecordMonthRule } from "./record-month-rule";
 import {
   RECORD_FIXTURE,
+  RECORD_FIXTURE_ENABLED,
+  RECORD_UNAVAILABLE,
   countsByState,
   groupByMonth,
   longDate,
@@ -37,7 +39,22 @@ import styles from "./record.module.css";
  *     type, the same cell in the count strip, and they sit where they fell.
  */
 
-export type RecordStage = "ready" | "loading" | "error" | "empty" | "unresolved" | "stale";
+export type RecordStage =
+  | "ready"
+  | "loading"
+  | "error"
+  | "empty"
+  | "unresolved"
+  | "stale"
+  /**
+   * No source behind the screen. Distinct from `error`, and the distinction is
+   * the whole point: `error` says a read was attempted and failed, `empty`
+   * says a read came back with nothing, `loading` says one is running. In
+   * production none of the three has happened. The fixture is withheld by the
+   * gate, so there is nothing to run, and `unavailable` is the only one of the
+   * four that is true. Same third state /ask built for the same situation.
+   */
+  | "unavailable";
 
 const PAD = "var(--v3-pad)";
 
@@ -48,10 +65,20 @@ export function RecordScreen({
   stage?: RecordStage;
   data?: RecordData;
 }) {
-  const entries = data.entries;
+  /* The gate is enforced HERE, not only at the call site. `page.tsx` also
+     resolves it, because the server component picks which fixture to hand
+     over, but a second entry point that forgot to would otherwise render the
+     fixture straight into production. Whatever `?stage=` asks for, with the
+     gate closed the screen is unavailable. In development and preview
+     `?stage=unavailable` reaches this branch on purpose so the state can be
+     audited and captured like the rest. */
+  const effective: RecordStage = RECORD_FIXTURE_ENABLED ? stage : "unavailable";
+
+  const entries = effective === "unavailable" ? [] : data.entries;
   const counts = countsByState(entries);
   const months = groupByMonth(entries);
-  const showList = stage === "ready" || stage === "stale" || stage === "unresolved";
+  const showList =
+    effective === "ready" || effective === "stale" || effective === "unresolved";
   const showExport = showList && entries.length > 0;
 
   return (
@@ -84,19 +111,24 @@ export function RecordScreen({
             above a skeleton asserting a size nothing has read yet, and on
             `error` it would print an exact count and range directly above the
             sentence "we could not load your record". */}
-        <Masthead data={data} summarize={showList} />
+        <Masthead data={effective === "unavailable" ? RECORD_UNAVAILABLE : data} summarize={showList} />
 
-        {stage === "loading" ? <RecordSkeleton /> : null}
-        {stage === "error" ? <RecordError /> : null}
-        {stage === "empty" ? <NoCalls /> : null}
-        {stage === "stale" ? <StaleNotice data={data} /> : null}
-        {stage === "unresolved" ? <NoneResolved /> : null}
+        {effective === "loading" ? <RecordSkeleton /> : null}
+        {/* The retry is withheld when there is no record behind the screen.
+            A button whose only action is a reload back into the same closed
+            gate cannot succeed on any attempt, ever, and offering it says a
+            read might work next time. */}
+        {effective === "error" ? <RecordError retryable={data !== RECORD_UNAVAILABLE} /> : null}
+        {effective === "unavailable" ? <RecordUnavailable /> : null}
+        {effective === "empty" ? <NoCalls /> : null}
+        {effective === "stale" ? <StaleNotice data={data} /> : null}
+        {effective === "unresolved" ? <NoneResolved /> : null}
 
         {/* The count strip is drawn only once something has resolved. A record
             with nothing graded in it renders the honest sentence instead of a
             zeroed scoreboard, which is the rule src/lib/your-record.ts states
             and the reason it publishes `hasResolved` at all. */}
-        {showList && entries.length > 0 && stage !== "unresolved" ? (
+        {showList && entries.length > 0 && effective !== "unresolved" ? (
           <CountStrip counts={counts} />
         ) : null}
 
@@ -445,8 +477,19 @@ function RecordSkeleton() {
  * that nothing was curated away, a failed read that reads as an empty one is
  * the worst thing this screen can do. The copy says which it is in both
  * directions.
+ *
+ * This copy is now only ever shown over a read that actually happened and
+ * actually failed. It used to double as the production fallback, which was the
+ * same fault in miniature: the fixture had been withheld by the gate, nothing
+ * had been read, nothing had failed, and the screen said "This is a failed
+ * read" anyway. `unavailable` carries that case now.
+ *
+ * `retryable` is false when there is no record behind the screen at all. A
+ * reload cannot change that, on this attempt or any other, and a control that
+ * provably cannot succeed is worse than no control: it tells the reader the
+ * read is worth trying again.
  */
-function RecordError() {
+function RecordError({ retryable = true }: { retryable?: boolean }) {
   return (
     <div style={{ paddingTop: "18px" }} role="alert">
       <p style={{ margin: 0, font: "500 17px/1.4 'Playfair Display', serif", color: "var(--c-ink)" }}>
@@ -463,24 +506,64 @@ function RecordError() {
         This is a failed read, not an empty result. Nothing has been removed, and nothing is
         estimated in its place.
       </p>
-      <button
-        type="button"
-        onClick={() => window.location.reload()}
-        className={styles.bare}
+      {retryable ? (
+        <button
+          type="button"
+          onClick={() => window.location.reload()}
+          className={styles.bare}
+          style={{
+            marginTop: "14px",
+            minHeight: "44px",
+            display: "inline-flex",
+            alignItems: "center",
+            padding: "0 17px",
+            border: "1px solid var(--c-ink)",
+            borderRadius: "9px",
+            font: "600 13px/1 Inter, sans-serif",
+            color: "var(--c-ink)",
+          }}
+        >
+          Try again
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * No source behind the screen. What production draws.
+ *
+ * The rule this state exists for: when there is no data, render nothing or
+ * render loading, never a sentence about the reader or their record. So this
+ * block says one thing only, and it is a fact about the SCREEN rather than
+ * about the record. It does not say how many calls there are, it does not say
+ * there are none, it does not say a read failed, and it offers no control,
+ * because there is nothing behind this surface for a control to reach.
+ *
+ * The masthead above it is already reduced to its label: with no entries the
+ * range line is withheld, and the name is empty rather than borrowed, so
+ * nothing on the screen is signed by anybody.
+ *
+ * The live region is polite, not an alert. Nothing here has failed.
+ */
+function RecordUnavailable() {
+  return (
+    <div style={{ paddingTop: "18px" }} role="status">
+      <p style={{ margin: 0, font: "500 17px/1.4 'Playfair Display', serif", color: "var(--c-ink)" }}>
+        The prepared record is not wired to a source yet.
+      </p>
+      <p
         style={{
-          marginTop: "14px",
-          minHeight: "44px",
-          display: "inline-flex",
-          alignItems: "center",
-          padding: "0 17px",
-          border: "1px solid var(--c-ink)",
-          borderRadius: "9px",
-          font: "600 13px/1 Inter, sans-serif",
-          color: "var(--c-ink)",
+          margin: "10px 0 0",
+          maxWidth: "34ch",
+          font: "400 13px/1.6 Inter, sans-serif",
+          color: "var(--c-secondary)",
+          textWrap: "pretty",
         }}
       >
-        Try again
-      </button>
+        Nothing has been read here, so there is nothing to show and nothing is estimated in its
+        place. Your entries are untouched by this screen. The Ledger is live.
+      </p>
     </div>
   );
 }

@@ -497,9 +497,12 @@ export const RECORD_EMPTY_FIXTURE: RecordData = {
  *
  * Not a spread of the fixture. Everything in it is empty on purpose, because
  * the one thing this screen must never do is show a person someone else's
- * name over a record of calls they did not make. It pairs with `stage="error"`,
- * whose copy is already exactly right for the case: a failed read, not an
- * empty result, and nothing estimated in its place.
+ * name over a record of calls they did not make. It pairs with
+ * `stage="unavailable"`, and it used to pair with `stage="error"`, which was
+ * wrong in the way this screen exists to catch: in production nothing is read
+ * and nothing fails, so "This is a failed read" was a fallback asserting a
+ * fact it has no source for. The gate keeps the fixture back by design, and
+ * the copy now says that instead.
  */
 export const RECORD_UNAVAILABLE: RecordData = {
   name: "",
@@ -507,3 +510,25 @@ export const RECORD_UNAVAILABLE: RecordData = {
   settledSincePrepared: 0,
   preparedAt: "",
 };
+
+/* ── The production gate ────────────────────────────────────────────
+ *
+ * The fixture may not reach production. Delete this and its uses when a loader
+ * lands.
+ *
+ * /record is a new route, but it is not an anonymous one: the proxy gates it
+ * behind auth outside local dev, so the person who reaches it in production is
+ * a real signed-in user and this screen is a record of THEIR calls under THEIR
+ * name. An ungated fixture would show them forty-one calls they never made,
+ * signed by somebody else.
+ *
+ * It lives here, beside the data it gates, rather than in `page.tsx`, so the
+ * screen can enforce it itself. A gate that has to be remembered at each call
+ * site is one that gets missed at one of them, and this screen has two call
+ * sites already.
+ *
+ * Fails closed: anything that is not development and not an explicit preview
+ * deploy is treated as production.
+ */
+export const RECORD_FIXTURE_ENABLED =
+  process.env.NODE_ENV !== "production" || process.env.NEXT_PUBLIC_VERCEL_ENV === "preview";
