@@ -87,11 +87,22 @@ export function DashboardScreen({
      specific claim about a real reader's morning made with no data behind it.
      An empty state that asserts a fact is not a safe fallback.
 
-     So in production, absent data renders as LOADING, which is the truthful
-     description of the situation: nothing has arrived. The skeleton asserts
-     nothing. `d` still needs a shape to destructure, and DASH_FIXTURE_EMPTY
-     supplies one that is never painted, because every branch below is gated on
-     `effectiveStage`. */
+     So in production, absent data renders as the loading skeleton, which
+     asserts nothing. `d` still needs a shape to destructure, and
+     DASH_FIXTURE_EMPTY supplies one that is never painted, because every
+     branch below is gated on `effectiveStage`.
+
+     The skeleton alone is still not the whole answer, and this is the second
+     half of the same rule. The design's loading state closes on the line
+     READING OVERNIGHT COVERAGE. That is honest while a loader is running and
+     false once nothing is running, and on this branch nothing ever will be:
+     there is no loader behind this screen at all, so a permanent skeleton
+     tells a reader that a briefing is on its way. `starved` is therefore
+     passed down, and the closing line says what the screen is instead of
+     narrating work that is not happening. This is the `unwired` third state
+     that /ask in PR #654 and /compose in PR #650 both landed, wearing the
+     skeleton's shape because that shape is the design's and is correct
+     here. */
   const starved = !data && !DASH_FIXTURES_ALLOWED;
   const effectiveStage: DashStage = starved ? "loading" : stage;
   const d = data ?? (stage === "empty" || starved ? DASH_FIXTURE_EMPTY : DASH_FIXTURE);
@@ -103,7 +114,7 @@ export function DashboardScreen({
   return (
     <div data-parity="dash" style={{ backgroundColor: "var(--c-bg)", minHeight: "100%" }}>
       <ScreenHead />
-      {effectiveStage === "loading" ? <DashSkeleton /> : null}
+      {effectiveStage === "loading" ? <DashSkeleton unwired={starved} /> : null}
       {effectiveStage === "error" ? <DashError /> : null}
       {effectiveStage === "ready" || effectiveStage === "stale" || effectiveStage === "empty" ? (
         <div className={styles.dots} style={{ padding: `0 ${PAD} 26px` }}>
@@ -239,8 +250,8 @@ export function DashboardScreen({
               and does nothing rather than routing at a 404. The desk's
               nearest equivalent today is /radar/calls, which the design
               dismantles; sending a phone reader there is a decision, not a
-              default. */}
-          <TailLink label="All calls →" onClick={() => {}} />
+              default. Disabled until it exists. */}
+          <TailLink label="All calls →" />
 
           <SectionRule label="the desk's record" delayMs={D.deskRecord} />
           <Explainer text={d.deskRecord.intro} />
@@ -255,8 +266,9 @@ export function DashboardScreen({
           )}
           {/* TODO: point at the Desk record once step 7 lands. Held on this
               branch, same treatment. /radar/desk-record is the desk's
-              equivalent and is deliberately not linked, for the same reason. */}
-          <TailLink label="The whole record →" onClick={() => {}} />
+              equivalent and is deliberately not linked, for the same reason.
+              Disabled until it exists. */}
+          <TailLink label="The whole record →" />
 
           <SectionRule label="top stories" delayMs={D.stories} />
           <div style={{ marginTop: "10px", display: "flex", gap: "12px" }}>
@@ -291,13 +303,51 @@ export function DashboardScreen({
           >
             {d.disclaimer}
           </p>
-          {/* No spacer for the tab bar. The shell already reserves its height
-              plus the safe-area inset on `main`; adding a second env() here
-              would count the inset twice. The 26px below is the design's own
-              bottom gap. */}
         </div>
       ) : null}
+      <TabBarSpacer />
     </div>
+  );
+}
+
+/**
+ * Clearance for the tab bar, inside the scrolled content.
+ *
+ * An earlier comment here said no spacer was needed because the shell already
+ * reserves the bar's height plus the safe-area inset on `main`. That is what
+ * `app-shell.tsx:172` intends and it is not what renders. Measured on this
+ * branch, at 390x844, `/dashboard` scrolled to its end:
+ *
+ *   #main-content  padding-bottom 59px, overflow-y auto
+ *                  clientHeight 844, scrollHeight 1525
+ *   [data-parity="dash"]  height 1525, bottom 844
+ *   tab bar        top 785, height 59
+ *   disclaimer     bottom 818, so 33px of it sat behind the bar
+ *
+ * The screen root's height and the scroller's scrollHeight are the same 1525.
+ * The 59px of padding contributes nothing, because Blink omits a scroll
+ * container's block-end padding from its scrollable overflow rectangle once
+ * the content overflows. So the shell's reservation is real when the page fits
+ * and absent exactly when it is needed. PR #653 measured this on the same
+ * shell and was right; the comment that used to sit here was wrong.
+ *
+ * A child element cannot be dropped that way, so the clearance goes here. The
+ * full bar height is needed, not a remainder, because the shell contributes
+ * zero in the overflowing case.
+ *
+ * On a short state that does not overflow, the shell's padding is honoured and
+ * this adds a second bar's worth of empty background below content that
+ * already clears. That is invisible and costs nothing; the alternative is a
+ * control behind the bar, which is what shipped.
+ */
+function TabBarSpacer() {
+  return (
+    <div
+      aria-hidden="true"
+      style={{
+        height: "calc(var(--mobile-tabbar-height) + env(safe-area-inset-bottom, 0px))",
+      }}
+    />
   );
 }
 
@@ -525,8 +575,14 @@ function MarketBand({
             textWrap: "pretty",
           }}
         >
-          Two to four cards. Drag to reorder, tap a card to swap it for Nasdaq, Dow Jones, Bitcoin,
-          Gold, Oil or DXY.
+          {/* The design's line here reads "Two to four cards. Drag to reorder,
+              tap a card to swap it for Nasdaq, Dow Jones, Bitcoin, Gold, Oil
+              or DXY." Every verb in it is false on this branch: there is no
+              drag, no swap and no store to write either into. Copy that
+              promises a capability the screen does not have is the same defect
+              as a fixture figure, so the line says what the state is instead.
+              Restore the design's wording in the unit that wires the store. */}
+          Preview of the arrange state. Reordering and swapping are not wired yet.
         </p>
       ) : null}
     </>
@@ -603,9 +659,7 @@ function MarketCell({
      resting cell is a plain box.
      TODO: wire the swap and the drag. The desk already carries both, in
      `market-card-editor.tsx` (MARKET_CARD_OPTIONS, SortableMarketCard) over
-     dnd-kit; this unit draws the arrange state without a store to write to,
-     so the cell is a real control that does nothing yet. The helper copy
-     below is the design's and describes the wired behaviour, not this one. */
+     dnd-kit; this unit draws the arrange state without a store to write to. */
   if (!editing) {
     return (
       <div className={cls} style={{ padding: "12px 14px" }}>
@@ -613,9 +667,15 @@ function MarketCell({
       </div>
     );
   }
+  /* Disabled, and it carried no handler at all before: a real <button>, in the
+     tab order, drawn with the gold arrange outline and cursor:pointer off
+     `.bare`, that answered a press and a keystroke with nothing. The arrange
+     outline is the design's and stays, because the state it draws is real;
+     what is not real is the action, so the control says so. */
   return (
     <button
       type="button"
+      disabled
       className={`${cls} ${ledger.bare}`}
       style={{
         padding: "12px 14px",
@@ -625,6 +685,7 @@ function MarketCell({
         textAlign: "left",
         display: "block",
         width: "100%",
+        cursor: "default",
       }}
     >
       {body}
@@ -639,10 +700,13 @@ function WaitingCard({ eyebrow, line }: { eyebrow: string; line: string }) {
       /* TODO: open Review once step 4 lands. Review is held on this branch
          and so is the commit sheet it sits downstream of, which lands in
          PR #643, so this control opens nothing rather than routing at a
-         screen that does not exist. */
-      onClick={() => {}}
+         screen that does not exist. Disabled, not merely handler-less: the
+         card is a full-width inverse panel with an arrow glyph and it read as
+         the most pressable thing on the screen while answering with nothing. */
+      disabled
       className={`${styles.rise} ${ledger.bare}`}
       style={{
+        cursor: "default",
         animationDelay: `${D.waiting}ms`,
         marginTop: "12px",
         width: "100%",
@@ -696,7 +760,17 @@ function WaitingCard({ eyebrow, line }: { eyebrow: string; line: string }) {
   );
 }
 
-function TailLink({ label, href, onClick }: { label: string; href?: string; onClick?: () => void }) {
+/**
+ * The gold tail line under a section.
+ *
+ * With `href` it is a real link. Without one there is nowhere to go yet, and
+ * the honest shape is a disabled control rather than a live-looking one: it
+ * was a keyboard-reachable `<button>` with `cursor:pointer` off `.bare` and a
+ * no-op handler, which reads as a working link and answers with nothing.
+ * `disabled` rather than `aria-disabled` because a destination that does not
+ * exist should not take a tab stop either.
+ */
+function TailLink({ label, href }: { label: string; href?: string }) {
   const style = {
     marginTop: "10px",
     minHeight: "44px",
@@ -714,7 +788,7 @@ function TailLink({ label, href, onClick }: { label: string; href?: string; onCl
     );
   }
   return (
-    <button type="button" onClick={onClick} className={ledger.bare} style={style}>
+    <button type="button" disabled className={ledger.bare} style={{ ...style, cursor: "default" }}>
       {label}
     </button>
   );
@@ -748,10 +822,15 @@ function StoryRow({ story, last }: { story: DashStory; last: boolean }) {
   return (
     <button
       type="button"
-      /* TODO: open the Story reader once step 10 lands. Not built here. */
-      onClick={() => {}}
+      /* TODO: open the Story reader once step 10 lands. Not built here, so
+         the row is disabled rather than a live-looking button with a no-op
+         handler. Eight rows that each take a tab stop and answer with nothing
+         is the worst instance of it on the screen; the headline stays
+         readable, it just is not a control. */
+      disabled
       className={ledger.bare}
       style={{
+        cursor: "default",
         width: "100%",
         display: "flex",
         alignItems: "flex-start",
@@ -886,10 +965,21 @@ function StaleNotice({ text }: { text: string }) {
  * The desk resolves each widget on its own clock, so the dashboard settles in
  * pieces. The design replaces all of it with a single skeleton in the shape of
  * the real screen, closing on a line that states what is being waited on.
+ *
+ * `unwired` is the same shape saying a different, and the only true, thing.
+ * The design's closing line and its `aria-busy` both describe a read in
+ * progress. With a loader behind them that is what is happening. On this
+ * branch there is no loader, so in production they would narrate work that
+ * will never start, and `aria-busy` would tell a screen reader to expect the
+ * region to settle. Neither survives that, so both change.
  */
-function DashSkeleton() {
+function DashSkeleton({ unwired = false }: { unwired?: boolean }) {
   return (
-    <div style={{ padding: `0 ${PAD} 26px` }} aria-busy="true" aria-label="Reading overnight coverage">
+    <div
+      style={{ padding: `0 ${PAD} 26px` }}
+      aria-busy={unwired ? undefined : "true"}
+      aria-label={unwired ? "Preview of the Dashboard screen" : "Reading overnight coverage"}
+    >
       <div style={{ display: "flex", alignItems: "center", gap: "11px" }}>
         <span className={ledger.sk} style={{ width: "118px", height: "13px" }} />
         <span style={{ flex: 1, height: "1px", backgroundColor: "var(--c-border)" }} />
@@ -928,12 +1018,18 @@ function DashSkeleton() {
         style={{
           margin: "20px 0 0",
           font: `400 11px/1.5 ${MONO}`,
-          letterSpacing: "0.07em",
+          /* The design's caps and tracking are a short status label. A whole
+             sentence in them is the all-caps decorative treatment README
+             forbids, so the unwired line is sentence case at the same size. */
+          letterSpacing: unwired ? "0.01em" : "0.07em",
           color: "var(--c-muted)",
           textAlign: "center",
+          textWrap: "pretty",
         }}
       >
-        READING OVERNIGHT COVERAGE
+        {unwired
+          ? "Preview of the screen. No briefing is wired to it yet."
+          : "READING OVERNIGHT COVERAGE"}
       </p>
     </div>
   );
