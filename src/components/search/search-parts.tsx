@@ -178,11 +178,58 @@ export function SearchField({
  * The palette's own item button was read and is not reused: `px-4 py-2` at
  * 13px measures well under the 44px floor, and it draws a filled selected
  * state this screen has no equivalent of.
+ *
+ * `prefetch={false}`, and this is the one line on the screen with a measured
+ * number behind it rather than a design one.
+ *
+ * Ten jump rows are on screen at once and every one of them is a `<Link>`, so
+ * the default viewport prefetch warms TEN routes the moment /search paints.
+ * Measured at 390x844 on a 4G profile (9 Mbps down, 170ms RTT, 4x CPU),
+ * median of three cold loads:
+ *
+ *   default prefetch   TTI 2162ms   696 KB over the wire   76 requests
+ *   prefetch={false}   TTI  844ms   286 KB over the wire   19 requests
+ *
+ * 403 KB and 58 of those requests are the prefetch. They land after the load
+ * event, so they do not delay first paint, but the last of them is parsed in
+ * a 100ms long task about 1.3s in, and that task is what keeps the screen
+ * from going quiet. 361 KB of the 403 is route JS for the ten destinations, not
+ * RSC payload, which is why a `loading.tsx` boundary on each destination
+ * would recover about 42 KB and none of the long task.
+ *
+ * What this gives up is measured too. Clicking a jump row and timing until
+ * the destination is painted, same profile, cold cache, median of three:
+ *
+ *   default prefetch   /dashboard  389ms    /live-feed  122ms
+ *   prefetch={false}   /dashboard 1074ms    /live-feed  801ms
+ *
+ * So the trade is about 1318ms off the load against about 682ms added to the
+ * one navigation that follows. A visit that loads /search and jumps once is
+ * roughly 636ms faster and 190 KB lighter, because nine of the ten warmed
+ * routes were never opened.
+ *
+ * Four other shapes were built and measured before this one. Deferring the
+ * prefetch to `requestIdleCallback` after load moved nothing (TTI 2206ms):
+ * the main thread is already idle there, so the default was never waiting on
+ * it. Warming only the first three rows gave back 258ms while still spending
+ * 273 KB, and quietly made the other seven slower. Next's own
+ * `HoverPrefetchLink` shape, `prefetch={active ? null : false}` armed on
+ * pointer intent, needs roughly 800ms of dwell before the click to be worth
+ * anything on a 170ms RTT: at 120ms of dwell, which is what a tap actually
+ * gives, its navigation measured 1110ms, no better than this line. This
+ * screen is `md:hidden`, so a tap is the only input it will ever see.
+ * Arming every row on the first pointer event was worst of all, at 1170ms,
+ * because ten prefetches then compete with the navigation they were meant to
+ * help.
+ *
+ * Deliberately scoped to the jump rows. The entity rows below only exist once
+ * a query has been typed, so they are not on this screen's load path.
  */
 export function SearchJumpRow({ label, href }: { label: string; href: string }) {
   return (
     <Link
       href={href}
+      prefetch={false}
       style={{
         display: "flex",
         alignItems: "center",
