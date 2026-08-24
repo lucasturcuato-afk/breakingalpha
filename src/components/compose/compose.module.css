@@ -1,0 +1,89 @@
+/* Compose motion, focus and the few rules that cannot be expressed inline.
+ *
+ * Nothing here is responsive, for the same reason the Ledger module is not: an
+ * inline style beats a class at every breakpoint, so a module carrying a
+ * breakpoint would collide with the measured values the components set inline.
+ *
+ * Easing is the design's single curve. Durations are the prototype's own. */
+
+.enter {
+  /* Rests in the drawn state and animates FROM the hidden one. A block that
+     never animates is still readable, which is the rule the prototype's own
+     `both` fill breaks. */
+  opacity: 1;
+  transform: none;
+  animation: composeIn 220ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+
+@keyframes composeIn {
+  from {
+    opacity: 0;
+    transform: translateY(7px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Loading. The same shimmer the Ledger draws, at the same duration. */
+.sk {
+  border-radius: 4px;
+  background: linear-gradient(
+    90deg,
+    var(--c-hair) 0%,
+    var(--c-surface) 50%,
+    var(--c-hair) 100%
+  );
+  background-size: 200% 100%;
+  animation: composeShimmer 1.8s ease-in-out infinite;
+}
+
+@keyframes composeShimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+/* Every control and every field on this screen.
+ *
+ * The design writes `outline:none` on both textareas, which takes the focus
+ * ring off a form. This screen is the only one in the build where a keyboard
+ * user types two long passages, so the ring is not optional. One rule, one
+ * value, applied to fields and controls alike. */
+.focusable {
+  outline: none;
+}
+
+.focusable:focus-visible {
+  outline: 2px solid var(--c-gold);
+  outline-offset: 2px;
+}
+
+/* The two textareas. The design's inline font and colour stay inline; only the
+ * reset and the resize behaviour live here. */
+.field {
+  width: 100%;
+  border: none;
+  resize: none;
+  background: transparent;
+  padding: 0;
+  display: block;
+}
+
+.field::placeholder {
+  color: var(--c-muted);
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Nothing is hidden rather than merely unanimated: both rules above rest in
+     their drawn state, so removing the animation leaves the content visible. */
+  .enter,
+  .sk {
+    animation: none;
+  }
+}

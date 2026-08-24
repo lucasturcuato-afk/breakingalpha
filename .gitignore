@@ -84,5 +84,5 @@ scripts/out/
 .cache/
 
 # Parity harness artifacts (scripts/parity_harness.py, scripts/screen-audit.mjs)
-.parity-proto.html
+.parity-proto*.html
 parity-*.json
