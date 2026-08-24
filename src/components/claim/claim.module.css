@@ -30,16 +30,15 @@
   }
 }
 
-/* The press state on the action bar. The prototype carries
- * `style-active="transform:scale(0.98)"` on both controls in the bar; it is the
- * only touch feedback the screen has, since neither control navigates. */
-.press {
-  transition: transform 120ms cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.press:active {
-  transform: scale(0.98);
-}
+/* The press state on the action bar is DELIBERATELY ABSENT, and the prototype
+ * does draw one: `style-active="transform:scale(0.98)"` sits on both controls
+ * in the bar. It shipped here once and came out.
+ *
+ * Both controls are inert, and press feedback on an inert control is the only
+ * thing on the screen still telling a reader their tap landed. It is the
+ * design's own touch affordance repurposed into a small untruth. It comes back
+ * the day either control does something, with the rule above it: the animation
+ * belongs to the action, not to the shape of the button. */
 
 /* Loading. The shimmer is the design's own, at its own duration. */
 .sk {
@@ -66,14 +65,9 @@
 @media (prefers-reduced-motion: reduce) {
   /* Nothing is hidden rather than merely unanimated: every rule above already
    * rests in its drawn state, so removing the animation leaves the content on
-   * screen. The press feedback loses its easing and still applies, so the
-   * control does not go dead to the touch. */
+   * screen. */
   .enter,
   .sk {
     animation: none;
-  }
-
-  .press {
-    transition: none;
   }
 }

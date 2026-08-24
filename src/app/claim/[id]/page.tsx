@@ -16,6 +16,14 @@ import { ClaimScreen, CLAIM_FIXTURE, type ClaimStage } from "@/components/claim"
  * fixture's own header records which of its fields have a column behind them
  * and which three do not.
  *
+ * BECAUSE THERE IS NO LOADER, PRODUCTION DRAWS `unwired`. This route requires
+ * a session in production, so an ungated fixture would put a fabricated Cash
+ * App call and a fabricated desk reading in front of a real reader, under a
+ * counter claiming it is the second of five calls in their brief. The gate is
+ * `CLAIM_FIXTURE_ENABLED` and it is enforced inside `ClaimScreen` rather than
+ * here, so it cannot be forgotten at a second call site the day one exists.
+ * The stage below is a request, not a decision.
+ *
  * ?stage= renders a lifecycle state directly, for the same reason the Ledger
  * takes one: with no data source the states cannot be reached by reproducing
  * their conditions, and the runtime audit has to be able to reach each one.
@@ -31,7 +39,15 @@ import { ClaimScreen, CLAIM_FIXTURE, type ClaimStage } from "@/components/claim"
  * unit's to edit. The bar renders and lights Ledger.
  */
 
-const STAGES: ClaimStage[] = ["ready", "loading", "error", "missing", "stale", "ungradeable"];
+const STAGES: ClaimStage[] = [
+  "ready",
+  "loading",
+  "error",
+  "missing",
+  "stale",
+  "ungradeable",
+  "unwired",
+];
 
 export default async function ClaimPage({
   params,

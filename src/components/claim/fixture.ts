@@ -39,6 +39,30 @@ import { MAX_WINDOW_DAYS } from "@/lib/call-horizons";
  * this claim sits in today's brief, and the window is a span in days.
  */
 
+/* The production gate.
+ *
+ * There is no loader behind this screen. Every field below is invented, and
+ * three of them could not be loaded even if a loader existed, which is what
+ * the header above records. `/claim/[id]` requires a session in production, so
+ * ungated this would put a fabricated Cash App call, a fabricated desk reading
+ * and a fabricated benchmark pair in front of a real reader, headed by a
+ * position counter claiming it is the second of five calls in their brief.
+ *
+ * Fails closed: anything that is not development and not an explicit preview
+ * deploy is treated as production.
+ *
+ * With the gate closed the screen draws `unwired`, NOT a skeleton and NOT the
+ * missing state. A skeleton says a read is on its way when nothing is coming,
+ * and `missing` says a read came back and found nothing. Neither happened, so
+ * the screen says the third thing. See `claim-screen.tsx`.
+ *
+ * One constant, imported at the only two places that need it, rather than a
+ * condition to remember per call site.
+ */
+export const CLAIM_FIXTURE_ENABLED =
+  process.env.NODE_ENV !== "production" ||
+  process.env.NEXT_PUBLIC_VERCEL_ENV === "preview";
+
 export interface ClaimSettlement {
   /** The comparison set the move is measured against, e.g. "XLF, and SPY". */
   benchmarks: string;
