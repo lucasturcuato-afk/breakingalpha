@@ -19,7 +19,22 @@ const btnBase = { fontFamily: SANS, fontSize: 12, fontWeight: 600, padding: "5px
 const btnSecondary = { ...btnBase, background: "var(--cream)", border: "1px solid var(--border-base)", color: "var(--espresso)" } as const;
 const btnPrimary = { ...btnBase, background: "var(--gold-deep)", border: "1px solid var(--gold-deep)", color: "var(--cream)", cursor: "pointer" } as const;
 
-interface Props { detail: CompanyDetail }
+interface Props {
+  detail: CompanyDetail;
+  /**
+   * Which heading element carries the company name. Defaults to h1, which is
+   * what production renders: with the mobile fixture gate SHUT this component
+   * is the only heading on the route and nothing about it changes.
+   *
+   * With the gate OPEN, `/company/[id]` server-renders both trees and the
+   * mobile screen carries its own h1. Only one is ever visible and
+   * `display:none` already keeps assistive tech to one, but the document
+   * outline sees both. The mobile screen keeps h1, because that is the one a
+   * mobile reader's assistive tech can actually reach; this one steps down to
+   * h2 on that path only.
+   */
+  titleAs?: "h1" | "h2";
+}
 
 // Pill color follows tone polarity; the pill text carries the full level label
 // (e.g. "Strongly Positive"). Insufficient coverage shows a neutral pill.
@@ -34,7 +49,7 @@ function formatSubtitle(d: CompanyDetail): string {
   return d.ticker ? `NASDAQ · ${sector}` : sector;
 }
 
-export function CompanyDetailHeader({ detail }: Props) {
+export function CompanyDetailHeader({ detail, titleAs: Title = "h1" }: Props) {
   const [entryId, setEntryId] = useState<string | null>(null);
   const isOn = entryId !== null;
   const pending = entryId === PENDING;
@@ -118,12 +133,12 @@ export function CompanyDetailHeader({ detail }: Props) {
 
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-            <h1
+            <Title
               className="font-display"
               style={{ fontSize: 26, fontWeight: 700, margin: 0, letterSpacing: "-0.015em", color: "var(--espresso)" }}
             >
               {detail.display}
-            </h1>
+            </Title>
             {detail.ticker ? (
               <span
                 data-testid="company-header-ticker"

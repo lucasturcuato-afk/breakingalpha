@@ -3,7 +3,7 @@
 import { useCallback } from "react";
 import { useRouter } from "next/navigation";
 
-import { ClaimAnatomy, OutcomeLead } from "@/components/ledger";
+import { ClaimAnatomy, OutcomeLead, OUTCOME_TOKENS } from "@/components/ledger";
 import { useCompanyTabState, type CompanyTabId } from "@/hooks/useCompanyTabState";
 
 import styles from "./company-mobile.module.css";
@@ -476,14 +476,23 @@ function YourEntries({ data }: { data: CompanyIntelData }) {
           }}
         >
           {/* State is a 2px TOP edge plus a dot and the state word. Never a
-              coloured left rule, and a challenged entry is never buried. */}
-          <div style={{ height: "2px", backgroundColor: "var(--c-red)" }} />
+              coloured left rule, and a challenged entry is never buried.
+
+              Edge and lead both read data.entry.state, and the edge takes the
+              same OUTCOME_TOKENS dot the lead does, so the two cannot drift. A
+              hardcoded red here labelled every entry Challenged. */}
+          <div
+            style={{
+              height: "2px",
+              backgroundColor: OUTCOME_TOKENS[data.entry.state].dot,
+            }}
+          />
           <div style={{ padding: "13px 15px" }}>
             <ClaimAnatomy
               scale="row"
               lead={
                 <div style={{ marginBottom: "9px" }}>
-                  <OutcomeLead state="challenged" instrument={data.entry.date} />
+                  <OutcomeLead state={data.entry.state} instrument={data.entry.date} />
                 </div>
               }
               claim={data.entry.claim}

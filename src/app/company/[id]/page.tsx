@@ -335,10 +335,19 @@ export default async function CompanyDetailPage({
 
   // The desktop surface, unchanged. Held in a const so the gate can place it
   // without the shut branch acquiring a wrapper element it does not have today.
+  //
+  // titleAs is the ONE difference between the two placements, and it exists
+  // because the gate open means both trees are in the same document. Only one
+  // is visible, so assistive tech already sees a single heading, but the
+  // document outline sees two h1s. The mobile screen keeps h1 because that is
+  // the reachable one below `md`; this steps to h2 on the gated path. With the
+  // gate shut, `mobileFixture` is false and this renders h1 exactly as today.
   const desk = (
     <CompanyDetailLayout
       tabContent={tabContent}
-      header={<CompanyDetailHeader detail={companyDetail} />}
+      header={
+        <CompanyDetailHeader detail={companyDetail} titleAs={mobileFixture ? "h2" : "h1"} />
+      }
       aliasRibbon={
         <CompanyAliasRibbon
           canonical={companyDetail.canonical}

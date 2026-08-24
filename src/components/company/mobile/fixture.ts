@@ -19,6 +19,8 @@
  * `fetchCompanyFinancials`. No new API surface is needed.
  */
 
+import type { OutcomeState } from "@/components/ledger";
+
 /**
  * How a tone reading is tinted.
  *
@@ -58,13 +60,20 @@ export interface ToneEvidenceRow {
   direction: "up" | "mixed";
 }
 
+/**
+ * Structurally a `FilingLike`, so `countByCategory` and `applyFilter` from
+ * `lib/filing-categories.ts` run on these rows directly.
+ *
+ * NO `category` FIELD. It used to carry one alongside the form, which is a
+ * second classifier that can disagree with the shipped one. The chip counts and
+ * the chip filter now both go through `categorizeForm(formType)`, so a row can
+ * only ever be counted under the chip that draws it.
+ */
 export interface CompanyFilingRow {
-  form: string;
+  formType: string;
   date: string;
   /** Null when the summariser has not run for this accession yet. */
   summary: string | null;
-  /** Which chip this row sits under. Mirrors lib/filing-categories.ts. */
-  category: "annual" | "quarterly" | "events" | "insider" | "other";
 }
 
 export interface FinancialsRow {
@@ -111,6 +120,15 @@ export interface CompanyIntelData {
     claim: string;
     reading: string;
     date: string;
+    /**
+     * Drives BOTH the card's top edge and the word in its lead. Never assumed.
+     *
+     * The design happens to draw a challenged entry, and hardcoding that would
+     * paint a supported entry red and label it Challenged the moment a loader
+     * lands. Same defect class as a hardcoded tone tint or a hardcoded price
+     * direction; the record is the reader's own and it has to be accurate.
+     */
+    state: OutcomeState;
   } | null;
   following: {
     since: string;
@@ -139,8 +157,16 @@ export interface CompanyIntelData {
     rows: ToneEvidenceRow[];
   };
   filings: {
-    /** Total stored rows behind the chips, per category. */
-    counts: Record<"all" | "annual" | "quarterly" | "events" | "insider" | "other", number>;
+    /**
+     * NO COUNTS FIELD, deliberately.
+     *
+     * The chip labels are derived from `rows` at render time by
+     * `filingCounts()` in `sections.tsx`. A stored count is a number the chip
+     * asserts and the data cannot support: this carried
+     * `{ all: 47, events: 22, insider: 11, quarterly: 9 }` over six rows, so
+     * "Events 22" drew two. Deriving makes the chip a description of what
+     * tapping it produces instead of a claim about a corpus that is not here.
+     */
     rows: CompanyFilingRow[];
   };
   financials: {
@@ -183,6 +209,9 @@ export const COMPANY_INTEL_FIXTURE: CompanyIntelData = {
       "Constellation Energy trades above the utilities sector index through the next PJM capacity auction result.",
     reading: "Data centre contracting is repricing faster than the regulated book.",
     date: "AUG 27",
+    /* The design's own drawing is a challenged entry. Carried as data so the
+       screen reads it rather than assuming it. */
+    state: "challenged",
   },
 
   following: {
@@ -243,39 +272,33 @@ export const COMPANY_INTEL_FIXTURE: CompanyIntelData = {
   },
 
   filings: {
-    counts: { all: 47, annual: 3, quarterly: 9, events: 22, insider: 11, other: 2 },
     rows: [
       {
-        form: "8-K",
+        formType: "8-K",
         date: "JUL 31",
         summary:
           "Twenty-year power supply agreement signed with a hyperscale data centre operator in Illinois.",
-        category: "events",
       },
       {
-        form: "10-Q",
+        formType: "10-Q",
         date: "JUL 24",
         summary: "Q2 revenue $6.1B. Contracted nuclear volume up eleven percent year over year.",
-        category: "quarterly",
       },
       {
-        form: "8-K",
+        formType: "8-K",
         date: "JUN 18",
         summary: "PJM capacity auction timetable confirmed for late August.",
-        category: "events",
       },
-      { form: "10-K", date: "FEB 26", summary: null, category: "annual" },
+      { formType: "10-K", date: "FEB 26", summary: null },
       {
-        form: "4",
+        formType: "4",
         date: "JUL 18",
         summary: "Section 16 transaction reported by the chief executive.",
-        category: "insider",
       },
       {
-        form: "424B5",
+        formType: "424B5",
         date: "MAY 09",
         summary: null,
-        category: "other",
       },
     ],
   },
@@ -403,11 +426,21 @@ export const COMPANY_INTEL_EMPTY: CompanyIntelData = {
   ],
   entry: null,
   following: null,
+  /* WRITTEN OUT, NOT SPREAD. This block used to be
+     `{ ...COMPANY_INTEL_FIXTURE.primer, overview: "", keyFigures: [], developments: [] }`,
+     which quietly carried the populated lede and all three identity rows
+     through, so an "empty" screen still stated the company's industry and
+     headquarters. Sector, industry and headquarters are reads like any other;
+     when the primer read comes back with nothing there is nothing to print.
+     The footnote is the compliance line and is not a read, so it stands in
+     every state. */
   primer: {
-    ...COMPANY_INTEL_FIXTURE.primer,
+    lede: "",
+    identity: [],
     overview: "",
     keyFigures: [],
     developments: [],
+    footnote: COMPANY_INTEL_FIXTURE.primer.footnote,
   },
   tone: {
     ...COMPANY_INTEL_FIXTURE.tone,
@@ -419,7 +452,6 @@ export const COMPANY_INTEL_EMPTY: CompanyIntelData = {
     rows: [],
   },
   filings: {
-    counts: { all: 0, annual: 0, quarterly: 0, events: 0, insider: 0, other: 0 },
     rows: [],
   },
   financials: {

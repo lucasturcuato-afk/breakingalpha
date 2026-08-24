@@ -2,7 +2,13 @@
 
 import { useState } from "react";
 
-import { FILTER_LABELS, FILTER_ORDER, type FilingFilter } from "@/lib/filing-categories";
+import {
+  applyFilter,
+  countByCategory,
+  FILTER_LABELS,
+  FILTER_ORDER,
+  type FilingFilter,
+} from "@/lib/filing-categories";
 import {
   INSIDER_COVERAGE_NOTE,
   filingsEmptyCopy,
@@ -55,20 +61,28 @@ export function PrimerSection({ data }: { data: CompanyIntelData }) {
   const { primer } = data;
   return (
     <>
-      <p
-        style={{
-          margin: 0,
-          font: "400 11.5px/1.5 Inter, sans-serif",
-          color: "var(--c-muted)",
-          textWrap: "pretty",
-        }}
-      >
-        {primer.lede}
-      </p>
+      {/* Both of these render only when they have something in them. The lede
+          describes the primer below it, so with no primer there is nothing for
+          it to describe; the identity card would otherwise draw as a bordered
+          box with nothing inside. Sector, industry and headquarters are reads
+          like any other and an absent read prints nothing. */}
+      {primer.lede ? (
+        <p
+          style={{
+            margin: 0,
+            font: "400 11.5px/1.5 Inter, sans-serif",
+            color: "var(--c-muted)",
+            textWrap: "pretty",
+          }}
+        >
+          {primer.lede}
+        </p>
+      ) : null}
 
+      {primer.identity.length > 0 ? (
       <div
         style={{
-          marginTop: "14px",
+          marginTop: primer.lede ? "14px" : 0,
           display: "flex",
           flexDirection: "column",
           gap: "9px",
@@ -103,6 +117,7 @@ export function PrimerSection({ data }: { data: CompanyIntelData }) {
           </div>
         ))}
       </div>
+      ) : null}
 
       {/* PrimerTab hides the overview block entirely when neither a live nor a
           curated description exists, rather than drawing an empty heading over
@@ -329,18 +344,19 @@ export function FilingsSection({
   hasCik: boolean;
 }) {
   const [filter, setFilter] = useState<FilingFilter | null>(null);
-  const { counts, rows } = data.filings;
+  const { rows } = data.filings;
 
   if (!hasCik || rows.length === 0) {
     return <EmptyWell headline={filingsEmptyCopy(hasCik)} />;
   }
 
-  const visible =
-    filter === null
-      ? rows.filter((r) => r.category !== "insider")
-      : filter === "all"
-        ? rows
-        : rows.filter((r) => r.category === filter);
+  /* DERIVED, never stored. A chip label is a promise about what tapping it
+     draws, so it comes from the rows that are here rather than from a count
+     field beside them. The stored version read "Events 22" over two events.
+     Both of these are the desktop tab's own helpers, so a chip counts and
+     filters by one classifier on both surfaces. */
+  const counts = countByCategory(rows);
+  const visible = applyFilter(rows, filter);
 
   return (
     <>
@@ -379,7 +395,7 @@ export function FilingsSection({
              not unique: the date is a display string with no year, and two 8-Ks
              on one day is ordinary. */
           <div
-            key={`${i}-${row.form}-${row.date}`}
+            key={`${i}-${row.formType}-${row.date}`}
             style={{
               marginTop: i === 0 ? "12px" : undefined,
               display: "flex",
@@ -403,7 +419,7 @@ export function FilingsSection({
                   color: "var(--c-ink)",
                 }}
               >
-                {row.form}
+                {row.formType}
               </span>
               <div style={{ marginTop: "5px", ...LABEL_MONO }}>{row.date}</div>
             </div>
