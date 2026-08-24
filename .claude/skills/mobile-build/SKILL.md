@@ -264,9 +264,30 @@ Notes that will otherwise cost you a cycle:
 Then `/run` to see the screen actually rendered, and `/code-review high --fix`
 on your own diff.
 
+## Preview requires a Vercel login. Your plates come from local.
+
+Vercel Authentication is enabled for **preview** deployments on this project.
+An anonymous request to a preview URL answers **302 to a Vercel login**, not
+your screen. Production is unaffected.
+
+So `scripts/parity_shot.mjs` and any curl or Playwright run pointed at a
+preview URL will capture a login page or fail outright. **That is the
+protection working. It is not a defect in your screen, and it must not be
+reported as one.**
+
+Take every capture and every measurement from your **local dev server**, which
+is what the verification recipe above already does. The preview URL goes in the
+PR body as a build-succeeded signal and a link a signed-in reviewer can open,
+never as the source of a plate.
+
+Before this was enabled, preview URLs were reachable by anyone on the public
+internet and pointed at the production database. If a run against a preview
+suddenly starts working anonymously again, that is worth reporting.
+
 ## PR body, required contents
 
-1. The preview URL, first.
+1. The preview URL, first. It is a build signal and a link for a signed-in
+   reviewer, not somewhere your screen can be seen anonymously.
 2. `design-lint --since origin/main` at 0 new errors.
 3. `screen-audit audit` at 375, 390, 430 and at `--width 1440`, with the mobile
    layout absent at 1440.
