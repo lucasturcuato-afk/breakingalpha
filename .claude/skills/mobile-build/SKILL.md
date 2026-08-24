@@ -119,6 +119,69 @@ unanimated.
 Build every state: loading, error, empty, stale. The prototype's dev strip
 shows them. A screen without its states is not done.
 
+## When there is no data, render nothing or render loading
+
+**Never a sentence about the reader or their record.** This is a hard rule and
+it outranks matching the design.
+
+Gating the fixture is necessary and **not sufficient**. Nine of eighteen PRs in
+the first wave broke this, and three of the nine had gated their fixture
+correctly and still shipped an assertion. Gating stops invented *content*
+reaching production. It does nothing about invented *claims* in the fallback
+you gate down to.
+
+What that looked like, all real, all caught in review:
+
+- A splash reading **"142 stories read overnight. One of your calls was
+  checked."** It rendered full screen for 2.6 seconds on a reader's first load,
+  over a date six weeks stale. Nothing had been read and no call had been
+  checked.
+- A record screen showing **SUPPORTED 64 / CHALLENGED 39** under copy promising
+  "Every call the desk has published since June 2 is here", while the desktop
+  route showed the true numbers on the same deployment.
+- A Watch screen rendering `stage: "ready"` over empty data, so it told a
+  reader **"Nothing on your watchlist yet"** when they had one.
+- An empty state reading **"nothing has moved since yesterday's close"**, which
+  is a claim about the tape made with no market data.
+- A gate falling back to an error state reading **"This is a failed read"**
+  when nothing had been read; the fixture was withheld by design.
+
+Every one is the same shape: a fallback stating a fact it has no source for.
+Some are worse than showing a fixture, because a fixture at least looks like
+sample data while a confident empty state reads as truth.
+
+**The two patterns that survived review, follow these.**
+
+`/compose` (#650) forces the empty stage in production, which is two blank
+fields and a locked control, plus a visible line reading "Preview of the
+screen. Nothing written here is kept yet." It asserts nothing and says what it
+is.
+
+`/ask` (#654) built a third state. Its own summary is the rule in one line:
+
+> `none` claims a search ran. `loading` claims one is running. `unwired` says
+> there is nothing to run.
+
+If your screen has no loader yet, **`unwired` is the honest state** and you
+should build it. If a loader exists and has not answered, `loading` is honest.
+`empty` is honest only when something real came back empty.
+
+Two traps worth naming:
+
+- **An "empty" fixture is not automatically safe.** One spread the full fixture
+  and overrode only some fields, so it kept an invented market band and copy
+  reading "Five calls, none decided yet". Read what your empty object actually
+  still carries.
+- **`loading` forever is its own lie.** If nothing will ever arrive, a
+  permanent skeleton tells the reader something is coming. That is what
+  `unwired` is for.
+
+Check this at the call site, not just in the component. One screen gated its
+body and left a sibling overlay ungated, because the overlay sat outside the
+screen root so parity would not fingerprint it. Export one constant and import
+it everywhere; a gate you have to remember at each call site is one you will
+miss at one of them.
+
 ## Compliance, non-negotiable
 
 Never `buy`, `sell`, `hold`, `allocation`, `returns` or `performance` as
