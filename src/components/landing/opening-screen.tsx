@@ -1,6 +1,8 @@
 "use client";
 
 import {
+  Suspense,
+  lazy,
   useCallback,
   useEffect,
   useRef,
@@ -9,7 +11,6 @@ import {
   type ReactNode,
 } from "react";
 import Link from "next/link";
-import { WaitlistModal } from "./waitlist-modal";
 import { MobileLanding } from "./mobile-landing";
 import { useTheme } from "@/components/providers/theme-provider";
 import mobile from "@/components/mobile/mobile.module.css";
@@ -27,6 +28,30 @@ import styles from "./landing.module.css";
 
 function cx(...parts: (string | false | null | undefined)[]): string {
   return parts.filter(Boolean).join(" ");
+}
+
+// WaitlistModal is the landing's ONLY value-level importer of
+// `@supabase/ssr`, and importing it statically dragged the whole
+// `@supabase/supabase-js` client (auth-js + postgrest-js + realtime-js +
+// storage-js + the Node Buffer polyfill, 220KB raw / 58KB gzipped) into the
+// critical path of a page that makes no Supabase request until someone clicks
+// "Sign in" or "Join the waitlist". Measured at 390px on 9 Mbps / 170ms RTT /
+// 4x CPU, that chunk was 24% of the landing's 246KB of pre-load JS.
+//
+// Splitting it moves those bytes behind the click. The chunk is still warmed
+// eagerly, so the modal is not slower to open in practice:
+//   - `preloadWaitlistModal` runs on idle after the load event, so it costs
+//     nothing on the critical path but is normally resident before any click.
+//   - The triggers also warm it on pointer/focus intent, which covers a
+//     visitor who clicks before idle time arrives.
+// `modalRequested` latches on first open and never clears, so the modal stays
+// mounted through its exit transition exactly as it did when it was static.
+const WaitlistModal = lazy(() =>
+  import("./waitlist-modal").then((m) => ({ default: m.WaitlistModal })),
+);
+
+function preloadWaitlistModal(): void {
+  void import("./waitlist-modal");
 }
 
 type Status = "supported" | "challenged" | "awaiting" | "developing" | "reviewing";
@@ -212,6 +237,7 @@ export function OpeningScreen() {
   const [entered, setEntered] = useState(false);
   const [closing, setClosing] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
+  const [modalRequested, setModalRequested] = useState(false);
   const [modalMode, setModalMode] = useState<"signin" | "signup">("signup");
   const [modalEmail, setModalEmail] = useState("");
   const forcedDarkRef = useRef(false);
@@ -287,11 +313,13 @@ export function OpeningScreen() {
   const openSignin = useCallback(() => {
     setModalMode("signin");
     setModalEmail("");
+    setModalRequested(true);
     setModalOpen(true);
   }, []);
   const openWaitlist = useCallback(() => {
     setModalMode("signup");
     setModalEmail("");
+    setModalRequested(true);
     setModalOpen(true);
   }, []);
   // The bottom inline waitlist form opens this SAME modal on the Create Account
@@ -300,9 +328,27 @@ export function OpeningScreen() {
   const onJoinWaitlist = useCallback((email: string) => {
     setModalMode("signup");
     setModalEmail(email);
+    setModalRequested(true);
     setModalOpen(true);
   }, []);
   const themeLabel = mounted ? `◐ THEME · ${theme.toUpperCase()}` : "◐ THEME";
+
+  // Warm the split modal chunk once the page is idle. requestIdleCallback runs
+  // after the load event, which is the point of the split: the bytes are off
+  // the critical path but still there before a visitor reaches for the button.
+  // Safari has no requestIdleCallback, hence the timeout fallback.
+  useEffect(() => {
+    const w = window as Window & {
+      requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+      cancelIdleCallback?: (id: number) => void;
+    };
+    if (typeof w.requestIdleCallback === "function") {
+      const id = w.requestIdleCallback(preloadWaitlistModal, { timeout: 3000 });
+      return () => w.cancelIdleCallback?.(id);
+    }
+    const t = window.setTimeout(preloadWaitlistModal, 1500);
+    return () => window.clearTimeout(t);
+  }, []);
 
   return (
     <div className={styles.root}>
@@ -340,10 +386,22 @@ export function OpeningScreen() {
             <button type="button" onClick={toggleTheme} aria-label="Toggle color theme" className={styles.themeToggle}>
               {themeLabel}
             </button>
-            <button type="button" onClick={openSignin} className={styles.signInLink}>
+            <button
+              type="button"
+              onClick={openSignin}
+              onPointerEnter={preloadWaitlistModal}
+              onFocus={preloadWaitlistModal}
+              className={styles.signInLink}
+            >
               Sign in
             </button>
-            <button type="button" onClick={openWaitlist} className={styles.joinNav}>
+            <button
+              type="button"
+              onClick={openWaitlist}
+              onPointerEnter={preloadWaitlistModal}
+              onFocus={preloadWaitlistModal}
+              className={styles.joinNav}
+            >
               Join the waitlist
             </button>
           </div>
@@ -361,12 +419,16 @@ export function OpeningScreen() {
       </div>
       </div>
 
-      <WaitlistModal
-        open={modalOpen}
-        onClose={() => setModalOpen(false)}
-        initialMode={modalMode}
-        initialEmail={modalEmail}
-      />
+      {modalRequested && (
+        <Suspense fallback={null}>
+          <WaitlistModal
+            open={modalOpen}
+            onClose={() => setModalOpen(false)}
+            initialMode={modalMode}
+            initialEmail={modalEmail}
+          />
+        </Suspense>
+      )}
     </div>
   );
 }
