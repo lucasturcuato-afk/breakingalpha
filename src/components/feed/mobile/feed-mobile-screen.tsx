@@ -37,15 +37,26 @@ import type {
 const PAD = "var(--v3-pad)";
 
 /**
- * The fixture is a development and preview affordance only, and the gate fails
- * closed: anything that is not a non-production build, or an explicitly
- * flagged Vercel preview, gets the real feed. `/live-feed` is publicly
- * reachable signed out, so an ungated fixture would show invented coverage to
- * anyone on the internet. Both values are inlined at build time.
+ * The fixture is a development affordance only, and the gate fails closed:
+ * anything that is not a non-production build gets the real feed. `/live-feed`
+ * is publicly reachable signed out, so an ungated fixture would show invented
+ * coverage to anyone on the internet.
+ *
+ * Preview was in this gate and is out of it. Vercel Authentication now sits in
+ * front of preview, which closes the anonymous-internet hole, but it does not
+ * close the other two. A preview build runs with NODE_ENV=production, so
+ * keeping the preview clause is exactly what kept this gate from folding to a
+ * literal and kept the fixture's invented wire copy in the shipped client
+ * chunk. And preview points at the production database, so a signed-in
+ * reviewer would have invented Reuters and Bloomberg rows one query parameter
+ * away from real ones. Plates come from local dev now, so preview never needed
+ * the fixture.
+ *
+ * With one term left this is a build-time literal, and in a production build
+ * the whole fixture module drops out of the graph rather than riding along as
+ * unreferenced but readable data.
  */
-export const FIXTURE_ALLOWED =
-  process.env.NODE_ENV !== "production" ||
-  process.env.NEXT_PUBLIC_VERCEL_ENV === "preview";
+export const FIXTURE_ALLOWED = process.env.NODE_ENV !== "production";
 
 const LENSES: { id: FeedLens; label: string }[] = [
   { id: "yours", label: "Yours" },
@@ -217,6 +228,13 @@ export function FeedMobileScreen({
                     : counts.saved
             }
             active={(fixtureOn ? "yours" : lens) === l.id}
+            /* The fixture is one drawn state, the prototype's `yours`, and it
+               cannot render any other lens. The chips used to stay pinned to
+               Yours while still calling onLensChange, so a tap changed the
+               parent's lens, changed nothing on screen, and left four controls
+               that looked live and were not. A control that cannot do its job
+               says so. Development only; the live screen is untouched. */
+            disabled={fixtureOn}
             onClick={() => onLensChange(l.id)}
           />
         ))}
@@ -344,17 +362,20 @@ function LensChip({
   label,
   count,
   active,
+  disabled = false,
   onClick,
 }: {
   label: string;
   count?: number;
   active: boolean;
+  disabled?: boolean;
   onClick: () => void;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
+      disabled={disabled}
       aria-pressed={active}
       style={{
         flex: "none",
@@ -364,7 +385,10 @@ function LensChip({
         padding: "0 12px",
         borderRadius: "6px",
         whiteSpace: "nowrap",
-        cursor: "pointer",
+        /* Every colour below is set explicitly, so a disabled chip keeps the
+           drawn palette and the parity fingerprint is unchanged. The cursor is
+           the only thing that moves, and parity does not read it. */
+        cursor: disabled ? "default" : "pointer",
         border: `1px solid ${active ? "var(--c-ink)" : "var(--c-border)"}`,
         font: `${active ? 600 : 500} 12px/1 ${INTER}`,
         color: active ? "var(--c-ink)" : "var(--c-secondary)",
@@ -599,16 +623,26 @@ function Row({
         {/* TODO(unit 20, Signal): the design opens a cluster from here. That
             unit is NEEDS RULING on two counts, the route name (/signal versus
             /trends/[signal_id]) and an entry point that needs an edit to a
-            propose-only file. Drawn as designed, no handler, until it is
-            ruled. Nothing in production populates this field today. */}
+            propose-only file. Nothing in production populates this field
+            today; only the fixture carries it.
+
+            It was drawn as designed, underlined, and that was wrong. An
+            underlined span with no destination is a link that is not a link.
+            `screen-audit`'s dead-pointer rule cannot catch it, because the rule
+            keys on `cursor:pointer` and this never set one, so it passed a
+            check it was never inside. It is the same defect the headline had,
+            and the headline is a plain `p` for the same reason.
+
+            So it renders as the entity slot directly above renders when it has
+            no href: muted ink, no underline, a label rather than an
+            affordance. One drawn state, two slots, one rule. The parity cost
+            is named in the PR body. */}
         {story.cluster ? (
           <span
             style={{
               font: `500 10px/1 ${MONO}`,
               letterSpacing: "0.07em",
-              color: "var(--c-secondary)",
-              textDecoration: "underline",
-              textUnderlineOffset: "3px",
+              color: "var(--c-muted)",
             }}
           >
             {story.cluster}

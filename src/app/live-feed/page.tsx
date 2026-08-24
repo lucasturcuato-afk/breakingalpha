@@ -520,16 +520,37 @@ export default function LiveFeedPage() {
       .map((b) => ({ id: b, label: LABEL[b], stories: bins.get(b) ?? [] }));
 
     const shownCount = visible.length;
+    /* Every number in this sentence counts rows that are actually drawn below
+       it. `articles.length` was wrong twice over on the Everything lens: it is
+       the pre-dedupe total, and a signed-out reader is truncated to five by the
+       gate below, so the line read "The 100 most recent articles" over five
+       rows. `shownCount` is `visible.length`, which is the list the buckets are
+       built from, so the sentence and the screen cannot disagree.
+
+       The other three lenses describe the wire and the reader's own set rather
+       than the rows below, and each of their figures has a real source:
+       `alertCount` and `yoursCount` are counted over the loaded articles and
+       `savedCount` over the saved keys. They stay as they are. `yours` only
+       quotes a total when a profile has landed, and a signed-out reader has no
+       profile, so the gated case cannot reach that string. */
     const standfirst =
       mobileLens === "saved"
         ? `${savedCount} ${savedCount === 1 ? "article" : "articles"} you kept.`
         : mobileLens === "alerts"
           ? `${alertCount} bearish ${alertCount === 1 ? "story" : "stories"} from the last 48 hours.`
           : mobileLens === "yours"
-            ? followsSectors
-              ? `${yoursCount} of ${articles.length} match the ${profile?.sectors?.length} sectors you follow.`
-              : "Choose your sectors and this lens narrows the wire to them."
-            : `The ${articles.length} most recent articles from the last seven days.`;
+            ? /* `followsSectors` is false in two different worlds: the reader
+                 follows nothing, and the profile has not answered yet. Told
+                 apart here, because telling a reader who does follow sectors
+                 to go and choose some is a claim about their record made with
+                 no record in hand. This says only what is true while the fetch
+                 is in flight, which is that it is in flight. */
+              profileLoading
+              ? "Reading the sectors you follow."
+              : followsSectors
+                ? `${yoursCount} of ${articles.length} match the ${profile?.sectors?.length} sectors you follow.`
+                : "Choose your sectors and this lens narrows the wire to them."
+            : `The ${shownCount} most recent ${shownCount === 1 ? "article" : "articles"} from the last seven days.`;
 
     const empty =
       mobileLens === "saved"
@@ -552,15 +573,26 @@ export default function LiveFeedPage() {
               body: "The wire is calm. This lens fills as soon as one turns.",
             }
           : mobileLens === "yours"
-            ? followsSectors
-              ? {
-                  title: "Nothing in your sectors yet",
-                  body: "Nothing on the wire matched the sectors you follow. Everything shows the rest.",
-                }
-              : {
-                  title: "No sectors chosen yet",
-                  body: "Choose your sectors in settings and this lens narrows the wire to them.",
-                }
+            ? /* Same fork, same reason. Null rather than a third placard:
+                 there is nothing true to say yet. Null is not by itself a
+                 guard, because the component falls back to its own "Nothing on
+                 the wire" copy when `empty` is null, which is the same claim in
+                 the shell's words. The guard is the stage below, which forces
+                 `loading` for this lens while the profile is in flight so no
+                 empty block renders at all. Both are here on purpose: if the
+                 stage guard is ever loosened, this yields nothing rather than
+                 a sentence about a record that has not been read. */
+              profileLoading
+              ? null
+              : followsSectors
+                ? {
+                    title: "Nothing in your sectors yet",
+                    body: "Nothing on the wire matched the sectors you follow. Everything shows the rest.",
+                  }
+                : {
+                    title: "No sectors chosen yet",
+                    body: "Choose your sectors in settings and this lens narrows the wire to them.",
+                  }
             : {
                 title: "Nothing on the wire",
                 body: "No stories have come through in the last seven days.",
@@ -590,6 +622,7 @@ export default function LiveFeedPage() {
     mobileLens,
     profile,
     followsSectors,
+    profileLoading,
     alertCount,
     lastRefresh,
     user,
@@ -603,19 +636,38 @@ export default function LiveFeedPage() {
      until it lands `followsSectors` is false and the untouched default reads
      Everything, so a reader who does follow sectors would get the whole wire
      and then have it swap to Yours under them a beat later. Keep the skeleton
-     up until both the wire and the profile have answered. Neither latch can stick:
-     the profile fetch sets loading false in a finally and short-circuits on
-     public paths. */
+     up until both the wire and the profile have answered.
+
+     Neither latch can stick, but not for the reason an earlier version of this
+     comment gave. It claimed the profile fetch short-circuits on public paths.
+     It does not for this route: `useUserProfile.tsx:10` lists `/`, `/auth` and
+     `/preview` plus the `/auth/callback` and `/legal/` prefixes, and
+     `/live-feed` is in none of them. A signed-out visitor here does fire
+     `/api/user-profile` and does take a 401. That is harmless, and it is not
+     what clears the latch. What clears it is the `finally` on the fetch, which
+     sets `profileLoading` false on the 401 exactly as it does on a 200. */
   const mobileStage: FeedStage =
     (loading || profileLoading) && articles.length === 0
       ? "loading"
       : loadFailed && articles.length === 0
         ? "error"
-        : loadFailed
-          ? "stale"
-          : mobileData.buckets.length === 0
-            ? "empty"
-            : "ready";
+        : /* Above `stale` and above `empty`, deliberately. The Yours lens is
+             the profile's answer and nothing else, so while the profile is in
+             flight this lens has no source and every downstream stage would
+             state something it cannot know. `empty` would read "No sectors
+             chosen yet" to a reader who follows nine; `stale` with no buckets
+             falls through to the component's own "Nothing on the wire"
+             placard, which is the same lie in the shell's words. A fetch is
+             genuinely running, so `loading` is honest here and `unwired` would
+             not be. The other three lenses do not consult the profile and are
+             unaffected. */
+          profileLoading && mobileLens === "yours"
+          ? "loading"
+          : loadFailed
+            ? "stale"
+            : mobileData.buckets.length === 0
+              ? "empty"
+              : "ready";
 
   return (
     <AppShell
