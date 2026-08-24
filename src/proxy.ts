@@ -12,10 +12,10 @@ import { isAllowlisted } from '@/lib/allowlist'
  * smoke test can drive it. A signed-in session is not something a build agent
  * can obtain, so without this the whole verification chain measures `/auth`.
  *
- * LOCAL DEV ONLY, on exactly the precedent `/ledger` set: prod stays gated,
- * because each of these renders the user's own record the moment it is wired
- * to a loader. `process.env.NODE_ENV` is inlined at build time by Next, so a
- * production bundle cannot reach this branch at all.
+ * Dev and PREVIEW only, never production, on the precedent `/ledger` set:
+ * prod stays gated, because each of these renders the user's own record the
+ * moment it is wired to a loader. See `isMobileRedesignDevPath` below for why
+ * preview is included and what it does and does not guarantee.
  *
  * This list exists so that no individual screen unit has to edit this file.
  * Adding a route here is a foundation change, not a screen change.
@@ -49,8 +49,33 @@ const MOBILE_REDESIGN_DEV_PATHS = [
   '/share',        // step 12
 ]
 
+/**
+ * Local dev, plus Vercel PREVIEW deployments. Never production.
+ *
+ * The preview half is new and it closes a hole this file opened. Every screen
+ * component gates its fixture on
+ * `NODE_ENV !== 'production' || NEXT_PUBLIC_VERCEL_ENV === 'preview'`, so the
+ * fixtures were meant to be reviewable on a preview URL. They never were,
+ * because this function had no preview clause and the route 307'd to /auth
+ * before any component rendered. Ten PR bodies describe a review path that
+ * does not exist.
+ *
+ * `VERCEL_ENV` rather than `NEXT_PUBLIC_VERCEL_ENV`: this is server-side
+ * middleware, so it reads the unprefixed variable Vercel sets on every
+ * deployment. `src/app/api/brief/export-pdf/route.ts:260` already reads it the
+ * same way, which is the only prior use in this repo.
+ *
+ * The components' client-side half still depends on `NEXT_PUBLIC_VERCEL_ENV`,
+ * which requires "Automatically expose System Environment Variables" to be on
+ * for the project. That setting is unverified. If it is off, this opens the
+ * route on preview and the screen renders its unwired or empty state rather
+ * than a fixture: degraded, not dangerous, and still an improvement on a
+ * redirect. Production is untouched either way.
+ */
 function isMobileRedesignDevPath(path: string): boolean {
-  if (process.env.NODE_ENV !== 'development') return false
+  const previewable =
+    process.env.NODE_ENV !== 'production' || process.env.VERCEL_ENV === 'preview'
+  if (!previewable) return false
   return MOBILE_REDESIGN_DEV_PATHS.some(
     (p) => path === p || path.startsWith(p + '/')
   )
@@ -85,9 +110,9 @@ export async function proxy(request: NextRequest) {
     // Fixture harnesses (/preview/radar etc) open in LOCAL DEV ONLY so
     // visual smoke tests can run unauthenticated; prod stays gated.
     (path.startsWith('/preview/') && process.env.NODE_ENV === 'development') ||
-    // Mobile redesign screens, steps 2 to 12. LOCAL DEV ONLY; see
-    // MOBILE_REDESIGN_DEV_PATHS above. /ledger's own clause is folded into
-    // that list rather than kept alongside it, so there is one place to read.
+    // Mobile redesign screens, steps 2 to 12. Dev and PREVIEW only, never
+    // production; see MOBILE_REDESIGN_DEV_PATHS above. /ledger's own clause is
+    // folded into that list rather than kept alongside it, one place to read.
     isMobileRedesignDevPath(path) ||
     path === '/about' ||
     path === '/morning-brief' ||

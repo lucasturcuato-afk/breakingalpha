@@ -246,16 +246,24 @@ Notes that will otherwise cost you a cycle:
 - Your route is reachable unauthenticated in local dev only, via
   `MOBILE_REDESIGN_DEV_PATHS` in `src/proxy.ts`. Do not edit that file; the
   list already covers steps 3 to 12.
-- **Three pages enforce auth a second time, in the page body, below the
-  proxy.** Verified against a running dev server: `/intelligence`,
-  `/settings/preferences` and `/onboarding` still answer 307 to `/auth`
-  because each calls `if (!user) redirect("/auth")` itself. `src/proxy.ts`
-  cannot open them. If your screen targets one of those routes, the guard is
-  in your own page file and it is yours to gate on
+- **Four pages enforce auth a second time, in the page body, below the
+  proxy**, each calling `if (!user) redirect("/auth")` itself:
+  `/intelligence`, `/settings/preferences`, `/onboarding` and
+  **`/company/[id]`**. `src/proxy.ts` cannot open any of them. If your screen
+  targets one, the guard is in your own page file and it is yours to gate on
   `process.env.NODE_ENV === 'development'`, matching the proxy's precedent.
-  Say so in the PR body. Every other step 3 to 12 route was confirmed
-  reachable: dashboard, evening-wrap, deal-flow, saved, settings/profile,
-  ledger and company/[id] all answered 200, and `/radar/*` correctly stayed
+  Say so in the PR body.
+
+  An earlier version of this skill listed `/company/[id]` as "confirmed
+  reachable, answered 200". **That was wrong.** The guard at
+  `src/app/company/[id]/page.tsx:83` is unconditional, and the Company Intel
+  unit found it the hard way. The claim came from a single curl that returned
+  200 and was never reconciled against the source, which had already been
+  read. Trust the source over one request, and re-measure when the two
+  disagree.
+
+  The routes the proxy genuinely does open in dev: dashboard, evening-wrap,
+  deal-flow, saved, settings/profile and ledger. `/radar/*` correctly stays
   gated at 307.
 - No CI runs on a frontend PR. `.github/workflows/verify-py.yml` is the only
   `pull_request` trigger and is path-filtered to `backend/**`. Every gate here
