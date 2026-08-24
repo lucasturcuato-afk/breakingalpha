@@ -2,7 +2,7 @@
 
 import type { CSSProperties } from "react";
 import { STAGE_INK, STAGE_LABEL } from "./deal-stage";
-import type { MobileDeal } from "./fixture";
+import type { MobileDeal } from "./types";
 import styles from "./deals.module.css";
 
 /**
@@ -13,17 +13,36 @@ import styles from "./deals.module.css";
  * Playfair claim line, one line of prose, a monospace slug and a single
  * outlined action, all measured off prototype lines 2517 to 2544.
  *
+ * BOTH CONTROLS ARE DISABLED WHEN THEY HAVE NOWHERE TO GO, and that is the
+ * whole of their behaviour rather than an oversight.
+ *
  * The claim line is the design's tap target for the deal detail screen. Unit
  * 18 is NOT running: the scope audit put a per-deal page at NEEDS RULING
  * because the design's dated process timeline and all four terms rows
  * (Consideration, Implied EV / EBITDA, Premium to undisturbed, Financing) have
- * no column on `deal_flow`, and the nearest fields are free text. So the
- * control is built, carries the visual treatment the design draws and its 44px
- * target, and does nothing. See `onOpenDetail` below.
+ * no column on `deal_flow`, and the nearest fields are free text. So there is
+ * no destination, `onOpenDetail` is never passed, and the control carries
+ * `disabled` rather than a live cursor over a handler that does not exist.
+ * The memo control is the same shape whenever its handler is withheld, which
+ * is every render the fixture is on: an invented deal must not reach
+ * /api/memo.
+ *
+ * A live-looking control that answers with nothing is the worse of the two
+ * failures, so this follows the precedent PR #650 set at
+ * `compose-screen.tsx:619`: `disabled` plus `cursor: default`, and nothing
+ * else. No opacity change and no colour change, because the design draws none
+ * and parity measures both.
+ *
+ * `disabled` and not merely handler-less, for a reason the runtime audit
+ * cannot supply. `screen-audit.mjs:109` skips its dead-pointer check on
+ * anything whose tag is already `button`, so an inert button reading
+ * `cursor: pointer` passes that audit silently. It was checked by hand. The
+ * attribute also takes the control out of the tab order, which is the right
+ * answer for a destination that does not exist.
  *
  * The 44px target is reached the way the design reaches it, and the way the
  * handoff requires: content-box padding plus a negative margin. The element
- * does not shrink and it does not move.
+ * does not shrink and it does not move. Disabling it changes neither.
  */
 
 const claimStyle: CSSProperties = {
@@ -34,7 +53,6 @@ const claimStyle: CSSProperties = {
   font: "500 15.5px/1.4 'Playfair Display', serif",
   color: "var(--c-ink)",
   textWrap: "pretty",
-  cursor: "pointer",
 };
 
 const memoStyle: CSSProperties = {
@@ -54,7 +72,6 @@ const memoStyle: CSSProperties = {
   font: "600 12.5px/1 Inter, sans-serif",
   color: "var(--c-ink)",
   backgroundColor: "transparent",
-  cursor: "pointer",
 };
 
 export function DealRow({
@@ -73,9 +90,14 @@ export function DealRow({
    * see.
    */
   closeRule?: boolean;
+  /** Withheld while unit 18 is unruled, which disables the claim line. */
   onOpenDetail?: () => void;
+  /** Withheld whenever the fixture is on, which disables the memo control. */
   onGenerateMemo?: () => void;
 }) {
+  const detailWired = !!onOpenDetail;
+  const memoWired = !!onGenerateMemo;
+
   return (
     /* No per-card animation. The design animates the Deal Flow screen root once
        and leaves the cards alone, unlike the Ledger where each claim rises. */
@@ -115,12 +137,8 @@ export function DealRow({
       <button
         type="button"
         className={styles.bare}
-        style={claimStyle}
-        /* No-op, deliberately. TODO(unit 18, Deal detail): route this at
-           /deal-flow/[id] once the timeline and the four terms rows have
-           columns to read. Until then the control keeps its drawn state and
-           its target rather than being removed, because removing it would make
-           the built screen quietly different from the design. */
+        style={{ ...claimStyle, cursor: detailWired ? "pointer" : "default" }}
+        disabled={!detailWired}
         onClick={onOpenDetail}
       >
         {deal.claim}
@@ -161,7 +179,8 @@ export function DealRow({
       <button
         type="button"
         className={styles.bare}
-        style={memoStyle}
+        style={{ ...memoStyle, cursor: memoWired ? "pointer" : "default" }}
+        disabled={!memoWired}
         aria-label={`Generate a deal memo: ${deal.claim}`}
         onClick={onGenerateMemo}
       >

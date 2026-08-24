@@ -5,11 +5,9 @@ import { useSearchParams } from "next/navigation";
 import { AppShell } from "@/components/shell";
 import {
   DealsScreen,
-  DEALS_FIXTURE,
-  DEALS_FIXTURE_COUNTS,
-  fixtureAllowed,
   isDealLens,
   resolveStage,
+  useDealsFixture,
   type DealLens,
   type DealsStatus,
   type MobileDeal,
@@ -245,12 +243,20 @@ export default function DealFlowPage() {
  * controls that the design does not draw, and binding the phone to their
  * state would make the phone react to controls it cannot see.
  *
+ * THE FIXTURE ARRIVES FROM THE SERVER, and that is the gate.
+ *
  * The fixture is the design's four invented deals. `/deal-flow` serves real
- * `deal_flow` rows, so an ungated fixture would put transactions that did not
- * happen under the names of real companies. `fixtureAllowed()` fails closed:
- * production gets the table, whatever the query string says. In dev and on a
- * preview the fixture is the default so parity has the design's own strings
- * to pair against, and `?deals=live` reaches the real rows.
+ * `deal_flow` rows, so a fixture that reached a reader would put transactions
+ * that did not happen under the names of real companies. The decision is taken
+ * in `layout.tsx`, which is this route's only server component: production gets
+ * `null` and the strings are not in this bundle at all. In development and on a
+ * preview the object arrives and the fixture is the default so parity has the
+ * design's own strings to pair against, and `?deals=live` reaches the real rows.
+ *
+ * Every fixture-adjacent affordance below hangs off that one value rather than
+ * off its own check, which is what makes the gate fail closed at every call
+ * site instead of at the one someone remembered. With `null` there is no
+ * fixture to draw and no `?state=` override to honour.
  *
  * This is a component rather than a block inside `DealFlowContent` for one
  * reason: it is the only thing on the route that reads the query string, and
@@ -274,8 +280,13 @@ function DealFlowMobile({
   onOpenMemo: (deal: Deal) => void;
 }) {
   const searchParams = useSearchParams();
+  /** The design's invented deals in dev and preview, `null` in production. */
+  const fixture = useDealsFixture();
 
-  const showFixture = fixtureAllowed() && searchParams.get("deals") !== "live";
+  /* `?deals=live` opts out of the fixture where one exists. It cannot opt IN:
+     when the prop is null this is null too, whatever the query string says. */
+  const activeFixture = searchParams.get("deals") === "live" ? null : fixture;
+  const showFixture = activeFixture !== null;
 
   const liveMobileDeals = useMemo(
     () =>
@@ -288,13 +299,18 @@ function DealFlowMobile({
 
   /* Lifecycle. The dev overrides exist because a runtime audit has to be able
    * to reach a state, and a state reached by reproducing its conditions here
-   * would mean breaking the database read. Same precedent as /ledger?stage=. */
-  const stateOverride = fixtureAllowed() ? searchParams.get("state") : null;
+   * would mean breaking the database read. Same precedent as /ledger?stage=.
+   *
+   * Gated on the fixture PROP, so the overrides travel with the invented data
+   * and are dead in production. Without this a reader could put the screen into
+   * `loading` or `error` over a read that succeeded, which is a claim about the
+   * table the screen has no source for. */
+  const stateOverride = fixture !== null ? searchParams.get("state") : null;
 
   const mobileDeals =
-    stateOverride === "empty" ? [] : showFixture ? DEALS_FIXTURE : liveMobileDeals;
+    stateOverride === "empty" ? [] : activeFixture ? activeFixture.deals : liveMobileDeals;
   const mobileCounts =
-    stateOverride === "empty" ? undefined : showFixture ? DEALS_FIXTURE_COUNTS : undefined;
+    stateOverride === "empty" ? undefined : (activeFixture?.counts ?? undefined);
   const mobileStatus: DealsStatus =
     stateOverride === "loading" || stateOverride === "error" || stateOverride === "ready"
       ? (stateOverride as DealsStatus)

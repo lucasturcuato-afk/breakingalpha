@@ -10,7 +10,7 @@ import {
   lensResultLine,
   type DealLens,
 } from "./deal-stage";
-import type { MobileDeal } from "./fixture";
+import type { MobileDeal } from "./types";
 import styles from "./deals.module.css";
 
 /**
@@ -236,9 +236,16 @@ export function DealsScreen({
         {status === "error" ? <DealsError onRetry={onRetry} /> : null}
 
         {status === "ready" && deals.length === 0 ? (
+          /* Says what the read did and stops there. The previous copy read
+             "Deal pipeline populating / The extractor is reading ingested
+             articles for transactions", which is a statement about a backend
+             process this screen has no source for: it reads `deal_flow` and
+             learns nothing about whether the extractor is running, has run, or
+             has failed. PR #661 names that exact shape. The predicate below is
+             real and is this screen's own, so it can be described. */
           <DealsNotice
-            title="Deal pipeline populating"
-            detail="The extractor is reading ingested articles for transactions. Check back shortly."
+            title="No deals to show"
+            detail="The deal table answered with no rows carrying an acquirer or a figure."
           />
         ) : null}
 
