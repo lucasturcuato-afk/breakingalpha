@@ -84,7 +84,7 @@ export function EveningWrapScreen({
       {bannerShown ? <PersonalizationBanner data={data} onDismiss={() => setBannerShown(false)} /> : null}
 
       {stage === "loading" ? <WrapSkeleton /> : null}
-      {stage === "none" ? <WrapNone data={data} /> : null}
+      {stage === "none" ? <WrapNone /> : null}
       {stage === "error" ? <WrapError /> : null}
 
       {stage === "ready" || stage === "stale" ? (
@@ -540,17 +540,27 @@ function ReviewedCall({ data }: { data: EveningWrapData }) {
   return (
     <div style={{ marginTop: "12px", border: "1px solid var(--c-border)", borderRadius: "12px", backgroundColor: "var(--c-card)", overflow: "hidden" }}>
       <div aria-hidden="true" style={{ height: "2px", backgroundColor: "var(--c-amber)" }} />
-      {/* TODO(PR #643): opens Review, which is HELD and has no route. Wired to
-          a no-op so the control is drawn exactly as the design draws it rather
-          than aiming at a 404. */}
-      {/* The container owns the rhythm, as the entry row does: the anatomy at
+      {/* Disabled, not merely handler-less. TODO(PR #643): this opens Review,
+          which is HELD and has no route.
+
+          The earlier version was a real <button type="button"> carrying
+          `.bare`, which sets `cursor: pointer`, with `onClick={() => {}}` and
+          no `disabled`. Keyboard reached it, assistive technology announced a
+          button, the pointer said it was live, and pressing it did nothing.
+          That is exactly the defect the handoff README names at line 309: a
+          cursor:pointer element with no handler. The affordance is now closed
+          in every channel it was open in, and the line under the card says so
+          in words rather than leaving it to a dimmed pixel.
+
+          The container owns the rhythm, as the entry row does: the anatomy at
           row scale sets no margins, so the 9px between its three slots is a
           gap on the frame rather than a margin inside the primitive. */}
       <button
         type="button"
-        onClick={() => {}}
+        disabled
+        aria-describedby="evening-reviewed-inert"
         className={motion.bare}
-        style={{ width: "100%", textAlign: "left", padding: "14px 15px", display: "flex", flexDirection: "column", gap: "9px" }}
+        style={{ width: "100%", textAlign: "left", padding: "14px 15px", display: "flex", flexDirection: "column", gap: "9px", cursor: "default" }}
       >
         <ClaimAnatomy
           scale="row"
@@ -564,6 +574,12 @@ function ReviewedCall({ data }: { data: EveningWrapData }) {
           prose={r.reasoning}
         />
       </button>
+      <p
+        id="evening-reviewed-inert"
+        style={{ margin: 0, padding: "0 15px 12px", font: "400 11px/1.4 Inter, sans-serif", color: "var(--c-muted)", textWrap: "pretty" }}
+      >
+        The review screen is not built yet, so this card does not open.
+      </p>
     </div>
   );
 }
@@ -618,8 +634,12 @@ function WrapSkeleton() {
  * No wrap published. The copy asserts that nothing failed to load, which is
  * only honest because this branch is now separate from the error branch below.
  * See the PR body: the desktop page cannot currently tell the two apart.
+ *
+ * It takes no `data`, on purpose. There is no wrap on this branch, so there is
+ * no payload to read a publication time or a review count out of, and a prop
+ * the component cannot honestly use is an invitation to interpolate one.
  */
-function WrapNone({ data }: { data: EveningWrapData }) {
+function WrapNone() {
   return (
     <div
       className={motion.enter}
@@ -633,20 +653,41 @@ function WrapNone({ data }: { data: EveningWrapData }) {
       <p style={{ margin: "18px 0 0", font: `700 20px/1.25 ${PLAYFAIR}`, color: "var(--c-ink)" }}>
         No evening wrap available
       </p>
+      {/* Two removals, both the mobile-build rule from PR #661.
+          "Anything reviewed today is already on your record" is a sentence
+          about the reader's own record stated on the branch that established
+          only that no wrap exists. And the publication time came from
+          `data.publishesAt`, which on the empty branch is whatever object the
+          caller happened to pass; with no wrap there is no payload to read a
+          time out of, so an interpolated 4:35 would be invented precision. The
+          copy now says the one thing this branch actually knows. */}
       <p style={{ margin: "10px 0 0", font: "400 13px/1.6 Inter, sans-serif", color: "var(--c-secondary)", maxWidth: "32ch", textWrap: "pretty" }}>
-        {`Nothing failed to load. The wrap publishes at ${data.publishesAt}, after the close. Anything reviewed today is already on your record.`}
+        Nothing failed to load. The wrap publishes after the close.
       </p>
-      {/* TODO(PR #643 sibling units): the record screen is step 6 and has no
-          route yet, so this is drawn as the design draws it and wired to a
-          no-op rather than aiming at a 404. */}
+      {/* Disabled, not merely handler-less. TODO(PR #643 sibling units): the
+          record screen is step 6 and has no route yet.
+
+          Same defect shape as the revisited-call card above and fixed the same
+          way. It was a real button carrying `.bare`, so it announced as a
+          button, took focus and showed a pointer, with `onClick={() => {}}`
+          behind it. It is now closed in every one of those channels, drawn in
+          the chrome border rather than the ink one so the closed state is
+          visible and not only announced, and the line below says why. */}
       <button
         type="button"
-        onClick={() => {}}
+        disabled
+        aria-describedby="evening-record-inert"
         className={motion.bare}
-        style={{ marginTop: "18px", minHeight: "46px", display: "inline-flex", alignItems: "center", padding: "0 18px", border: "1px solid var(--c-ink)", borderRadius: "9px", font: "600 13px/1 Inter, sans-serif", color: "var(--c-ink)" }}
+        style={{ marginTop: "18px", minHeight: "46px", display: "inline-flex", alignItems: "center", padding: "0 18px", border: "1px solid var(--c-chrome-border)", borderRadius: "9px", font: "600 13px/1 Inter, sans-serif", color: "var(--c-secondary)", cursor: "default" }}
       >
         Open your record
       </button>
+      <p
+        id="evening-record-inert"
+        style={{ margin: "9px 0 0", font: "400 11px/1.4 Inter, sans-serif", color: "var(--c-muted)", maxWidth: "32ch", textWrap: "pretty" }}
+      >
+        The record screen is not built yet, so this control does not open.
+      </p>
     </div>
   );
 }
@@ -670,12 +711,25 @@ function WrapError() {
       <p style={{ margin: 0, font: `500 17px/1.4 ${PLAYFAIR}`, color: "var(--c-ink)" }}>
         We could not load the evening wrap.
       </p>
+      {/* No sentence about the reader or their record. The earlier copy closed
+          on "anything reviewed today is already on your record", which is a
+          claim about the reader's own history made on the one branch that has
+          established nothing came back. That is the rule from PR #661, and it
+          outranks matching the design. What survives is a claim about this
+          screen only: the read failed, and it is not the same thing as an
+          empty result. */}
       <p style={{ margin: "10px 0 0", font: "400 13px/1.6 Inter, sans-serif", color: "var(--c-secondary)", maxWidth: "32ch", textWrap: "pretty" }}>
-        This is a failed read, not an empty result. Nothing is being hidden, and anything reviewed today is already on your record.
+        This is a failed read, not an empty result. Nothing is being hidden.
       </p>
+      {/* A real retry, not a drawn one.
+          Retrying a failed read costs nothing here because the screen keeps no
+          unsaved state, so a full document reload is a complete retry rather
+          than a stand-in for one. This is the only one of the
+          three controls on this screen that can succeed today, which is why it
+          is wired and the other two are visibly closed. */}
       <button
         type="button"
-        onClick={() => {}}
+        onClick={() => window.location.reload()}
         className={motion.bare}
         style={{ marginTop: "14px", minHeight: "44px", display: "inline-flex", alignItems: "center", padding: "0 17px", border: "1px solid var(--c-ink)", borderRadius: "9px", font: "600 13px/1 Inter, sans-serif", color: "var(--c-ink)" }}
       >
@@ -702,8 +756,12 @@ function StaleNotice({ data }: { data: EveningWrapData }) {
       <div style={{ font: "600 12px/1 Inter, sans-serif", color: "var(--c-ink)" }}>
         You are reading an earlier session.
       </div>
+      {/* "Your review dates are unaffected" is gone, same rule as the other
+          two states: it is a sentence about the reader's own record, and this
+          branch knows only which session the wrap in hand covers. What is left
+          describes the tape on this screen and nothing else. */}
       <div style={{ marginTop: "4px", font: "400 11.5px/1.5 Inter, sans-serif", color: "var(--c-body)" }}>
-        {`This wrap covers ${data.coversSession}. The tape below is the close that was persisted then, not a live quote. Your review dates are unaffected.`}
+        {`This wrap covers ${data.coversSession}. The tape below is the close that was persisted then, not a live quote.`}
       </div>
     </div>
   );
