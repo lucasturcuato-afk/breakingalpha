@@ -1,6 +1,7 @@
 import { AppShell } from "@/components/shell";
 import {
   EntryScreen,
+  ENTRY_FIXTURE_ENABLED,
   ENTRY_STAGES,
   entryFixture,
   entryFixtureForState,
@@ -43,10 +44,17 @@ export default async function EntryPage({
     ? (rawStage as EntryStage)
     : "ready";
 
+  /* The gate is read here as well as in the screen, and that is not a second
+     gate: it is the same exported constant, and reading it at the call site is
+     what stops the invented record crossing the boundary at all rather than
+     crossing it and being ignored. `null` is this page saying it has no record
+     to hand over. The screen has no default to fall back to. */
   const rawState = first(query.state);
-  const entry = OUTCOME_STATES.includes(rawState as OutcomeState)
-    ? entryFixtureForState(rawState as OutcomeState)
-    : entryFixture(id);
+  const entry = !ENTRY_FIXTURE_ENABLED
+    ? null
+    : OUTCOME_STATES.includes(rawState as OutcomeState)
+      ? entryFixtureForState(rawState as OutcomeState)
+      : entryFixture(id);
 
   return (
     <AppShell pageTitle="Entry" mobileFullBleed>

@@ -1,5 +1,6 @@
 export { EntryScreen } from "./entry-screen";
 export {
+  ENTRY_FIXTURE_ENABLED,
   ENTRY_STAGES,
   ENTRY_FIXTURE,
   ENTRY_FIXTURES,

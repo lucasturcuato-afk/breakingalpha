@@ -23,13 +23,46 @@ import type { OutcomeState } from "@/components/ledger";
  *   one. Nothing about it is shorter, quieter or later.
  */
 
+/* ── The production gate ──────────────────────────────────────────────
+ *
+ * There is no loader. Nothing on this screen is read from `user_claims`, so
+ * every record below is invented, and an invented record on THIS screen is the
+ * worst case the rule in `.claude/skills/mobile-build/SKILL.md` describes: the
+ * screen's whole subject is a sentence the reader wrote and a check the desk
+ * ran, so a fixture here does not read as sample data, it reads as their own
+ * record.
+ *
+ * `src/proxy.ts` opens `/entry` in dev and preview only, but that clause makes
+ * the route PUBLIC, it does not close it. In production an authenticated,
+ * allowlisted reader who navigates to `/entry/<anything>` is never redirected,
+ * and before this gate they were served `e1` as their own entry, complete with
+ * a note in the first person and an ENTERED/CHECKED record line.
+ *
+ * Fails closed: anything that is not development and not an explicit preview
+ * deploy is treated as production.
+ *
+ * With the gate closed the screen draws `unwired`. Not `none`, which claims a
+ * lookup ran and found nothing, and not `loading`, which claims one is running.
+ * See `entry-screen.tsx`.
+ *
+ * Exported as one constant and read at one place, because a gate re-derived at
+ * each call site is the one that gets missed at one of them.
+ */
+export const ENTRY_FIXTURE_ENABLED =
+  process.env.NODE_ENV !== "production" ||
+  process.env.NEXT_PUBLIC_VERCEL_ENV === "preview";
+
 /**
  * The lifecycle states this screen draws. Declared here rather than beside the
  * component because the page is a server component and reads this list to
  * validate a search param: a value exported from a "use client" module reaches
  * the server as a client reference, not as the array.
+ *
+ * `unwired` is not a lifecycle state a loader produces. It is the state of the
+ * screen itself while there is no loader to produce one, and it is the only
+ * honest thing this screen can say with no source behind it.
  */
-export const ENTRY_STAGES = ["ready", "loading", "error", "none", "stale"] as const;
+export const ENTRY_STAGES = ["ready", "loading", "error", "none", "stale", "unwired"] as const;
 export type EntryStage = (typeof ENTRY_STAGES)[number];
 
 export interface EntryWindow {
