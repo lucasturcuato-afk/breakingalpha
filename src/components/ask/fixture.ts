@@ -31,9 +31,22 @@ export type AskDirectoryRoute = {
 /**
  * Not fixture data. These three destinations exist in production and the row
  * renders with or without the gate; only the counter and the summary are
- * invented. `/trends` rather than `/trends-mobile`: the mobile Trends screen is
- * a separate unit and its route does not exist yet, and `/trends` lights the
- * same Ask pole.
+ * invented.
+ *
+ * `/trends` is a deliberate placeholder, and it is the one row here that is
+ * knowingly aimed at a desk page rather than a mobile one. The mobile Trends
+ * screen is a separate unit, is open as PR #657, and lands at
+ * `/trends-mobile`. That route does not exist on `main`, so pointing at it
+ * from here before it merges aims the row at a 404, and merge order between
+ * the two is not something this file can depend on. A working desk page beats
+ * a dead link; a dead link is not a smaller defect for being aspirational.
+ *
+ * Both routes are already in the Ask pole's `owns` list
+ * (`mobile-tab-bar.tsx:128` and `:135`), so the pole lights either way and the
+ * swap is this one string and nothing else.
+ *
+ * TODO(when the mobile Trends screen merges): change this href to
+ * `/trends-mobile`. There is nothing else to change.
  */
 export const ASK_DIRECTORY: AskDirectoryRoute[] = [
   { id: "deals", label: "Deal Flow", href: "/deal-flow" },
@@ -155,7 +168,17 @@ export const ASK_ANSWER_FIXTURE: AskAnswerData = {
   record: {
     eyebrow: "YOU ALREADY HAVE A CALL HERE · CALL-0409",
     claim: "Semicap orders reaccelerate on HBM capacity adds into the March quarter.",
-    meta: "Entered Jul 22, evidence strengthening, settles Sep 12.",
+    /* `supported`, not a fifth word for it. The outcome vocabulary is exactly
+       supported / challenged / developing / awaiting (`OUTCOME_STATES`), and
+       this is the one card on the screen whose whole purpose is citing the
+       reader's own call, so it is the last place a synonym belongs.
+
+       The design says "evidence strengthening" at prototype line 2563 and
+       "Strengthening" at line 2037, and the second is drawn in
+       `--c-greenink`, which is the ink token `supported` already carries. So
+       the prototype is describing the supported state in two paraphrases of
+       its own, and neither is reproduced. */
+    meta: "Entered Jul 22, supported, settles Sep 12.",
   },
   prompts: [SUGGESTED_PROMPTS[1], SUGGESTED_PROMPTS[2]],
   answeredAt: "Answered from intelligence gathered before 12:45.",

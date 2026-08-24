@@ -4,6 +4,7 @@ import {
   AskNotice,
   AskSectionRule,
   AskSkeleton,
+  CONTENT_BOX,
   IconDeals,
   IconFeed,
   IconTrends,
@@ -156,7 +157,10 @@ export function AskBrowseScreen({
             {[0, 1, 2].map((i) => (
               <div
                 key={i}
+                /* Same box model as the AskLookupRow it stands in for, or the
+                   list would grow 1px a row when the real thing arrived. */
                 style={{
+                  ...CONTENT_BOX,
                   display: "flex",
                   alignItems: "center",
                   gap: "13px",

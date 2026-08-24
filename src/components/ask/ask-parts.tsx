@@ -23,6 +23,37 @@ import { Chevron } from "@/components/ledger/chevron";
 
 export const PAD = "var(--v3-pad)";
 
+/**
+ * Every box on these two screens that sets a `min-height` also sets it
+ * `content-box`, and this is the reason.
+ *
+ * The prototype ships no box-sizing reset, so every box in it is the browser
+ * default, content-box. This app sets `border-box` globally through Tailwind's
+ * preflight. A `min-height` therefore means two different things on the two
+ * sides: in the design the border and the block padding sit outside it, in the
+ * build they eat into it. Measured at 390 through `parity_harness.py --screen
+ * ask`, every min-height box on the screen came out short:
+ *
+ * | box | design | border-box | content-box |
+ * |---|---|---|---|
+ * | directory row, `min-height:64` + `15px 0` + rule | 95 | 93 | 95 |
+ * | lookup row, `min-height:56` + rule | 57 | 56 | 57 |
+ * | prompt chip, `min-height:44` + 1px border | 46 | 44 | 46 |
+ * | composer field, `min-height:48` + 1px border | 50 | 48 | 50 |
+ * | answer top bar, `min-height:48` + 1px rule | 49 | 48 | 49 |
+ *
+ * Nothing was out of compliance at border-box, since 44 clears the 44px floor
+ * exactly. But it clears it exactly rather than by the 2px the design drew,
+ * and `README.md:180` names content-box as the pattern used throughout for
+ * reaching 44. Reproducing the prototype's own box model is the correct fix;
+ * padding a number until it matches is not. Same reconciliation the mobile
+ * Trends and Deal Flow units made.
+ *
+ * Only boxes with a `min-height` need this. The 48x48 send control sets an
+ * explicit `width`/`height` and no border, so both models give 48.
+ */
+export const CONTENT_BOX = { boxSizing: "content-box" } as const satisfies CSSProperties;
+
 /** Hairline above every row in a group, and below the last one. */
 function rowRule(last: boolean): CSSProperties {
   return {
@@ -86,6 +117,7 @@ export function AskDirectoryRow({
     <Link
       href={href}
       style={{
+        ...CONTENT_BOX,
         display: "flex",
         gap: "13px",
         alignItems: "flex-start",
@@ -144,6 +176,7 @@ export function AskLookupRow({ href, ticker, name, entries, first = false, last 
     <Link
       href={href}
       style={{
+        ...CONTENT_BOX,
         display: "flex",
         alignItems: "center",
         gap: "13px",

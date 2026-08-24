@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import styles from "./ask.module.css";
-import { PAD } from "./ask-parts";
+import { CONTENT_BOX, PAD } from "./ask-parts";
 
 /**
  * The chip row and the composer, byte identical on both Ask screens in the
@@ -41,6 +41,7 @@ export function AskComposer({ prompts }: { prompts: readonly [string, string] })
             key={prompt}
             href={askHref(prompt)}
             style={{
+              ...CONTENT_BOX,
               flex: "none",
               minHeight: "44px",
               display: "flex",
@@ -97,6 +98,7 @@ export function AskComposer({ prompts }: { prompts: readonly [string, string] })
           value={value}
           onChange={(e) => setValue(e.target.value)}
           style={{
+            ...CONTENT_BOX,
             flex: 1,
             minWidth: 0,
             minHeight: "48px",

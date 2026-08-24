@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { AskComposer } from "./ask-composer";
-import { AskNotice, AskSkeleton, IconBack, PAD } from "./ask-parts";
+import { AskNotice, AskSkeleton, CONTENT_BOX, IconBack, PAD } from "./ask-parts";
 import styles from "./ask.module.css";
 import {
   ASK_ANSWER_FIXTURE,
@@ -67,6 +67,7 @@ export function AskAnswerScreen({
 
       <div
         style={{
+          ...CONTENT_BOX,
           flex: "none",
           minHeight: "48px",
           display: "flex",
