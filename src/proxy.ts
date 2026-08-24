@@ -95,6 +95,18 @@ export async function proxy(request: NextRequest) {
     path === '/trends' ||
     path === '/company' ||
     path === '/waitlist' || // beta waitlist landing page (non-allowlisted users land here)
+    /* Shared brief links, the ones the brief email sends. The page at
+       src/app/share/brief/[id]/page.tsx was written to be public: it reads
+       through the anon key against the briefings_anon_select RLS policy added
+       by sql/0004_briefings_public_read.sql expressly "so the public share"
+       view works, it renders editorial content only with every user-specific
+       affordance deliberately omitted, and it sets robots noindex.
+
+       Everything for that existed except this line, so every recipient of a
+       shared brief was redirected to /auth. Scoped to /share/brief/ rather
+       than /share so a future /share/* route does not inherit public access
+       by accident. */
+    path.startsWith('/share/brief/') ||
     path.startsWith('/legal/') || // ToS, Privacy, Support — must be publicly accessible
     path.startsWith('/watchlist/') || // identifier detail pages; /watchlist (personal list) stays gated
     path.startsWith('/auth/callback') ||
