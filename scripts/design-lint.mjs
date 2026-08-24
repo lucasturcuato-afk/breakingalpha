@@ -66,7 +66,7 @@ const BANNED_ALLOW = [
   { pattern: /\bhousehold(s)?\b/i, why: 'contains hold' },
   { pattern: /\bstakeholder(s)?\b/i, why: 'contains hold' },
   { pattern: /\bplaceholder(s)?\b/i, why: 'contains hold, DOM attribute' },
-  { pattern: /\bwithhold(ing)?\b/i, why: 'contains hold, used in the reportable_min_n pattern' },
+  { pattern: /\bwithhold(s|ing)?\b/i, why: 'contains hold, used in the reportable_min_n pattern' },
 ];
 
 /* performance.now() is specifically called out in github.md as having been
