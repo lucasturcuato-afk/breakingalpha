@@ -33,7 +33,7 @@ export type AskDirectoryRoute = {
  * renders with or without the gate; only the counter and the summary are
  * invented.
  *
- * `/trends` is a deliberate placeholder, and it is the one row here that is
+ * `/trends` is a deliberate stand-in, and it is the one row here that is
  * knowingly aimed at a desk page rather than a mobile one. The mobile Trends
  * screen is a separate unit, is open as PR #657, and lands at
  * `/trends-mobile`. That route does not exist on `main`, so pointing at it
