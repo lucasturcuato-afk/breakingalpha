@@ -271,10 +271,16 @@ function contextualCopyFor(
 
 /* ─── Persona bar helpers ─── */
 
+/* Ruling 5, the persona bar's half. The enum ids are persisted and stay, so
+   the DISPLAY labels are what change: Fund and Equity Research, matching
+   ROLES above and USER_ROLES. This table sits 240 lines from the one this PR
+   already fixed and was missed, which left two banned substrings rendering at
+   :1043 on a live authenticated route in the PR whose title claims the ruling.
+   Ported verbatim from PR #614, which is the only place it had been done. */
 const ROLE_SHORT: Record<UserRole, string> = {
   student_analyst: "Student",
-  buy_side: "Buy-side",
-  sell_side: "Sell-side",
+  buy_side: "Fund",
+  sell_side: "Equity Research",
   private_equity: "Private Equity",
   ria: "RIA",
   family_office: "Family Office",
