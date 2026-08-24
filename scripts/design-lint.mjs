@@ -94,9 +94,17 @@ const RATE_SHAPES = [
 /* Rule 5. Geometry. Radii 4/6/9/12/14 only. Type floor 10px.          */
 /* ------------------------------------------------------------------ */
 const RADII_OK = new Set([0, 4, 6, 9, 12, 14]);
-const RADIUS_PX = /border-radius\s*:\s*([^;{}]+)/gi;
+/* Both spellings. `border-radius` in CSS and `borderRadius` in a React inline
+   style object are the same declaration, and this rule saw only the first.
+   Almost every mobile redesign screen is written in camelCase style objects,
+   so a whole programme of PRs reported a clean radius scale that had never
+   been checked. Same for the type floor and the fill role below. */
+const RADIUS_PX = /(?:border-radius|borderRadius)\s*:\s*([^;{},]+)/gi;
 const TW_ROUNDED = /rounded-\[(\d+(?:\.\d+)?)px\]/g;
-const FONT_SIZE_PX = /font-size\s*:\s*(\d+(?:\.\d+)?)px/gi;
+/* `fontSize: 14` with no unit is px in React, so the unit is optional here.
+   Quotes are skipped so `fontSize: "10.5px"` matches too. */
+const FONT_SIZE_PX =
+  /(?:font-size|fontSize)\s*:\s*["']?(\d+(?:\.\d+)?)(?:px)?["']?(?=[,;}\s)]|$)/gim;
 const FONT_SHORTHAND = /font\s*:\s*[^;{}]*?(\d+(?:\.\d+)?)px\s*\//gi;
 const TW_TEXT_PX = /text-\[(\d+(?:\.\d+)?)px\]/g;
 
@@ -120,7 +128,7 @@ const BARE_VH = /(?<![a-z-])(\d+(?:\.\d+)?)vh\b/gi;
 /* ink variants are TEXT. base variants are FILLS. Swapping them was   */
 /* the single most common defect found during design.                  */
 /* ------------------------------------------------------------------ */
-const INK_AS_FILL = /(background(-color)?|fill)\s*:\s*[^;{}]*var\(\s*--c-(red|green|amber|gold)ink\s*\)/gi;
+const INK_AS_FILL = /(background(-color)?|backgroundColor|fill)\s*:\s*[^;{}]*var\(\s*--c-(red|green|amber|gold)ink\s*\)/gi;
 const BASE_AS_TEXT = /(^|[;{}\s])color\s*:\s*[^;{}]*var\(\s*--c-(red|green|amber|gold)\s*\)/gi;
 
 /* ------------------------------------------------------------------ */
