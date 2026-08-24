@@ -487,7 +487,20 @@ function walk(dir, out = []) {
   return out;
 }
 
-const args = process.argv.slice(2);
+/* A bare invocation used to mean "lint the file list I was given", and an
+ * empty file list printed "no files to check" and exited 0. That made
+ * `npm run design:lint` a gate that passed without reading a single file,
+ * which is the most dangerous shape a gate can take: it is indistinguishable
+ * from success in a terminal and in a PR body.
+ *
+ * No arguments now means the thing every caller actually wanted, which is the
+ * ratchet against main. Explicit arguments are still honoured exactly as
+ * before, so `--all`, `--since <ref>` and a file list are unchanged. */
+const DEFAULT_ARGS = ['--since', 'origin/main'];
+const args = process.argv.slice(2).length
+  ? process.argv.slice(2)
+  : DEFAULT_ARGS;
+const usedDefault = process.argv.slice(2).length === 0;
 const isExcluded = (f) => f.split('/').some(seg => EXCLUDE_DIRS.has(seg));
 
 function git(argv) {
@@ -553,6 +566,13 @@ if (sinceIdx !== -1 && (!sinceRef || sinceRef.startsWith('--'))) {
   process.exit(2);
 }
 
+/* Say so, on stderr so it cannot be mistaken for a finding. A reader who
+ * pastes this output into a PR body should be able to see which ref the
+ * numbers below are measured against without knowing the default. */
+if (usedDefault) {
+  console.error(`design-lint: no arguments given, defaulting to --since ${sinceRef}`);
+}
+
 const addedByFile = sinceRef ? addedLinesSince(sinceRef) : null;
 
 let files;
@@ -581,10 +601,30 @@ if (sinceRef) {
 }
 
 if (!files.length) {
-  console.log(sinceRef
-    ? `design-lint --since ${sinceRef}: no lintable files touched`
-    : 'design-lint: no files to check');
-  process.exit(0);
+  /* An empty set in --since mode is a real, honest answer: a branch that
+     touches only .md, .sql or .py legitimately has nothing here to lint. That
+     stays exit 0.
+
+     An empty set in any other mode is not an answer, it is a question that
+     never got asked. Either a file list was passed whose every entry was out
+     of scope, or --all walked src/ and found nothing, which means the walk is
+     broken. Both used to print a cheerful line and exit 0, so a caller could
+     paste "design-lint: no files to check" into a PR body as evidence. */
+  if (sinceRef) {
+    console.log(`design-lint --since ${sinceRef}: no lintable files touched`);
+    process.exit(0);
+  }
+  console.error('design-lint: refusing to report a pass. No lintable files were checked.');
+  if (args.includes('--all')) {
+    console.error(`  --all walked ${SRC} and found no file with a lintable extension.`);
+    console.error('  That is a broken walk, not a clean tree.');
+  } else {
+    console.error(`  ${args.length} argument(s) were given and none is a lintable path.`);
+    console.error(`  Lintable extensions: ${[...EXT].join(' ')}`);
+    console.error(`  Excluded directories: ${[...EXCLUDE_DIRS].join(' ')}`);
+  }
+  console.error('  To lint this branch against main:  npm run design:lint');
+  process.exit(2);
 }
 
 for (const f of files) {
