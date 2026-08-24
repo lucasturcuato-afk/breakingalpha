@@ -13,6 +13,7 @@ import { RecordBuckets } from "./record-buckets";
 import {
   DASH_FIXTURE,
   DASH_FIXTURE_EMPTY,
+  DASH_FIXTURES_ALLOWED,
   type DashboardData,
   type DashMarketCell,
   type DashStage,
@@ -91,10 +92,7 @@ export function DashboardScreen({
      nothing. `d` still needs a shape to destructure, and DASH_FIXTURE_EMPTY
      supplies one that is never painted, because every branch below is gated on
      `effectiveStage`. */
-  const fixturesAllowed =
-    process.env.NODE_ENV !== "production" ||
-    process.env.NEXT_PUBLIC_VERCEL_ENV === "preview";
-  const starved = !data && !fixturesAllowed;
+  const starved = !data && !DASH_FIXTURES_ALLOWED;
   const effectiveStage: DashStage = starved ? "loading" : stage;
   const d = data ?? (stage === "empty" || starved ? DASH_FIXTURE_EMPTY : DASH_FIXTURE);
   const [editing, setEditing] = useState(false);

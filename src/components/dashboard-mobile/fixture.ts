@@ -17,6 +17,22 @@ import type { Resolution } from "@/lib/desk-record";
  * instrument's own move over one session.
  */
 
+/**
+ * Whether sample content may render at all.
+ *
+ * One constant, imported by every consumer, because the first version of this
+ * gate lived inline in `dashboard-screen.tsx` and the splash rendered beside
+ * that screen rather than inside it. The screen was gated and the splash was
+ * not, so production still opened on a full-screen overlay asserting a story
+ * count and a check against the reader's own record. A gate that has to be
+ * remembered at each call site is a gate that gets missed at one of them.
+ *
+ * Fails closed: production renders no sample content anywhere.
+ */
+export const DASH_FIXTURES_ALLOWED =
+  process.env.NODE_ENV !== "production" ||
+  process.env.NEXT_PUBLIC_VERCEL_ENV === "preview";
+
 export type DashStage = "ready" | "loading" | "error" | "empty" | "stale";
 
 /** One cell of the market band. */
