@@ -42,6 +42,9 @@ export interface TrendSignal {
   strength_score: number;
   top_themes: string[];
   top_sectors: string[];
+  /* Read only so `trendTitle` can reproduce the protected route's middle two
+     fallback branches. Nothing on the card renders it directly. */
+  top_companies: string[];
   created_at: string | null;
 }
 
@@ -52,7 +55,7 @@ export interface TrendSignal {
  * different things on two screens of the same product.
  */
 export const TREND_SELECT =
-  "id, label, headline, tagline, article_count, source_count, strength_score, top_themes, top_sectors, created_at";
+  "id, label, headline, tagline, article_count, source_count, strength_score, top_themes, top_sectors, top_companies, created_at";
 export const TREND_MIN_ARTICLES = 3;
 export const TREND_MIN_SOURCES = 2;
 export const TREND_LIMIT = 500;
@@ -89,15 +92,44 @@ export function timeAgo(dateStr: string | null, now: number = Date.now()): strin
 }
 
 /**
- * Card title. The protected route's `getDisplayTitle` (`:146`) falls back to
- * the raw label with its colons swapped for a space-padded U+2014. That em
- * dash is user-facing copy, which the handoff README forbids outright, so the
- * fallback here joins on a comma instead. Recorded as a copy change rather
- * than reproduced.
+ * Card title, reproducing all four branches of the protected route's
+ * `getDisplayTitle` (`src/app/trends/page.tsx:134-147`) in order: the headline,
+ * then a theme-and-company phrase, then a theme-only phrase, then the label.
+ *
+ * An earlier version of this function implemented the first and last branches
+ * only, and described the last one as the whole fallback. That was wrong twice
+ * over. It also diverged: a cluster with no headline but with a theme and a
+ * company read as its raw label here and as a composed phrase on the desktop
+ * route, on the same rows, which is exactly the drift this module exists to
+ * prevent. The middle branches need `top_companies`, so `TREND_SELECT` fetches
+ * it now.
+ *
+ * ONE DELIBERATE DIFFERENCE, in the last branch only. The route joins the
+ * label's colons on a space-padded U+2014. That em dash is user-facing copy,
+ * which the handoff README forbids outright, so this joins on a comma. Branches
+ * one to three are character-for-character identical to the route's.
  */
 export function trendTitle(signal: TrendSignal): string {
   if (signal.headline) return signal.headline;
+
+  const themes = signal.top_themes.filter((t) => t.length > 1);
+  const companies = signal.top_companies.map((c) =>
+    c
+      .split(" ")
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+      .join(" "),
+  );
+
+  if (themes.length > 0 && companies.length > 0) {
+    return `${upperFirst(themes[0])} Activity Around ${companies[0]}`;
+  }
+  if (themes.length > 0) return `${upperFirst(themes[0])} Trend Detected`;
   return signal.label.replace(/:\s*/g, ", ");
+}
+
+/** Capitalise the first character and leave the rest alone, as the route does. */
+function upperFirst(value: string): string {
+  return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
 /**

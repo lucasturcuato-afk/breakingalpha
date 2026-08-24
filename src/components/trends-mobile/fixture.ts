@@ -5,35 +5,46 @@ import type { TrendSignal } from "@/lib/trend-signals";
  * rows rather than as markup.
  *
  * Every visible figure on this screen is derived from these rows by
- * `trendCounts`, `strengthToLevel`, `timeAgo` and `trendTags`. Nothing is
- * typed into the card. That is the point of shipping the design's copy as data
+ * `trendCounts`, `strengthToLevel`, `timeAgo` and `trendTags`. Nothing is typed
+ * into the card. That is the point of shipping the design's copy as data
  * instead of as JSX: the parity run then compares the same derivations
  * production uses, not a second set of literals that happen to agree.
  *
- * NEVER REACHABLE IN PRODUCTION. The gate below fails closed: anything that is
- * not a development build or an explicit Vercel preview gets the live loader
- * and its loading state, never these strings. `/trends` is publicly reachable
- * signed out, and while `/trends-mobile` is gated in production today, an
- * ungated fixture on a sibling route would be three invented themes served to
- * anyone who reached it.
+ * SERVER ONLY. This module is imported by `src/app/trends-mobile/page.tsx` and
+ * by the unit tests, and by nothing else. `trends-screen.tsx` carries
+ * "use client" and must never import it, or every string below would be
+ * readable in a public production chunk by anyone who opened the bundle, gated
+ * or not. An earlier revision did exactly that: the invented cluster prose
+ * shipped inside a production client chunk, unreachable on screen and plainly
+ * readable in the asset. The gate stopped it rendering; it could not stop it
+ * shipping.
  *
- * On PREVIEW the gate is open but the route does not default to it: the page
- * requires an explicit `?stage=`, so a reader who arrives at the bare URL gets
- * the live loader. Only a local development build defaults to these rows, and
- * only because the parity and audit runs drive the bare URL.
+ * The gate lives in `./fixture-gate` for that reason, so a client component can
+ * re-check it without pulling this file across the boundary. The page evaluates
+ * the same gate before calling either builder below, so on a production build
+ * these functions are never called and this module is never in the graph.
  */
-export const FIXTURE_ALLOWED =
-  process.env.NODE_ENV === "development" ||
-  process.env.NODE_ENV === "test" ||
-  process.env.NEXT_PUBLIC_VERCEL_ENV === "preview";
 
 /**
- * Offsets, not timestamps. The card renders "2h ago" through the same
- * `timeAgo` the live loader uses, so a fixed date would make the fixture read
- * older every day the branch sits. Each offset sits at the middle of its
- * bucket so the server render and the hydration render cannot land either side
- * of a boundary.
+ * The session the fixture is measured from. A FIXED anchor, never a clock.
+ *
+ * `/compose` (PR #650) and `/ledger` set this precedent and the same reasoning
+ * applies: a screen rendering sample rows must not read the wall clock, or its own
+ * captures stop matching themselves a day later. It also removes a hydration
+ * mismatch outright. An earlier revision seeded the clock with
+ * `useState(() => Date.now())` inside a client component that this server page
+ * renders, so the initialiser ran once on the server and again on hydration and
+ * the two landed on different milliseconds. There is no version of a live clock
+ * that is safe on both sides of that boundary, so the fixture path does not use
+ * one. The live path reads the real clock in the effect that fetches the rows,
+ * which is not render and cannot mismatch.
+ *
+ * The offsets below are relative to this anchor, and each sits at the middle of
+ * its bucket, so the three cards read "2h ago", "6h ago" and "1d ago" for good.
  */
+export const TRENDS_ANCHOR_ISO = "2026-08-20T12:00:00.000Z";
+export const TRENDS_ANCHOR_MS = Date.parse(TRENDS_ANCHOR_ISO);
+
 const HOUR = 3600000;
 
 interface FixtureRow extends Omit<TrendSignal, "created_at"> {
@@ -53,6 +64,7 @@ const ROWS: FixtureRow[] = [
     strength_score: 0.86,
     top_sectors: ["Utilities"],
     top_themes: ["Capacity", "Emerging"],
+    top_companies: ["Constellation Energy", "Vistra"],
     ageMs: 2.5 * HOUR,
   },
   {
@@ -66,6 +78,7 @@ const ROWS: FixtureRow[] = [
     strength_score: 0.68,
     top_sectors: ["Healthcare"],
     top_themes: ["Recurring"],
+    top_companies: ["Eli Lilly"],
     ageMs: 6.5 * HOUR,
   },
   {
@@ -79,14 +92,15 @@ const ROWS: FixtureRow[] = [
     strength_score: 0.45,
     top_sectors: ["Financials"],
     top_themes: ["Credit"],
+    top_companies: ["Ares Management"],
     ageMs: 30 * HOUR,
   },
 ];
 
-export function trendsFixture(now: number): TrendSignal[] {
+export function trendsFixture(): TrendSignal[] {
   return ROWS.map(({ ageMs, ...row }) => ({
     ...row,
-    created_at: new Date(now - ageMs).toISOString(),
+    created_at: new Date(TRENDS_ANCHOR_MS - ageMs).toISOString(),
   }));
 }
 
@@ -95,9 +109,9 @@ export function trendsFixture(now: number): TrendSignal[] {
  * can be reached and audited. The design draws no stale treatment for Trends,
  * so the notice states the measured age and makes no claim about the tape.
  */
-export function trendsStaleFixture(now: number): TrendSignal[] {
+export function trendsStaleFixture(): TrendSignal[] {
   return ROWS.map(({ ageMs, ...row }) => ({
     ...row,
-    created_at: new Date(now - ageMs - 72 * HOUR).toISOString(),
+    created_at: new Date(TRENDS_ANCHOR_MS - ageMs - 72 * HOUR).toISOString(),
   }));
 }

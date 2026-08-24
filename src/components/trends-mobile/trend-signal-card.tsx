@@ -20,17 +20,31 @@ import styles from "./trends.module.css";
  * flips with the theme. Omitted, and the headline takes the width the
  * sparkline would have occupied. Recorded in the PR body as a real parity
  * difference rather than absorbed.
+ *
+ * NOT INTERACTIVE, deliberately. The card used to be a `<button>` wrapping its
+ * whole body with an empty click handler, which put a tab stop on every row of
+ * a live production list and announced each row to a screen reader as a button
+ * whose accessible name is the entire card. The destination is the Signal
+ * detail screen, a separate unit blocked on a route-name ruling and not being
+ * built, so there is nothing to go to.
+ *
+ * PR #649 hit the same wall and took native `disabled`, reasoning that a
+ * destination that does not exist should not cost a tab stop. That screen drew
+ * eight rows. This one draws every cluster the predicate admits, up to
+ * `TREND_LIMIT`, so `disabled` would still leave hundreds of announced controls
+ * in the tree with nothing behind any of them. An article carries no control
+ * semantics at all, which is the honest shape for a row that is only ever
+ * content. When the ruling lands the row becomes a link to a real route. It
+ * does not get a click handler bolted on here.
  */
 export function TrendSignalCard({
   signal,
   now,
   first = false,
-  onOpen,
 }: {
   signal: TrendSignal;
   now: number;
   first?: boolean;
-  onOpen: () => void;
 }) {
   const tone = LEVEL_TONES[strengthToLevel(signal.strength_score)];
   const tags = trendTags(signal);
@@ -38,21 +52,16 @@ export function TrendSignalCard({
   const body = signal.tagline ?? "";
 
   return (
-    <button
-      type="button"
-      onClick={onOpen}
+    <article
       style={{
         width: "100%",
         marginTop: first ? 0 : "11px",
         display: "flex",
         flexDirection: "column",
-        textAlign: "left",
         border: "1px solid var(--c-border)",
         borderRadius: "12px",
         backgroundColor: "var(--c-card)",
         overflow: "hidden",
-        cursor: "pointer",
-        padding: 0,
       }}
     >
       {/* State is a 2px top edge, never a coloured left rule. */}
@@ -149,6 +158,6 @@ export function TrendSignalCard({
           </p>
         ) : null}
       </div>
-    </button>
+    </article>
   );
 }

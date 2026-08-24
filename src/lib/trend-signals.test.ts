@@ -8,6 +8,7 @@ import {
   trendCounts,
   trendTags,
   trendTitle,
+  TREND_SELECT,
   type TrendSignal,
 } from "./trend-signals";
 
@@ -25,6 +26,7 @@ function row(overrides: Partial<TrendSignal> = {}): TrendSignal {
     strength_score: 0.5,
     top_themes: [],
     top_sectors: [],
+    top_companies: [],
     created_at: new Date(NOW - HOUR).toISOString(),
     ...overrides,
   };
@@ -88,11 +90,66 @@ test("trendTags reads sectors then themes, deduplicated, capped", () => {
   assert.deepEqual(trendTags(s), ["Utilities", "Capacity", "Emerging"]);
 });
 
-test("trendTitle falls back without an em dash", () => {
+test("trendTitle reproduces all four of the desktop route's branches", () => {
+  // 1. Headline wins outright.
   assert.equal(trendTitle(row({ headline: "Grid capacity contracting" })), "Grid capacity contracting");
+
+  // 2. Theme plus company. This is the branch that used to be missing, and the
+  //    one that made a headline-less cluster read as its raw label on mobile
+  //    and as a composed phrase on the desk, off the same row.
+  assert.equal(
+    trendTitle(
+      row({
+        label: "energy, nuclear ppa",
+        top_themes: ["nuclear"],
+        top_companies: ["CONSTELLATION"],
+      }),
+    ),
+    "Nuclear Activity Around Constellation",
+  );
+
+  // Multi-word companies are title-cased per word, as the route does it.
+  assert.equal(
+    trendTitle(row({ top_themes: ["nuclear"], top_companies: ["constellation energy corp"] })),
+    "Nuclear Activity Around Constellation Energy Corp",
+  );
+
+  // 3. Theme only.
+  assert.equal(trendTitle(row({ top_themes: ["nuclear"] })), "Nuclear Trend Detected");
+
+  // Single-character themes are filtered out by the route, so they must not
+  // reach either middle branch here either.
+  assert.equal(
+    trendTitle(row({ label: "Energy: grid capacity", top_themes: ["x"], top_companies: ["Vistra"] })),
+    "Energy, grid capacity",
+  );
+
+  // 4. The label, and the one deliberate difference: a comma, never U+2014.
   const fallback = trendTitle(row({ label: "Energy: grid capacity" }));
   assert.equal(fallback, "Energy, grid capacity");
   assert.ok(!fallback.includes("\u2014"));
+});
+
+test("TREND_SELECT fetches every column the derivations read", () => {
+  // trendTitle reads top_companies. A select that omitted it would leave the
+  // middle branches permanently unreachable in production while the unit tests
+  // above still passed on hand-built rows.
+  const columns = TREND_SELECT.split(",").map((c) => c.trim());
+  for (const needed of [
+    "id",
+    "label",
+    "headline",
+    "tagline",
+    "article_count",
+    "source_count",
+    "strength_score",
+    "top_themes",
+    "top_sectors",
+    "top_companies",
+    "created_at",
+  ]) {
+    assert.ok(columns.includes(needed), `TREND_SELECT is missing ${needed}`);
+  }
 });
 
 test("newestAgeHours reads the freshest row and tolerates missing dates", () => {

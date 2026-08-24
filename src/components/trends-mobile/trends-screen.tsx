@@ -18,7 +18,7 @@ import {
   type TrendLens,
   type TrendSignal,
 } from "@/lib/trend-signals";
-import { FIXTURE_ALLOWED, trendsFixture, trendsStaleFixture } from "./fixture";
+import { FIXTURE_ALLOWED } from "./fixture-gate";
 import { TrendSignalCard } from "./trend-signal-card";
 import styles from "./trends.module.css";
 
@@ -41,10 +41,35 @@ const PAD = "var(--v3-pad)";
 
 export type TrendsStage = "ready" | "loading" | "error" | "empty" | "stale";
 
+/**
+ * What the server page hands down when, and only when, the gate is open.
+ *
+ * The rows are built on the server and passed as data rather than imported
+ * here, so `fixture.ts` never enters the client graph and its invented prose
+ * never reaches a production chunk. `signals` is already the right rows for the
+ * stage: the page calls the stale builder for "stale" and passes an empty list
+ * for "empty", "loading" and "error".
+ */
+export interface TrendsPreview {
+  stage: TrendsStage;
+  signals: TrendSignal[];
+  /** The fixture's fixed anchor, never a wall clock. See `./fixture`. */
+  now: number;
+}
+
+/**
+ * The clock rides with the rows, and exists only when there are rows.
+ *
+ * Every derivation on this screen needs a "now", and none of them run before
+ * the rows land. Carrying the instant on the ready state means the live path
+ * can read the real clock inside the fetch effect, which is not render and so
+ * cannot differ between the server pass and hydration, while the fixture path
+ * uses its fixed anchor. Neither path reads a clock during render.
+ */
 type LoadState =
   | { status: "loading" }
   | { status: "error" }
-  | { status: "ready"; signals: TrendSignal[] };
+  | { status: "ready"; signals: TrendSignal[]; now: number };
 
 const EMPTY: TrendSignal[] = [];
 
@@ -56,20 +81,22 @@ const LENSES: { value: TrendLens; label: string }[] = [
   { value: "mine", label: "My sectors" },
 ];
 
-export function TrendsScreen({ stage = null }: { stage?: TrendsStage | null }) {
-  /* One clock for the whole screen, seeded once. Every relative time on the
-     page is derived from it, so two cards can never disagree about what "now"
-     was, and a re-render cannot walk a label across a bucket. */
-  const [now] = useState(() => Date.now());
+export function TrendsScreen({ preview = null }: { preview?: TrendsPreview | null }) {
   const [lens, setLens] = useState<TrendLens>("all");
   const [live, setLive] = useState<LoadState>({ status: "loading" });
   const { profile, loading: profileLoading } = useUserProfile();
 
-  /* The fixture is a development and preview affordance only, and the gate
-     fails closed. Production always takes the loader below, which means a
-     production reader sees loading until real rows arrive, never three
-     invented themes and never a sentence about a tape nobody read. */
-  const fixtureStage = FIXTURE_ALLOWED ? stage : null;
+  /* Re-gated HERE, not only on the page. `MOBILE_REDESIGN_DEV_PATHS` in
+     `src/proxy.ts` does not gate production at all: `isPublicPath` is consulted
+     only when there is no user, so a signed-in reader skips the allowlist and
+     reaches this route on a production deployment. This check and the page's
+     are the whole defence, so this component refuses to render anything it was
+     handed unless the gate is open, whatever the page decided. Fails closed:
+     production always takes the loader below, so a production reader sees
+     loading until real rows arrive, never three invented themes and never a
+     sentence about a tape nobody read. */
+  const gated = FIXTURE_ALLOWED ? preview : null;
+  const fixtureStage = gated?.stage ?? null;
 
   useEffect(() => {
     if (fixtureStage !== null) return;
@@ -104,6 +131,10 @@ export function TrendsScreen({ stage = null }: { stage?: TrendsStage | null }) {
         }
         setLive({
           status: "ready",
+          /* The real clock, read here rather than during render. This callback
+             runs in an effect on the client only, so there is no server pass to
+             disagree with and every label below is measured from one instant. */
+          now: Date.now(),
           signals: (data as Record<string, unknown>[]).map((row) => ({
             id: String(row.id),
             label: (row.label as string) || "Untitled signal",
@@ -114,6 +145,7 @@ export function TrendsScreen({ stage = null }: { stage?: TrendsStage | null }) {
             strength_score: (row.strength_score as number) ?? 0,
             top_themes: asStrings(row.top_themes),
             top_sectors: asStrings(row.top_sectors),
+            top_companies: asStrings(row.top_companies),
             created_at: (row.created_at as string | null) ?? null,
           })),
         });
@@ -127,10 +159,11 @@ export function TrendsScreen({ stage = null }: { stage?: TrendsStage | null }) {
     if (fixtureStage === null) return live;
     if (fixtureStage === "loading") return { status: "loading" };
     if (fixtureStage === "error") return { status: "error" };
-    if (fixtureStage === "empty") return { status: "ready", signals: [] };
-    if (fixtureStage === "stale") return { status: "ready", signals: trendsStaleFixture(now) };
-    return { status: "ready", signals: trendsFixture(now) };
-  }, [fixtureStage, live, now]);
+    /* "empty" and "stale" are not special-cased here any more. The page built
+       the rows that belong to the stage, so this only has to say which status
+       carries them. */
+    return { status: "ready", signals: gated?.signals ?? [], now: gated?.now ?? 0 };
+  }, [fixtureStage, gated, live]);
 
   /* Memoised so the empty case is one stable array rather than a fresh literal
      on every render, which would make every derivation below recompute. */
@@ -138,6 +171,10 @@ export function TrendsScreen({ stage = null }: { stage?: TrendsStage | null }) {
     () => (state.status === "ready" ? state.signals : EMPTY),
     [state],
   );
+  /* Zero is never rendered: every consumer of `now` sits inside a
+     `state.status === "ready"` branch, and that branch always carries a real
+     instant. */
+  const now = state.status === "ready" ? state.now : 0;
   const counts = useMemo(() => trendCounts(signals, now), [signals, now]);
   const sectors = useMemo(
     () => (profile?.sectors ?? []).map((s) => s.toLowerCase()),
@@ -309,15 +346,6 @@ export function TrendsScreen({ stage = null }: { stage?: TrendsStage | null }) {
                   signal={s}
                   now={now}
                   first={i === 0}
-                  /* Opening a cluster is the Signal detail screen, which is a
-                     separate unit and is blocked on a ruling: its route name
-                     is contested between `/signal` and `/trends/[signal_id]`,
-                     and two of its four stat cells have no column behind them.
-                     The row keeps its drawn state and does nothing until that
-                     ruling lands.
-                     TODO(unit 20, Signal detail): navigate to the signal route
-                     once the route name is settled. */
-                  onOpen={() => {}}
                 />
               ))
             )}

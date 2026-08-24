@@ -1,7 +1,17 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { AppShell } from "@/components/shell";
-import { FIXTURE_ALLOWED, TrendsScreen, type TrendsStage } from "@/components/trends-mobile";
+import { TrendsScreen, type TrendsPreview, type TrendsStage } from "@/components/trends-mobile";
+/* Imported by path, never through the barrel. The barrel is reachable from the
+   client graph through `trends-screen`, so pulling the rows through it would
+   put the fixture prose back in the browser bundle. This page is a server
+   component, so from here the rows stay on the server. */
+import { FIXTURE_ALLOWED } from "@/components/trends-mobile/fixture-gate";
+import {
+  TRENDS_ANCHOR_MS,
+  trendsFixture,
+  trendsStaleFixture,
+} from "@/components/trends-mobile/fixture";
 
 /**
  * Mobile Trends, step 10.
@@ -17,8 +27,16 @@ import { FIXTURE_ALLOWED, TrendsScreen, type TrendsStage } from "@/components/tr
  * `/trends-mobile` in its `owns` list, added by the foundation PR, so the pole
  * lights on arrival without this unit touching that file.
  *
- * `src/proxy.ts` opens the path in LOCAL DEV ONLY. In production it stays
- * behind the auth and allowlist gates like every other step 3 to 12 route.
+ * `src/proxy.ts` opens the path in DEV AND PREVIEW, not local dev only:
+ * `isMobileRedesignDevPath` is true when `NODE_ENV !== 'production'` OR
+ * `VERCEL_ENV === 'preview'`. In production the predicate is false and the
+ * route falls back to the ordinary auth and beta-allowlist gates.
+ *
+ * That is an access gate, NOT a fixture gate, and it is not a second line of
+ * defence for the rows below. A signed-in, allowlisted reader reaches this
+ * route on production perfectly legitimately. The only thing standing between
+ * them and three invented clusters is `FIXTURE_ALLOWED`, checked here and
+ * re-checked inside `TrendsScreen`.
  *
  * Server component so it can read `?stage=` off the async searchParams,
  * matching `/ledger`. The stage switch is a development and preview
@@ -44,7 +62,8 @@ export default async function TrendsMobilePage({
 
   /* Three cases, and the difference between the last two is the point.
      - Production: `FIXTURE_ALLOWED` is false, so the fixture is unreachable at
-       any URL and the screen always takes the live loader.
+       any URL and the screen always takes the live loader. This is the case
+       that matters, because real readers do reach this route in production.
      - Preview: a named `?stage=` reaches the fixture, and a bare URL does NOT.
        A reader who taps the Ask pole on a preview build lands on live rows,
        not on three invented clusters presented as the tape.
@@ -60,13 +79,37 @@ export default async function TrendsMobilePage({
         : bareDefault
       : null;
 
+  /* The rows are built HERE, on the server, and passed down as data. The screen
+     does not import the fixture module, so none of that invented cluster prose
+     is emitted into a client chunk on any build. `TrendsScreen` re-checks the
+     same gate before it renders whatever it is handed, so this page being wrong
+     would not be enough on its own. */
+  const preview: TrendsPreview | null =
+    stage === null
+      ? null
+      : {
+          stage,
+          /* The fixture's fixed anchor, not `Date.now()`. Reading a wall clock
+             during render is impure, and seeding one in the client component
+             put the server pass and the hydration pass on two different
+             milliseconds. The live path reads the real clock in its fetch
+             effect instead. */
+          now: TRENDS_ANCHOR_MS,
+          signals:
+            stage === "ready"
+              ? trendsFixture()
+              : stage === "stale"
+                ? trendsStaleFixture()
+                : [],
+        };
+
   return (
     <AppShell pageTitle="Trends" mobileFullBleed>
       {/* Gating lives in a class, never in an inline style: an inline display
           beats the class at every breakpoint. This wrapper carries no inline
           layout property for that reason. */}
       <div className="md:hidden">
-        <TrendsScreen stage={stage} />
+        <TrendsScreen preview={preview} />
       </div>
 
       {/* Above the breakpoint the desk already has a Trends surface, with
