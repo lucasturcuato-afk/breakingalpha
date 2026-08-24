@@ -8,6 +8,7 @@ import { postAuthDestination } from "@/lib/auth-redirect";
 import { cn } from "@/lib/utils";
 import { Mail, Lock, Eye, EyeOff, Check } from "lucide-react";
 import Link from "next/link";
+import { MobileAuth } from "@/components/auth/mobile-auth";
 
 type AuthMode = "signin" | "signup";
 
@@ -135,8 +136,46 @@ export default function AuthPage() {
     "The misses stay on the record, next to the hits",
   ];
 
+  function backToSignin() {
+    setSignupSuccess(false);
+    setMode("signin");
+  }
+
+  function forgot() {
+    setForgotToast(true);
+    setTimeout(() => setForgotToast(false), 3000);
+  }
+
   return (
-    <div className="min-h-screen flex bg-parchment">
+    <>
+      {/* Mobile, authored at 390px. Every handler and flag below is this
+          page's, so the two layouts cannot become two behaviours. The
+          strings auth-copy.test.ts requires stay in THIS file and are
+          passed down, which is also what keeps that test honest. */}
+      <MobileAuth
+        mode={mode}
+        onMode={(m) => {
+          setMode(m);
+          setError(null);
+        }}
+        email={email}
+        onEmail={setEmail}
+        password={password}
+        onPassword={setPassword}
+        showPassword={showPassword}
+        onTogglePassword={() => setShowPassword(!showPassword)}
+        loading={loading}
+        error={error}
+        forgotToast={forgotToast}
+        onForgot={forgot}
+        signupSuccess={signupSuccess}
+        onBackToSignin={backToSignin}
+        onSubmit={handleSubmit}
+        onGoogle={handleGoogleSSO}
+        features={features}
+      />
+
+    <div className="hidden md:flex min-h-dvh bg-parchment">
       {/* ── Left panel: Brand + Features (55%) ── */}
       <div className="hidden lg:flex lg:w-[55%] relative flex-col justify-between p-12 bg-sidebar-bg border-r border-border-base">
         {/* Logo */}
@@ -220,10 +259,7 @@ export default function AuthPage() {
               </p>
               <button
                 type="button"
-                onClick={() => {
-                  setSignupSuccess(false);
-                  setMode("signin");
-                }}
+                onClick={backToSignin}
                 className="mt-5 font-sans text-[13px] text-gold cursor-pointer transition-colors hover:text-gold-dark"
               >
                 Back to sign in
@@ -350,10 +386,7 @@ export default function AuthPage() {
                   <div className="text-right">
                     <button
                       type="button"
-                      onClick={() => {
-                        setForgotToast(true);
-                        setTimeout(() => setForgotToast(false), 3000);
-                      }}
+                      onClick={forgot}
                       className="font-sans text-[12px] text-gold cursor-pointer transition-colors hover:text-gold-dark"
                     >
                       Forgot password?
@@ -389,6 +422,7 @@ export default function AuthPage() {
         </div>
       </div>
     </div>
+    </>
   );
 }
 

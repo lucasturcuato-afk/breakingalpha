@@ -34,6 +34,10 @@ import { writeFileSync, existsSync } from 'node:fs';
 const PROTOTYPE = process.env.SIG_PROTOTYPE
   || 'design_handoff_signalera_mobile/Signalera Mobile v3.dc.html';
 
+/* Authored at 390px, verified at 375 / 390 / 430. --width replaces the
+ * list with the widths it names, which is how a desktop width gets audited:
+ * the mobile trees are gated in classes, so proving the gate means measuring
+ * the same selector at a width where it must not render. */
 const VIEWPORTS = [
   { name: '375', width: 375, height: 812 },
   { name: '390', width: 390, height: 844 },
@@ -83,6 +87,11 @@ const PROBE = `(sel) => {
 
   const root = sel ? document.querySelector(sel) : null;
   if (sel && !root) { out.missing = true; return out; }
+  // What the scoped root actually resolves to. A responsive gate is only
+  // proven by measuring it: a subtree that is display:none reports no
+  // boxes and no violations, which reads identically to a subtree that
+  // was never built. Report the value so the two cannot be confused.
+  if (root) out.rootDisplay = getComputedStyle(root).display;
   const all = root ? [root, ...root.querySelectorAll('*')] : document.querySelectorAll('*');
   for (const el of all) {
     const cs = getComputedStyle(el);
@@ -269,11 +278,18 @@ async function run() {
     const viewports = widthFlag
       ? widthFlag.split(',').map((w) => ({ name: w.trim(), width: Number(w), height: 900 }))
       : VIEWPORTS;
+    if (viewports.some((vp) => !Number.isFinite(vp.width))) {
+      console.error('screen-audit: --width needs pixel numbers, comma separated');
+      process.exit(2);
+    }
     for (const vp of viewports) {
       for (const theme of ['light', 'dark']) {
         const page = await browser.newPage({ viewport: { width: vp.width, height: vp.height } });
-        const { violations, missing } = await probe(page, url, theme, selector);
+        const { violations, missing, rootDisplay } = await probe(page, url, theme, selector);
         if (selector) assertFound({ missing }, `at ${url}`, selector);
+        if (selector) {
+          console.log(`\n--- ${vp.name}px ${theme} --- ${selector} resolves to display:${rootDisplay}`);
+        }
         // Reduced motion: nothing may be hidden rather than merely unanimated.
         const rm = await browser.newPage({
           viewport: { width: vp.width, height: vp.height },
