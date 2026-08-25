@@ -171,7 +171,7 @@ export function proseParagraphs(raw: string | null | undefined): string[] {
 }
 
 /**
- * Peel the opening sentence off, so the screen can set it as its Playfair
+ * Peel the opening sentence off, so the screen can set it as its serif
  * lede. A single-sentence paragraph stays whole and the body is empty; the
  * screen then draws a lede and no body rather than an empty paragraph.
  */
