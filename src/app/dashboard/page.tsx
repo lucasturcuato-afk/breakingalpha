@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect, useMemo, type ReactNode } from "react";
+import { useState, useEffect, useMemo, Suspense, type ReactNode } from "react";
 import { createBrowserClient } from "@supabase/ssr";
 import { AppShell } from "@/components/shell";
+import { DashboardScreen, MobileDashboardRoute } from "@/components/dashboard-mobile";
 import { useUserProfile } from "@/hooks/useUserProfile";
 import { DashTile } from "@/components/dashboard/dash-tile";
 import {
@@ -661,7 +662,32 @@ function DashboardPageInner() {
       mood={mood}
       moodHeadline={moodHeadline}
       moodDetails={moodDetails}
+      mobileFullBleed
     >
+      {/* Today, below md. The mobile drawing of this route, composed beside
+          the desktop layout rather than replacing it: every loader, widget and
+          reveal gate below is untouched.
+
+          Untouched is not unmounted, and the distinction is worth stating
+          rather than glossing. `hidden md:block` is `display:none`, so on a
+          phone the desk's four loaders still run, its market-indices fetch
+          still goes out, and its widgets still render into a hidden subtree
+          that nothing reads. That is the cost of composing instead of
+          rewriting, and it is deliberate for this unit: unmounting the desk
+          below md means branching a 942-line page on a breakpoint, which is
+          the rewrite this was meant to avoid. Worth revisiting once the
+          mobile screen has a loader of its own.
+
+          Gating lives in a CLASS, never in an inline style. An inline display
+          beats the class at every breakpoint, which is the defect that shipped
+          the tab bar to desktop once already. */}
+      <div className="md:hidden">
+        <Suspense fallback={<DashboardScreen stage="loading" />}>
+          <MobileDashboardRoute />
+        </Suspense>
+      </div>
+
+      <div className="hidden md:block">
       <DashboardRevealGate>
       <div className="dash-contentwrap dash-dots max-w-[1440px] mx-auto px-6 md:px-12 py-6 md:py-8 pb-16">
         <CursorGlow />
@@ -937,6 +963,7 @@ function DashboardPageInner() {
 
       </div>
       </DashboardRevealGate>
+      </div>
     </AppShell>
   );
 }

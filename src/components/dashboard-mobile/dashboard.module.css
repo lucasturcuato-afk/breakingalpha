@@ -1,0 +1,209 @@
+/* Dashboard motion, and the few rules that cannot be expressed inline.
+ *
+ * Nothing here is responsive, deliberately: an inline style beats a class at
+ * every breakpoint, so mixing a responsive class with an inline property is a
+ * defect design-lint rejects. Keeping this module free of breakpoints lets the
+ * screen style measured values inline without ever colliding with it.
+ *
+ * Easing is the design's single curve. Durations are the values read off the
+ * rendered prototype.
+ */
+
+/* The stagger. Rests in the DRAWN state and animates FROM the hidden one, so a
+ * section that never animates is still readable. `backwards` carries the
+ * hidden frame through the delay, which is what makes the ladder a ladder. */
+.rise {
+  opacity: 1;
+  transform: none;
+  animation: dashRise 720ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+
+@keyframes dashRise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* The dot texture behind the briefing. A masked field, not a surface
+ * gradient: it fades out well before the fold and paints nothing over the
+ * lower half of the screen. */
+.dots {
+  position: relative;
+}
+
+.dots::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--c-ink) 7%, transparent) 1px,
+    transparent 1.6px
+  );
+  background-size: 26px 26px;
+  opacity: 0.5;
+  -webkit-mask-image: radial-gradient(120% 90% at 50% 0%, black 30%, transparent 78%);
+  mask-image: radial-gradient(120% 90% at 50% 0%, black 30%, transparent 78%);
+}
+
+.dots > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* The figure cell's press affordance: a gold baseline that sweeps in under
+ * the value while the cell is held down.
+ *
+ * Scoped to `button.figcell` on purpose. The resting cell is a plain <div>
+ * with no handler, and `:active` fires on a div under a finger, so an
+ * unscoped rule drew a press response on an element that does nothing. Same
+ * defect the resting cell is a div to avoid. */
+.figcell {
+  position: relative;
+}
+
+.figcell::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 12px;
+  bottom: -6px;
+  height: 2px;
+  background: var(--c-gold);
+  border-radius: 4px;
+  transform: scaleX(0);
+  transform-origin: left;
+  opacity: 0;
+  transition: transform 240ms cubic-bezier(0.16, 1, 0.3, 1), opacity 240ms;
+}
+
+button.figcell:active::after {
+  transform: scaleX(1);
+  opacity: 0.8;
+}
+
+/* The gold hairline between the two market columns.
+ *
+ * Drawn as a rule rather than as a border. The design puts a 1px gold rule at
+ * 14% alpha on the leading edge of the right-hand cells, and the runtime audit
+ * flags any leading border wider than its trailing one, because a coloured
+ * leading border is one of the four treatments the brief forbids. Same hue,
+ * same alpha, same 1px, no border. */
+.figcellDivided::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: color-mix(in srgb, var(--c-gold) 14%, transparent);
+}
+
+/* The desk record's proportion bars. */
+.bar {
+  transform-origin: left center;
+  transform: scaleX(1);
+  opacity: 1;
+  animation: barSweepIn 400ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+
+@keyframes barSweepIn {
+  from {
+    transform: scaleX(0);
+    opacity: 0;
+  }
+  to {
+    transform: scaleX(1);
+    opacity: 1;
+  }
+}
+
+/* ── The briefing splash ─────────────────────────────────────────────
+ * Only the wash lives here. Position, stacking and the flex box are Tailwind
+ * utilities on the element, beside `md:hidden`, which is the same shape
+ * `mobile-tab-bar.tsx` uses. A `display` in this module would be a second
+ * single-class rule competing with the breakpoint utility, and whichever
+ * stylesheet loads last would win: measured, the module won and the splash
+ * rendered at 1440. Gating stays in classes, and now nothing outranks it. */
+.splash {
+  background:
+    radial-gradient(
+      760px 420px at 50% 34%,
+      color-mix(in srgb, var(--c-gold) 12%, transparent),
+      transparent 60%
+    ),
+    var(--c-bg);
+}
+
+.splashOut {
+  animation: dashIntroOut 700ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.introUp {
+  opacity: 1;
+  transform: none;
+  animation: dashIntroUp 640ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+
+@keyframes dashIntroUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes dashIntroOut {
+  to {
+    opacity: 0;
+    transform: scale(1.03);
+    visibility: hidden;
+  }
+}
+
+.mark {
+  animation: dashMarkGlow 2.2s ease-in-out infinite;
+}
+
+@keyframes dashMarkGlow {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--c-oninv-gold) 42%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 22px 3px color-mix(in srgb, var(--c-oninv-gold) 42%, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Nothing is hidden rather than merely unanimated: every animated rule above
+   * already rests in its drawn state, so removing the animation leaves the
+   * content on screen. The splash is the one exception and it is not hidden
+   * here: the component never mounts it under reduced motion, and the screen
+   * it would have covered carries the same three facts. */
+  .rise,
+  .bar,
+  .introUp,
+  .mark,
+  .splashOut {
+    animation: none;
+  }
+
+  .figcell::after {
+    display: none;
+  }
+
+  .dots::before {
+    display: none;
+  }
+}
