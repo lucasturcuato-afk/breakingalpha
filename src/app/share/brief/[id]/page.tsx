@@ -311,8 +311,15 @@ export default async function PublicBriefPage({ params }: Props) {
         <p className="font-sans text-[13px] text-text-secondary mb-3">
           {/* Matches the mobile twin in mobile-share-screen.tsx.
 
-              The evidence is the DATA, not a schedule in this repo: 60
-              consecutive `briefings` rows are weekdays only. The pipeline is
+              The evidence is the DATA, not a schedule in this repo. Of the
+              newest 60 `briefings` rows, the 30 whose `briefing_type` is
+              `morning` fall Monday to Friday only. The qualifier matters, and
+              an earlier draft of this comment omitted it: 6 of those 60 DO
+              carry a Saturday date, and every one is an EVENING run whose
+              Friday PT session lands Saturday in UTC. This line promises a
+              morning cadence, so the morning rows are the ones that bear on
+              it, but "60 rows are weekdays only" was false as written.
+              The pipeline is
               triggered by an EXTERNAL scheduler (see brief-heartbeat.yml's
               header), so nothing checked in here can prove the cadence. The
               nearest local signal is the heartbeat's own `0 17 * * 1-5` at
