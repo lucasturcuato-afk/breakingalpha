@@ -71,7 +71,7 @@ export function LedgerScreen({
      and it was live on this screen.
 
      A KNOWN FAILURE OUTRANKS AN ABSENT PAYLOAD, and the ordering inside this
-     guard is the whole of that. `loadLedger` returns `{data: null, stage:
+     guard is the whole of that. `loadLedger` gives back `{data: null, stage:
      "error"}` when the brief read fails, and this early return used to reach
      `BriefSkeleton` without ever consulting `stage`, so `BriefError` was dead
      on the loader path and every signed-in reader hit by a Supabase outage got

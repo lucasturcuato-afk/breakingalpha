@@ -16,7 +16,7 @@ import type { User } from "@supabase/supabase-js";
  * rendered output is identical before and after the extraction.
  *
  * WHAT IS DELIBERATELY NOT SHARED: what to do when nothing is derivable. This
- * returns `null` and each caller decides. The shell falls back to a last-resort
+ * gives back `null` and each caller decides. The shell falls back to a last-resort
  * letter because its avatar is a persistent chrome affordance that must always
  * be visible. The Ledger draws an empty disc instead, because a masthead is not
  * a place to put a letter nothing supports. That difference is a policy, it is

@@ -294,7 +294,7 @@ function briefQuery(supabase: SupabaseClient) {
  *
  * `initials` is derived by the caller, from the reader's own auth record,
  * through `src/lib/user-initials.ts`. It is a parameter rather than a read
- * because the identity lives on the auth record the page already holds and not
+ * because the identity lives on the auth record the page already carries and not
  * in any table this file queries, and because that is the same record and the
  * same function `src/components/shell/user-avatar.tsx` uses. It used to be
  * derived here from `user_profiles.full_name`, which is a different store: the
