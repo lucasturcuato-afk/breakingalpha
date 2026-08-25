@@ -27,9 +27,9 @@ import type { DashboardData, DashMarketCell, DashStage, DashStory } from "./fixt
  *
  * The screen paints `DashboardData` and nothing else. It has no fixture, no
  * default and no fallback: `data` is required and nullable, and a null one
- * takes an early exit to the loading skeleton before any field is read.
- * Below that
- * guard the type is non-null, so no later edit can serve invented content by
+ * takes an early exit before any field is read. Which exit depends on `stage`,
+ * and the order of those tests is load-bearing; see the guards below. Past
+ * them the type is non-null, so no later edit can serve invented content by
  * leaving a prop off, and no branch here can author a sentence about the
  * reader from an absence.
  *
@@ -87,14 +87,44 @@ export function DashboardScreen({
   /* "all" is the resting lens, which is the state the design draws. */
   const [storyLens, setStoryLens] = useState<"you" | "all">("all");
 
-  /* The one guard. Above it nothing has been read; below it `data` is
-     non-null by type, so every branch that follows is painting something a
-     loader actually gave back. The skeleton asserts nothing: it says a read is
-     in progress, and now that there is a loader behind this screen, one is. */
-  if (data === null) {
+  /* THE THREE GUARDS, IN THE ONLY ORDER THAT IS HONEST.
+   *
+   * A KNOWN FAILURE OUTRANKS AN ABSENT PAYLOAD, and it has to, because the two
+   * arrive together. `/ledger` shipped the inversion: `loadLedger` gave back
+   * `{data: null, stage: "error"}` and the screen tested `data === null` first,
+   * so the early exit fired before `stage` was ever read and the error
+   * component was unreachable from the loader. A failed read painted an
+   * indefinite skeleton. A spinner over a terminal failure is the same untruth
+   * as a fabricated zero, in a different currency: one says a count it never
+   * measured, the other says an answer is still coming when none is.
+   *
+   * So the failure stage is tested first, the loading stage second, and the
+   * absent payload last, and each of the first two draws with or without a
+   * payload. `initials` is the one field either can use, and it is read
+   * through an explicit null test rather than a coalesce, because the rule for
+   * this screen is that `data` is never defaulted anywhere.
+   *
+   * Below the third guard `data` is non-null BY TYPE, so every branch that
+   * follows is painting something a loader actually gave back. The skeleton
+   * asserts nothing: it says a read is in progress, and on the paths that
+   * reach it one is.
+   */
+  const initials = data === null ? null : data.initials;
+
+  if (stage === "error") {
     return (
       <div data-parity="dash" style={{ backgroundColor: "var(--c-bg)", minHeight: "100%" }}>
-        <ScreenHead initials={null} />
+        <ScreenHead initials={initials} />
+        <DashError />
+        <TabBarSpacer />
+      </div>
+    );
+  }
+
+  if (stage === "loading" || data === null) {
+    return (
+      <div data-parity="dash" style={{ backgroundColor: "var(--c-bg)", minHeight: "100%" }}>
+        <ScreenHead initials={initials} />
         <DashSkeleton />
         <TabBarSpacer />
       </div>
@@ -102,7 +132,6 @@ export function DashboardScreen({
   }
 
   const d = data;
-  const effectiveStage: DashStage = stage;
   /* Null stories means the read has not answered and the section is not drawn
      at all; "failed" means it answered with an error and the section says so.
      `shown` is the answered case only, and is null in the other two. */
@@ -113,240 +142,240 @@ export function DashboardScreen({
   return (
     <div data-parity="dash" style={{ backgroundColor: "var(--c-bg)", minHeight: "100%" }}>
       <ScreenHead initials={d.initials} />
-      {effectiveStage === "loading" ? <DashSkeleton /> : null}
-      {effectiveStage === "error" ? <DashError /> : null}
-      {effectiveStage === "ready" || effectiveStage === "stale" || effectiveStage === "empty" ? (
-        <div className={styles.dots} style={{ padding: `0 ${PAD} 26px` }}>
-          <div className={styles.rise} style={{ display: "flex", alignItems: "center", gap: "11px" }}>
-            <span style={{ font: `400 italic 13px/1 ${SERIF}`, color: "var(--c-secondary)" }}>
-              {d.date}
-            </span>
-            <span aria-hidden="true" style={{ flex: 1, height: "1px", backgroundColor: "var(--c-border)" }} />
-            <span style={{ font: `400 10.5px/1 ${MONO}`, letterSpacing: "0.07em", color: "var(--c-muted)" }}>
-              {d.clock}
-            </span>
-          </div>
+      {/* Only "ready", "stale" and "empty" get here; the other two took an
+          early exit above. No stage test wraps this block, because a test that
+          cannot be false is not a guard, it is a place for the next reader to
+          assume one of the exits above is optional. */}
+      <div className={styles.dots} style={{ padding: `0 ${PAD} 26px` }}>
+        <div className={styles.rise} style={{ display: "flex", alignItems: "center", gap: "11px" }}>
+          <span style={{ font: `400 italic 13px/1 ${SERIF}`, color: "var(--c-secondary)" }}>
+            {d.date}
+          </span>
+          <span aria-hidden="true" style={{ flex: 1, height: "1px", backgroundColor: "var(--c-border)" }} />
+          <span style={{ font: `400 10.5px/1 ${MONO}`, letterSpacing: "0.07em", color: "var(--c-muted)" }}>
+            {d.clock}
+          </span>
+        </div>
 
-          {effectiveStage === "stale" && d.staleNotice ? <StaleNotice text={d.staleNotice} /> : null}
+        {stage === "stale" && d.staleNotice ? <StaleNotice text={d.staleNotice} /> : null}
 
+        <p
+          className={styles.rise}
+          style={{
+            animationDelay: `${D.greeting}ms`,
+            margin: "16px 0 0",
+            font: `400 italic 15px/1.3 ${SERIF}`,
+            color: "var(--c-goldink)",
+          }}
+        >
+          {d.eyebrow}
+        </p>
+        <h1
+          className={styles.rise}
+          style={{
+            animationDelay: `${D.greeting}ms`,
+            margin: "8px 0 0",
+            font: `500 30px/1 ${SERIF}`,
+            letterSpacing: "-0.025em",
+            color: "var(--c-ink)",
+          }}
+        >
+          {d.greeting}
+        </h1>
+        {/* No fallback sentence. `context` is derived from the reader's own
+            watchlist, sectors and the latest briefing's tone; when none of
+            those produces a line there is nothing true to say about the
+            tape, so the greeting says nothing about it. */}
+        {d.context ? (
           <p
             className={styles.rise}
             style={{
-              animationDelay: `${D.greeting}ms`,
-              margin: "16px 0 0",
-              font: `400 italic 15px/1.3 ${SERIF}`,
-              color: "var(--c-goldink)",
-            }}
-          >
-            {d.eyebrow}
-          </p>
-          <h1
-            className={styles.rise}
-            style={{
-              animationDelay: `${D.greeting}ms`,
-              margin: "8px 0 0",
-              font: `500 30px/1 ${SERIF}`,
-              letterSpacing: "-0.025em",
-              color: "var(--c-ink)",
-            }}
-          >
-            {d.greeting}
-          </h1>
-          {/* No fallback sentence. `context` is derived from the reader's own
-              watchlist, sectors and the latest briefing's tone; when none of
-              those produces a line there is nothing true to say about the
-              tape, so the greeting says nothing about it. */}
-          {d.context ? (
-            <p
-              className={styles.rise}
-              style={{
-                animationDelay: `${D.context}ms`,
-                margin: "10px 0 0",
-                font: `400 italic 15px/1.5 ${SERIF}`,
-                color: "var(--c-secondary)",
-                textWrap: "pretty",
-              }}
-            >
-              {d.context}
-            </p>
-          ) : null}
-
-          {/* No cells, no band. An empty grid under a MARKET rule reads as a
-              tape with nothing on it; an absent band reads as what it is. */}
-          {d.market.length ? (
-            <MarketBand cells={d.market} editing={editing} onToggle={() => setEditing((v) => !v)} />
-          ) : null}
-
-          {d.waiting ? (
-            <>
-              <SectionRule label="waiting for you" delayMs={D.waiting} />
-              <WaitingCard eyebrow={d.waiting.eyebrow} line={d.waiting.line} />
-            </>
-          ) : null}
-
-          <Link
-            href="/ledger"
-            className={styles.rise}
-            style={{
-              animationDelay: `${D.brief}ms`,
-              marginTop: d.waiting ? "10px" : "26px",
-              minHeight: "56px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: "14px",
-              padding: "13px 16px",
-              border: "1px solid var(--c-border)",
-              borderRadius: "12px",
-              backgroundColor: "var(--c-surface)",
-              textDecoration: "none",
-            }}
-          >
-            <span style={{ minWidth: 0 }}>
-              <span style={{ display: "block", font: `600 13px/1.3 ${SANS}`, color: "var(--c-ink)" }}>
-                {d.brief.title}
-              </span>
-              {/* No line at all when no brief headline has been read. The
-                  fixture's "Five calls, none decided yet" is a specific claim
-                  about a morning, and there is no source for it here. */}
-              {d.brief.sub ? (
-                <span
-                  style={{
-                    display: "block",
-                    marginTop: "4px",
-                    font: `400 11.5px/1.4 ${SANS}`,
-                    color: "var(--c-muted)",
-                  }}
-                >
-                  {d.brief.sub}
-                </span>
-              ) : null}
-            </span>
-            <Chevron direction="right" size={15} />
-          </Link>
-
-          {/* The whole section, rule and all, only exists when the record was
-              read. "You have not made a call yet." is a true and useful
-              sentence over a record that came back empty and a fabrication
-              over one that never came back, and the two are indistinguishable
-              once a null has been turned into zeroes. So a null draws nothing
-              rather than an empty state. */}
-          {d.yourRecord ? (
-            <>
-              <SectionRule label="your record" delayMs={D.yourRecord} />
-              <Explainer text={d.yourRecord.intro} />
-              {d.yourRecord.awaiting === 0 &&
-              Object.values(d.yourRecord.byResolution).every((n) => n === 0) ? (
-                /* The prototype draws populated counts in every state, so day
-                   one is undepicted. The copy for it is already written,
-                   tested and compliance-asserted in `your-record.ts`, and it
-                   is used verbatim rather than re-authored here. */
-                <Absence
-                  title={YOUR_RECORD_COPY.noClaimsTitle}
-                  body={YOUR_RECORD_COPY.noClaimsBody}
-                />
-              ) : (
-                <>
-                  <RecordBuckets
-                    variant="personal"
-                    byResolution={d.yourRecord.byResolution}
-                    awaiting={d.yourRecord.awaiting}
-                  />
-                  <p
-                    style={{
-                      margin: "12px 0 0",
-                      font: `400 italic 11px/1.5 ${SERIF}`,
-                      color: "var(--c-muted)",
-                      textWrap: "pretty",
-                    }}
-                  >
-                    Awaiting means the window has not closed yet, not that the call was missed.
-                  </p>
-                </>
-              )}
-              {/* TODO: point at the Prepared record once step 6 lands. Held on
-                  this branch, so the control is drawn in its own resting state
-                  and does nothing rather than routing at a 404. The desk's
-                  nearest equivalent today is /radar/calls, which the design
-                  dismantles; sending a phone reader there is a decision, not a
-                  default. Disabled until it exists. */}
-              <TailLink label="All calls →" />
-            </>
-          ) : null}
-
-          {d.deskRecord ? (
-            <>
-              <SectionRule label="the desk's record" delayMs={D.deskRecord} />
-              <Explainer text={d.deskRecord.intro} />
-              {d.deskRecord.total === 0 ? (
-                <Absence title={DESK_RECORD_COPY.emptyTitle} body={DESK_RECORD_COPY.emptyBody} />
-              ) : (
-                <RecordBuckets
-                  variant="desk"
-                  byResolution={d.deskRecord.byResolution}
-                  total={d.deskRecord.total}
-                />
-              )}
-              {/* TODO: point at the Desk record once step 7 lands. Held on this
-                  branch, same treatment. /radar/desk-record is the desk's
-                  equivalent and is deliberately not linked, for the same
-                  reason. Disabled until it exists. */}
-              <TailLink label="The whole record →" />
-            </>
-          ) : null}
-
-          {/* THE FAILED READ FAILS THIS SECTION AND NOTHING ELSE. It used to set
-              `stage="error"` on the whole screen, which threw away the market
-              band, the brief and both records even when all four had answered.
-              That is the inverse of the rule the null path above follows. */}
-          {d.stories === "failed" ? (
-            <>
-              <SectionRule label="top stories" delayMs={D.stories} />
-              <StoriesFailed />
-            </>
-          ) : shown !== null ? (
-            <>
-              <SectionRule label="top stories" delayMs={D.stories} />
-              <div style={{ marginTop: "10px", display: "flex", gap: "12px" }}>
-                <StoryLens
-                  label="For You"
-                  on={storyLens === "you"}
-                  onClick={() => setStoryLens("you")}
-                />
-                <StoryLens label="All" on={storyLens === "all"} onClick={() => setStoryLens("all")} />
-              </div>
-              {shown.length ? (
-                <div style={{ marginTop: "10px" }}>
-                  {shown.map((s, i) => (
-                    <StoryRow key={s.id} story={s} last={i === shown.length - 1} />
-                  ))}
-                </div>
-              ) : (
-                <Absence
-                  title={storyLens === "you" ? "Nothing matched your sectors." : "No stories yet."}
-                  body={
-                    storyLens === "you"
-                      ? "Every story is still here. Switch to All to read the ones the lens set aside."
-                      : "The overnight read has not published. Nothing is being filtered out of this list."
-                  }
-                />
-              )}
-              <TailLink label="The whole feed →" href="/live-feed" />
-            </>
-          ) : null}
-
-          <p
-            style={{
-              margin: "24px 0 0",
-              font: `400 11px/1.6 ${SANS}`,
-              color: "var(--c-muted)",
+              animationDelay: `${D.context}ms`,
+              margin: "10px 0 0",
+              font: `400 italic 15px/1.5 ${SERIF}`,
+              color: "var(--c-secondary)",
               textWrap: "pretty",
             }}
           >
-            {d.disclaimer}
+            {d.context}
           </p>
-        </div>
-      ) : null}
+        ) : null}
+
+        {/* No cells, no band. An empty grid under a MARKET rule reads as a
+            tape with nothing on it; an absent band reads as what it is. */}
+        {d.market.length ? (
+          <MarketBand cells={d.market} editing={editing} onToggle={() => setEditing((v) => !v)} />
+        ) : null}
+
+        {d.waiting ? (
+          <>
+            <SectionRule label="waiting for you" delayMs={D.waiting} />
+            <WaitingCard eyebrow={d.waiting.eyebrow} line={d.waiting.line} />
+          </>
+        ) : null}
+
+        <Link
+          href="/ledger"
+          className={styles.rise}
+          style={{
+            animationDelay: `${D.brief}ms`,
+            marginTop: d.waiting ? "10px" : "26px",
+            minHeight: "56px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "14px",
+            padding: "13px 16px",
+            border: "1px solid var(--c-border)",
+            borderRadius: "12px",
+            backgroundColor: "var(--c-surface)",
+            textDecoration: "none",
+          }}
+        >
+          <span style={{ minWidth: 0 }}>
+            <span style={{ display: "block", font: `600 13px/1.3 ${SANS}`, color: "var(--c-ink)" }}>
+              {d.brief.title}
+            </span>
+            {/* No line at all when no brief headline has been read. The
+                fixture's "Five calls, none decided yet" is a specific claim
+                about a morning, and there is no source for it here. */}
+            {d.brief.sub ? (
+              <span
+                style={{
+                  display: "block",
+                  marginTop: "4px",
+                  font: `400 11.5px/1.4 ${SANS}`,
+                  color: "var(--c-muted)",
+                }}
+              >
+                {d.brief.sub}
+              </span>
+            ) : null}
+          </span>
+          <Chevron direction="right" size={15} />
+        </Link>
+
+        {/* The whole section, rule and all, only exists when the record was
+            read. "You have not made a call yet." is a true and useful
+            sentence over a record that came back empty and a fabrication
+            over one that never came back, and the two are indistinguishable
+            once a null has been turned into zeroes. So a null draws nothing
+            rather than an empty state. */}
+        {d.yourRecord ? (
+          <>
+            <SectionRule label="your record" delayMs={D.yourRecord} />
+            <Explainer text={d.yourRecord.intro} />
+            {d.yourRecord.awaiting === 0 &&
+            Object.values(d.yourRecord.byResolution).every((n) => n === 0) ? (
+              /* The prototype draws populated counts in every state, so day
+                 one is undepicted. The copy for it is already written,
+                 tested and compliance-asserted in `your-record.ts`, and it
+                 is used verbatim rather than re-authored here. */
+              <Absence
+                title={YOUR_RECORD_COPY.noClaimsTitle}
+                body={YOUR_RECORD_COPY.noClaimsBody}
+              />
+            ) : (
+              <>
+                <RecordBuckets
+                  variant="personal"
+                  byResolution={d.yourRecord.byResolution}
+                  awaiting={d.yourRecord.awaiting}
+                />
+                <p
+                  style={{
+                    margin: "12px 0 0",
+                    font: `400 italic 11px/1.5 ${SERIF}`,
+                    color: "var(--c-muted)",
+                    textWrap: "pretty",
+                  }}
+                >
+                  Awaiting means the window has not closed yet, not that the call was missed.
+                </p>
+              </>
+            )}
+            {/* TODO: point at the Prepared record once step 6 lands. Held on
+                this branch, so the control is drawn in its own resting state
+                and does nothing rather than routing at a 404. The desk's
+                nearest equivalent today is /radar/calls, which the design
+                dismantles; sending a phone reader there is a decision, not a
+                default. Disabled until it exists. */}
+            <TailLink label="All calls →" />
+          </>
+        ) : null}
+
+        {d.deskRecord ? (
+          <>
+            <SectionRule label="the desk's record" delayMs={D.deskRecord} />
+            <Explainer text={d.deskRecord.intro} />
+            {d.deskRecord.total === 0 ? (
+              <Absence title={DESK_RECORD_COPY.emptyTitle} body={DESK_RECORD_COPY.emptyBody} />
+            ) : (
+              <RecordBuckets
+                variant="desk"
+                byResolution={d.deskRecord.byResolution}
+                total={d.deskRecord.total}
+              />
+            )}
+            {/* TODO: point at the Desk record once step 7 lands. Held on this
+                branch, same treatment. /radar/desk-record is the desk's
+                equivalent and is deliberately not linked, for the same
+                reason. Disabled until it exists. */}
+            <TailLink label="The whole record →" />
+          </>
+        ) : null}
+
+        {/* THE FAILED READ FAILS THIS SECTION AND NOTHING ELSE. It used to set
+            `stage="error"` on the whole screen, which threw away the market
+            band, the brief and both records even when all four had answered.
+            That is the inverse of the rule the null path above follows. */}
+        {d.stories === "failed" ? (
+          <>
+            <SectionRule label="top stories" delayMs={D.stories} />
+            <StoriesFailed />
+          </>
+        ) : shown !== null ? (
+          <>
+            <SectionRule label="top stories" delayMs={D.stories} />
+            <div style={{ marginTop: "10px", display: "flex", gap: "12px" }}>
+              <StoryLens
+                label="For You"
+                on={storyLens === "you"}
+                onClick={() => setStoryLens("you")}
+              />
+              <StoryLens label="All" on={storyLens === "all"} onClick={() => setStoryLens("all")} />
+            </div>
+            {shown.length ? (
+              <div style={{ marginTop: "10px" }}>
+                {shown.map((s, i) => (
+                  <StoryRow key={s.id} story={s} last={i === shown.length - 1} />
+                ))}
+              </div>
+            ) : (
+              <Absence
+                title={storyLens === "you" ? "Nothing matched your sectors." : "No stories yet."}
+                body={
+                  storyLens === "you"
+                    ? "Every story is still here. Switch to All to read the ones the lens set aside."
+                    : "The overnight read has not published. Nothing is being filtered out of this list."
+                }
+              />
+            )}
+            <TailLink label="The whole feed →" href="/live-feed" />
+          </>
+        ) : null}
+
+        <p
+          style={{
+            margin: "24px 0 0",
+            font: `400 11px/1.6 ${SANS}`,
+            color: "var(--c-muted)",
+            textWrap: "pretty",
+          }}
+        >
+          {d.disclaimer}
+        </p>
+      </div>
       <TabBarSpacer />
     </div>
   );
