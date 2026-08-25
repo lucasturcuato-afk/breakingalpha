@@ -81,10 +81,12 @@ export interface DashboardSources {
   /** Keyed by upper-case symbol, exactly as the page keeps it. */
   quotes: Record<string, DashQuote | null | undefined>;
   briefHeadline: string | null;
-  /** Null when the Top Stories read has not answered. An empty array means it
-   *  answered and had nothing, which is the only case the screen may say so
-   *  in words. */
-  stories: DashSourceStory[] | null;
+  /**
+   * Null when the Top Stories read has not answered, "failed" when it answered
+   * with an error, an array when it answered. An empty array means it answered
+   * and had nothing, which is the only case the screen may say so in words.
+   */
+  stories: DashSourceStory[] | null | "failed";
   watchlistTickers: string[];
   profileSectors: string[];
   /** The reader's own record. Null when it has not been read. */
@@ -327,13 +329,15 @@ export function buildDashboardData(sources: DashboardSources): DashboardData {
     deskRecord: sources.deskRecord
       ? { intro: DASH_DESK_RECORD_INTRO, ...sources.deskRecord }
       : null,
-    /* Null all the way through to the screen, which then draws no Top Stories
-       section at all. Mapping a null to `[]` here would reach the empty state,
-       and the empty state says "The overnight read has not published", which
-       is a claim about the desk made from a read that has not answered. */
+    /* Null and "failed" pass straight through to the screen, which draws no
+       Top Stories section on the first and a failed section on the second.
+       Mapping either to `[]` here would reach the empty state, and the empty
+       state says "The overnight read has not published", which is a claim
+       about the desk that neither an outstanding read nor a broken one can
+       support. */
     stories:
-      sources.stories === null
-        ? null
+      sources.stories === null || sources.stories === "failed"
+        ? sources.stories
         : sources.stories.map((s, i) =>
             toDashStory(s, i, sources.watchlistTickers, sources.profileSectors),
           ),

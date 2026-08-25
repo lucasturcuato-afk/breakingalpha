@@ -773,10 +773,12 @@ function DashboardPageInner() {
       briefHeadline: briefingHeadline,
       /* The base Top Stories list, not `displayStories`. The phone has its
          own For You lens and must not inherit which tab the desk is on.
-         Null while the read is outstanding, so the section is absent rather
-         than empty; an empty list is the one thing that entitles the screen to
-         say the overnight read has not published. */
-      stories: storiesLoading ? null : stories,
+         Three states, and the order matters: a failed read sets `storiesError`
+         and clears `storiesLoading` in the same finally, so failure is tested
+         first. Null while the read is outstanding, so the section is absent
+         rather than empty; an empty list is the one thing that entitles the
+         screen to say the overnight read has not published. */
+      stories: storiesError ? "failed" : storiesLoading ? null : stories,
       watchlistTickers: profile?.watchlist_tickers ?? [],
       profileSectors: profile?.sectors ?? [],
       yourRecord: mobileRecords.yourRecord,
@@ -796,14 +798,26 @@ function DashboardPageInner() {
     marketCards,
     briefingHeadline,
     storiesLoading,
+    storiesError,
     stories,
     mobileRecords,
   ]);
 
-  /* A failed Top Stories read is the only page-level failure the phone can
-     state as one. Everything else is absent rather than broken, and absence is
-     drawn by leaving the section out. */
-  const mobileStage: DashStage = storiesError ? "error" : "ready";
+  /* NO PAGE-LEVEL FAILURE BLANKS THIS SCREEN.
+   *
+   * This was `storiesError ? "error" : "ready"`, and `stage="error"` draws the
+   * whole-screen failure: one failed Top Stories read discarded the market
+   * band, the brief headline and both records even when all four had answered.
+   * A reader whose story read failed lost their own record, which they can
+   * have, over a section they cannot. That is the inverse of the rule the rest
+   * of this block follows.
+   *
+   * The failure now travels as `stories: "failed"` and is drawn by the Top
+   * Stories section alone. Every other read on this screen renders its absence
+   * by leaving its own section out, so there is nothing left that has to take
+   * the morning down with it. `?stage=error` still reaches the whole-screen
+   * state on the preview path, which is where the design is fingerprinted. */
+  const mobileStage: DashStage = "ready";
 
   return (
     <AppShell

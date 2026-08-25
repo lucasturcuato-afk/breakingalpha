@@ -128,13 +128,25 @@ export interface DashboardData {
   /** Null while the desk's record has not been read, or the read failed. */
   deskRecord: { intro: string; byResolution: Record<Resolution, number>; total: number } | null;
   /**
-   * The Top Stories list, and NULL when the read has not answered.
+   * The Top Stories read, in three states, because three things can be true
+   * of it and each one is drawn differently.
    *
-   * Null draws no section at all. An empty array draws the empty state, which
-   * says the overnight read has not published, and that is a statement about
-   * the desk that only a read that came back empty can support.
+   *   an array   the read ANSWERED. An empty one draws the empty state, which
+   *              says the overnight read has not published, and only a read
+   *              that came back empty can support that sentence.
+   *   null       the read HAS NOT ANSWERED. No section at all, rule and lens
+   *              and tail link included.
+   *   "failed"   the read ANSWERED WITH AN ERROR. The section says so, and
+   *              only that section does.
+   *
+   * The third state used to be a whole-screen stage. A failed Top Stories read
+   * set `stage="error"` on the screen, which discarded the market band, the
+   * brief and both records even when all four had answered. A reader whose
+   * story read failed lost their own record, which they can have, over a
+   * section they cannot. Same rule as the null path, applied to failure: the
+   * section that broke says so and the rest of the morning stands.
    */
-  stories: DashStory[] | null;
+  stories: DashStory[] | null | "failed";
   /** Published only when the reader is looking at yesterday's briefing. */
   staleNotice: string | null;
   disclaimer: string;

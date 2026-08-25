@@ -4,21 +4,27 @@
  * It exists because the first version of this PR's "desktop unchanged" proof
  * fingerprinted the WRONG ELEMENT. It used
  * `document.querySelector(".hidden.md\\:block")`, which at 1440 matches four
- * things and returns `app-shell.tsx:128`, the nav sidebar, first. Both
+ * things and gives back `app-shell.tsx:128`, the nav sidebar, first. Both
  * captures came out at 128 nodes because both were the sidebar. The desktop
- * dashboard grid is 277 nodes and was never measured. A one-off snippet
- * written twice is how that happens, so the snippet lives in the repo now.
+ * dashboard grid is 282 NODES under `reducedMotion: "reduce"`, which is how
+ * `dom` mode below captures it, and it was never measured. A one-off snippet
+ * typed twice is how that happens, so the snippet lives in the repo now.
+ *
+ * 282 and not 277: unpinned, the rotating hero can be sitting on a different
+ * lead story with a different subtree, and the grid measures 277. Both numbers
+ * are the same page in two renderings. Pin it, and compare pinned to pinned.
  *
  * Sign-in is the EMAIL AND PASSWORD FORM at /auth, from `.env.local`. Nothing
  * touches Google. Locators are scoped to `form:visible` because two forms are
  * in the DOM there and an unscoped locator is strict-mode ambiguous.
  *
- * Nothing here writes to the database. `hold` and `slow` only intercept
+ * Nothing here writes to the database. `stall` and `slow` only intercept
  * responses on the way in.
  *
  *   node scripts/dashboard-wiring-probe.mjs dom   [out.txt]
- *   node scripts/dashboard-wiring-probe.mjs hold  [out.png]
+ *   node scripts/dashboard-wiring-probe.mjs stall [out.png]
  *   node scripts/dashboard-wiring-probe.mjs slow
+ *   node scripts/dashboard-wiring-probe.mjs fail  [out.png]
  *   node scripts/dashboard-wiring-probe.mjs fonts
  *
  * BASE defaults to http://localhost:3211 and should point at a PRODUCTION
@@ -29,7 +35,7 @@ import { chromium } from "playwright";
 import { readFileSync, writeFileSync } from "node:fs";
 
 const BASE = process.env.BASE ?? "http://localhost:3211";
-const MODE = process.argv[2] ?? "hold";
+const MODE = process.argv[2] ?? "stall";
 const OUT = process.argv[3];
 
 const env = Object.fromEntries(
@@ -42,8 +48,8 @@ const env = Object.fromEntries(
     }),
 );
 
-/** Every read the mobile screen paints from. `hold` never answers any of them. */
-const HELD = [
+/** Every read the mobile screen paints from. `stall` never answers any of them. */
+const STALLED = [
   /rest\/v1\/articles/,
   /rest\/v1\/briefings/,
   /rest\/v1\/pipeline_runs/,
@@ -117,7 +123,7 @@ if (MODE === "dom") {
   if (OUT) writeFileSync(OUT, `${signature}\n`);
 }
 
-if (MODE === "hold" || MODE === "slow") {
+if (MODE === "stall" || MODE === "slow" || MODE === "fail") {
   const ctx = await browser.newContext({
     viewport: { width: 390, height: 844 },
     deviceScaleFactor: 2,
@@ -126,10 +132,23 @@ if (MODE === "hold" || MODE === "slow") {
   });
   const page = await ctx.newPage();
   await signIn(page);
-  if (MODE === "hold") {
+  if (MODE === "stall") {
     await page.route("**/*", (route) => {
-      if (HELD.some((re) => re.test(route.request().url()))) return; // never answered
+      if (STALLED.some((re) => re.test(route.request().url()))) return; // never answered
       return route.continue();
+    });
+  } else if (MODE === "fail") {
+    /* ONLY the Top Stories select. The three count queries go to the same
+       table as HEAD requests, so filtering on method leaves them answering
+       normally and isolates the one read whose failure used to take the whole
+       screen down. */
+    await page.route(/rest\/v1\/articles/, (route) => {
+      if (route.request().method() !== "GET") return route.continue();
+      return route.fulfill({
+        status: 500,
+        contentType: "application/json",
+        body: JSON.stringify({ message: "probe: forced failure" }),
+      });
     });
   } else {
     await page.route("**/api/market-indices**", async (route) => {
@@ -151,6 +170,14 @@ if (MODE === "hold" || MODE === "slow") {
         ariaBusy: el.querySelector("[aria-busy]")?.getAttribute("aria-busy") ?? null,
         signalsCell: (text.match(/SIGNALS TODAY[^]{0,24}/) ?? ["(absent)"])[0],
         overnightClaim: /has not published/.test(text),
+        /* Which sections survived. The point of the `fail` mode: one broken
+           read must not take the four that answered with it. */
+        sections: ["waiting for you", "your record", "the desk's record", "top stories"].filter(
+          (label) => text.toLowerCase().includes(label),
+        ),
+        wholeScreenError: /We could not load your briefing/.test(text),
+        storiesSectionError: /We could not load your top stories/.test(text),
+        brief: /The morning brief/.test(text),
         marketCells: el.querySelectorAll("[class*=figcell]").length,
         revealReason:
           document.querySelector("[data-reveal-reason]")?.getAttribute("data-reveal-reason") ?? "",

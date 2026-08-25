@@ -103,10 +103,12 @@ export function DashboardScreen({
 
   const d = data;
   const effectiveStage: DashStage = stage;
-  /* Null stories means the read has not answered, and the section is not drawn
-     at all. `shown` is only meaningful below that guard. */
+  /* Null stories means the read has not answered and the section is not drawn
+     at all; "failed" means it answered with an error and the section says so.
+     `shown` is the answered case only, and is null in the other two. */
+  const answered = d.stories === null || d.stories === "failed" ? null : d.stories;
   const shown =
-    d.stories === null ? null : storyLens === "you" ? d.stories.filter((s) => s.forYou) : d.stories;
+    answered === null ? null : storyLens === "you" ? answered.filter((s) => s.forYou) : answered;
 
   return (
     <div data-parity="dash" style={{ backgroundColor: "var(--c-bg)", minHeight: "100%" }}>
@@ -293,13 +295,16 @@ export function DashboardScreen({
             </>
           ) : null}
 
-          {/* The whole section, rule, lens and tail link included, exists only
-              when the Top Stories read ANSWERED. "The overnight read has not
-              published" is a statement about the desk, and the only thing that
-              can support it is a read that came back empty. A read still in
-              flight supports nothing, and it used to reach this same copy
-              because an outstanding read and an empty one were both `[]`. */}
-          {shown !== null ? (
+          {/* THE FAILED READ FAILS THIS SECTION AND NOTHING ELSE. It used to set
+              `stage="error"` on the whole screen, which threw away the market
+              band, the brief and both records even when all four had answered.
+              That is the inverse of the rule the null path above follows. */}
+          {d.stories === "failed" ? (
+            <>
+              <SectionRule label="top stories" delayMs={D.stories} />
+              <StoriesFailed />
+            </>
+          ) : shown !== null ? (
             <>
               <SectionRule label="top stories" delayMs={D.stories} />
               <div style={{ marginTop: "10px", display: "flex", gap: "12px" }}>
@@ -1081,6 +1086,63 @@ function DashSkeleton() {
  * separate per-section absences instead, none of which can say the page
  * failed. On a product whose claim is that nothing is curated away, a failed
  * read that reads as an empty one is a trust failure, so the screen states it.
+ */
+/**
+ * The Top Stories read failed, said at section scope.
+ *
+ * Same words as `DashError`, narrowed to the one section they are true of, and
+ * carrying the same escape: the loader runs once on mount, so a reload is the
+ * only retry there is and the control says what it does. Everything above and
+ * below this section keeps rendering whatever its own read gave back.
+ */
+function StoriesFailed() {
+  return (
+    <div style={{ marginTop: "12px" }} role="alert">
+      <p style={{ margin: 0, font: `500 15px/1.35 ${SERIF}`, color: "var(--c-ink)" }}>
+        We could not load your top stories.
+      </p>
+      <p
+        style={{
+          margin: "6px 0 0",
+          font: `400 11.5px/1.5 ${SANS}`,
+          color: "var(--c-muted)",
+          maxWidth: "34ch",
+          textWrap: "pretty",
+        }}
+      >
+        This is a failed read, not an empty morning. Nothing is being hidden.
+      </p>
+      <button
+        type="button"
+        onClick={() => window.location.reload()}
+        className={ledger.bare}
+        style={{
+          marginTop: "12px",
+          minHeight: "44px",
+          display: "inline-flex",
+          alignItems: "center",
+          padding: "0 17px",
+          border: "1px solid var(--c-ink)",
+          borderRadius: "9px",
+          font: `600 13px/1 ${SANS}`,
+          color: "var(--c-ink)",
+        }}
+      >
+        Try again
+      </button>
+    </div>
+  );
+}
+
+/**
+ * The whole screen failed.
+ *
+ * REACHABLE ONLY FROM THE PREVIEW PATH NOW. `?stage=error` draws it so the
+ * design's error state stays fingerprintable, and the real loader never sets
+ * it: a failed Top Stories read fails its own section above, and every other
+ * read on this screen renders its absence by leaving its section out. If a
+ * future read genuinely cannot be survived section by section, this is where
+ * it lands, and the reason should be written here first.
  */
 function DashError() {
   return (
