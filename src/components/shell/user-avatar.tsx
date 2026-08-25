@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Image from "next/image";
-import { createBrowserClient } from "@supabase/ssr";
+import { createBrowserClientAsync } from "@/lib/supabase-browser";
 import type { User } from "@supabase/supabase-js";
 import { cn } from "@/lib/utils";
 
@@ -98,20 +98,24 @@ export function UserAvatar({
 
   useEffect(() => {
     if (isControlled) return;
-    const supabase = createBrowserClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    );
+    // Imported on demand. `fetchedUser` starts `undefined`, which already
+    // renders the brand mark, so deferring the client changes nothing
+    // about what paints first.
     let active = true;
-    supabase.auth.getUser().then(({ data }) => {
-      if (active) setFetchedUser(data.user ?? null);
-    });
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (active) setFetchedUser(session?.user ?? null);
+    let unsubscribe: (() => void) | undefined;
+    createBrowserClientAsync().then((supabase) => {
+      if (!active) return;
+      supabase.auth.getUser().then(({ data }) => {
+        if (active) setFetchedUser(data.user ?? null);
+      });
+      const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+        if (active) setFetchedUser(session?.user ?? null);
+      });
+      unsubscribe = () => sub.subscription.unsubscribe();
     });
     return () => {
       active = false;
-      sub.subscription.unsubscribe();
+      unsubscribe?.();
     };
   }, [isControlled]);
 

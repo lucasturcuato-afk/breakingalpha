@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, type ReactNode } from "react";
-import { createBrowserClient } from "@supabase/ssr";
+import { createBrowserClientAsync } from "@/lib/supabase-browser";
 import { Sidebar } from "./sidebar";
 import { MoodBar, type MoodType } from "./mood-bar";
 import { Topbar } from "./topbar";
@@ -59,19 +59,25 @@ export function AppShell({
   // state inside <UserAvatar /> so both render sites share one source
   // of truth without prop threading.
   useEffect(() => {
-    const supabase = createBrowserClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    );
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      setAuthed(!!user);
-    });
+    // The client is imported on demand so ~58 KB gzipped of Supabase is not
+    // in this route's entry chunk. `authed` starts false and the bell it
+    // gates is hidden until auth answers, so the first paint is unchanged.
+    let active = true;
+    let unsubscribe: (() => void) | undefined;
+    createBrowserClientAsync().then((supabase) => {
+      if (!active) return;
+      supabase.auth.getUser().then(({ data: { user } }) => {
+        if (active) setAuthed(!!user);
+      });
 
-    const { data: authSub } = supabase.auth.onAuthStateChange((_event, session) => {
-      setAuthed(!!session?.user);
+      const { data: authSub } = supabase.auth.onAuthStateChange((_event, session) => {
+        if (active) setAuthed(!!session?.user);
+      });
+      unsubscribe = () => authSub.subscription.unsubscribe();
     });
     return () => {
-      authSub.subscription.unsubscribe();
+      active = false;
+      unsubscribe?.();
     };
   }, []);
 
