@@ -45,9 +45,24 @@ export interface ScorecardCell {
 
 /** A row of the movers list under "today's top stories". */
 export interface EveningMover {
-  symbol: string;
-  /** The session move, or a word when the name stopped trading. */
-  move: string;
+  /**
+   * OPTIONAL, because a story rail is not a movers list.
+   *
+   * An article carries the entities it mentions, and those are as often a
+   * company name as a symbol. A name set in the mono column reads as a ticker
+   * and is not one, and a source name there reads as a ticker and is not one
+   * either. So the column carries a real symbol or it carries nothing, and the
+   * row keeps its indent so the headlines still line up.
+   */
+  symbol?: string;
+  /**
+   * The session move, or a word when the name stopped trading.
+   *
+   * OPTIONAL, because a real story rail carries tickers and headlines and no
+   * quote. When no quote resolved the row prints its ticker alone rather than
+   * a dash standing in for a number nobody measured.
+   */
+  move?: string;
   headline: string;
 }
 
@@ -60,39 +75,54 @@ export interface EveningReviewedCall {
   reasoning: string;
 }
 
+/**
+ * The mobile Evening Wrap's data contract.
+ *
+ * EVERY FIELD THAT CAN BE ABSENT IS NULLABLE OR EMPTY, and the screen draws
+ * nothing at all for one that is. That is not defensive typing: a wrap that
+ * carries no tomorrow setup, no open desk call or no persisted index snapshot
+ * is an ordinary wrap, and the alternative to an absent block is a block that
+ * states something the payload never said.
+ */
 export interface EveningWrapData {
   readMinutes: number;
   tagline: string;
   /** Dateline on the rule under the stats band. */
   dateline: string;
+  /** The reader's own sectors. Empty hides the personalization banner. */
   sectors: string[];
+  /** Only the cells whose source answered. Never a cell that carries a dash. */
   stats: EveningStat[];
   close: {
     stampedAt: string;
-    /** The one word the session gets. Rendered inside the gold stamp. */
-    verdict: string;
+    /**
+     * The one word the session gets, rendered inside the gold stamp.
+     *
+     * NULL when the tape could not ground one, which is exactly what
+     * `reconcileCloseWord` gives back on a flat or unknown tape. The hero then
+     * prints "The market closed." with no stamp, the same as the desk layout.
+     */
+    verdict: string | null;
+    /** Empty when no index snapshot resolved. The hero says so in words. */
     scorecard: ScorecardCell[];
+    /** Empty when the brief carries no close narrative. */
     lede: string;
     /** The first two paragraphs always render; the rest sit behind the toggle. */
     body: string[];
   };
-  reviewed: EveningReviewedCall;
+  /** Null when no open desk call could be read for this session. */
+  reviewed: EveningReviewedCall | null;
   /** What happened to everything else that was looked at. */
-  reviewedRest: string;
+  reviewedRest: string | null;
   stories: {
     lede: string;
     movers: EveningMover[];
   };
   /** The wrap states its next event. See O2 in DECISIONS.md. */
-  nextEvent: string;
-  /** Publication time of the wrap, stated by the empty state. */
-  publishesAt: string;
+  nextEvent: string | null;
   /** Session the wrap covers, stated by the stale notice. */
   coversSession: string;
 }
-
-/** Paragraphs of The Close that render before the toggle is opened. */
-export const CLOSE_VISIBLE_PARAGRAPHS = 2;
 
 export const EVENING_FIXTURE: EveningWrapData = {
   readMinutes: 5,
@@ -156,6 +186,5 @@ export const EVENING_FIXTURE: EveningWrapData = {
   },
   nextEvent:
     "Tomorrow: July CPI at 8:30, then the brief at 6:45. Nothing of yours settles until Aug 27.",
-  publishesAt: "4:35",
   coversSession: "Wednesday, August 5",
 };
