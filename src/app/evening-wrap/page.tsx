@@ -11,6 +11,7 @@ import {
   type ResolvedIndexCell,
   type ResolvedStory,
 } from "@/components/evening/wrap-from-briefing";
+import { useIsMobileViewport } from "@/components/evening/use-mobile-viewport";
 import { PanelWidget } from "@/components/shell/right-panel";
 import { TickerStrip } from "@/components/brief/ticker-strip";
 import CatalystStrip, { type CatalystItem } from "@/components/brief/CatalystStrip";
@@ -798,7 +799,17 @@ export default function EveningWrapPage() {
   /* ── THE MOBILE WRAP'S DATA ────────────────────────────────────────────
      Everything below feeds `EveningWrapMobile` and nothing below is read by
      the desk layout. The two surfaces share the loaders above, not the shapes;
-     the desk render is untouched by every line in this section. */
+     the desk render is untouched by every line in this section.
+
+     AND NOTHING BELOW COSTS THE DESK A REQUEST. `md:hidden` is CSS: at 1440
+     the mobile subtree still mounts, still hydrates and still runs its
+     effects, so the two reads in this section were firing on every desktop
+     load for a tree nobody can see. The PR body called them mobile-only and
+     the measurement said otherwise. Both are gated on a measured viewport
+     now, the way `src/components/dashboard-mobile/use-mobile-records.ts` gates
+     its own two reads, and the ticker strip inside the screen is gated the
+     same way because its poll repeats every 60 seconds. */
+  const isMobileViewport = useIsMobileViewport();
 
   /* The session's still-open desk calls. Matched the way `BriefCallsSection`
      matches them, because the evening briefing's own id is not the morning
@@ -819,7 +830,7 @@ export default function EveningWrapPage() {
     ? new Date(briefing.created_at).toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" })
     : null;
   useEffect(() => {
-    if (!wrapSessionPt) return;
+    if (!wrapSessionPt || !isMobileViewport) return;
     let cancelled = false;
     (async () => {
       try {
@@ -841,7 +852,7 @@ export default function EveningWrapPage() {
       } catch { /* soft-fail: the card is absent, never invented */ }
     })();
     return () => { cancelled = true; };
-  }, [wrapSessionPt]);
+  }, [wrapSessionPt, isMobileViewport]);
 
   /* The tickers the rail is carrying, in served order. Anything that is not
      shaped like a symbol is still labelled on the row; it is only excluded
@@ -858,7 +869,7 @@ export default function EveningWrapPage() {
   const moverTickerKey = moverTickers.join(",");
 
   useEffect(() => {
-    if (!moverTickerKey) return;
+    if (!moverTickerKey || !isMobileViewport) return;
     let cancelled = false;
     (async () => {
       try {
@@ -877,7 +888,7 @@ export default function EveningWrapPage() {
       } catch { /* soft-fail: the row prints its ticker and no move */ }
     })();
     return () => { cancelled = true; };
-  }, [moverTickerKey]);
+  }, [moverTickerKey, isMobileViewport]);
 
   /**
    * Which of the five states the mobile screen is in.

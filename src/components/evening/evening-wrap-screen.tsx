@@ -13,6 +13,7 @@ import { ClaimAnatomy, MobileTickerStrip } from "@/components/ledger";
  * the first, which is the failure the shared skill exists to prevent. The
  * module is not screen specific; only its file name is. */
 import motion from "@/components/ledger/ledger.module.css";
+import { useIsMobileViewport } from "./use-mobile-viewport";
 import type {
   EveningMover,
   EveningReviewedCall,
@@ -106,7 +107,7 @@ export function EveningWrapScreen({
     <div data-parity="evening" style={{ backgroundColor: "var(--c-bg)", minHeight: "100%" }}>
       {/* Built once, in src/components/ledger, and imported here. The barrel
           says so in a comment: the design carries one ticker, not two. */}
-      <MobileTickerStrip />
+      <Tape />
       {bannerShown && data.sectors.length > 0 ? (
         <PersonalizationBanner data={data} onDismiss={() => setBannerShown(false)} />
       ) : null}
@@ -245,10 +246,33 @@ export function EveningWrapScreen({
  * once instead of once per branch. The strip is the tape and it is live on
  * every branch, including the ones where no wrap exists.
  */
+/**
+ * The ticker strip, drawn only where the screen is visible.
+ *
+ * `MobileTickerStrip` is imported from `src/components/ledger` and never
+ * rebuilt, exactly as the shared contract requires. What is added here is the
+ * gate around it, not a second strip.
+ *
+ * It needs one because this screen is composed BESIDE the desk layout under a
+ * `md:hidden` class, and a class is CSS: at 1440 the strip still mounted, and
+ * it polls its quotes route every 60 seconds for as long as the tab is open.
+ * That was a desktop cost on a mobile screen, and one of the three requests
+ * the independent report measured on a desk load. It is off above the
+ * breakpoint now.
+ *
+ * The gate is a measured viewport rather than a class because the strip's cost
+ * is a request, and a request does not care that the element is `display:none`.
+ */
+function Tape() {
+  const isMobileViewport = useIsMobileViewport();
+  if (!isMobileViewport) return null;
+  return <MobileTickerStrip />;
+}
+
 function WrapFrame({ children }: { children: ReactNode }) {
   return (
     <div data-parity="evening" style={{ backgroundColor: "var(--c-bg)", minHeight: "100%" }}>
-      <MobileTickerStrip />
+      <Tape />
       {children}
     </div>
   );
