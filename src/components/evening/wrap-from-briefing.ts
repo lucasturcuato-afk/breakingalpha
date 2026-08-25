@@ -58,6 +58,39 @@ export function displayIndexLevel(sym: string, price: string): string {
 /** How many story rows the mobile wrap lists. */
 export const MOBILE_MOVER_LIMIT = 5;
 
+/**
+ * A `date` column rendered as the calendar day it stores.
+ *
+ * `resolve_on` is a Postgres `date`. It is three numbers, with no instant and
+ * no zone behind them, and the row is written and queried against the
+ * US-Pacific session calendar. `new Date("2026-08-31")` parses a bare date
+ * string as UTC midnight, and every zone west of UTC then formats that instant
+ * as the day before, so a reader in New York was shown `August 30` over a row
+ * storing the 31st. That is a wrong date about a reader's own call.
+ *
+ * The fix is to never build a local instant out of it. The three numbers are
+ * read straight off the string and the formatter is pinned to UTC, so the
+ * rendered day is the stored day in every zone the app is read in. Anything
+ * that is not a bare `YYYY-MM-DD` answers null, and the card then prints no
+ * review date at all rather than a guessed one.
+ *
+ * Every other date on this screen comes from a real instant
+ * (`briefing.created_at`, or the viewer's own clock) and is correctly
+ * formatted in the viewer's zone. This is the only bare calendar date on the
+ * surface: `new Date(` appears nowhere else under `src/components/evening/`.
+ */
+export function formatReviewDate(stored: string): string | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(stored.trim());
+  if (!m) return null;
+  const at = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  if (Number.isNaN(at)) return null;
+  return new Date(at).toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    timeZone: "UTC",
+  });
+}
+
 /** One resolved scorecard cell, as the page's `snapshotCell` already gives it. */
 export interface ResolvedIndexCell {
   label: string;
@@ -243,12 +276,8 @@ function toReviewed(src: WrapSource): {
   const facts: string[] = [];
   if (r.symbol) facts.push(`Target ${r.symbol}.`);
   if (r.resolveOn) {
-    const d = new Date(r.resolveOn);
-    if (!Number.isNaN(d.getTime())) {
-      facts.push(
-        `Review date ${d.toLocaleDateString("en-US", { month: "long", day: "numeric" })}.`,
-      );
-    }
+    const pretty = formatReviewDate(r.resolveOn);
+    if (pretty) facts.push(`Review date ${pretty}.`);
   }
   const others = src.otherOpenCalls;
   return {
