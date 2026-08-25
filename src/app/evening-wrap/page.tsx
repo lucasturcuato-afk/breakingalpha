@@ -260,7 +260,7 @@ export default function EveningWrapPage() {
   /* How many there are, as an EXACT count rather than `openCalls.length`.
      The select is capped at 24 rows because the card renders only the first
      one, and a length read off a capped page silently understated a busy
-     session at 23. PostgREST returns the true count in the Content-Range
+     session at 23. PostgREST answers with the true count in the Content-Range
      header when the request asks for it, so the sentence about the others
      counts every one of them while the page still transfers 24. */
   const [openCallCount, setOpenCallCount] = useState(0);
@@ -854,15 +854,23 @@ export default function EveningWrapPage() {
     return () => { cancelled = true; };
   }, [wrapSessionPt, isMobileViewport]);
 
-  /* The tickers the rail is carrying, in served order. Anything that is not
-     shaped like a symbol is still labelled on the row; it is only excluded
-     from the quote request, where it would be a guaranteed miss. */
+  /* The tickers the RENDERED rows are carrying, in served order. Anything that
+     is not shaped like a symbol is still labelled on the row; it is only
+     excluded from the quote request, where it would be a guaranteed miss.
+
+     SAME SLICE THE ROWS COME FROM, which it was not before. This walked every
+     ranked story collecting up to five ticker-shaped tags while the list
+     renders the first five STORIES, so the request could ask for symbols no
+     row carries and skip the ones that do. The report caught exactly that: a
+     quote was fetched for a symbol from further down the rail while all five
+     rendered rows drew an empty symbol column. Both now read
+     `rankedStories.slice(0, MOBILE_MOVER_LIMIT)`, so the request covers the
+     rows and nothing else. */
   const moverTickers = useMemo(() => {
     const out: string[] = [];
-    for (const st of rankedStories) {
+    for (const st of rankedStories.slice(0, MOBILE_MOVER_LIMIT)) {
       const tag = (st.tags ?? []).find((t) => TICKER_SHAPE.test(t));
       if (tag && !out.includes(tag)) out.push(tag);
-      if (out.length >= MOBILE_MOVER_LIMIT) break;
     }
     return out;
   }, [rankedStories]);

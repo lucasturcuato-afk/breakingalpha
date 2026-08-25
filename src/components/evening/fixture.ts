@@ -18,11 +18,28 @@
 
 export type Tone = "up" | "down";
 
+/**
+ * Which way a move went, including neither.
+ *
+ * `up`/`down` is a claim, and a move that rounds to `0.00%` at the two decimal
+ * places the screen prints does not support one. The scorecard drew `▲0.00%`
+ * over a flat cell and painted it green, and the VIX cell took the stress
+ * colour at exactly zero. `flat` draws no glyph and takes neither colour, so
+ * the cell says the move was measured and rounds to nothing, which is what
+ * happened.
+ */
+export type MoveDirection = Tone | "flat";
+
 /** A cell of the stats band under the masthead. */
 export interface EveningStat {
   label: string;
   value: string;
-  /** Reads the figure, not the direction: a falling VIX is calm. */
+  /**
+   * Reads the figure, not the direction: a falling VIX is calm.
+   *
+   * Absent means the cell states no side, which is what a move that rounds to
+   * zero is entitled to.
+   */
   tone?: "calm" | "stress";
 }
 
@@ -39,8 +56,8 @@ export interface ScorecardCell {
   label: string;
   value: string;
   move: string;
-  direction: Tone;
-  tone: Tone;
+  direction: MoveDirection;
+  tone: MoveDirection;
 }
 
 /** A row of the movers list under "today's top stories". */

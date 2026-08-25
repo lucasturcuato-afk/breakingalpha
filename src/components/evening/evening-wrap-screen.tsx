@@ -71,10 +71,19 @@ const ON_ESPRESSO = {
 } as const;
 
 export function EveningWrapScreen({
-  stage = "ready",
+  stage,
   data,
 }: {
-  stage?: WrapStage;
+  /**
+   * REQUIRED, with no default.
+   *
+   * It used to default to `"ready"`, so a caller that left it off got a screen
+   * claiming a wrap had loaded rather than a compile error. `data` was already
+   * required and nullable and that is the half that matters, but the same
+   * argument applies one field over: the caller resolves the lifecycle and
+   * passes it, and omission is a build failure.
+   */
+  stage: WrapStage;
   /** The gated fixture, or null when no source exists. Never defaulted. */
   data: EveningWrapData | null;
 }) {
@@ -632,10 +641,18 @@ function ScorecardTile({
         style={{
           marginTop: "4px",
           font: `600 10.5px/1 ${MONO}`,
-          color: cell.tone === "up" ? "var(--c-inv-green)" : "var(--c-inv-red)",
+          /* A move that rounds to 0.00% at the two places this cell prints
+             takes neither colour and draws no glyph. Green over `▲0.00%` is a
+             side the figure does not carry. */
+          color:
+            cell.tone === "flat"
+              ? "var(--c-oninv-dim)"
+              : cell.tone === "up"
+                ? "var(--c-inv-green)"
+                : "var(--c-inv-red)",
         }}
       >
-        {cell.direction === "up" ? "▲" : "▼"}
+        {cell.direction === "flat" ? null : cell.direction === "up" ? "▲" : "▼"}
         {cell.move}
       </div>
     </div>

@@ -206,14 +206,34 @@ function moveLabel(pct: number): string {
   return `${Math.abs(pct).toFixed(2)}%`;
 }
 
+/**
+ * Below this, `moveLabel` prints `0.00%` and no direction can be claimed.
+ *
+ * The screen prints two decimal places, so anything under half of the last one
+ * rounds away. Drawing `▲0.00%` over that, in green, states a side the figure
+ * does not carry; the PR's own standard against a dash in the move slot cuts
+ * exactly the same way here. Caught live on the VIX cell at `15.85 ▲0.00%`.
+ */
+const FLAT_BELOW_PCT = 0.005;
+
+function moveDirection(pct: number): "up" | "down" | "flat" {
+  if (Math.abs(pct) < FLAT_BELOW_PCT) return "flat";
+  return pct >= 0 ? "up" : "down";
+}
+
 function toScorecard(cells: ResolvedIndexCell[]): ScorecardCell[] {
-  return cells.map((c) => ({
-    label: c.label,
-    value: c.price,
-    move: moveLabel(c.pct),
-    direction: c.pct >= 0 ? "up" : "down",
-    tone: c.favorable ? "up" : "down",
-  }));
+  return cells.map((c) => {
+    const direction = moveDirection(c.pct);
+    return {
+      label: c.label,
+      value: c.price,
+      move: moveLabel(c.pct),
+      direction,
+      /* A move with no side has no favourable side either, including on the
+         inverted yield cell, so the colour goes with the glyph. */
+      tone: direction === "flat" ? ("flat" as const) : c.favorable ? ("up" as const) : ("down" as const),
+    };
+  });
 }
 
 function toStats(src: WrapSource): EveningStat[] {
@@ -232,11 +252,16 @@ function toStats(src: WrapSource): EveningStat[] {
     stats.push({ label: "Theses", value: `${src.thesesCount} active` });
   }
   if (src.vix) {
+    const direction = moveDirection(src.vix.pct);
     stats.push({
       label: "VIX",
-      value: `${src.vix.price} ${src.vix.pct >= 0 ? "▲" : "▼"}${moveLabel(src.vix.pct)}`,
-      /* Reads the figure, not the direction: a falling VIX is the calm side. */
-      tone: src.vix.pct >= 0 ? "stress" : "calm",
+      value:
+        direction === "flat"
+          ? `${src.vix.price} ${moveLabel(src.vix.pct)}`
+          : `${src.vix.price} ${direction === "up" ? "▲" : "▼"}${moveLabel(src.vix.pct)}`,
+      /* Reads the figure, not the direction: a falling VIX is the calm side.
+         A move that rounds to zero is neither, and takes no colour. */
+      tone: direction === "flat" ? undefined : direction === "up" ? "stress" : "calm",
     });
   }
   return stats;
