@@ -54,6 +54,7 @@ export interface DashSourceStory {
   sentiment: string;
   sector?: string;
   industry_verticals?: string[];
+  activity_types?: string[];
   tags?: string[];
 }
 
@@ -61,16 +62,29 @@ export interface DashboardSources {
   /** Read once, at the moment the screen is built. */
   now: Date;
   firstName: string | null;
-  storyCount: number;
-  bullishCount: number;
-  bearishCount: number;
+  /**
+   * The three count reads, and null when the read has NOT ANSWERED.
+   *
+   * Null and zero are different facts and the screen states them differently.
+   * `countsFailed` covers a read that came back with an error; these cover a
+   * read still in flight when the screen was forced to paint. Both were 0 with
+   * `countsFailed === false` before, so a timed-out load printed
+   * "SIGNALS TODAY 0 / 0 up 0 down" over three queries that had returned
+   * nothing at all.
+   */
+  storyCount: number | null;
+  bullishCount: number | null;
+  bearishCount: number | null;
   countsFailed: boolean;
   /** The symbols the reader chose, in their order. */
   marketSymbols: string[];
   /** Keyed by upper-case symbol, exactly as the page keeps it. */
   quotes: Record<string, DashQuote | null | undefined>;
   briefHeadline: string | null;
-  stories: DashSourceStory[];
+  /** Null when the Top Stories read has not answered. An empty array means it
+   *  answered and had nothing, which is the only case the screen may say so
+   *  in words. */
+  stories: DashSourceStory[] | null;
   watchlistTickers: string[];
   profileSectors: string[];
   /** The reader's own record. Null when it has not been read. */
@@ -140,10 +154,17 @@ function sectorMatches(sector: string | undefined, profileSectors: string[]): bo
 /**
  * Whether a story survives the For You lens.
  *
- * The same two inputs the desk scores its own For You tab on: the reader's
- * watchlist tickers and their chosen sectors. With neither set, nothing
- * matches, and the lens says so rather than passing the whole list through
- * under a personalised label.
+ * The reader's watchlist tickers and their chosen sectors, matched against the
+ * story's tags, its sector and both halves of the dual-dimension taxonomy. With
+ * neither set, nothing matches, and the lens says so rather than passing the
+ * whole list through under a personalised label.
+ *
+ * NOT THE SAME OPERATION AS THE DESK'S. `sortByRelevance` on `/dashboard`
+ * SCORES and RE-ORDERS, and never removes a story; this FILTERS. Same inputs,
+ * different verb, and the difference is deliberate: a phone list is four rows
+ * deep, so an ordering the reader has to scroll past is not a lens. It is
+ * stated here because an earlier version of this comment claimed the two were
+ * the same operation and they are not.
  */
 export function isForYou(
   story: DashSourceStory,
@@ -157,6 +178,13 @@ export function isForYou(
   if (sectorMatches(story.sector, profileSectors)) return true;
   for (const vertical of story.industry_verticals ?? []) {
     if (sectorMatches(vertical, profileSectors)) return true;
+  }
+  /* The desk's own scorer reads `activity_types` alongside the verticals and
+     this lens did not, so a story the desk counted as personal could be set
+     aside on the phone. The dual-dimension taxonomy is two JSONB arrays and
+     both of them are the reader's sectors' business. */
+  for (const activity of story.activity_types ?? []) {
+    if (sectorMatches(activity, profileSectors)) return true;
   }
   return false;
 }
@@ -206,6 +234,17 @@ export function toMarketCells(sources: DashboardSources): DashMarketCell[] {
           value: "no count",
           note: "counts unavailable",
         });
+        continue;
+      }
+      /* A count that has not come back is left out entirely, exactly as an
+         unanswered quote is. "no count" is the marker for a read that failed;
+         this cell has not failed, it simply has no answer yet, and neither
+         "no count" nor a zero is a true thing to print over it. */
+      if (
+        sources.storyCount === null ||
+        sources.bullishCount === null ||
+        sources.bearishCount === null
+      ) {
         continue;
       }
       cells.push({
@@ -262,8 +301,8 @@ export function toWaiting(gradedInLastDay: number | null): { eyebrow: string; li
 }
 
 /** The greeting's second line, or nothing at all. */
-export function toContext(storyCount: number, countsFailed: boolean): string | null {
-  if (countsFailed || storyCount <= 0) return null;
+export function toContext(storyCount: number | null, countsFailed: boolean): string | null {
+  if (storyCount === null || countsFailed || storyCount <= 0) return null;
   return `${storyCount} high-signal stories worth your attention.`;
 }
 
@@ -288,9 +327,16 @@ export function buildDashboardData(sources: DashboardSources): DashboardData {
     deskRecord: sources.deskRecord
       ? { intro: DASH_DESK_RECORD_INTRO, ...sources.deskRecord }
       : null,
-    stories: sources.stories.map((s, i) =>
-      toDashStory(s, i, sources.watchlistTickers, sources.profileSectors),
-    ),
+    /* Null all the way through to the screen, which then draws no Top Stories
+       section at all. Mapping a null to `[]` here would reach the empty state,
+       and the empty state says "The overnight read has not published", which
+       is a claim about the desk made from a read that has not answered. */
+    stories:
+      sources.stories === null
+        ? null
+        : sources.stories.map((s, i) =>
+            toDashStory(s, i, sources.watchlistTickers, sources.profileSectors),
+          ),
     /* There is no source that can tell this screen it is looking at
        yesterday's briefing. The desktop page does not read the briefing's
        date and this loader does not add a read to find out, so the notice

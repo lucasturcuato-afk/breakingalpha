@@ -1,6 +1,7 @@
 import { RESOLUTION_ORDER, DESK_RECORD_COPY, type Resolution } from "@/lib/desk-record";
 import { YOUR_RECORD_COPY } from "@/lib/your-record";
 import styles from "./dashboard.module.css";
+import { MONO } from "./fonts";
 
 /**
  * The four-bucket record grid, in its two drawings.
@@ -25,8 +26,6 @@ import styles from "./dashboard.module.css";
  */
 
 export type RecordVariant = "personal" | "desk";
-
-const MONO = "'JetBrains Mono', monospace";
 
 /** Per-bucket numeral colour on the personal record. The desk draws all four
  *  in `--c-ink` instead, because a bucket there already carries a dot. */

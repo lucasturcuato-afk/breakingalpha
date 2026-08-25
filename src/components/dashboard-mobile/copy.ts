@@ -22,5 +22,16 @@ export const DASH_YOUR_RECORD_INTRO =
 export const DASH_DESK_RECORD_INTRO =
   "Signalera's own graded calls. A separate record from yours, on the same four states.";
 
+/**
+ * The closing line.
+ *
+ * It used to read "No rate, ratio or score is computed over either record",
+ * and that sentence rendered a few hundred pixels under four desk bars whose
+ * width is `count / total`. A share is a ratio and the bars compute one, so
+ * the old line contradicted what the screen draws. The bars stay, because they
+ * state no figure and removing them is a change to the record component's
+ * design rather than to this screen's honesty; the sentence is the half that
+ * was wrong, so the sentence is the half that changed.
+ */
 export const DASH_DISCLAIMER =
-  "Informational only and never investment advice. No rate, ratio or score is computed over either record.";
+  "Informational only and never investment advice. Every record figure here is a count. The desk's bars draw a bucket's share of the whole record; no rate or score is stated as a figure.";

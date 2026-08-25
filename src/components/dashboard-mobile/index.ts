@@ -12,8 +12,9 @@ export type { RecordVariant } from "./record-buckets";
 export { DASH_FIXTURES_ALLOWED } from "./fixture-gate";
 export { buildDashboardData } from "./from-dashboard";
 export type { DashboardSources, DashQuote, DashSourceStory } from "./from-dashboard";
-export { useMobileRecords } from "./use-mobile-records";
+export { useMobileRecords, MOBILE_READ_BUDGET_MS } from "./use-mobile-records";
 export type { MobileRecords } from "./use-mobile-records";
+export { useArrivalBudget, useMobileMinute, MOBILE_MEDIA_QUERY } from "./use-mobile-viewport";
 export type {
   DashboardData,
   DashMarketCell,

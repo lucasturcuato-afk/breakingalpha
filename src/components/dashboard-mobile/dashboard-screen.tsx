@@ -10,6 +10,7 @@ import { DESK_RECORD_COPY } from "@/lib/desk-record";
 import ledger from "@/components/ledger/ledger.module.css";
 import styles from "./dashboard.module.css";
 import { RecordBuckets } from "./record-buckets";
+import { MONO, SANS, SERIF } from "./fonts";
 import type { DashboardData, DashMarketCell, DashStage, DashStory } from "./fixture";
 
 /**
@@ -38,8 +39,6 @@ import type { DashboardData, DashMarketCell, DashStage, DashStory } from "./fixt
  * second is not, and a section that is simply absent states neither.
  */
 
-const MONO = "'JetBrains Mono', monospace";
-const PLAYFAIR = "'Playfair Display', serif";
 const PAD = "var(--v3-pad)";
 
 /**
@@ -104,7 +103,10 @@ export function DashboardScreen({
 
   const d = data;
   const effectiveStage: DashStage = stage;
-  const shown = storyLens === "you" ? d.stories.filter((s) => s.forYou) : d.stories;
+  /* Null stories means the read has not answered, and the section is not drawn
+     at all. `shown` is only meaningful below that guard. */
+  const shown =
+    d.stories === null ? null : storyLens === "you" ? d.stories.filter((s) => s.forYou) : d.stories;
 
   return (
     <div data-parity="dash" style={{ backgroundColor: "var(--c-bg)", minHeight: "100%" }}>
@@ -114,7 +116,7 @@ export function DashboardScreen({
       {effectiveStage === "ready" || effectiveStage === "stale" || effectiveStage === "empty" ? (
         <div className={styles.dots} style={{ padding: `0 ${PAD} 26px` }}>
           <div className={styles.rise} style={{ display: "flex", alignItems: "center", gap: "11px" }}>
-            <span style={{ font: `400 italic 13px/1 ${PLAYFAIR}`, color: "var(--c-secondary)" }}>
+            <span style={{ font: `400 italic 13px/1 ${SERIF}`, color: "var(--c-secondary)" }}>
               {d.date}
             </span>
             <span aria-hidden="true" style={{ flex: 1, height: "1px", backgroundColor: "var(--c-border)" }} />
@@ -130,7 +132,7 @@ export function DashboardScreen({
             style={{
               animationDelay: `${D.greeting}ms`,
               margin: "16px 0 0",
-              font: `400 italic 15px/1.3 ${PLAYFAIR}`,
+              font: `400 italic 15px/1.3 ${SERIF}`,
               color: "var(--c-goldink)",
             }}
           >
@@ -141,7 +143,7 @@ export function DashboardScreen({
             style={{
               animationDelay: `${D.greeting}ms`,
               margin: "8px 0 0",
-              font: `500 30px/1 ${PLAYFAIR}`,
+              font: `500 30px/1 ${SERIF}`,
               letterSpacing: "-0.025em",
               color: "var(--c-ink)",
             }}
@@ -158,7 +160,7 @@ export function DashboardScreen({
               style={{
                 animationDelay: `${D.context}ms`,
                 margin: "10px 0 0",
-                font: `400 italic 15px/1.5 ${PLAYFAIR}`,
+                font: `400 italic 15px/1.5 ${SERIF}`,
                 color: "var(--c-secondary)",
                 textWrap: "pretty",
               }}
@@ -199,7 +201,7 @@ export function DashboardScreen({
             }}
           >
             <span style={{ minWidth: 0 }}>
-              <span style={{ display: "block", font: "600 13px/1.3 Inter, sans-serif", color: "var(--c-ink)" }}>
+              <span style={{ display: "block", font: `600 13px/1.3 ${SANS}`, color: "var(--c-ink)" }}>
                 {d.brief.title}
               </span>
               {/* No line at all when no brief headline has been read. The
@@ -210,7 +212,7 @@ export function DashboardScreen({
                   style={{
                     display: "block",
                     marginTop: "4px",
-                    font: "400 11.5px/1.4 Inter, sans-serif",
+                    font: `400 11.5px/1.4 ${SANS}`,
                     color: "var(--c-muted)",
                   }}
                 >
@@ -251,7 +253,7 @@ export function DashboardScreen({
                   <p
                     style={{
                       margin: "12px 0 0",
-                      font: `400 italic 11px/1.5 ${PLAYFAIR}`,
+                      font: `400 italic 11px/1.5 ${SERIF}`,
                       color: "var(--c-muted)",
                       textWrap: "pretty",
                     }}
@@ -291,33 +293,47 @@ export function DashboardScreen({
             </>
           ) : null}
 
-          <SectionRule label="top stories" delayMs={D.stories} />
-          <div style={{ marginTop: "10px", display: "flex", gap: "12px" }}>
-            <StoryLens label="For You" on={storyLens === "you"} onClick={() => setStoryLens("you")} />
-            <StoryLens label="All" on={storyLens === "all"} onClick={() => setStoryLens("all")} />
-          </div>
-          {shown.length ? (
-            <div style={{ marginTop: "10px" }}>
-              {shown.map((s, i) => (
-                <StoryRow key={s.id} story={s} last={i === shown.length - 1} />
-              ))}
-            </div>
-          ) : (
-            <Absence
-              title={storyLens === "you" ? "Nothing matched your sectors." : "No stories yet."}
-              body={
-                storyLens === "you"
-                  ? "Every story is still here. Switch to All to read the ones the lens set aside."
-                  : "The overnight read has not published. Nothing is being filtered out of this list."
-              }
-            />
-          )}
-          <TailLink label="The whole feed →" href="/live-feed" />
+          {/* The whole section, rule, lens and tail link included, exists only
+              when the Top Stories read ANSWERED. "The overnight read has not
+              published" is a statement about the desk, and the only thing that
+              can support it is a read that came back empty. A read still in
+              flight supports nothing, and it used to reach this same copy
+              because an outstanding read and an empty one were both `[]`. */}
+          {shown !== null ? (
+            <>
+              <SectionRule label="top stories" delayMs={D.stories} />
+              <div style={{ marginTop: "10px", display: "flex", gap: "12px" }}>
+                <StoryLens
+                  label="For You"
+                  on={storyLens === "you"}
+                  onClick={() => setStoryLens("you")}
+                />
+                <StoryLens label="All" on={storyLens === "all"} onClick={() => setStoryLens("all")} />
+              </div>
+              {shown.length ? (
+                <div style={{ marginTop: "10px" }}>
+                  {shown.map((s, i) => (
+                    <StoryRow key={s.id} story={s} last={i === shown.length - 1} />
+                  ))}
+                </div>
+              ) : (
+                <Absence
+                  title={storyLens === "you" ? "Nothing matched your sectors." : "No stories yet."}
+                  body={
+                    storyLens === "you"
+                      ? "Every story is still here. Switch to All to read the ones the lens set aside."
+                      : "The overnight read has not published. Nothing is being filtered out of this list."
+                  }
+                />
+              )}
+              <TailLink label="The whole feed →" href="/live-feed" />
+            </>
+          ) : null}
 
           <p
             style={{
               margin: "24px 0 0",
-              font: "400 11px/1.6 Inter, sans-serif",
+              font: `400 11px/1.6 ${SANS}`,
               color: "var(--c-muted)",
               textWrap: "pretty",
             }}
@@ -389,7 +405,7 @@ function ScreenHead({ initials }: { initials: string | null }) {
         padding: `2px ${PAD} 12px`,
       }}
     >
-      <span style={{ display: "inline-flex", font: `700 19px/1 ${PLAYFAIR}`, letterSpacing: "-0.02em" }}>
+      <span style={{ display: "inline-flex", font: `700 19px/1 ${SERIF}`, letterSpacing: "-0.02em" }}>
         <span style={{ color: "var(--c-ink)" }}>Signal</span>
         {/* The design clips a three-stop gold gradient to this word. Solid
             --c-goldink here: no token expresses those stops, gold as type at
@@ -448,7 +464,7 @@ function ScreenHead({ initials }: { initials: string | null }) {
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              font: "600 11.5px/1 Inter, sans-serif",
+              font: `600 11.5px/1 ${SANS}`,
               color: "var(--c-secondary)",
             }}
           >
@@ -514,7 +530,7 @@ function SectionRule({ label, delayMs }: { label: string; delayMs: number }) {
         gap: "11px",
       }}
     >
-      <span style={{ font: `400 italic 12.5px/1 ${PLAYFAIR}`, color: "var(--c-secondary)" }}>
+      <span style={{ font: `400 italic 12.5px/1 ${SERIF}`, color: "var(--c-secondary)" }}>
         {label}
       </span>
       <span aria-hidden="true" style={{ flex: 1, height: "1px", backgroundColor: "var(--c-border)" }} />
@@ -527,7 +543,7 @@ function Explainer({ text }: { text: string }) {
     <p
       style={{
         margin: "10px 0 0",
-        font: "400 11.5px/1.5 Inter, sans-serif",
+        font: `400 11.5px/1.5 ${SANS}`,
         color: "var(--c-muted)",
         textWrap: "pretty",
       }}
@@ -570,7 +586,7 @@ function MarketBand({
             display: "flex",
             alignItems: "center",
             padding: "0 4px",
-            font: "500 11.5px/1 Inter, sans-serif",
+            font: `500 11.5px/1 ${SANS}`,
             color: "var(--c-secondary)",
           }}
         >
@@ -595,7 +611,7 @@ function MarketBand({
         <p
           style={{
             margin: "10px 0 0",
-            font: "400 11px/1.5 Inter, sans-serif",
+            font: `400 11px/1.5 ${SANS}`,
             color: "var(--c-muted)",
             textWrap: "pretty",
           }}
@@ -668,13 +684,17 @@ function MarketCell({
               <span style={{ font: `400 12px/1 ${MONO}`, color: "var(--c-muted)" }}> · {cell.note}</span>
             ) : null}
           </span>
-        ) : (
+        ) : cell.note ? (
           /* No quote is an absence, stated. `stat-card.tsx` says the same
-             thing in the same words on the desk. */
+             thing in the same words on the desk. The marker is the loader's
+             word, never this file's: `?? "no quote"` used to stand here and
+             would have authored an absence marker for a cell whose loader
+             never set one, which is the same shape as a fixture default. A
+             cell with neither a delta nor a note now draws its value alone. */
           <span style={{ font: `400 12px/1 ${MONO}`, color: "var(--c-muted)" }}>
-            · {cell.note ?? "no quote"}
+            · {cell.note}
           </span>
-        )}
+        ) : null}
       </p>
     </>
   );
@@ -761,7 +781,7 @@ function WaitingCard({ eyebrow, line }: { eyebrow: string; line: string }) {
           style={{
             display: "block",
             marginTop: "7px",
-            font: `500 15px/1.35 ${PLAYFAIR}`,
+            font: `500 15px/1.35 ${SERIF}`,
             color: "var(--c-oninv-strong)",
           }}
         >
@@ -801,7 +821,7 @@ function TailLink({ label, href }: { label: string; href?: string }) {
     minHeight: "44px",
     display: "flex",
     alignItems: "center",
-    font: "600 12px/1 Inter, sans-serif",
+    font: `600 12px/1 ${SANS}`,
     color: "var(--c-goldink)",
     textDecoration: "none",
   } as const;
@@ -832,7 +852,7 @@ function StoryLens({ label, on, onClick }: { label: string; on: boolean; onClick
         alignItems: "center",
         padding: "0 13px",
         borderRadius: "6px",
-        font: `${on ? 600 : 500} 12px/1 Inter, sans-serif`,
+        font: `${on ? 600 : 500} 12px/1 ${SANS}`,
         border: `1px solid ${on ? "var(--c-ink)" : "var(--c-border)"}`,
         color: on ? "var(--c-ink)" : "var(--c-secondary)",
         backgroundColor: on ? "var(--c-surface)" : "transparent",
@@ -884,7 +904,7 @@ function StoryRow({ story, last }: { story: DashStory; last: boolean }) {
           flex: "none",
           width: "22px",
           textAlign: "right",
-          font: `800 22px/1 ${PLAYFAIR}`,
+          font: `800 22px/1 ${SERIF}`,
           color: "var(--c-number)",
         }}
       >
@@ -907,7 +927,7 @@ function StoryRow({ story, last }: { story: DashStory; last: boolean }) {
             <span
               style={{
                 flex: "none",
-                font: "600 10px/1.4 Inter, sans-serif",
+                font: `600 10px/1.4 ${SANS}`,
                 padding: "2px 6px",
                 borderRadius: "4px",
                 backgroundColor: "var(--c-surface)",
@@ -917,13 +937,13 @@ function StoryRow({ story, last }: { story: DashStory; last: boolean }) {
               {story.sector}
             </span>
           ) : null}
-          <span style={{ font: "400 10px/1 Inter, sans-serif", color: "var(--c-muted)" }}>
+          <span style={{ font: `400 10px/1 ${SANS}`, color: "var(--c-muted)" }}>
             {story.source}
           </span>
           <span
             style={{
               marginLeft: "auto",
-              font: "400 10px/1 Inter, sans-serif",
+              font: `400 10px/1 ${SANS}`,
               color: "var(--c-muted)",
             }}
           >
@@ -933,7 +953,7 @@ function StoryRow({ story, last }: { story: DashStory; last: boolean }) {
         <span
           style={{
             display: "block",
-            font: `700 14px/1.34 ${PLAYFAIR}`,
+            font: `700 14px/1.34 ${SERIF}`,
             color: "var(--c-ink)",
             textWrap: "pretty",
           }}
@@ -951,11 +971,11 @@ function StoryRow({ story, last }: { story: DashStory; last: boolean }) {
 function Absence({ title, body }: { title: string; body: string }) {
   return (
     <div style={{ marginTop: "12px" }}>
-      <p style={{ margin: 0, font: `500 15px/1.35 ${PLAYFAIR}`, color: "var(--c-ink)" }}>{title}</p>
+      <p style={{ margin: 0, font: `500 15px/1.35 ${SERIF}`, color: "var(--c-ink)" }}>{title}</p>
       <p
         style={{
           margin: "6px 0 0",
-          font: "400 11.5px/1.5 Inter, sans-serif",
+          font: `400 11.5px/1.5 ${SANS}`,
           color: "var(--c-muted)",
           maxWidth: "34ch",
           textWrap: "pretty",
@@ -978,10 +998,10 @@ function StaleNotice({ text }: { text: string }) {
         padding: "13px 14px",
       }}
     >
-      <div style={{ font: "600 12px/1 Inter, sans-serif", color: "var(--c-ink)" }}>
+      <div style={{ font: `600 12px/1 ${SANS}`, color: "var(--c-ink)" }}>
         You are reading yesterday&rsquo;s briefing.
       </div>
-      <div style={{ marginTop: "4px", font: "400 11.5px/1.5 Inter, sans-serif", color: "var(--c-body)" }}>
+      <div style={{ marginTop: "4px", font: `400 11.5px/1.5 ${SANS}`, color: "var(--c-body)" }}>
         {text}
       </div>
     </div>
@@ -1065,13 +1085,13 @@ function DashSkeleton() {
 function DashError() {
   return (
     <div style={{ padding: `18px ${PAD} 26px` }} role="alert">
-      <p style={{ margin: 0, font: `500 17px/1.4 ${PLAYFAIR}`, color: "var(--c-ink)" }}>
+      <p style={{ margin: 0, font: `500 17px/1.4 ${SERIF}`, color: "var(--c-ink)" }}>
         We could not load your briefing.
       </p>
       <p
         style={{
           margin: "10px 0 0",
-          font: "400 13px/1.6 Inter, sans-serif",
+          font: `400 13px/1.6 ${SANS}`,
           color: "var(--c-secondary)",
           maxWidth: "34ch",
           textWrap: "pretty",
@@ -1091,7 +1111,7 @@ function DashError() {
           padding: "0 17px",
           border: "1px solid var(--c-ink)",
           borderRadius: "9px",
-          font: "600 13px/1 Inter, sans-serif",
+          font: `600 13px/1 ${SANS}`,
           color: "var(--c-ink)",
         }}
       >

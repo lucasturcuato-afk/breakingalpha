@@ -40,8 +40,17 @@ import type { Resolution } from "@/lib/desk-record";
 /** Below `md`, where `md:hidden` still applies. */
 const MOBILE_QUERY = "(max-width: 767px)";
 
-/** A read that has not answered inside this is treated as answered with nothing. */
-const READ_BUDGET_MS = 12_000;
+/**
+ * A read that has not answered inside this is treated as answered with
+ * nothing, which for a record means null, which the screen draws as no section
+ * at all.
+ *
+ * Exported because the page's own arrival budget uses the same number. Two
+ * different ceilings would mean the screen paints once when this one expires
+ * and again when the other does.
+ */
+export const MOBILE_READ_BUDGET_MS = 12_000;
+const READ_BUDGET_MS = MOBILE_READ_BUDGET_MS;
 
 export interface MobileRecords {
   /** "idle" above the breakpoint: nothing was asked for, so nothing is pending. */

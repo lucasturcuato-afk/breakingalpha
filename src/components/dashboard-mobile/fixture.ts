@@ -43,7 +43,13 @@ export interface DashMarketCell {
   value: string;
   /** The line under the value. Absent when there is no quote to state. */
   delta?: string;
-  /** Reads the figure, not the direction: a falling VIX is calm. */
+  /**
+   * The colour of the delta, and it reads the DIRECTION OF THE MOVE, not
+   * whether the move is good news. The real loader takes it straight from
+   * `formatChange().isPositive` and inverts nothing, so a falling VIX renders
+   * red here exactly as it does on `stat-card.tsx`. An earlier comment here
+   * said the opposite; the code was right and the comment was wrong.
+   */
   tone?: "up" | "down";
   /** The signals cell states a pair rather than one delta. */
   counts?: { up: string; down: string };
@@ -121,7 +127,14 @@ export interface DashboardData {
   yourRecord: (DashRecordCounts & { intro: string }) | null;
   /** Null while the desk's record has not been read, or the read failed. */
   deskRecord: { intro: string; byResolution: Record<Resolution, number>; total: number } | null;
-  stories: DashStory[];
+  /**
+   * The Top Stories list, and NULL when the read has not answered.
+   *
+   * Null draws no section at all. An empty array draws the empty state, which
+   * says the overnight read has not published, and that is a statement about
+   * the desk that only a read that came back empty can support.
+   */
+  stories: DashStory[] | null;
   /** Published only when the reader is looking at yesterday's briefing. */
   staleNotice: string | null;
   disclaimer: string;
@@ -148,6 +161,11 @@ export const DASH_FIXTURE: DashboardData = {
   greeting: "Good morning, Maya.",
   initials: "MR",
   context: "142 high-signal stories worth your attention.",
+  /* The prototype colours the VIX and yield rows green on a negative move,
+     and these two rows reproduce it so parity fingerprints the same thing on
+     both sides. THE REAL LOADER DOES NOT DO THIS. It takes `tone` from
+     `formatChange().isPositive` and inverts nothing, so a falling VIX renders
+     red on the live screen, matching `stat-card.tsx`. Sample content only. */
   market: [
     { symbol: "SPY", label: "S&P 500", value: "6,412.08", delta: "−0.17%", tone: "down" },
     { symbol: "VIX", label: "VIX", value: "15.80", delta: "−4.20%", tone: "up" },
