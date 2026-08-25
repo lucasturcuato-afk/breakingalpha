@@ -481,10 +481,29 @@ export default function TrendsPage() {
           setAllSignals(deduplicateSignals(mapped));
         }
 
-        // Fetch real total article count from DB
+        // Total article count for the "Signalera scanned N articles" line.
+        //
+        // count: "planned" (planner estimate), NOT "exact". An exact count here
+        // is an unfiltered count(*) over ~188k rows, so Postgres scans the whole
+        // heap. Measured: 4/10 requests exceeded the statement timeout and
+        // returned HTTP 500, latency tracking buffer-cache state (3.5s cold ->
+        // 320ms warm). supabase-js reports a 500 as count: null, so the guard
+        // below skipped, totalArticleCount stayed null, and the fallback on the
+        // `totalArticles` line summed only the loaded signal rows: the page told
+        // the reader it had scanned 1,475 articles instead of 187,707.
+        //
+        // Note this is the opposite call to the one made on the dashboard in
+        // 7ef7c1c3, which moved to "planned" and then back to "exact". Both are
+        // correct: those counts carry a leading-wildcard ILIKE whose selectivity
+        // the planner cannot estimate (it guessed 1, and was 4.5x off on the
+        // total). This count has no predicate at all, so the estimate is
+        // pg_class.reltuples straight from ANALYZE. Measured error here is
+        // 0.362% (188,386 estimated vs 187,707 actual), 0 failures in 10.
         const { count } = await supabase
           .from("articles")
-          .select("id", { count: "exact", head: true });
+          .select("id", { count: "planned", head: true });
+        // Guard kept deliberately. With "planned" it should stop firing, but if
+        // it ever does, this must not fabricate a number.
         if (count !== null) setTotalArticleCount(count);
       } catch (e) {
         console.error("[trends] load error:", e);
