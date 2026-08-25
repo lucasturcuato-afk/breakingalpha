@@ -5,7 +5,8 @@ export type { WatchStage } from "./watch-screen";
 export { SectionRule } from "./section-rule";
 export type { SectionRuleProps } from "./section-rule";
 export { WatchNotice, WatchSkeleton } from "./watch-notice";
-export { WATCH_FIXTURE, WATCH_EMPTY, WATCH_FIXTURE_ALLOWED, WATCH_RECENCY_DAYS } from "./fixture";
+export { WATCH_FIXTURE, WATCH_EMPTY } from "./fixture";
+export { WATCH_RECENCY_DAYS } from "./recency";
 export type {
   WatchData,
   WatchLens,

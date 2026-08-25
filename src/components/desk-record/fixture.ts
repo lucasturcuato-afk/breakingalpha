@@ -2,10 +2,20 @@ import type { Resolution } from "@/lib/desk-record.ts";
 import type { OutcomeState } from "@/components/ledger";
 
 /**
- * Fixture for the mobile Desk record. This unit renders from data, not from a
- * loader: `src/lib/desk-record-query.ts` already exists and the desktop route
- * already calls it, so wiring it here would be a second call site for a screen
- * whose layout is not yet reviewed.
+ * Sample record for the mobile Desk record, DEVELOPMENT AND PREVIEW ONLY.
+ *
+ * It is no longer what production renders and it must never be again. This
+ * unit originally shipped with the screen defaulting `data` to the object
+ * below, so production showed SUPPORTED 64 / CHALLENGED 39 under copy
+ * promising "Every call the desk has published since June 2 is here", while
+ * `/radar/desk-record` showed the desk's TRUE counts on the same deployment.
+ * Two different track records, same product, same day. The counts here are
+ * invented and always were.
+ *
+ * The screen now reads the real record through `src/lib/desk-record-query.ts`,
+ * the same loader the desktop route calls, mapped by `from-record.ts`. This
+ * object survives only so the loading, error, empty and stale states stay
+ * reachable in dev, where no query can be made to fail on demand.
  *
  * COUNTS ONLY. There is no rate, ratio, share or percentage anywhere in this
  * file and there must never be one. A graded record is the single most likely
@@ -25,32 +35,58 @@ export interface DeskCountCell {
 export interface DeskEntryFixture {
   id: string;
   state: OutcomeState;
-  /** Ticker and brief date, on the trailing edge of the state row. */
-  instrument: string;
+  /**
+   * Ticker and brief date, on the trailing edge of the state row. Optional:
+   * a macro call has no symbol and an old row can have no brief date, and a
+   * lone separator is worse than an absent line.
+   */
+  instrument?: string;
   /** Verbatim, as the desk published it. Never rewritten. */
   claim: string;
-  /** The grader's benchmark evidence line. */
-  result: string;
+  /** The grader's benchmark evidence line. Absent when the read has none. */
+  result?: string;
 }
 
 export interface DeskRecordData {
-  /** The window the record covers, stated rather than implied. */
-  since: string;
+  /**
+   * The window the record covers, stated rather than implied. Null when no
+   * row carries a brief date, in which case the screen drops the clause
+   * rather than naming a month it cannot source.
+   */
+  since: string | null;
   /** Ordered by `RESOLUTION_ORDER`; the view does not sort. */
   counts: DeskCountCell[];
-  /** Where the desk is weakest, given its own section above the list. */
-  weaknessHeading: string;
-  weaknessProse: string;
+  /**
+   * Where the desk is weakest, given its own section above the list.
+   *
+   * NULLABLE, and null on the wired path. This is an editorial reading of the
+   * record, not a figure in it: `buildDeskRecord` produces no bucket-by-theme
+   * grouping and no "early on policy timing" count, so with a real record
+   * behind the screen there is nothing to derive it from. The section is
+   * dropped rather than filled with a sentence the loader cannot support.
+   * Both fields move together; one without the other is a heading over
+   * nothing.
+   */
+  weaknessHeading: string | null;
+  weaknessProse: string | null;
   listHeading: string;
   entries: DeskEntryFixture[];
   /**
-   * Rendered by the stale state only. The date the grader last completed.
+   * True when the read dropped rows from the LIST that it still counted in the
+   * strip. `notGraded` calls have no verdict word, and `OutcomeState` has no
+   * fifth member to give them, so they are counted and not listed. The screen
+   * says that out loud rather than leaving the two silently disagreeing.
+   */
+  hasUnlistedNotGraded: boolean;
+  /**
+   * Rendered by the stale state only. The date the grader last completed, or
+   * null when nothing supplies one.
    *
    * Must never be EARLIER than the newest entry's date. The stale notice says
    * calls that closed after this run are not on the record yet, so a listed
    * entry dated after it makes the screen contradict its own notice.
    */
-  lastGradedOn: string;
+  lastGradedOn: string | null;
 }
 
 export const DESK_FIXTURE: DeskRecordData = {
@@ -65,6 +101,7 @@ export const DESK_FIXTURE: DeskRecordData = {
   weaknessProse:
     "Rates calls resolve challenged more often than any other category here. The desk has been early on policy timing in eleven of them, which is a stated weakness rather than a discovered one.",
   listHeading: "recent",
+  hasUnlistedNotGraded: false,
   entries: [
     {
       id: "d1",

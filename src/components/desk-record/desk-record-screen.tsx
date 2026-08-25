@@ -3,7 +3,10 @@
 import Link from "next/link";
 import { LedgerEntryRow } from "@/components/ledger";
 import { DESK_RECORD_COPY, RESOLUTION_ORDER, type Resolution } from "@/lib/desk-record.ts";
-import { DESK_FIXTURE, type DeskRecordData } from "./fixture";
+/* Type-only. A value import out of this path would put the invented record in
+   this client component's chunk in `.next/static` whether or not it can ever
+   paint, which is design-lint rule `fixture-in-client-bundle`. Types erase. */
+import type { DeskRecordData } from "./fixture";
 /* One shimmer and one entrance curve in the redesign, not two. The Ledger's
    module already carries both, already rests in its drawn state, and already
    has the reduced-motion guard, so this screen consumes it rather than
@@ -70,21 +73,181 @@ const CELL_LABEL: Record<Resolution, string> = {
 
 export function DeskRecordScreen({
   stage = "ready",
-  data = DESK_FIXTURE,
+  data,
 }: {
   stage?: DeskStage;
-  data?: DeskRecordData;
+  /**
+   * The record, or null when there is none to draw. REQUIRED and NULLABLE, and
+   * never a default parameter.
+   *
+   * This screen shipped with the sample record as its default parameter and no
+   * gate anywhere in its path, so production drew SUPPORTED 64 / CHALLENGED 39
+   * under copy promising
+   * "Every call the desk has published since June 2 is here", while
+   * /radar/desk-record drew the desk's true counts on the same deployment. Two
+   * different track records, one product, one day. The caller now resolves
+   * where the record comes from and passes the result; a missing prop is a
+   * type error rather than an invented record in front of a reader.
+   */
+  data: DeskRecordData | null;
 }) {
   const settled = stage === "ready" || stage === "stale";
 
-  /* No horizontal padding on the root. The screen's gutter is 20px, drawn
-     once, by the two blocks below. The prototype's own `#v3phone` (line 247 of
-     the .dc.html) carries no padding either; the harness written by
-     parity_harness.py:1062 injects one, which makes the DESIGN side of a 390px
-     parity run 40px narrower than the build and reports the wrapping
-     difference as a height mismatch. That is a harness artifact, and matching
-     it here would ship the screen 40px too narrow to satisfy a measuring tape.
-     See the PR body for the 390 and the 430 runs. */
+  /* No record, no record. EARLY RETURN on purpose: below this line TypeScript
+     knows `data` is non-null, so no later reader needs a guard and no later
+     edit can bring the fixture back by omission.
+
+     error and empty are the two states that legitimately have nothing to draw,
+     and they say different things. Anything else with no data renders the
+     load, which claims only that something is on its way. */
+  if (data === null) {
+    return (
+      <DeskChrome>
+        {stage === "error" ? <DeskError /> : stage === "empty" ? <DeskEmpty /> : <DeskSkeleton />}
+      </DeskChrome>
+    );
+  }
+
+  return (
+    <DeskChrome>
+      {stage === "loading" ? <DeskSkeleton /> : null}
+      {stage === "error" ? <DeskError /> : null}
+      {stage === "empty" ? <DeskEmpty /> : null}
+
+      {settled ? (
+        <>
+          <div
+            style={{
+              marginTop: "16px",
+              padding: "13px 15px",
+              border: "1px solid var(--c-border)",
+              borderRadius: "12px",
+              backgroundColor: "var(--c-well)",
+            }}
+          >
+            <p
+              style={{
+                margin: 0,
+                font: "400 12.5px/1.6 Inter, sans-serif",
+                color: "var(--c-body)",
+                textWrap: "pretty",
+              }}
+            >
+              {/* "counted here", not "is here": the strip counts every graded
+                  row the read returned and the list below it is capped, so
+                  the stronger claim was not true of the list. The window
+                  clause is dropped rather than guessed when no row carries a
+                  brief date. */}
+              Every call the desk has published{data.since ? ` since ${data.since}` : ""} is counted
+              here, including the ones that went against it. Nothing is sorted by outcome and no
+              figure is derived from the mix.
+            </p>
+          </div>
+
+          {stage === "stale" && data.lastGradedOn !== null ? (
+            <DeskStaleNotice lastGradedOn={data.lastGradedOn} />
+          ) : null}
+
+          <CountStrip data={data} />
+
+          {/* The strip lost the prototype's AWAITING cell. Saying so is the
+              point: an absence the reader cannot see is indistinguishable
+              from a number that was quietly left out. */}
+          <p
+            style={{
+              margin: "10px 0 0",
+              font: "400 11.5px/1.55 Inter, sans-serif",
+              color: "var(--c-muted)",
+              textWrap: "pretty",
+            }}
+          >
+            {DESK_RECORD_COPY.awaitingNote}
+          </p>
+
+          {/* Both halves or neither. The weakness reading is editorial and the
+              loader produces nothing that could stand in for it, so on the
+              wired path the section is absent rather than empty. */}
+          {data.weaknessHeading !== null && data.weaknessProse !== null ? (
+            <>
+              <SectionRule label={data.weaknessHeading} />
+              <p
+                style={{
+                  margin: "11px 0 0",
+                  font: "400 13.5px/1.65 Inter, sans-serif",
+                  color: "var(--c-body)",
+                  textWrap: "pretty",
+                }}
+              >
+                {data.weaknessProse}
+              </p>
+            </>
+          ) : null}
+
+          <SectionRule label={data.listHeading} />
+          {data.entries.map((e, i) => (
+            <LedgerEntryRow
+              key={e.id}
+              state={e.state}
+              instrument={e.instrument}
+              claim={e.claim}
+              result={e.result}
+              first={i === 0}
+              /* TODO: open the Entry screen once step 6 lands it. No route
+                 exists yet, so the row keeps its control affordance and does
+                 nothing rather than navigating into a 404. */
+              onOpen={() => {}}
+            />
+          ))}
+          {/* The list closes on a rule. Every row draws its own top hairline,
+              so the last one needs a bottom edge to sit against. Gated on
+              there being a list: with a loader wired, counts can be non-zero
+              while the list page is empty, and a lone hairline under the
+              heading reads as a rendering failure. */}
+          {data.entries.length > 0 ? (
+            <div style={{ height: "1px", backgroundColor: "var(--c-hair)" }} />
+          ) : null}
+
+          {/* The strip and the list disagree on purpose when a not-graded call
+              is in the read: it is counted above and has no verdict word, so
+              it is not listed. An unexplained gap between a count and a list
+              reads as a bug or, worse, as a quiet omission. */}
+          {data.hasUnlistedNotGraded ? (
+            <p
+              style={{
+                margin: "12px 0 0",
+                font: "400 11.5px/1.55 Inter, sans-serif",
+                color: "var(--c-muted)",
+                textWrap: "pretty",
+              }}
+            >
+              Not-graded calls are counted in the strip above and are not listed here, because they
+              carry no verdict. {DESK_RECORD_COPY.bucketNote.notGraded}
+            </p>
+          ) : null}
+        </>
+      ) : null}
+    </DeskChrome>
+  );
+}
+
+/**
+ * Back control, title and standfirst. Drawn once and shared by every state,
+ * including the one with no record at all, so the screen cannot grow two
+ * mastheads that drift apart.
+ *
+ * No horizontal padding on the root. The screen's gutter is 20px, drawn once,
+ * by the two blocks below. The prototype's own `#v3phone` (line 247 of the
+ * .dc.html) carries no padding either; the harness written by
+ * parity_harness.py:1062 injects one, which makes the DESIGN side of a 390px
+ * parity run 40px narrower than the build and reports the wrapping difference
+ * as a height mismatch. That is a harness artifact, and matching it here would
+ * ship the screen 40px too narrow to satisfy a measuring tape. See the PR body
+ * for the 390 and the 430 runs.
+ *
+ * Neither string is a claim about the record. They say what the surface is for,
+ * which is true whether or not a record was read.
+ */
+function DeskChrome({ children }: { children: React.ReactNode }) {
   return (
     <div
       data-parity="desk"
@@ -116,92 +279,21 @@ export function DeskRecordScreen({
           whether the briefs are worth reading before you commit to one.
         </p>
 
-        {stage === "loading" ? <DeskSkeleton /> : null}
-        {stage === "error" ? <DeskError /> : null}
-        {stage === "empty" ? <DeskEmpty /> : null}
+        {children}
 
-        {settled ? (
-          <>
-            <div
-              style={{
-                marginTop: "16px",
-                padding: "13px 15px",
-                border: "1px solid var(--c-border)",
-                borderRadius: "12px",
-                backgroundColor: "var(--c-well)",
-              }}
-            >
-              <p
-                style={{
-                  margin: 0,
-                  font: "400 12.5px/1.6 Inter, sans-serif",
-                  color: "var(--c-body)",
-                  textWrap: "pretty",
-                }}
-              >
-                Every call the desk has published since {data.since} is here, including the ones
-                that went against it. Nothing is sorted by outcome and no figure is derived from the
-                mix.
-              </p>
-            </div>
-
-            {stage === "stale" ? <DeskStaleNotice data={data} /> : null}
-
-            <CountStrip data={data} />
-
-            {/* The strip lost the prototype's AWAITING cell. Saying so is the
-                point: an absence the reader cannot see is indistinguishable
-                from a number that was quietly left out. */}
-            <p
-              style={{
-                margin: "10px 0 0",
-                font: "400 11.5px/1.55 Inter, sans-serif",
-                color: "var(--c-muted)",
-                textWrap: "pretty",
-              }}
-            >
-              {DESK_RECORD_COPY.awaitingNote}
-            </p>
-
-            <SectionRule label={data.weaknessHeading} />
-            <p
-              style={{
-                margin: "11px 0 0",
-                font: "400 13.5px/1.65 Inter, sans-serif",
-                color: "var(--c-body)",
-                textWrap: "pretty",
-              }}
-            >
-              {data.weaknessProse}
-            </p>
-
-            <SectionRule label={data.listHeading} />
-            {data.entries.map((e, i) => (
-              <LedgerEntryRow
-                key={e.id}
-                state={e.state}
-                instrument={e.instrument}
-                claim={e.claim}
-                result={e.result}
-                first={i === 0}
-                /* TODO: open the Entry screen once step 6 lands it. No route
-                   exists yet, so the row keeps its control affordance and does
-                   nothing rather than navigating into a 404. */
-                onOpen={() => {}}
-              />
-            ))}
-            {/* The list closes on a rule. Every row draws its own top hairline,
-                so the last one needs a bottom edge to sit against. Gated on
-                there being a list: with a loader wired, counts can be non-zero
-                while the list page is empty, and a lone hairline under the
-                heading reads as a rendering failure. */}
-            {data.entries.length > 0 ? (
-              <div style={{ height: "1px", backgroundColor: "var(--c-hair)" }} />
-            ) : null}
-          </>
-        ) : null}
-
-        <div style={{ height: "calc(24px + env(safe-area-inset-bottom))" }} />
+        {/* Clearance for the tab bar, not a plain 24px gutter.
+            /desk-record is in no pole's `owns` list, so no pole lights on it,
+            but the bar still RENDERS on the route. Measured on the running
+            page at 390: with 24px the last line bottomed out at 796px against
+            a bar top of 761px, so 35px of it sat behind the bar. This is the
+            same element and the same expression `/watch` carries, for the
+            same reason. */}
+        <div
+          aria-hidden="true"
+          style={{
+            height: "calc(var(--mobile-tabbar-height) + env(safe-area-inset-bottom) + 24px)",
+          }}
+        />
       </div>
     </div>
   );
@@ -416,7 +508,7 @@ function DeskEmpty() {
  * and the list stay exactly where they are, because a late grading run is not
  * a reason to hide calls that were already settled.
  */
-function DeskStaleNotice({ data }: { data: DeskRecordData }) {
+function DeskStaleNotice({ lastGradedOn }: { lastGradedOn: string }) {
   return (
     <div
       style={{
@@ -431,7 +523,7 @@ function DeskStaleNotice({ data }: { data: DeskRecordData }) {
         This record is not current.
       </div>
       <div style={{ marginTop: "4px", font: "400 11.5px/1.5 Inter, sans-serif", color: "var(--c-body)" }}>
-        The grader last completed a run on {data.lastGradedOn}. Calls that closed after it are not
+        The grader last completed a run on {lastGradedOn}. Calls that closed after it are not
         on the record yet, and nothing below has been estimated in their place.
       </div>
     </div>

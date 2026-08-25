@@ -4,13 +4,16 @@ import { Fragment, useState } from "react";
 import { useRouter } from "next/navigation";
 import { SectionRule } from "./section-rule";
 import { WatchNotice, WatchSkeleton } from "./watch-notice";
-import {
-  WATCH_RECENCY_DAYS,
-  type FollowCluster,
-  type TrackedView,
-  type WatchData,
-  type WatchLens,
-  type WatchlistItem,
+import { WATCH_RECENCY_DAYS } from "./recency";
+/* Type-only. A value import out of this path would drag the invented headlines
+   beside the types into this client component's chunk in `.next/static`, which
+   is design-lint rule `fixture-in-client-bundle`. Types erase. */
+import type {
+  FollowCluster,
+  TrackedView,
+  WatchData,
+  WatchLens,
+  WatchlistItem,
 } from "./fixture";
 import styles from "./watch.module.css";
 
@@ -80,13 +83,21 @@ export function WatchScreen({
 }: {
   stage?: WatchStage;
   /**
-   * Required, never defaulted to the fixture. A default of WATCH_FIXTURE puts
-   * every invented headline in this screen's PRODUCTION client bundle, since a
-   * default parameter is a live reference the bundler cannot drop. The route
-   * above already decides between the fixture and the empty data, and it is
-   * the only caller.
+   * REQUIRED and NULLABLE, and never defaulted to the fixture. Two separate
+   * reasons, and the second is the one that blocked PR #653.
+   *
+   * A default of WATCH_FIXTURE puts every invented headline in this screen's
+   * PRODUCTION client bundle, since a default parameter is a live reference
+   * the bundler cannot drop.
+   *
+   * And null is not the same value as WATCH_EMPTY. This screen used to be
+   * mounted in production with `stage: "ready"` over the empty data, so it
+   * told a reader "Nothing on your watchlist yet" and "You follow nothing
+   * yet" when nothing had been read at all. Those are claims about the
+   * reader, made with no source. There is no loader behind this screen, so
+   * the honest value is null and the honest state is unwired.
    */
-  data: WatchData;
+  data: WatchData | null;
   /**
    * Re-read the tiers. Defaults to a router refresh, which is a real retry
    * rather than a control that does nothing: the tiers are supplied by the
@@ -101,6 +112,40 @@ export function WatchScreen({
   const loading = stage === "loading";
   const failed = stage === "error";
   const stale = stage === "stale";
+
+  /* No source, no tiers. This is an EARLY RETURN on purpose: below this line
+     TypeScript knows `data` is non-null, so no later reader needs a guard and
+     no later edit can reintroduce the fixture, or the empty data, by leaving
+     the prop off. That omission is exactly how `/ledger` shipped an invented
+     brief (PR #670) and how this screen shipped "Nothing on your watchlist
+     yet" over a read that never happened.
+
+     `unwired` is not `empty`. `empty` claims a source answered with nothing;
+     this claims only that nothing is reading, which is the one thing the
+     screen actually knows. The wording is the rule /ask settled on in PR 654. */
+  if (data === null) {
+    return (
+      <div
+        data-parity="watch"
+        className={styles.enter}
+        style={{ backgroundColor: "var(--c-bg)", minHeight: "100%" }}
+      >
+        <WatchMasthead />
+        <div style={{ padding: `18px ${PAD} 24px` }}>
+          <WatchNotice
+            heading="Watch is not wired to a source yet."
+            body="The three tiers read from three different places and none of them is connected to this screen. Nothing here is an empty list and nothing here has failed to load: there is simply nothing reading yet."
+          />
+          <div
+            aria-hidden="true"
+            style={{
+              height: "calc(var(--mobile-tabbar-height) + env(safe-area-inset-bottom))",
+            }}
+          />
+        </div>
+      </div>
+    );
+  }
 
   const visible = data.watchlist.filter((i) => matchesLens(i, lens));
   const hero = visible.find((i) => i.hero);
@@ -132,30 +177,7 @@ export function WatchScreen({
       className={styles.enter}
       style={{ backgroundColor: "var(--c-bg)", minHeight: "100%" }}
     >
-      {/* The gutter is applied ONCE, here and on the body below, never on both
-          an ancestor and a descendant. A doubled gutter measures a 310px text
-          column where the design draws 350px at 390. */}
-      <div style={{ padding: `6px ${PAD} 0` }}>
-        <h1
-          style={{
-            margin: 0,
-            font: "700 26px/1.14 'Playfair Display', serif",
-            letterSpacing: "-0.02em",
-            color: "var(--c-ink)",
-          }}
-        >
-          Watch
-        </h1>
-        <p
-          style={{
-            margin: "8px 0 0",
-            font: "400 12.5px/1.5 Inter, sans-serif",
-            color: "var(--c-secondary)",
-          }}
-        >
-          Tracked views, watchlist and following. Nothing on this screen is ever graded.
-        </p>
-      </div>
+      <WatchMasthead />
 
       <div style={{ padding: `18px ${PAD} 24px` }}>
         {stale ? (
@@ -319,6 +341,43 @@ export function WatchScreen({
           }}
         />
       </div>
+    </div>
+  );
+}
+
+/**
+ * Title and standfirst. Drawn once and shared by the wired render and the
+ * unwired one, so the two cannot drift into two different mastheads.
+ *
+ * The gutter is applied ONCE, here and on the body below, never on both an
+ * ancestor and a descendant. A doubled gutter measures a 310px text column
+ * where the design draws 350px at 390.
+ *
+ * Neither string is a claim about the reader. They describe what the screen is
+ * for, which is true whether or not anything is reading.
+ */
+function WatchMasthead() {
+  return (
+    <div style={{ padding: `6px ${PAD} 0` }}>
+      <h1
+        style={{
+          margin: 0,
+          font: "700 26px/1.14 'Playfair Display', serif",
+          letterSpacing: "-0.02em",
+          color: "var(--c-ink)",
+        }}
+      >
+        Watch
+      </h1>
+      <p
+        style={{
+          margin: "8px 0 0",
+          font: "400 12.5px/1.5 Inter, sans-serif",
+          color: "var(--c-secondary)",
+        }}
+      >
+        Tracked views, watchlist and following. Nothing on this screen is ever graded.
+      </p>
     </div>
   );
 }

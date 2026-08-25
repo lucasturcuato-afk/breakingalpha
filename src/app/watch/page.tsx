@@ -3,10 +3,10 @@ import {
   WatchScreen,
   WATCH_EMPTY,
   WATCH_FIXTURE,
-  WATCH_FIXTURE_ALLOWED,
   type WatchData,
   type WatchStage,
 } from "@/components/watch";
+import { mobileFixtureScreensEnabled } from "@/lib/mobile-fixture-gate";
 
 /**
  * Watch. One route rendering all three tiers, because the mobile design merges
@@ -18,10 +18,14 @@ import {
  * is edited to get here: the design dismantles Radar, so mobile Watch lands at
  * its own route and composes rather than rewrites.
  *
+ * THIS SCREEN IS UNWIRED. It has no loader, and rendering a fixture is not
+ * done. In production `data` is null and the screen says so; the sample tiers
+ * and the state switch below are development and preview only.
+ *
  * Server component so it can read the lifecycle switch off the async
- * searchParams, matching /ledger and /waitlist. The screen has no loader in
- * this unit, so the states cannot be reached by reproducing their conditions
- * and the runtime audit has to be able to reach each one.
+ * searchParams, matching /ledger and /waitlist. With no loader the states
+ * cannot be reached by reproducing their conditions, and the runtime audit has
+ * to be able to reach each one.
  */
 
 /** Query values. `empty` and `partial` are data variants, not screen stages. */
@@ -57,17 +61,20 @@ export default async function WatchPage({
   const params = await searchParams;
   const raw = Array.isArray(params.view) ? params.view[0] : params.view;
 
-  /* Sample content, and the switch that reaches it, are development and
-     preview only. The tiers draw a desk's own tracked views, watchlist and
-     follows, so shipping invented ones to a signed-in user would put words in
-     their mouth. Production gets the empty data and the empty states until a
-     real loader lands. The gate fails closed. */
-  const view: View = WATCH_FIXTURE_ALLOWED && VIEWS.includes(raw as View)
-    ? (raw as View)
-    : "ready";
-  const resolved = WATCH_FIXTURE_ALLOWED
-    ? resolve(view)
-    : { stage: "ready" as WatchStage, data: WATCH_EMPTY };
+  /* THE GATE IS RESOLVED HERE and the result is passed down. The screen has no
+     default and no `??` fallback on the data itself, so a deleted gate is a
+     type error rather than invented tiers in front of a reader.
+     `mobileFixtureScreensEnabled()` is the one gate for the whole mobile
+     programme; this file used to read a second copy of it out of `fixture.ts`.
+
+     What changed in production. This route used to pass `WATCH_EMPTY` at
+     `stage: "ready"`, which rendered three empty states: "Nothing on your
+     watchlist yet", "You follow nothing yet", "No tracked views yet". Every
+     one is a statement about the reader, and none of them had a read behind
+     it. Null instead, and the screen says it is not wired. */
+  const fixtureAllowed = mobileFixtureScreensEnabled();
+  const view: View = fixtureAllowed && VIEWS.includes(raw as View) ? (raw as View) : "ready";
+  const resolved = fixtureAllowed ? resolve(view) : null;
 
   return (
     <AppShell pageTitle="Watch" mobileFullBleed>
@@ -75,7 +82,7 @@ export default async function WatchPage({
           swap the sidebar for the tab bar. Gating lives in classes, never in an
           inline style: an inline display beats the class at every breakpoint. */}
       <div className="md:hidden">
-        <WatchScreen stage={resolved.stage} data={resolved.data} />
+        <WatchScreen stage={resolved?.stage ?? "ready"} data={resolved === null ? null : resolved.data} />
       </div>
 
       {/* Above the breakpoint this route has no layout of its own. The desktop

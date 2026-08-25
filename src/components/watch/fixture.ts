@@ -101,15 +101,6 @@ export interface WatchData {
   lastCheckedLabel: string;
 }
 
-/**
- * The recency window the watchlist counts against, in days.
- *
- * `WatchlistGallery.tsx` line 155 filters at two days and says "in the last two
- * days"; the mobile design's collapse says "No news today". The copy and the
- * window have to agree, so mobile ships at one day and says today. Flagged in
- * the PR body as an unresolved product difference with the desktop surface.
- */
-export const WATCH_RECENCY_DAYS: number = 1;
 
 export const WATCH_FIXTURE: WatchData = {
   trackedViews: [
@@ -222,7 +213,16 @@ export const WATCH_FIXTURE: WatchData = {
   lastCheckedLabel: "yesterday at 6:41 PM",
 };
 
-/** Every tier empty. What a first-run desk sees, and what production renders. */
+/**
+ * Every tier empty. What a first-run desk sees once a loader exists and comes
+ * back with nothing.
+ *
+ * NOT what production renders. It used to be, and that was the defect: with no
+ * loader at all, spreading this through the ready stage told a reader "Nothing
+ * on your watchlist yet" when nothing had been read and they may well have had
+ * one. An empty read and no read are different facts. Production now passes
+ * null and the screen renders its unwired state.
+ */
 export const WATCH_EMPTY: WatchData = {
   trackedViews: [],
   watchlist: [],
@@ -236,13 +236,10 @@ export const WATCH_EMPTY: WatchData = {
 };
 
 /**
- * Sample content is development and preview only, and the gate fails closed.
- *
- * The tiers draw a desk's own tracked views, watchlist and follows. Shipping
- * invented ones to a signed-in user in production would put words in their
- * mouth, so production gets the empty data and the empty states until a real
- * loader lands.
+ * Sample content is development and preview only, and the gate that decides
+ * that is `mobileFixtureScreensEnabled()` in `src/lib/mobile-fixture-gate.ts`.
+ * This module used to export its own copy of that boolean, which meant two
+ * gates for one programme and two places to get it wrong. The caller resolves
+ * the shared one and passes the result down; nothing here reads the
+ * environment.
  */
-export const WATCH_FIXTURE_ALLOWED =
-  process.env.NODE_ENV !== "production" ||
-  process.env.NEXT_PUBLIC_VERCEL_ENV === "preview";
