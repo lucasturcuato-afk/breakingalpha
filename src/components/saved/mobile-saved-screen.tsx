@@ -5,6 +5,7 @@ import type { CSSProperties } from "react";
 import type { EnrichedDeal } from "@/hooks/useSavedDeals";
 import { BackHeader, Screen, ScreenBody } from "@/components/mobile";
 import styles from "@/components/mobile/mobile.module.css";
+import { FONT_DISPLAY, FONT_MONO, FONT_SANS } from "@/components/mobile/fonts";
 
 /**
  * Saved deals, at phone width.
@@ -107,7 +108,7 @@ export function MobileSavedScreen({
             <h1
               style={{
                 margin: 0,
-                font: "700 10px/1 Inter, sans-serif",
+                font: `700 10px/1 ${FONT_SANS}`,
                 letterSpacing: "0.16em",
                 textTransform: "uppercase",
                 color: "var(--c-goldink)",
@@ -118,7 +119,7 @@ export function MobileSavedScreen({
           </div>
           <p
             aria-live="polite"
-            style={{ margin: "7px 0 0", font: "400 12px/1.4 Inter, sans-serif", color: "var(--c-muted)" }}
+            style={{ margin: "7px 0 0", font: `400 12px/1.4 ${FONT_SANS}`, color: "var(--c-muted)" }}
           >
             {isLoading
               ? "Loading"
@@ -145,7 +146,7 @@ export function MobileSavedScreen({
               border: "1px solid var(--c-border)",
               borderRadius: "9px",
               backgroundColor: "var(--c-card)",
-              font: "500 11px/1 Inter, sans-serif",
+              font: `500 11px/1 ${FONT_SANS}`,
               color: "var(--c-secondary)",
               whiteSpace: "nowrap",
             }}
@@ -182,7 +183,7 @@ export function MobileSavedScreen({
             id="saved-sort-label"
             style={{
               flex: "none",
-              font: "400 10px/1 'JetBrains Mono', monospace",
+              font: `400 10px/1 ${FONT_MONO}`,
               letterSpacing: "0.07em",
               color: "var(--c-muted)",
             }}
@@ -209,7 +210,7 @@ export function MobileSavedScreen({
                   alignItems: "center",
                   borderRadius: "9px",
                   whiteSpace: "nowrap",
-                  font: "700 10px/1 Inter, sans-serif",
+                  font: `700 10px/1 ${FONT_SANS}`,
                   letterSpacing: "0.04em",
                   textTransform: "uppercase",
                   border: `1px solid ${on ? "var(--c-gold)" : "var(--c-border)"}`,
@@ -237,7 +238,7 @@ export function MobileSavedScreen({
       {failed ? (
         <ScreenBody padTop="14px">
           <div style={CENTRED} role="alert">
-            <p style={{ margin: 0, font: "600 16px/1.3 'Playfair Display', serif", color: "var(--c-ink)" }}>
+            <p style={{ margin: 0, font: `600 16px/1.3 ${FONT_DISPLAY}`, color: "var(--c-ink)" }}>
               Your saved deals did not load
             </p>
             <p style={{ ...CENTRED_BODY, margin: "8px 0 0" }}>
@@ -266,7 +267,7 @@ export function MobileSavedScreen({
             <p
               style={{
                 margin: "14px 0 0",
-                font: "600 16px/1.3 'Playfair Display', serif",
+                font: `600 16px/1.3 ${FONT_DISPLAY}`,
                 color: "var(--c-ink)",
               }}
             >
@@ -287,7 +288,7 @@ export function MobileSavedScreen({
                 padding: "0 17px",
                 borderRadius: "12px",
                 backgroundColor: "var(--c-gold)",
-                font: "700 11px/1 Inter, sans-serif",
+                font: `700 11px/1 ${FONT_SANS}`,
                 letterSpacing: "0.04em",
                 textTransform: "uppercase",
                 color: "var(--c-ongold)",
@@ -337,7 +338,7 @@ const CENTRED: CSSProperties = {
 };
 
 const CENTRED_BODY: CSSProperties = {
-  font: "400 13px/1.6 Inter, sans-serif",
+  font: `400 13px/1.6 ${FONT_SANS}`,
   color: "var(--c-muted)",
   maxWidth: "30ch",
   textWrap: "pretty",
@@ -376,11 +377,11 @@ function DealRow({
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "12px" }}>
         <div style={{ minWidth: 0, flex: 1 }}>
           <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-            <span style={{ font: "700 15px/1.3 'Playfair Display', serif", color: "var(--c-ink)" }}>
+            <span style={{ font: `700 15px/1.3 ${FONT_DISPLAY}`, color: "var(--c-ink)" }}>
               {deal.company}
             </span>
             {deal.acquirer ? (
-              <span style={{ font: "400 10px/1.3 'Playfair Display', serif", color: "var(--c-muted)" }}>
+              <span style={{ font: `400 10px/1.3 ${FONT_DISPLAY}`, color: "var(--c-muted)" }}>
                 &larr; {deal.acquirer}
               </span>
             ) : null}
@@ -394,7 +395,7 @@ function DealRow({
                 borderRadius: "6px",
                 border: `1px solid var(--pill-${conf.family}-border)`,
                 backgroundColor: `var(--pill-${conf.family}-bg)`,
-                font: "700 10px/1.5 Inter, sans-serif",
+                font: `700 10px/1.5 ${FONT_SANS}`,
                 letterSpacing: "0.04em",
                 color: `var(--pill-${conf.family}-text)`,
               }}
@@ -409,7 +410,7 @@ function DealRow({
             <p
               style={{
                 margin: "8px 0 0",
-                font: "400 10px/1 'JetBrains Mono', monospace",
+                font: `400 10px/1 ${FONT_MONO}`,
                 letterSpacing: "0.07em",
                 color: "var(--c-muted)",
               }}
@@ -421,7 +422,7 @@ function DealRow({
 
         <div style={{ flex: "none", display: "flex", alignItems: "flex-start", gap: "10px" }}>
           {value ? (
-            <span style={{ font: "600 13px/1.4 'JetBrains Mono', monospace", color: "var(--c-goldink)" }}>
+            <span style={{ font: `600 13px/1.4 ${FONT_MONO}`, color: "var(--c-goldink)" }}>
               {value}
             </span>
           ) : null}
@@ -472,7 +473,7 @@ function DealRow({
             display: "inline-flex",
             alignItems: "center",
             alignSelf: "flex-start",
-            font: "400 10px/1 Inter, sans-serif",
+            font: `400 10px/1 ${FONT_SANS}`,
             color: "var(--c-goldink)",
             textDecoration: "none",
           }}
@@ -485,6 +486,6 @@ function DealRow({
 }
 
 const META: CSSProperties = {
-  font: "400 10px/1 Inter, sans-serif",
+  font: `400 10px/1 ${FONT_SANS}`,
   color: "var(--c-muted)",
 };

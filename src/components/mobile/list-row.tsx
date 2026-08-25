@@ -3,6 +3,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import styles from "./mobile.module.css";
+import { FONT_SANS } from "@/components/mobile/fonts";
 
 /**
  * The settings list row. The one component shared by the largest subset of
@@ -57,7 +58,7 @@ function Body({ label, sub, subId }: { label: string; sub?: ReactNode; subId?: s
       <span
         style={{
           display: "block",
-          font: "500 14px/1.35 Inter, sans-serif",
+          font: `500 14px/1.35 ${FONT_SANS}`,
           color: "var(--c-ink)",
         }}
       >
@@ -69,7 +70,7 @@ function Body({ label, sub, subId }: { label: string; sub?: ReactNode; subId?: s
           style={{
             display: "block",
             marginTop: "3px",
-            font: "400 11.5px/1.4 Inter, sans-serif",
+            font: `400 11.5px/1.4 ${FONT_SANS}`,
             color: "var(--c-muted)",
           }}
         >

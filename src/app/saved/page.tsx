@@ -105,10 +105,16 @@ export default function SavedDealsPage() {
   }
 
   return (
-    <>
+    /* `mobileFullBleed` is the whole fix. The shell used to sit inside a
+       `hidden md:block`, which took the MOBILE TAB BAR down with it: below md
+       the entire shell was display:none, so the screen rendered with no
+       navigation at all. The flag gates only the desk chrome, the mood bar,
+       topbar and footer, and leaves the tab bar mounted. Gating stays in a
+       CLASS on the two layout wrappers below; an inline display would beat a
+       responsive class at every breakpoint. */
+    <AppShell pageTitle="Saved Deals" mobileFullBleed>
       {/* Phone width. One state, two layouts: the mobile screen reads the same
-          hook, the same sort key and the same list the desktop table does.
-          Gating lives in classes, never in an inline style. */}
+          hook, the same sort key and the same list the desktop table does. */}
       <div className="md:hidden">
         <MobileSavedScreen
           deals={sorted}
@@ -124,7 +130,6 @@ export default function SavedDealsPage() {
       </div>
 
       <div className="hidden md:block">
-    <AppShell pageTitle="Saved Deals">
       <div className="max-w-3xl mx-auto px-6 py-8 dark:bg-[#161616] min-h-full">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
@@ -293,8 +298,7 @@ export default function SavedDealsPage() {
           </div>
         )}
       </div>
-    </AppShell>
       </div>
-    </>
+    </AppShell>
   );
 }

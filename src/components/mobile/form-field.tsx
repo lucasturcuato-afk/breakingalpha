@@ -2,6 +2,7 @@
 
 import type { CSSProperties } from "react";
 import { useId } from "react";
+import { FONT_MONO, FONT_SANS } from "@/components/mobile/fonts";
 
 /**
  * The mobile form row: a label above one control, at the measurements the
@@ -74,7 +75,7 @@ export function FormField({
                 clipPath: "inset(50%)",
                 whiteSpace: "nowrap",
               }
-            : { display: "block", font: "600 11px/1 Inter, sans-serif", color: "var(--c-ink)" }
+            : { display: "block", font: `600 11px/1 ${FONT_SANS}`, color: "var(--c-ink)" }
         }
       >
         {label}
@@ -91,8 +92,8 @@ export function FormField({
           ...FIELD,
           marginTop: labelHidden ? "10px" : FIELD.marginTop,
           font: mono
-            ? "400 13px/1 'JetBrains Mono', monospace"
-            : "400 13px/1 Inter, sans-serif",
+            ? `400 13px/1 ${FONT_MONO}`
+            : `400 13px/1 ${FONT_SANS}`,
           letterSpacing: mono ? "0.02em" : undefined,
         }}
       />
@@ -101,7 +102,7 @@ export function FormField({
           id={helpId}
           style={{
             margin: "8px 0 0",
-            font: "400 10.5px/1.5 Inter, sans-serif",
+            font: `400 10.5px/1.5 ${FONT_SANS}`,
             color: "var(--c-muted)",
             textWrap: "pretty",
           }}

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { BackHeader, Screen, ScreenBody } from "@/components/mobile";
 import styles from "@/components/mobile/mobile.module.css";
+import { FONT_DISPLAY, FONT_MONO, FONT_SANS } from "@/components/mobile/fonts";
 
 /**
  * What Signalera has learned.
@@ -53,11 +54,11 @@ export function MobileLearnedScreen({
     <Screen parity="learned">
       <BackHeader href="/settings/profile" label="Settings" />
       <ScreenBody padTop="18px">
-        <p style={{ margin: 0, font: "600 11px/1 Inter, sans-serif", color: "var(--c-muted)" }}>Settings</p>
+        <p style={{ margin: 0, font: `600 11px/1 ${FONT_SANS}`, color: "var(--c-muted)" }}>Settings</p>
         <h1
           style={{
             margin: "8px 0 0",
-            font: "800 25px/1.16 'Playfair Display', serif",
+            font: `800 25px/1.16 ${FONT_DISPLAY}`,
             letterSpacing: "-0.02em",
             color: "var(--c-ink)",
           }}
@@ -67,7 +68,7 @@ export function MobileLearnedScreen({
         <p
           style={{
             margin: "9px 0 0",
-            font: "400 13px/1.6 Inter, sans-serif",
+            font: `400 13px/1.6 ${FONT_SANS}`,
             color: "var(--c-secondary)",
             textWrap: "pretty",
           }}
@@ -78,7 +79,7 @@ export function MobileLearnedScreen({
 
         <section style={{ ...CARD, marginTop: "20px" }}>
           <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "12px" }}>
-            <h2 style={{ margin: 0, font: "700 16px/1.3 'Playfair Display', serif", color: "var(--c-ink)" }}>
+            <h2 style={{ margin: 0, font: `700 16px/1.3 ${FONT_DISPLAY}`, color: "var(--c-ink)" }}>
               What Signalera has learned
             </h2>
             <ResetLearned />
@@ -87,7 +88,7 @@ export function MobileLearnedScreen({
           <p
             style={{
               margin: "10px 0 0",
-              font: "400 12px/1.6 Inter, sans-serif",
+              font: `400 12px/1.6 ${FONT_SANS}`,
               color: "var(--c-secondary)",
               textWrap: "pretty",
             }}
@@ -102,7 +103,7 @@ export function MobileLearnedScreen({
               role="status"
               style={{
                 margin: "10px 0 0",
-                font: "400 11.5px/1.5 Inter, sans-serif",
+                font: `400 11.5px/1.5 ${FONT_SANS}`,
                 color: "var(--c-amberink)",
                 textWrap: "pretty",
               }}
@@ -116,7 +117,7 @@ export function MobileLearnedScreen({
             <p
               style={{
                 margin: "14px 0 0",
-                font: "400 12px/1.6 Inter, sans-serif",
+                font: `400 12px/1.6 ${FONT_SANS}`,
                 color: "var(--c-muted)",
                 textWrap: "pretty",
               }}
@@ -137,7 +138,7 @@ export function MobileLearnedScreen({
         <p
           style={{
             margin: "16px 0 0",
-            font: "400 11px/1.5 Inter, sans-serif",
+            font: `400 11px/1.5 ${FONT_SANS}`,
             color: "var(--c-muted)",
             textAlign: "center",
             textWrap: "pretty",
@@ -175,7 +176,7 @@ function WeightRow({ sector, weight }: { sector: string; weight: number }) {
         style={{
           flex: "none",
           width: "112px",
-          font: "400 12px/1.35 Inter, sans-serif",
+          font: `400 12px/1.35 ${FONT_SANS}`,
           color: "var(--c-ink)",
           overflow: "hidden",
           textOverflow: "ellipsis",
@@ -212,7 +213,7 @@ function WeightRow({ sector, weight }: { sector: string; weight: number }) {
           flex: "none",
           width: "34px",
           textAlign: "right",
-          font: "400 11px/1 'JetBrains Mono', monospace",
+          font: `400 11px/1 ${FONT_MONO}`,
           color: "var(--c-muted)",
         }}
       >
@@ -293,7 +294,7 @@ function ResetLearned() {
           border: `1px solid ${stage === "arming" ? "var(--c-gold)" : "var(--c-border)"}`,
           borderRadius: "9px",
           backgroundColor: stage === "arming" ? "var(--c-well)" : "var(--c-card)",
-          font: "500 11px/1 Inter, sans-serif",
+          font: `500 11px/1 ${FONT_SANS}`,
           color: stage === "arming" ? "var(--c-goldink)" : "var(--c-muted)",
           whiteSpace: "nowrap",
         }}
@@ -305,7 +306,7 @@ function ResetLearned() {
           role="status"
           style={{
             maxWidth: "150px",
-            font: "400 10px/1.4 Inter, sans-serif",
+            font: `400 10px/1.4 ${FONT_SANS}`,
             color: stage === "failed" ? "var(--c-redink)" : "var(--c-muted)",
             textAlign: "right",
             textWrap: "pretty",
@@ -377,7 +378,7 @@ function BehavioralInsights() {
 
   return (
     <section style={{ ...CARD, marginTop: "14px" }}>
-      <h2 style={{ margin: 0, font: "700 16px/1.3 'Playfair Display', serif", color: "var(--c-ink)" }}>
+      <h2 style={{ margin: 0, font: `700 16px/1.3 ${FONT_DISPLAY}`, color: "var(--c-ink)" }}>
         How Signalera is learning about you
       </h2>
 
@@ -427,7 +428,7 @@ function BehavioralInsights() {
 }
 
 const BODY = {
-  font: "400 12.5px/1.55 Inter, sans-serif",
+  font: `400 12.5px/1.55 ${FONT_SANS}`,
   color: "var(--c-body)",
   textWrap: "pretty",
 } as const;

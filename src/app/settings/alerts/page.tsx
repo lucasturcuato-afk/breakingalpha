@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { MobileAlertsScreen } from "@/components/settings/mobile-alerts-screen";
+import { FONT_DISPLAY, FONT_SANS } from "@/components/mobile/fonts";
 
 /**
  * Alerts. A new route, because the screen had none: `src/app/alerts/` does not
@@ -22,10 +23,10 @@ export default function AlertsPage() {
       </div>
 
       <div className="hidden md:block" style={{ padding: "48px", backgroundColor: "var(--c-bg)" }}>
-        <p style={{ margin: 0, font: "500 17px/1.4 'Playfair Display', serif", color: "var(--c-ink)" }}>
+        <p style={{ margin: 0, font: `500 17px/1.4 ${FONT_DISPLAY}`, color: "var(--c-ink)" }}>
           Alerts is a mobile surface.
         </p>
-        <p style={{ margin: "10px 0 0", font: "400 13px/1.6 Inter, sans-serif", color: "var(--c-secondary)" }}>
+        <p style={{ margin: "10px 0 0", font: `400 13px/1.6 ${FONT_SANS}`, color: "var(--c-secondary)" }}>
           On a wider screen the brief and the wrap are already in front of you, so there is nothing
           here to schedule.{" "}
           <Link href="/settings/profile" style={{

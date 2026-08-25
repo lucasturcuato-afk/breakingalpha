@@ -163,11 +163,16 @@ export default function ProfileSettingsPage() {
   }
 
   return (
-    <>
+    /* `mobileFullBleed` is the whole fix. The shell used to sit inside a
+       `hidden md:block`, which took the MOBILE TAB BAR down with it: below md
+       the entire shell was display:none, so the screen rendered with no
+       navigation at all. The flag gates only the desk chrome, the mood bar,
+       topbar and footer, and leaves the tab bar mounted. Gating stays in a
+       CLASS on the two layout wrappers below; an inline display would beat a
+       responsive class at every breakpoint. */
+    <AppShell pageTitle="Profile Settings" mood={mood} moodHeadline={moodHeadline} moodDetails={moodDetails} mobileFullBleed>
       {/* Phone width. The mobile screen is a second layout over the SAME state,
-          not a second page, so the two cannot disagree about what is saved.
-          Gating lives in classes: an inline display beats a class at every
-          breakpoint. */}
+          not a second page, so the two cannot disagree about what is saved. */}
       <div className="md:hidden">
         <MobileSettingsScreen
           loading={loading}
@@ -195,7 +200,6 @@ export default function ProfileSettingsPage() {
       </div>
 
       <div className="hidden md:block">
-    <AppShell pageTitle="Profile Settings" mood={mood} moodHeadline={moodHeadline} moodDetails={moodDetails}>
       <div className="p-6 max-w-[640px]">
         {/* Header */}
         <h1 className="font-display text-[24px] font-extrabold text-espresso mb-1">
@@ -350,9 +354,8 @@ export default function ProfileSettingsPage() {
           </div>
         </div>
       )}
-    </AppShell>
       </div>
-    </>
+    </AppShell>
   );
 }
 

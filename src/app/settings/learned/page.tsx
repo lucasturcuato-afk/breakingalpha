@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { getSupabaseWithUser } from "@/lib/supabase-server";
 import { getUserProfile, updateInferredWeights } from "@/lib/user-profile";
 import { MobileLearnedScreen } from "@/components/settings/mobile-learned-screen";
+import { FONT_DISPLAY, FONT_SANS } from "@/components/mobile/fonts";
 
 /**
  * What Signalera has learned. A new route: the content exists today only as
@@ -54,10 +55,10 @@ export default async function LearnedPage() {
       </div>
 
       <div className="hidden md:block" style={{ padding: "48px", backgroundColor: "var(--c-bg)" }}>
-        <p style={{ margin: 0, font: "500 17px/1.4 'Playfair Display', serif", color: "var(--c-ink)" }}>
+        <p style={{ margin: 0, font: `500 17px/1.4 ${FONT_DISPLAY}`, color: "var(--c-ink)" }}>
           This is a mobile surface.
         </p>
-        <p style={{ margin: "10px 0 0", font: "400 13px/1.6 Inter, sans-serif", color: "var(--c-secondary)" }}>
+        <p style={{ margin: "10px 0 0", font: `400 13px/1.6 ${FONT_SANS}`, color: "var(--c-secondary)" }}>
           On a wider screen the learned weights sit inside{" "}
           <Link href="/settings/preferences" style={{
               boxSizing: "content-box",

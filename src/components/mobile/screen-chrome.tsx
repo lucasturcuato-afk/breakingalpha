@@ -3,6 +3,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import styles from "./mobile.module.css";
+import { FONT_DISPLAY, FONT_MONO, FONT_SANS } from "@/components/mobile/fonts";
 
 /**
  * Chrome shared by the five screens in this batch: the back header and the
@@ -34,7 +35,7 @@ export function BackHeader({ href, label }: { href: string; label: string }) {
           display: "flex",
           alignItems: "center",
           gap: "6px",
-          font: "500 13px/1 Inter, sans-serif",
+          font: `500 13px/1 ${FONT_SANS}`,
           color: "var(--c-secondary)",
           textDecoration: "none",
         }}
@@ -61,7 +62,7 @@ export function BackHeader({ href, label }: { href: string; label: string }) {
 export function SectionRule({ label, marginTop = "24px" }: { label: string; marginTop?: string }) {
   return (
     <div style={{ marginTop, display: "flex", alignItems: "center", gap: "11px" }}>
-      <span style={{ font: "400 italic 12.5px/1 'Playfair Display', serif", color: "var(--c-secondary)" }}>
+      <span style={{ font: `400 italic 12.5px/1 ${FONT_DISPLAY}`, color: "var(--c-secondary)" }}>
         {label}
       </span>
       <span aria-hidden="true" style={{ flex: 1, height: "1px", backgroundColor: "var(--c-border)" }} />
@@ -79,7 +80,7 @@ export function EyebrowRule({ children, marginTop = "24px" }: { children: ReactN
       <h2
         style={{
           margin: 0,
-          font: "700 10px/1 'JetBrains Mono', monospace",
+          font: `700 10px/1 ${FONT_MONO}`,
           letterSpacing: "0.07em",
           color: "var(--c-muted)",
           textTransform: "uppercase",

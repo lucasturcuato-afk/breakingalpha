@@ -3,6 +3,7 @@
 import { useCallback, useId, useMemo, useState, useSyncExternalStore } from "react";
 import { BackHeader, ListRowControl, Screen, ScreenBody, ToggleSwitch } from "@/components/mobile";
 import styles from "@/components/mobile/mobile.module.css";
+import { FONT_DISPLAY, FONT_MONO, FONT_SANS } from "@/components/mobile/fonts";
 
 /**
  * Alerts. The one screen in this batch with no repo source at all: github.md
@@ -156,7 +157,7 @@ export function AlertsView({
         <h1
           style={{
             margin: 0,
-            font: "700 24px/1.16 'Playfair Display', serif",
+            font: `700 24px/1.16 ${FONT_DISPLAY}`,
             letterSpacing: "-0.02em",
             color: "var(--c-ink)",
           }}
@@ -166,7 +167,7 @@ export function AlertsView({
         <p
           style={{
             margin: "8px 0 0",
-            font: "400 12.5px/1.55 Inter, sans-serif",
+            font: `400 12.5px/1.55 ${FONT_SANS}`,
             color: "var(--c-muted)",
             textWrap: "pretty",
           }}
@@ -182,7 +183,7 @@ export function AlertsView({
             role="alert"
             style={{
               margin: "0 0 14px",
-              font: "400 12px/1.55 Inter, sans-serif",
+              font: `400 12px/1.55 ${FONT_SANS}`,
               color: "var(--c-redink)",
               textWrap: "pretty",
             }}
@@ -231,7 +232,7 @@ export function AlertsView({
         >
           <div
             style={{
-              font: "400 10px/1 'JetBrains Mono', monospace",
+              font: `400 10px/1 ${FONT_MONO}`,
               letterSpacing: "0.07em",
               color: "var(--c-muted)",
             }}
@@ -241,7 +242,7 @@ export function AlertsView({
           <p
             style={{
               margin: "9px 0 0",
-              font: "400 13px/1.65 Inter, sans-serif",
+              font: `400 13px/1.65 ${FONT_SANS}`,
               color: "var(--c-body)",
               textWrap: "pretty",
             }}
@@ -270,7 +271,7 @@ function Group({
       <h2
         style={{
           margin: 0,
-          font: "400 10px/1 'JetBrains Mono', monospace",
+          font: `400 10px/1 ${FONT_MONO}`,
           letterSpacing: "0.07em",
           color: "var(--c-muted)",
         }}

@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import type { CSSProperties } from "react";
 import { EyebrowRule } from "@/components/mobile";
 import styles from "@/components/mobile/mobile.module.css";
+import { FONT_DISPLAY, FONT_MONO, FONT_SANS } from "@/components/mobile/fonts";
 
 /**
  * The public share brief, at phone width. The recipient has no session, so
@@ -103,7 +104,7 @@ export function MobileShareScreen({
               lockup's defining element is a rising arrow, which is the most
               prominent possible claim about outcomes, seen here before any
               disclaimer. */}
-          <span style={{ display: "inline-flex", font: "700 18px/1 'Playfair Display', serif", letterSpacing: "-0.02em" }}>
+          <span style={{ display: "inline-flex", font: `700 18px/1 ${FONT_DISPLAY}`, letterSpacing: "-0.02em" }}>
             <span style={{ color: "var(--c-ink)" }}>Signal</span>
             <span style={{ color: "var(--c-goldink)" }}>era.</span>
           </span>
@@ -121,7 +122,7 @@ export function MobileShareScreen({
             alignItems: "center",
             borderRadius: "9px",
             backgroundColor: "var(--c-gold)",
-            font: "600 12px/1 Inter, sans-serif",
+            font: `600 12px/1 ${FONT_SANS}`,
             color: "var(--c-ongold)",
             textDecoration: "none",
             whiteSpace: "nowrap",
@@ -136,7 +137,7 @@ export function MobileShareScreen({
       <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "20px var(--v3-pad) 0" }}>
         <span
           style={{
-            font: "400 10px/1 'JetBrains Mono', monospace",
+            font: `400 10px/1 ${FONT_MONO}`,
             letterSpacing: "0.07em",
             color: "var(--c-muted)",
             textTransform: "uppercase",
@@ -150,7 +151,7 @@ export function MobileShareScreen({
           <h1
             style={{
               margin: "10px 0 0",
-              font: "700 27px/1.18 'Playfair Display', serif",
+              font: `700 27px/1.18 ${FONT_DISPLAY}`,
               letterSpacing: "-0.022em",
               color: "var(--c-ink)",
               textWrap: "pretty",
@@ -164,7 +165,7 @@ export function MobileShareScreen({
           <p
             style={{
               margin: "12px 0 0",
-              font: "700 10px/1 Inter, sans-serif",
+              font: `700 10px/1 ${FONT_SANS}`,
               letterSpacing: "0.1em",
               textTransform: "uppercase",
               color: "var(--c-goldink)",
@@ -178,7 +179,7 @@ export function MobileShareScreen({
           <p
             style={{
               margin: "14px 0 0",
-              font: "400 16px/1.62 Inter, sans-serif",
+              font: `400 16px/1.62 ${FONT_SANS}`,
               color: "var(--c-ink)",
               whiteSpace: "pre-line",
               textWrap: "pretty",
@@ -192,7 +193,7 @@ export function MobileShareScreen({
           <p
             style={{
               margin: "24px 0 0",
-              font: "400 13px/1.6 Inter, sans-serif",
+              font: `400 13px/1.6 ${FONT_SANS}`,
               color: "var(--c-muted)",
               textWrap: "pretty",
             }}
@@ -217,14 +218,14 @@ export function MobileShareScreen({
                   }}
                 >
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px" }}>
-                    <h4 style={{ margin: 0, font: "600 14px/1.3 Inter, sans-serif", color: "var(--c-ink)" }}>
+                    <h4 style={{ margin: 0, font: `600 14px/1.3 ${FONT_SANS}`, color: "var(--c-ink)" }}>
                       {/* No dash placeholder. A deal with no name says so. */}
                       {deal.company || "Company not named"}
                     </h4>
                     <span
                       style={{
                         flex: "none",
-                        font: "600 11px/1 'JetBrains Mono', monospace",
+                        font: `600 11px/1 ${FONT_MONO}`,
                         color: "var(--c-goldink)",
                       }}
                     >
@@ -239,7 +240,7 @@ export function MobileShareScreen({
                         padding: "2px 6px",
                         borderRadius: "4px",
                         backgroundColor: "var(--c-well)",
-                        font: "700 10px/1 'JetBrains Mono', monospace",
+                        font: `700 10px/1 ${FONT_MONO}`,
                         letterSpacing: "0.07em",
                         color: "var(--c-goldink)",
                         textTransform: "uppercase",
@@ -252,7 +253,7 @@ export function MobileShareScreen({
                     <p
                       style={{
                         margin: "7px 0 0",
-                        font: "400 11px/1.45 Inter, sans-serif",
+                        font: `400 11px/1.45 ${FONT_SANS}`,
                         color: "var(--c-secondary)",
                         textWrap: "pretty",
                       }}
@@ -295,7 +296,7 @@ export function MobileShareScreen({
             textAlign: "center",
           }}
         >
-          <p style={{ margin: 0, font: "400 13px/1.55 Inter, sans-serif", color: "var(--c-secondary)" }}>
+          <p style={{ margin: 0, font: `400 13px/1.55 ${FONT_SANS}`, color: "var(--c-secondary)" }}>
             Want briefings like this every morning?
           </p>
           <Link
@@ -310,7 +311,7 @@ export function MobileShareScreen({
               justifyContent: "center",
               borderRadius: "12px",
               backgroundColor: "var(--c-gold)",
-              font: "600 13px/1 Inter, sans-serif",
+              font: `600 13px/1 ${FONT_SANS}`,
               color: "var(--c-ongold)",
               textDecoration: "none",
             }}
@@ -320,7 +321,7 @@ export function MobileShareScreen({
           <p
             style={{
               margin: "14px 0 0",
-              font: "400 10.5px/1.5 Inter, sans-serif",
+              font: `400 10.5px/1.5 ${FONT_SANS}`,
               color: "var(--c-muted)",
               textWrap: "pretty",
             }}
@@ -344,11 +345,11 @@ function Article({ title, body }: { title: string; body: string }) {
         backgroundColor: "var(--c-card)",
       }}
     >
-      <h3 style={{ margin: 0, font: "700 16px/1.3 'Playfair Display', serif", color: "var(--c-ink)" }}>{title}</h3>
+      <h3 style={{ margin: 0, font: `700 16px/1.3 ${FONT_DISPLAY}`, color: "var(--c-ink)" }}>{title}</h3>
       <p
         style={{
           margin: "9px 0 0",
-          font: "400 13px/1.62 Inter, sans-serif",
+          font: `400 13px/1.62 ${FONT_SANS}`,
           color: "var(--c-body)",
           whiteSpace: "pre-line",
           textWrap: "pretty",
@@ -441,7 +442,7 @@ const TAPE_CELL: CSSProperties = {
   display: "inline-flex",
   gap: "4px",
   paddingRight: "22px",
-  font: "400 10px/1 'JetBrains Mono', monospace",
+  font: `400 10px/1 ${FONT_MONO}`,
   letterSpacing: "0.07em",
   color: "var(--c-oninv-body)",
 };

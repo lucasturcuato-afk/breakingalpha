@@ -12,6 +12,7 @@ import {
   SectionRule,
 } from "@/components/mobile";
 import styles from "@/components/mobile/mobile.module.css";
+import { FONT_DISPLAY, FONT_SANS } from "@/components/mobile/fonts";
 
 /**
  * Settings, at phone width. Grounded in `settings/profile/page.tsx`, whose
@@ -78,7 +79,7 @@ export function MobileSettingsScreen(props: MobileSettingsScreenProps) {
         <h1
           style={{
             margin: 0,
-            font: "800 24px/1.16 'Playfair Display', serif",
+            font: `800 24px/1.16 ${FONT_DISPLAY}`,
             letterSpacing: "-0.02em",
             color: "var(--c-ink)",
           }}
@@ -88,7 +89,7 @@ export function MobileSettingsScreen(props: MobileSettingsScreenProps) {
         <p
           style={{
             margin: "8px 0 0",
-            font: "400 13px/1.55 Inter, sans-serif",
+            font: `400 13px/1.55 ${FONT_SANS}`,
             color: "var(--c-secondary)",
             textWrap: "pretty",
           }}
@@ -143,13 +144,13 @@ export function MobileSettingsScreen(props: MobileSettingsScreenProps) {
                       backgroundColor: on ? "var(--c-well)" : "var(--c-card)",
                     }}
                   >
-                    <span style={{ font: "600 12.5px/1.3 Inter, sans-serif", color: "var(--c-ink)" }}>
+                    <span style={{ font: `600 12.5px/1.3 ${FONT_SANS}`, color: "var(--c-ink)" }}>
                       {r.label}
                     </span>
                     <span
                       style={{
                         marginTop: "5px",
-                        font: "400 10.5px/1.4 Inter, sans-serif",
+                        font: `400 10.5px/1.4 ${FONT_SANS}`,
                         color: "var(--c-muted)",
                       }}
                     >
@@ -178,7 +179,7 @@ export function MobileSettingsScreen(props: MobileSettingsScreenProps) {
                       alignItems: "center",
                       padding: "0 13px",
                       borderRadius: "9px",
-                      font: "500 12px/1 Inter, sans-serif",
+                      font: `500 12px/1 ${FONT_SANS}`,
                       border: `1px solid ${on ? "var(--c-gold)" : "var(--c-border)"}`,
                       backgroundColor: on ? "var(--c-well)" : "var(--c-card)",
                       color: on ? "var(--c-goldink)" : "var(--c-secondary)",
@@ -211,7 +212,7 @@ export function MobileSettingsScreen(props: MobileSettingsScreenProps) {
                 role="alert"
                 style={{
                   margin: "14px 0 0",
-                  font: "400 12px/1.55 Inter, sans-serif",
+                  font: `400 12px/1.55 ${FONT_SANS}`,
                   color: "var(--c-redink)",
                   textWrap: "pretty",
                 }}
@@ -235,7 +236,7 @@ export function MobileSettingsScreen(props: MobileSettingsScreenProps) {
                 gap: "8px",
                 backgroundColor: saving ? "var(--c-locked-bg)" : "var(--c-gold)",
                 borderRadius: "9px",
-                font: "600 13px/1 Inter, sans-serif",
+                font: `600 13px/1 ${FONT_SANS}`,
                 color: saving ? "var(--c-locked-ink)" : "var(--c-ongold)",
               }}
             >
@@ -274,7 +275,7 @@ export function MobileSettingsScreen(props: MobileSettingsScreenProps) {
                   padding: "0 13px",
                   border: "1px solid var(--c-border)",
                   borderRadius: "6px",
-                  font: "500 12px/1 Inter, sans-serif",
+                  font: `500 12px/1 ${FONT_SANS}`,
                   color: "var(--c-secondary)",
                 }}
               >
@@ -319,7 +320,7 @@ export function MobileSettingsScreen(props: MobileSettingsScreenProps) {
         <p
           style={{
             margin: "12px 0 0",
-            font: "400 11px/1.6 Inter, sans-serif",
+            font: `400 11px/1.6 ${FONT_SANS}`,
             color: "var(--c-muted)",
             textWrap: "pretty",
           }}
@@ -333,7 +334,7 @@ export function MobileSettingsScreen(props: MobileSettingsScreenProps) {
 
 const HELP = {
   margin: "10px 0 0",
-  font: "400 11.5px/1.5 Inter, sans-serif",
+  font: `400 11.5px/1.5 ${FONT_SANS}`,
   color: "var(--c-muted)",
 } as const;
 

@@ -220,6 +220,8 @@
 @media (min-width: 768px) {
   .gateLock {
     overflow: hidden;
+  }
+}
 
 /* ══════════════════════════════════════════════════════════════════════
    Settings batch atoms (Settings, Alerts, Saved, Learned, Share)
