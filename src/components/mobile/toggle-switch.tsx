@@ -29,7 +29,7 @@ import type { CSSProperties } from "react";
  * of review. The first version rendered `<button role="switch"
  * aria-checked="false" disabled>`, which announces "switch, off, dimmed".
  * "Off" is a claim about a stored setting, and there is no store: the value is
- * ABSENT, not false. #661's precedent closed a `<button>`, which carries no
+ * ABSENT, not false. The PR #661 precedent closed a `<button>`, which has no
  * state; a switch does, and drawing all of them off asserts five settings that
  * do not exist. So `locked` renders no control at all. It is a decorative,
  * `aria-hidden` span: nothing focusable, no role, no `aria-checked`, nothing
