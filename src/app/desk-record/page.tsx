@@ -41,8 +41,16 @@ import { mobileFixtureScreensEnabled } from "@/lib/mobile-fixture-gate";
  * read off the async searchParams, matching /ledger and /waitlist.
  */
 
-/** How many resolved calls the list renders. Counts always cover every row the
- *  read returned, never just the listed ones. Matches /radar/desk-record. */
+/**
+ * How many resolved calls are READ INTO the list. An upper bound on rows read,
+ * not on rows shown: `buildDeskRecord` truncates here, and
+ * `deskRecordToScreenData` then drops the not-graded rows, which have no
+ * verdict word, so the rendered list is shorter than this by however many of
+ * the newest rows were not graded.
+ *
+ * Counts always cover every row the read returned, never just the listed ones.
+ * Matches /radar/desk-record.
+ */
 const LIST_LIMIT = 40;
 
 const STAGES: DeskStage[] = ["ready", "loading", "error", "empty", "stale"];
@@ -112,7 +120,16 @@ export default async function DeskRecordMobilePage({
           the tab bar, and gated in a CLASS: an inline display beats the class
           at every breakpoint, which is the defect design-lint rule 10 exists
           to catch. */}
-      <div className="md:hidden">
+      {/* `h-full` is load bearing, and it is a CLASS not an inline style.
+          The screen root carries `minHeight: 100%`, which resolves against
+          this wrapper. `PageTransition` above is already `h-full` and
+          definite, but this div was `auto`, so the percentage resolved to
+          nothing and a short screen ended at its content height. Below that
+          line the reader saw `#main-content`'s `bg-parchment` instead of the
+          screen's `--c-bg`: a hard seam across the viewport, worst in dark.
+          One class closes the chain, and it stays scoped to this route rather
+          than repainting the shell under every mobile screen. */}
+      <div className="md:hidden h-full">
         <DeskRecordScreen stage={resolved.stage} data={resolved.data} />
       </div>
 

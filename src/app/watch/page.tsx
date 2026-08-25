@@ -81,7 +81,16 @@ export default async function WatchPage({
       {/* The mobile layout is gated on the same breakpoint the shell uses to
           swap the sidebar for the tab bar. Gating lives in classes, never in an
           inline style: an inline display beats the class at every breakpoint. */}
-      <div className="md:hidden">
+      {/* `h-full` is load bearing, and it is a CLASS not an inline style.
+          The screen root carries `minHeight: 100%`, which resolves against
+          this wrapper. `PageTransition` above is already `h-full` and
+          definite, but this div was `auto`, so the percentage resolved to
+          nothing and a short screen ended at its content height. Below that
+          line the reader saw `#main-content`'s `bg-parchment` instead of the
+          screen's `--c-bg`: a hard seam across the viewport, worst in dark.
+          One class closes the chain, and it stays scoped to this route rather
+          than repainting the shell under every mobile screen. */}
+      <div className="md:hidden h-full">
         <WatchScreen stage={resolved?.stage ?? "ready"} data={resolved === null ? null : resolved.data} />
       </div>
 

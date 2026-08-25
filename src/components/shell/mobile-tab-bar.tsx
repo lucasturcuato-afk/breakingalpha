@@ -122,7 +122,13 @@ const POLES: Pole[] = [
 
        `owns` already lists /watch, so the pole lights when a reader reaches it
        by any other route. Move the href when /watch reads a loader, not when
-       /watch merely answers. */
+       /watch merely answers.
+
+       One consequence, stated rather than discovered later: standing ON /watch
+       the pole renders lit and still navigates to /radar/watchlist, so tapping
+       the pole you are already on moves you. A lit pole is normally a no-op.
+       That is the honest cost of pointing at the screen with the data instead
+       of the screen with the design, and it goes away when the href moves. */
     label: "Watch",
     href: "/radar/watchlist",
     icon: IconWatch,

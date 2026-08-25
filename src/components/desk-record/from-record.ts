@@ -74,14 +74,10 @@ function instrumentOf(entry: DeskRecordEntry): string | undefined {
 
 export function deskRecordToScreenData(record: DeskRecord): DeskRecordData {
   const entries: DeskEntryFixture[] = [];
-  let unlisted = false;
 
   for (const entry of record.entries) {
     const state = LISTABLE[entry.resolution];
-    if (!state) {
-      unlisted = true;
-      continue;
-    }
+    if (!state) continue;
     entries.push({
       id: entry.id,
       state,
@@ -106,7 +102,16 @@ export function deskRecordToScreenData(record: DeskRecord): DeskRecordData {
     weaknessHeading: null,
     weaknessProse: null,
     listHeading: "recent",
-    hasUnlistedNotGraded: unlisted,
+    /* Off the SAME source as the count in the strip, never off `entries`.
+       `buildDeskRecord` truncates `record.entries` to its list limit before
+       this function ever sees it, so counting not-graded rows in the loop
+       above described the truncated page rather than the record. The moment
+       the newest page happened to carry no not-graded row, the strip would
+       still have shown its NOT GRADED count and the line explaining why those
+       calls are missing from the list would have silently disappeared. That is
+       the exact "a count against a shorter list, unexplained" failure the line
+       exists to prevent, so the flag and the count now cannot disagree. */
+    hasUnlistedNotGraded: record.byResolution.notGraded > 0,
     entries,
     /* The record model carries no grader-run timestamp, so the stale state has
        nothing to name and the wired path never selects it. */

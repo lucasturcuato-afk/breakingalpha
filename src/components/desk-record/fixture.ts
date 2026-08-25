@@ -72,10 +72,15 @@ export interface DeskRecordData {
   listHeading: string;
   entries: DeskEntryFixture[];
   /**
-   * True when the read dropped rows from the LIST that it still counted in the
-   * strip. `notGraded` calls have no verdict word, and `OutcomeState` has no
-   * fifth member to give them, so they are counted and not listed. The screen
-   * says that out loud rather than leaving the two silently disagreeing.
+   * True when the record contains not-graded calls. Those have no verdict word,
+   * and `OutcomeState` has no fifth member to give them, so they are counted
+   * in the strip and never listed. The screen says that out loud rather than
+   * leaving a count and a shorter list silently disagreeing.
+   *
+   * Derived from the same bucket count the strip renders, NOT from the list.
+   * The list is truncated before the view sees it, so a page that happened to
+   * carry no not-graded row would have hidden the explanation while the count
+   * stayed on screen.
    */
   hasUnlistedNotGraded: boolean;
   /**

@@ -133,14 +133,21 @@ export function DeskRecordScreen({
                 textWrap: "pretty",
               }}
             >
-              {/* "counted here", not "is here": the strip counts every graded
-                  row the read returned and the list below it is capped, so
-                  the stronger claim was not true of the list. The window
-                  clause is dropped rather than guessed when no row carries a
-                  brief date. */}
-              Every call the desk has published{data.since ? ` since ${data.since}` : ""} is counted
-              here, including the ones that went against it. Nothing is sorted by outcome and no
-              figure is derived from the mix.
+              {/* Every word here is load bearing and two of them were wrong.
+                  "is counted here", not "is here": the strip counts every row
+                  the read returned and the list below it is capped, so the
+                  stronger claim was never true of the list.
+                  "that the grader has reached", not a bare "every call":
+                  `fetchDeskRecord` reads outcome rows and joins back to the
+                  calls, so a published call with no outcome row at all is in
+                  neither the counts nor the list. The very next line on this
+                  screen says such calls exist, so a bare "every" made the
+                  screen contradict itself one paragraph later.
+                  The window clause is dropped rather than guessed when no row
+                  carries a brief date. */}
+              Every call the desk has published{data.since ? ` since ${data.since}` : ""} that the
+              grader has reached is counted here, including the ones that went against it. Nothing
+              is sorted by outcome and no figure is derived from the mix.
             </p>
           </div>
 
@@ -184,6 +191,21 @@ export function DeskRecordScreen({
           ) : null}
 
           <SectionRule label={data.listHeading} />
+          {/* NO `onOpen`. `ledger-entry-row.tsx:63` turns any truthy handler
+              into a real `<button type="button">` with `.bare`'s pointer
+              cursor, so `onOpen={() => {}}` shipped 35 focusable 350x117
+              targets over real graded calls that did nothing on tap or on
+              Enter. README.md:309 forbids an inert control, and a row that
+              cannot be opened should not announce itself as one.
+
+              Omitting the prop makes the row a plain container, which is the
+              same call `watch-screen.tsx` already makes for the private card:
+              "A card that looks tappable and is not is worse than one that
+              does not."
+
+              The Entry screen is step 6 and does not exist. Pass a handler
+              here the day it does, and the rows become controls again with no
+              other change. */}
           {data.entries.map((e, i) => (
             <LedgerEntryRow
               key={e.id}
@@ -192,10 +214,6 @@ export function DeskRecordScreen({
               claim={e.claim}
               result={e.result}
               first={i === 0}
-              /* TODO: open the Entry screen once step 6 lands it. No route
-                 exists yet, so the row keeps its control affordance and does
-                 nothing rather than navigating into a 404. */
-              onOpen={() => {}}
             />
           ))}
           {/* The list closes on a rule. Every row draws its own top hairline,
@@ -507,6 +525,13 @@ function DeskEmpty() {
  * one fact that can go stale here: the grader's last completed run. The counts
  * and the list stay exactly where they are, because a late grading run is not
  * a reason to hide calls that were already settled.
+ *
+ * UNREACHABLE IN PRODUCTION, by three independent mechanisms, and deliberately
+ * so: `?stage=` is gated shut, `loadDeskRecord` never yields `stale`, and the
+ * wired mapper has no grader-run timestamp to name so it sets `lastGradedOn`
+ * null. It is reachable in dev via `?stage=stale` on the sample record, which
+ * is what keeps it auditable. This is a documented absence, not live
+ * behaviour, and it becomes live the day the model carries a run timestamp.
  */
 function DeskStaleNotice({ lastGradedOn }: { lastGradedOn: string }) {
   return (
