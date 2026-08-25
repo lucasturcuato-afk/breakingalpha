@@ -6,7 +6,7 @@ import { MobileTickerStrip } from "./mobile-ticker-strip";
 import { LedgerClaimCard } from "./ledger-claim-card";
 import { LedgerEntryRow } from "./ledger-entry-row";
 import { LedgerDateRule } from "./ledger-date-rule";
-import { LEDGER_FIXTURE, type LedgerData } from "./fixture";
+import { type LedgerData } from "./fixture";
 import styles from "./ledger.module.css";
 
 /**
@@ -25,11 +25,12 @@ const PAD = "var(--v3-pad)";
 
 export function LedgerScreen({
   stage = "ready",
-  data = LEDGER_FIXTURE,
+  data,
   wrapPublishedAt = null,
 }: {
   stage?: BriefStage;
-  data?: LedgerData;
+  /** The gated fixture, or null when no source exists. Never defaulted. */
+  data: LedgerData | null;
   /**
    * Publication time of today's evening wrap, already formatted, or null when
    * the wrap does not exist yet. Overrides the fixture. Never a clock.
@@ -38,6 +39,27 @@ export function LedgerScreen({
 }) {
   const [pulseOpen, setPulseOpen] = useState(false);
   const [bannerShown, setBannerShown] = useState(true);
+
+  /* No source, no screen. `data` is null in every environment where no loader
+     supplies it, and the screen renders its loading state rather than inventing
+     one. This is the rule from PR #661: with no data, render nothing or render loading,
+     never a sentence about the reader or their record.
+
+     It is an early return on purpose. Below this line TypeScript knows `data`
+     is non-null, so no later reader needs a guard and no later edit can bring
+     the fixture back by omission. The fixture used to arrive as a DEFAULT
+     PARAMETER here, which meant deleting one gate silently served an invented
+     brief, three fabricated claims and "One of your calls was checked
+     overnight" to real readers. That is the defect that blocked PR #646 and PR #653,
+     and it was live on this screen. */
+  if (data === null) {
+    return (
+      <div data-parity="ledger" style={{ backgroundColor: "var(--c-bg)", minHeight: "100%", padding: `0 ${PAD}` }}>
+        <MobileTickerStrip />
+        <BriefSkeleton />
+      </div>
+    );
+  }
 
   return (
     <div data-parity="ledger" style={{ backgroundColor: "var(--c-bg)", minHeight: "100%", padding: `0 ${PAD}` }}>
@@ -674,7 +696,7 @@ function BriefNone() {
         No brief published yet.
       </p>
       <p style={{ margin: "10px 0 0", font: "400 13px/1.6 Inter, sans-serif", color: "var(--c-secondary)", maxWidth: "32ch" }}>
-        Nothing failed to load. The desk has not published yet, and it publishes at 6:45. Your six open calls are unaffected.
+        Nothing failed to load. The desk has not published yet, and it publishes at 6:45.
       </p>
     </div>
   );

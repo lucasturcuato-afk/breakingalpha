@@ -2,6 +2,8 @@
 
 import { useSearchParams } from "next/navigation";
 import { EveningWrapScreen, type WrapStage } from "./evening-wrap-screen";
+import { EVENING_FIXTURE } from "./fixture";
+import { mobileFixtureScreensEnabled } from "@/lib/mobile-fixture-gate";
 
 /**
  * The mobile Evening Wrap, with its lifecycle switch read off the URL.
@@ -22,5 +24,12 @@ export function EveningWrapMobile() {
   const params = useSearchParams();
   const raw = params.get("stage");
   const stage = STAGES.includes(raw as WrapStage) ? (raw as WrapStage) : "ready";
-  return <EveningWrapScreen stage={stage} />;
+  /* Gate resolved here and passed down. The screen has no default: with no
+     source it renders its loading state, not an invented close. */
+  return (
+    <EveningWrapScreen
+      stage={stage}
+      data={mobileFixtureScreensEnabled() ? EVENING_FIXTURE : null}
+    />
+  );
 }

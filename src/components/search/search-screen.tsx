@@ -15,6 +15,7 @@ import {
 import {
   JUMP_GROUPS,
   SEARCH_FIXTURE_ENABLED,
+  SEARCH_FIXTURE,
   isEmptyResult,
   matchFixture,
 } from "./fixture";
@@ -73,7 +74,7 @@ export function SearchScreen({
 
   const typed = query.trim().length > 0;
   const results = useMemo(
-    () => (SEARCH_FIXTURE_ENABLED ? matchFixture(query) : null),
+    () => (SEARCH_FIXTURE_ENABLED ? matchFixture(query, SEARCH_FIXTURE) : null),
     [query],
   );
 

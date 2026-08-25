@@ -1,5 +1,6 @@
 import { AppShell } from "@/components/shell";
 import { AskAnswerScreen, AskBrowseScreen, type AskStage } from "@/components/ask";
+import { ASK_ANSWER_FIXTURE, ASK_BROWSE_FIXTURE, ASK_FIXTURE_ENABLED } from "@/components/ask/fixture";
 
 /**
  * Ask. Both halves of the Ask pole's entry layer on one route.
@@ -41,7 +42,15 @@ export default async function AskPage({
           beats the class at every breakpoint, which is the defect that shipped
           the tab bar to desktop once already. */}
       <div className="md:hidden">
-        {q ? <AskAnswerScreen stage={stage} question={q} /> : <AskBrowseScreen stage={stage} />}
+        {q ? (
+          <AskAnswerScreen
+            stage={stage}
+            question={q}
+            data={ASK_FIXTURE_ENABLED ? ASK_ANSWER_FIXTURE : null}
+          />
+        ) : (
+          <AskBrowseScreen stage={stage} data={ASK_FIXTURE_ENABLED ? ASK_BROWSE_FIXTURE : null} />
+        )}
       </div>
 
       {/* Above the breakpoint this route has no layout of its own. The desk

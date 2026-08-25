@@ -53,10 +53,11 @@ const LOOKUP_INTRO =
 
 export function AskBrowseScreen({
   stage = "ready",
-  data = ASK_BROWSE_FIXTURE,
+  data,
 }: {
   stage?: AskStage;
-  data?: AskBrowseData;
+  /** The gated fixture, or null when no source exists. Never defaulted. */
+  data: AskBrowseData | null;
 }) {
   /* Outside development and preview there is no source for either the counters
      or the lookups. That is NOT the same as an empty read, and it must not
@@ -99,19 +100,19 @@ export function AskBrowseScreen({
         <AskSectionRule label="browse" />
 
         {ASK_DIRECTORY.map((route, i) => {
-          const detail = data.detail[route.id];
+          const detail = data?.detail[route.id];
           return (
             <AskDirectoryRow
               key={route.id}
               href={route.href}
               label={route.label}
               icon={ICONS[route.id]}
-              counter={loading ? <AskSkeleton width="46px" height={10} /> : showDetail ? detail.counter : null}
+              counter={loading ? <AskSkeleton width="46px" height={10} /> : showDetail ? detail?.counter : null}
               summary={
                 loading ? (
                   <AskSkeleton width="100%" height={11} style={{ marginTop: "2px" }} />
                 ) : showDetail ? (
-                  detail.summary
+                  detail?.summary
                 ) : null
               }
               first={i === 0}
@@ -138,7 +139,7 @@ export function AskBrowseScreen({
           </AskNotice>
         ) : null}
 
-        {effective === "stale" ? <AskNotice>{data.countedAt}</AskNotice> : null}
+        {effective === "stale" ? <AskNotice>{data?.countedAt}</AskNotice> : null}
 
         <AskSectionRule label="company intel" style={{ marginTop: "24px" }} />
         <p
@@ -196,7 +197,7 @@ export function AskBrowseScreen({
         ) : null}
 
         {showDetail
-          ? data.lookups.map((lookup, i) => (
+          ? data?.lookups.map((lookup, i) => (
               <AskLookupRow
                 key={lookup.ticker}
                 href={lookup.href}
@@ -204,7 +205,7 @@ export function AskBrowseScreen({
                 name={lookup.name}
                 entries={lookup.entries}
                 first={i === 0}
-                last={i === data.lookups.length - 1}
+                last={i === data?.lookups.length - 1}
               />
             ))
           : null}
@@ -213,7 +214,7 @@ export function AskBrowseScreen({
       {/* The two chips come off the data, not off a second hardcoded pair here.
           Two sources for one pair means a `data` override silently keeps the
           fixture's chips. */}
-      <AskComposer prompts={data.prompts} />
+      <AskComposer prompts={data?.prompts} />
     </div>
   );
 }
