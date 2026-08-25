@@ -151,6 +151,25 @@ function asObject(value: unknown): Record<string, unknown> | null {
   }
 }
 
+/**
+ * Up to two initials from a name, or null. Never a stand-in letter: a disc
+ * with nothing in it is honest and a disc with somebody else's letters is not.
+ * Same derivation `src/components/shell/user-avatar.tsx` already uses, so the
+ * masthead disc and the shell avatar cannot disagree about one reader.
+ */
+function initialsFrom(source: string | null): string | null {
+  const trimmed = (source ?? "").trim();
+  if (!trimmed) return null;
+  const letters = trimmed
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((w) => w[0] ?? "")
+    .join("")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "");
+  return letters.slice(0, 2) || null;
+}
+
 function asNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
@@ -267,40 +286,56 @@ function toPulse(
 /* ── the load ───────────────────────────────────────────────────────── */
 
 /**
+ * The newest morning brief. The predicate is copied from
+ * src/app/api/briefing/route.ts verbatim: newest row of this type with the
+ * sentinel headline excluded. Not a date filter, deliberately, so a day the
+ * pipeline missed shows the previous brief marked stale rather than nothing at
+ * all, and so the phone and the desk cannot disagree about which row is
+ * today's.
+ */
+function briefQuery(supabase: SupabaseClient) {
+  return supabase
+    .from("briefings")
+    .select("id, created_at, headline, market_pulse, market_tape")
+    .eq("briefing_type", "morning")
+    .neq("headline", "Market Intelligence Unavailable")
+    .order("created_at", { ascending: false })
+    .limit(1);
+}
+
+/**
  * Build the Ledger for one reader.
  *
  * `userId` null means nobody is signed in: the brief still loads, because it is
  * public, and every personal block stays empty. It gives back `data: null` only
  * when the brief read itself failed, which is the one case the screen must
  * report as a failure rather than as an absence.
+ *
+ * `emailName` is the local part of the reader's own address, and it is the
+ * fallback the masthead initials fall to when the profile carries no name. It
+ * is the reader's own data either way and never anybody else's; with neither,
+ * the disc draws empty.
  */
 export async function loadLedger(
   supabase: SupabaseClient,
   userId: string | null,
+  emailName: string | null,
 ): Promise<LedgerLoad> {
   const today = todayPt();
 
-  const { data: briefRows, error: briefError } = await supabase
-    .from("briefings")
-    // Copied from src/app/api/briefing/route.ts: newest row of this type with
-    // the sentinel headline excluded. Not a date filter, deliberately, so a day
-    // the pipeline missed shows yesterday's brief marked stale rather than
-    // nothing at all.
-    .select("id, created_at, headline, market_pulse, market_tape")
-    .eq("briefing_type", "morning")
-    .neq("headline", "Market Intelligence Unavailable")
-    .order("created_at", { ascending: false })
-    .limit(1);
+  // One wave. The wrap time and everything personal depend on nothing in the
+  // brief row, so waiting for it cost them a round trip for no reason.
+  const [briefRes, wrap, personal] = await Promise.all([
+    briefQuery(supabase),
+    loadWrapTime(supabase, today),
+    loadPersonal(supabase, userId, today),
+  ]);
+  const { data: briefRows, error: briefError } = briefRes;
 
   if (briefError) return { data: null, stage: "error" };
 
   const brief = (briefRows?.[0] ?? null) as BriefRow | null;
-
-  const [wrap, desk, personal] = await Promise.all([
-    loadWrapTime(supabase, today),
-    brief ? loadDeskCalls(supabase, brief.id, today) : Promise.resolve(EMPTY_DESK),
-    loadPersonal(supabase, userId, today),
-  ]);
+  const desk = brief ? await loadDeskCalls(supabase, brief.id, today) : EMPTY_DESK;
 
   const pulseJson = asObject(brief?.market_pulse);
   const tapeJson = asObject(brief?.market_tape);
@@ -330,6 +365,9 @@ export async function loadLedger(
 
   const data: LedgerData = {
     generatedAt,
+    // The reader's own, or nothing. Profile name first, their own address
+    // second, and an empty disc when neither exists.
+    initials: initialsFrom(personal.name) ?? initialsFrom(emailName),
     readMinutes: readWords > 0 ? Math.max(1, Math.round(readWords / READING_PACE)) : null,
     // No source. The masthead line in the design describes the brief's shape
     // and nothing stored says what shape today's brief has.
@@ -341,12 +379,19 @@ export async function loadLedger(
     // needs a record of when the reader last looked, and none is kept.
     continuity: null,
     pulse,
+    // The status line carries the decided count ONLY when a read established
+    // one. On a failed or unmade read it says how many calls there are, which
+    // the answered calls read did establish, and says nothing about how many
+    // are decided. The view draws the rest.
     briefProgress:
       desk.total > 0
         ? {
-            read: desk.decided,
+            decided: desk.decided,
             total: desk.total,
-            status: `${desk.total} ${desk.total === 1 ? "call" : "calls"}, ${desk.decided} decided`,
+            status:
+              typeof desk.decided === "number"
+                ? `${desk.total} ${desk.total === 1 ? "call" : "calls"}, ${desk.decided} decided`
+                : `${desk.total} ${desk.total === 1 ? "call" : "calls"}`,
           }
         : null,
     today: todayDay,
@@ -384,10 +429,21 @@ async function loadWrapTime(supabase: SupabaseClient, today: string): Promise<st
 interface DeskLoad {
   claims: LedgerClaim[];
   total: number;
-  decided: number;
+  /**
+   * How many of those calls have been graded, in three states.
+   *
+   *   a number   the outcomes read ANSWERED. Zero is a real zero.
+   *   "failed"   it ANSWERED WITH AN ERROR.
+   *   null       it WAS NOT MADE, because there were no calls to grade.
+   *
+   * It is not a plain number, and that is the whole point. A read that never
+   * came back and a read that came back with none graded are different facts,
+   * and only the second one is "0 decided".
+   */
+  decided: number | "failed" | null;
 }
 
-const EMPTY_DESK: DeskLoad = { claims: [], total: 0, decided: 0 };
+const EMPTY_DESK: DeskLoad = { claims: [], total: 0, decided: null };
 
 /** The desk's calls on this brief, plus how many of them have been graded. */
 async function loadDeskCalls(
@@ -405,14 +461,22 @@ async function loadDeskCalls(
   const rows = ((data ?? []) as DeskCallRow[]).filter((r) => asText(r.claim_text));
   if (rows.length === 0) return EMPTY_DESK;
 
-  const { data: graded } = await supabase
+  // The error is read, not discarded. Dropping it here made a failed read
+  // indistinguishable from an answered one that found nothing graded, and the
+  // screen published the second as fact: "N calls, 0 decided", a 0/N numeral
+  // pair and a full row of unfilled progress segments, over a read that never
+  // came back. Every other read in this file degrades to absence and this one
+  // degraded to a number. A FAILED READ IS NOT A ZERO.
+  const { data: graded, error: gradedError } = await supabase
     .from("morning_brief_call_outcomes")
     .select("call_id")
     .in(
       "call_id",
       rows.map((r) => r.id),
     );
-  const decided = new Set(((graded ?? []) as { call_id: string }[]).map((g) => g.call_id));
+  const decided: number | "failed" = gradedError
+    ? "failed"
+    : new Set(((graded ?? []) as { call_id: string }[]).map((g) => g.call_id)).size;
 
   const claims: LedgerClaim[] = rows.map((r) => {
     const resolveOn = asText(r.resolve_on);
@@ -429,11 +493,13 @@ async function loadDeskCalls(
     };
   });
 
-  return { claims, total: rows.length, decided: decided.size };
+  return { claims, total: rows.length, decided };
 }
 
 interface PersonalLoad {
   sectors: string[];
+  /** The reader's own stored name, for the masthead initials. Null when unset. */
+  name: string | null;
   past: LedgerDay[];
   entriesBefore: number | null;
   /** Ids of desk calls this reader has already taken onto their own record. */
@@ -442,6 +508,7 @@ interface PersonalLoad {
 
 const EMPTY_PERSONAL: PersonalLoad = {
   sectors: [],
+  name: null,
   past: [],
   entriesBefore: null,
   adopted: new Set(),
@@ -464,7 +531,7 @@ async function loadPersonal(
   if (!userId) return EMPTY_PERSONAL;
 
   const [profileRes, claimRes] = await Promise.all([
-    supabase.from("user_profiles").select("sectors").eq("id", userId).maybeSingle(),
+    supabase.from("user_profiles").select("sectors, full_name").eq("id", userId).maybeSingle(),
     supabase
       .from("user_claims")
       .select("id, user_claim, claim_type, target_symbol, created_at, adopted_from_call_id")
@@ -474,18 +541,21 @@ async function loadPersonal(
       .limit(CLAIM_LIMIT),
   ]);
 
-  const rawSectors = (profileRes.data as { sectors: unknown } | null)?.sectors;
+  const profile = profileRes.data as { sectors: unknown; full_name: unknown } | null;
+  const rawSectors = profile?.sectors;
   const sectors = Array.isArray(rawSectors)
     ? rawSectors.filter((s): s is string => typeof s === "string" && s.trim().length > 0)
     : [];
+  const name = asText(profile?.full_name);
 
-  if (claimRes.error) return { ...EMPTY_PERSONAL, sectors };
-  const claims = ((claimRes.data ?? []) as UserClaimRow[]).filter((c) => asText(c.user_claim));
+  if (claimRes.error) return { ...EMPTY_PERSONAL, sectors, name };
+  const rows = (claimRes.data ?? []) as UserClaimRow[];
+  const claims = rows.filter((c) => asText(c.user_claim));
 
   const adopted = new Set(
     claims.map((c) => c.adopted_from_call_id).filter((id): id is string => Boolean(id)),
   );
-  if (claims.length === 0) return { sectors, past: [], entriesBefore: null, adopted };
+  if (claims.length === 0) return { sectors, name, past: [], entriesBefore: null, adopted };
 
   const { data: outcomeData, error: outcomeError } = await supabase
     .from("user_claim_outcomes")
@@ -497,7 +567,7 @@ async function loadPersonal(
       claims.map((c) => c.id),
     )
     .order("graded_at", { ascending: false });
-  if (outcomeError) return { sectors, past: [], entriesBefore: null, adopted };
+  if (outcomeError) return { sectors, name, past: [], entriesBefore: null, adopted };
 
   // Newest row per claim. There is no unique constraint on claim_id.
   const latest = new Map<string, UserOutcomeRow>();
@@ -563,6 +633,17 @@ async function loadPersonal(
   const shown = days.reduce((n, [, entries]) => n + entries.length, 0);
   const past: LedgerDay[] = days.map(([day, entries]) => ({ date: longDate(day), entries }));
 
+  // "N entries before this" is a total, so it is published only when this read
+  // saw every claim. At CLAIM_LIMIT there may be older ones it never fetched,
+  // and the remainder is then a number this file does not know. Null, and the
+  // screen draws no line at all, rather than an undercount stated as a total.
+  const capped = rows.length >= CLAIM_LIMIT;
   const before = dated.length - shown;
-  return { sectors, past, entriesBefore: before > 0 ? before : null, adopted };
+  return {
+    sectors,
+    name,
+    past,
+    entriesBefore: !capped && before > 0 ? before : null,
+    adopted,
+  };
 }

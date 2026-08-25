@@ -54,6 +54,13 @@ export interface LedgerDay {
 export interface LedgerData {
   /** Publication time of the brief, already formatted. Null when unknown. */
   generatedAt: string | null;
+  /**
+   * The reader's own initials, for the masthead disc. Null when no name is
+   * known, and the disc then draws empty rather than someone else's letters.
+   * The design prints "MR", which are the sample reader's, and over a real
+   * session those are another person's initials on this person's screen.
+   */
+  initials: string | null;
   /** Estimated from the prose actually rendered. Null when there is none. */
   readMinutes: number | null;
   /** Masthead subtitle. Null when nothing stored describes the brief. */
@@ -79,8 +86,29 @@ export interface LedgerData {
     lede: string;
     body: string[];
   } | null;
-  /** Null when the brief carries no calls to count. */
-  briefProgress: { read: number; total: number; status: string } | null;
+  /**
+   * The desk's calls on this brief, and how many of them have been graded.
+   * Null when the brief carries no calls to count.
+   *
+   * `decided` is three states, because three things can be true of that read
+   * and each one is drawn differently. This is the shape PR #675 landed on
+   * `DashboardData.stories`, applied to a count instead of a list.
+   *
+   *   a number   the read ANSWERED. Zero is a real zero and may be published
+   *              as one, because a read came back and found none graded.
+   *   "failed"   the read ANSWERED WITH AN ERROR. The screen prints the total,
+   *              says the decided count could not be read, and prints no
+   *              numeral pair and no progress bar.
+   *   null       the read WAS NOT MADE. Same rendering as "failed" minus the
+   *              sentence, because there is no failure to report either.
+   *
+   * A FAILED READ IS NOT A ZERO. Collapsing the last two into 0 is what put
+   * "0 decided" plus a full-width empty progress bar on this screen over a
+   * read that never came back, and it is the same defect that printed
+   * `SIGNALS TODAY 0` on the Dashboard and "Nothing on your watchlist yet"
+   * on Watch.
+   */
+  briefProgress: { decided: number | "failed" | null; total: number; status: string } | null;
   today: LedgerDay;
   past: LedgerDay[];
   /** Entries beyond the ones rendered. Null when there are none. */
@@ -89,6 +117,7 @@ export interface LedgerData {
 
 export const LEDGER_FIXTURE: LedgerData = {
   generatedAt: "6:45 AM ET",
+  initials: "MR",
   readMinutes: 4,
   tagline: "A considered reading of overnight markets, in four chapters.",
   wrapPublishedAt: null,
@@ -122,7 +151,7 @@ export const LEDGER_FIXTURE: LedgerData = {
       "Rates did the quiet work. The ten-year gave back a basis point into the close after two soft payroll prints, and the front end has moved further than the long end in every session this week. The desk reads the term premium as carrying more of the level than the market is pricing.",
     ],
   },
-  briefProgress: { read: 1, total: 5, status: "five calls, one decided" },
+  briefProgress: { decided: 1, total: 5, status: "five calls, one decided" },
   today: {
     date: "Thursday, August 6",
     claims: [

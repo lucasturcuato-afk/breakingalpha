@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Chevron } from "./chevron";
 import { MobileTickerStrip } from "./mobile-ticker-strip";
@@ -233,7 +234,7 @@ function PersonalizationBanner({ data, onDismiss }: { data: LedgerData; onDismis
             {s}
           </span>
         ))}
-        <a
+        <Link
           href="/settings/preferences"
           className={styles.bare}
           style={{
@@ -248,7 +249,7 @@ function PersonalizationBanner({ data, onDismiss }: { data: LedgerData; onDismis
           }}
         >
           Edit →
-        </a>
+        </Link>
       </div>
       <button
         type="button"
@@ -296,7 +297,12 @@ function Masthead({ data }: { data: LedgerData }) {
             color: "var(--c-oninv)",
           }}
         >
-          MR
+          {/* The design's disc carries "MR", the sample reader's initials.
+              Printed over a real session those are another person's letters on
+              this person's screen, so they come from the reader's own profile
+              or the disc stays empty. Decorative either way: the shell's own
+              avatar is the labelled one. */}
+          {data.initials}
         </span>
       </div>
       <div style={{ marginTop: "12px", font: "700 19px/1.1 var(--font-playfair-display), serif", letterSpacing: "-0.01em", color: "var(--c-oninv)" }}>
@@ -609,9 +615,11 @@ function PulseProse({
           {b}
         </p>
       ))}
-      {/* Nothing withheld, no control. The label promises more prose and an
-          empty body has none. */}
-      {p.body.length > 0 ? (
+      {/* Nothing withheld, no control. The closed state already renders the
+          first body paragraph, so a single-paragraph pulse has nothing left to
+          reveal and the label would promise prose the reader can already see.
+          The bar is more than one, not more than none. */}
+      {p.body.length > 1 ? (
         <button
           type="button"
           onClick={onToggle}
@@ -631,30 +639,57 @@ function PulseProse({
   );
 }
 
+/**
+ * The desk's calls on this brief and how many are graded.
+ *
+ * ONLY A NUMBER IS A COUNT. `"failed"` is a read that answered with an error
+ * and `null` is a read that was never made, and neither of those is zero.
+ * Drawing either as `0 / N` under a full row of unfilled segments states a
+ * figure nothing established, in the most quantitative shape on the screen.
+ * So the numeral pair and the bar are drawn for a real count and for nothing
+ * else, and a failed read says it failed instead.
+ */
 function BriefProgress({ progress }: { progress: NonNullable<LedgerData["briefProgress"]> }) {
-  const { read, total, status } = progress;
+  const { decided, total, status } = progress;
+  const counted = typeof decided === "number" ? decided : null;
   return (
     <div style={{ marginTop: "6px" }}>
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: "10px" }}>
         <span style={{ font: "400 italic 12.5px/1 var(--font-playfair-display), serif", color: "var(--c-secondary)" }}>
           {status}
         </span>
-        <span style={{ font: "400 10.5px/1 var(--font-jetbrains-mono), monospace", letterSpacing: "0.045em", color: "var(--c-muted)" }}>
-          {read} / {total}
-        </span>
+        {counted !== null ? (
+          <span style={{ font: "400 10.5px/1 var(--font-jetbrains-mono), monospace", letterSpacing: "0.045em", color: "var(--c-muted)" }}>
+            {counted} / {total}
+          </span>
+        ) : null}
       </div>
-      <div style={{ marginTop: "9px", display: "flex", gap: "5px" }} aria-hidden="true">
-        {Array.from({ length: total }, (_, i) => (
-          <div
-            key={i}
-            style={{
-              flex: 1,
-              height: "2px",
-              backgroundColor: i < read ? "var(--c-ink)" : "var(--c-border)",
-            }}
-          />
-        ))}
-      </div>
+      {counted !== null ? (
+        <div style={{ marginTop: "9px", display: "flex", gap: "5px" }} aria-hidden="true">
+          {Array.from({ length: total }, (_, i) => (
+            <div
+              key={i}
+              style={{
+                flex: 1,
+                height: "2px",
+                backgroundColor: i < counted ? "var(--c-ink)" : "var(--c-border)",
+              }}
+            />
+          ))}
+        </div>
+      ) : null}
+      {decided === "failed" ? (
+        <div
+          role="status"
+          style={{
+            marginTop: "8px",
+            font: "400 11.5px/1.5 var(--font-inter), sans-serif",
+            color: "var(--c-secondary)",
+          }}
+        >
+          We could not read which of these have been decided.
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -677,7 +712,7 @@ function TailAction({
   fillToken?: string;
 }) {
   return (
-    <a
+    <Link
       href={href}
       className={styles.bare}
       style={{
@@ -703,7 +738,7 @@ function TailAction({
     >
       <span style={{ minWidth: 0, flex: 1 }}>{label}</span>
       <Chevron direction="right" size={15} />
-    </a>
+    </Link>
   );
 }
 
@@ -781,8 +816,13 @@ function StaleNotice({ data }: { data: LedgerData }) {
         padding: "13px 14px",
       }}
     >
+      {/* The bar is age-based: anything past 20 hours is stale, and a brief
+          three days old is not yesterday's. So it names the day the brief
+          carries rather than a relative word its own trigger cannot support.
+          That day is the one the date rule below already prints, so the
+          notice and the rule state the same frame. */}
       <div style={{ font: "600 12px/1 var(--font-inter), sans-serif", color: "var(--c-ink)" }}>
-        You are reading yesterday&rsquo;s brief.
+        You are reading the brief from {data.today.date}.
       </div>
       <div style={{ marginTop: "4px", font: "400 11.5px/1.5 var(--font-inter), sans-serif", color: "var(--c-body)" }}>
         Today&rsquo;s has not published yet.{data.generatedAt ? ` Generated ${data.generatedAt}.` : ""}
