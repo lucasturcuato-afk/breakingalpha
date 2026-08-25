@@ -41,8 +41,14 @@ export function MobileLearnedScreen({
   /** Already sorted by the route, heaviest first. */
   weights: LearnedWeight[];
   eventCount: number;
-  /** Already formatted, or the literal the source uses when there is none. */
-  updatedAt: string;
+  /**
+   * Already formatted by the route, or null when nothing has been stored yet.
+   * Null renders NOTHING. It used to arrive as the literal string
+   * "not yet computed", which the route produced from a snapshot read before
+   * the refresh wrote to it, so the screen said the weights had never been
+   * computed in the same sentence as the count it had just computed.
+   */
+  updatedAt: string | null;
   /**
    * The route's weight refresh threw and it fell back to the stored values.
    * The source swallows this and reports zero events, which is
@@ -94,8 +100,8 @@ export function MobileLearnedScreen({
             }}
           >
             These are inferred from your activity and blend with your declared preferences. 1.0 =
-            neutral. Higher = boosted in ranking. {eventCount} events considered &middot; last updated{" "}
-            {updatedAt}.
+            neutral. Higher = boosted in ranking. {eventCount} events considered
+            {updatedAt === null ? "." : <> &middot; last updated {updatedAt}.</>}
           </p>
 
           {refreshFailed ? (

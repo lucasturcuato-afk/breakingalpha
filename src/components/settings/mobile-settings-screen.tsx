@@ -301,7 +301,16 @@ export function MobileSettingsScreen(props: MobileSettingsScreenProps) {
                 : `${savedDealCount} saved from Deal Flow`
             }
           />
-          <ListRowLink href="/settings/alerts" label="Brief and wrap times" sub="Brief at 6:45, wrap at 4:35" />
+          {/* The design labels this row "Brief and wrap times" over the sub
+              "Brief at 6:45, wrap at 4:35". Both halves promise a clock time
+              nothing in the repo can source: no cron produces a 6:45 brief, and
+              ten consecutive `briefings` rows land at 10:06 to 10:15 and 22:18
+              to 22:20 ET. `evening-wrap-screen.tsx:81` already ruled 4:35 "an
+              invented 4:35 close" and refused to print it. The row now names
+              the destination by the destination's own H1 rather than promising
+              a schedule the product does not keep. Flagged in the PR as a
+              deliberate deviation from the design's words. */}
+          <ListRowLink href="/settings/alerts" label="Alerts" sub="When the app reaches you" />
           {/* The user's own record, not the desk's. `RadarTabs.tsx`,
               `desk-record.ts` and `your-record.ts` each state independently
               that the two are different objects and are never mixed, so this

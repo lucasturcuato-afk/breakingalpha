@@ -43,11 +43,27 @@ const POSITIVE: UserEventType[] = [
 ];
 const NEGATIVE: UserEventType[] = ["thesis_dismissed", "watchlist_removed"];
 
+/**
+ * RISK POSTURE IS NO LONGER NARRATED, and the reason is a standing ruling.
+ *
+ * This used to close with `Risk posture is set to ${risk}.` DECISIONS.md
+ * ruling 7a removed the risk-appetite CONTROL from every settings surface, so
+ * there is now no way for a reader to change the value. Reporting it back to
+ * them in prose is the same individualized suitability framing the ruling
+ * objected to, with the added defect that the sentence describes a setting the
+ * product no longer lets them set.
+ *
+ * `risk_appetite` is untouched everywhere else. It is still stored, still
+ * round-tripped on save, still returned in this response's own `profile`
+ * object for any caller that needs the raw value, and still read by the prompt
+ * builders. Removing those consumers is ruling 7b, which DECISIONS.md records
+ * as its own unscheduled workstream and explicitly not part of the redesign.
+ * This is the display half only.
+ */
 function narrative(
   topBoosted: { sector: string; weight: number }[],
   topMuted: { sector: string; weight: number }[],
   eventCount: number,
-  risk: string,
 ): string {
   if (eventCount === 0) {
     return "Not enough activity yet to show learned preferences. Interact with a few theses and come back.";
@@ -61,7 +77,6 @@ function narrative(
     const names = topMuted.map((b) => b.sector).join(", ");
     bits.push(`You've been dismissing ${names}.`);
   }
-  bits.push(`Risk posture is set to ${risk}.`);
   return bits.join(" ");
 }
 
@@ -75,12 +90,13 @@ export async function GET() {
     const profile = await getUserProfile(supabase, user.id);
 
     // Refresh weights so the response is always current.
-    const { weights, eventCount } = await updateInferredWeights(
+    const { weights, eventCount, updatedAt } = await updateInferredWeights(
       supabase,
       user.id,
     ).catch(() => ({
       weights: profile.inferred_sector_weights,
       eventCount: 0,
+      updatedAt: null,
     }));
 
     // Pull the raw events for sector-level positive/negative breakdown.
@@ -142,7 +158,12 @@ export async function GET() {
         risk_appetite: profile.risk_appetite,
         watchlist_tickers: profile.watchlist_tickers,
       },
-      weights_updated_at: profile.inferred_weights_updated_at,
+      /* The refresh above WRITES this column, and `profile` was read before it
+       * ran, so the snapshot's copy is always one call stale and always null on
+       * a first call. The same defect rendered "last updated not yet computed"
+       * on /settings/learned. Take the value the refresh reports instead, and
+       * fall back to the snapshot only when the refresh wrote nothing. */
+      weights_updated_at: updatedAt ?? profile.inferred_weights_updated_at,
       event_count_30d: eventCount,
       top_boosted: topBoosted,
       top_muted: topMuted,
@@ -150,7 +171,7 @@ export async function GET() {
         (a, b) => b.net - a.net,
       ),
       event_type_breakdown: typeCounts,
-      narrative: narrative(topBoosted, topMuted, eventCount, profile.risk_appetite),
+      narrative: narrative(topBoosted, topMuted, eventCount),
     };
 
     return NextResponse.json(body);

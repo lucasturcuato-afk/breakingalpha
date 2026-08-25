@@ -61,7 +61,27 @@ export function FormField({
   const helpId = help ? `${id}-help` : undefined;
 
   return (
-    <div>
+    /* `position: relative` is load-bearing and it is a bug fix, not styling.
+     *
+     * The hidden-label branch below is `position: absolute`. With no positioned
+     * ancestor its containing block was the INITIAL containing block, so it did
+     * not sit inside this field at all: it resolved at its static position in
+     * DOCUMENT coordinates, escaped <main>'s overflow clipping, and extended the
+     * document's scrollable area to wherever the field happened to fall.
+     *
+     * Measured in a production build at 390x844, signed in, on
+     * /settings/profile: that one 1px label sat at document y 1158, pinning
+     * documentElement.scrollHeight at 1159 against an 844px viewport. The page
+     * therefore scrolled 315px past its own content into an empty band above the
+     * tab bar, and the number did not move when the viewport height changed,
+     * which is what gave it away. /saved, /ledger, /dashboard, /company and
+     * /morning-brief all measured 0; /deal-flow scrolls <main> 42922px and still
+     * measured 0. This field is the only route to it.
+     *
+     * Making this box the containing block puts the label back inside the field,
+     * where the clip already hides it. Nothing moves and nothing renders
+     * differently. */
+    <div style={{ position: "relative" }}>
       <label
         htmlFor={id}
         style={

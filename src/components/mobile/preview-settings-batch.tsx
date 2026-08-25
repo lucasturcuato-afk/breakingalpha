@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { MobileSettingsScreen } from "@/components/settings/mobile-settings-screen";
-import { AlertsView, type AlertPrefs } from "@/components/settings/mobile-alerts-screen";
+import { AlertsView } from "@/components/settings/mobile-alerts-screen";
 import { MobileLearnedScreen } from "@/components/settings/mobile-learned-screen";
 import { MobileSavedScreen, type SavedSortKey } from "@/components/saved/mobile-saved-screen";
 import { MobileShareScreen } from "@/components/share/mobile-share-screen";
@@ -58,11 +58,10 @@ const WEIGHTS = [
   { sector: "Consumer", weight: 0.62 },
 ];
 
-const ALERT_PREFS: AlertPrefs = { brief: true, wrap: true, review: true, window: true, names: false };
 
 export function PreviewSettingsBatch({ screen, state }: { screen: PreviewScreen; state: PreviewState }) {
   if (screen === "settings") return <SettingsPreview state={state} />;
-  if (screen === "alerts") return <AlertsPreview state={state} />;
+  if (screen === "alerts") return <AlertsPreview />;
   if (screen === "saved") return <SavedPreview state={state} />;
   if (screen === "learned") return <LearnedPreview state={state} />;
   return <SharePreview state={state} />;
@@ -104,17 +103,11 @@ function SettingsPreview({ state }: { state: PreviewState }) {
   );
 }
 
-function AlertsPreview({ state }: { state: PreviewState }) {
-  const [prefs, setPrefs] = useState<AlertPrefs>(ALERT_PREFS);
-  const status = state === "loading" ? "loading" : state === "error" ? "error" : "ready";
-  return (
-    <AlertsView
-      status={status}
-      prefs={prefs}
-      onChange={(k, v) => setPrefs((p) => ({ ...p, [k]: v }))}
-      idBase="preview-alerts"
-    />
-  );
+/* Alerts has no data source and no store any more, so it has no loading,
+ * error or empty state to preview. One rendering, whatever `state` asks for.
+ * See the header of `mobile-alerts-screen.tsx`. */
+function AlertsPreview() {
+  return <AlertsView />;
 }
 
 function SavedPreview({ state }: { state: PreviewState }) {

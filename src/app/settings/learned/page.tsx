@@ -31,7 +31,12 @@ export default async function LearnedPage() {
 
   const refreshed = await updateInferredWeights(supabase, user.id).then(
     (r) => ({ ...r, failed: false }),
-    () => ({ weights: profile.inferred_sector_weights, eventCount: 0, failed: true }),
+    () => ({
+      weights: profile.inferred_sector_weights,
+      eventCount: 0,
+      updatedAt: profile.inferred_weights_updated_at,
+      failed: true,
+    }),
   );
   const { weights, eventCount, failed: refreshFailed } = refreshed;
 
@@ -39,9 +44,23 @@ export default async function LearnedPage() {
     .sort((a, b) => b[1] - a[1])
     .map(([sector, weight]) => ({ sector, weight }));
 
-  const updatedAt = profile.inferred_weights_updated_at
-    ? new Date(profile.inferred_weights_updated_at).toLocaleString()
-    : "not yet computed";
+  /* ORDERING, and this is a fix.
+   *
+   * This used to read `profile.inferred_weights_updated_at` off the snapshot
+   * taken above, which is read BEFORE `updateInferredWeights` runs and writes
+   * that same column. So the screen counted the events it had just computed
+   * and then reported a timestamp from the visit before, or, on a first visit,
+   * no timestamp at all. Signed in on a fresh account it rendered
+   * "12 events considered - last updated not yet computed" in one sentence.
+   *
+   * The refresh now hands back the timestamp it wrote. On the failure branch
+   * the stored value is used instead, which is the right value there: nothing
+   * new was written, so the last successful computation is what the reader
+   * should see. Either way it can be null, and null renders nothing rather
+   * than a phrase standing in for a date. */
+  const updatedAt = refreshed.updatedAt
+    ? new Date(refreshed.updatedAt).toLocaleString()
+    : null;
 
   return (
     <>

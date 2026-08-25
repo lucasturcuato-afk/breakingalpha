@@ -241,9 +241,17 @@ export function MobileSavedScreen({
             <p style={{ margin: 0, font: `600 16px/1.3 ${FONT_DISPLAY}`, color: "var(--c-ink)" }}>
               Your saved deals did not load
             </p>
+            {/* This used to read "This is a failed read, not an empty shelf.
+                Nothing has been removed." Both sentences are claims about the
+                reader's own saved rows, made on the one branch that establishes
+                the app could not read them. The commonest way to reach this
+                state is a 401, where there is no session and so no shelf to
+                report on at all. The copy now says what the branch knows, which
+                is that the request failed, and explicitly declines to
+                characterise the record behind it. */}
             <p style={{ ...CENTRED_BODY, margin: "8px 0 0" }}>
-              This is a failed read, not an empty shelf. Nothing has been removed. Open the screen
-              again in a moment.
+              The request did not complete, so there is nothing to show here. This is not a reading
+              of what you have saved. Open the screen again in a moment.
             </p>
           </div>
         </ScreenBody>

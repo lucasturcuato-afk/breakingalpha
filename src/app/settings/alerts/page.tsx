@@ -5,8 +5,8 @@ import { FONT_DISPLAY, FONT_SANS } from "@/components/mobile/fonts";
 /**
  * Alerts. A new route, because the screen had none: `src/app/alerts/` does not
  * exist and nothing in the repo renders these settings. It sits under
- * /settings because the only entry point is the Settings row "Brief and wrap
- * times", and its back link goes there.
+ * /settings because the only entry point is the Settings row "Alerts", and its
+ * back link goes there.
  */
 
 export const metadata = {

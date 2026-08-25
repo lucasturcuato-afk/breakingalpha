@@ -217,6 +217,25 @@ export function SignaleraTour() {
     // Only auto-fire on dashboard
     if (pathname !== "/dashboard") return;
 
+    /* DESK WIDTHS ONLY, and this one has to be JS because there is no element
+       to hang a class on: this component returns null and drives driver.js,
+       which renders its overlay into <body> itself.
+
+       Measured in a production build at 390x844, signed in, on /dashboard: the
+       tour auto-fired and put a full-viewport <svg> at z-index 10000 plus a
+       300x176 popover at z-index 1000000000 over the page. `elementFromPoint`
+       at all four tab bar pole centres returned the overlay, so the entire
+       mobile navigation was unreachable until the tour was dismissed.
+
+       And it could never have worked: nine of the ten TOUR_STEPS point at
+       `[data-tour='...']` nodes inside `shell/sidebar.tsx`, which AppShell
+       renders in `hidden md:block`. Below md the walkthrough highlights
+       elements that are not on the screen.
+
+       768 is the same breakpoint `md:` compiles to, so this and the class gate
+       on TourHelpButton below agree by construction. */
+    if (typeof window !== "undefined" && !window.matchMedia("(min-width: 768px)").matches) return;
+
     // Small delay to let the page render
     const timer = setTimeout(() => {
       setTriggered(true);
@@ -250,11 +269,27 @@ export function TourHelpButton() {
       type="button"
       onClick={start}
       className={cn(
+        /* md AND UP ONLY, and the gate is a class so a responsive rule can own
+           it. Two independent reasons, either one sufficient.
+
+           It covered the tab bar. At 390 this button sits at
+           {x:330,y:784,w:40,h:40} with z-index 8000, over a tab bar at
+           {0,785,390,59} with z-index 40, so `elementFromPoint` at the Ask
+           pole's centre returned this button and not the link. The pole was
+           unreachable on every signed-in mobile route.
+
+           And it could not have worked there anyway. Nine of the ten steps in
+           TOUR_STEPS target `[data-tour='...']` nodes that live in
+           `shell/sidebar.tsx`, and AppShell renders the sidebar inside
+           `hidden md:block`. Below md the tour has no targets to point at, so
+           the trigger offered a walkthrough of elements that are not on the
+           screen. The tour is a desk device; this is where it belongs. */
+        "hidden md:flex",
         "fixed bottom-5 right-5 z-[8000]",
         "w-10 h-10 rounded-full",
         "bg-espresso text-cream dark:bg-elevated dark:text-foreground",
         "border border-border-base shadow-lg",
-        "flex items-center justify-center",
+        "items-center justify-center",
         "hover:bg-gold hover:text-cream hover:border-gold",
         "transition-all duration-200 cursor-pointer",
         "group",

@@ -17,6 +17,13 @@
  * and which both the static and the runtime lint reject. Half of the track's
  * own 28px height is 14px, which is on the scale and renders the identical
  * capsule, so the shape is kept and the scale is not bent.
+ *
+ * `locked` is the state PR #661 established for a control with nothing behind
+ * it: disabled rather than merely handler-less, so it is closed in every
+ * channel at once (no click, no focus, no pointer, announced disabled), and
+ * drawn in the chrome border rather than the ink one so the closed state is
+ * VISIBLE and not only announced. `--c-locked-bg` and `--c-locked-ink` are the
+ * design system's own pair for exactly this; nothing here is invented.
  */
 
 export function ToggleSwitch({
@@ -24,6 +31,7 @@ export function ToggleSwitch({
   onChange,
   label,
   describedBy,
+  locked = false,
 }: {
   checked: boolean;
   onChange: (next: boolean) => void;
@@ -31,6 +39,12 @@ export function ToggleSwitch({
   label: string;
   /** Id of the row's sub-label, so the switch reads its qualifier too. */
   describedBy?: string;
+  /**
+   * Nothing reads this setting, so the control takes no change. Not a styling
+   * flag: it sets `disabled` on the element as well, so the switch cannot be
+   * clicked, focused or announced as operable.
+   */
+  locked?: boolean;
 }) {
   return (
     <button
@@ -39,23 +53,28 @@ export function ToggleSwitch({
       aria-checked={checked}
       aria-label={label}
       aria-describedby={describedBy}
-      onClick={() => onChange(!checked)}
+      disabled={locked}
+      onClick={locked ? undefined : () => onChange(!checked)}
       style={{
         appearance: "none",
-        border: 0,
+        border: locked ? "1px solid var(--c-frame)" : 0,
         boxSizing: "content-box",
         flex: "none",
-        width: "46px",
-        height: "28px",
+        width: locked ? "44px" : "46px",
+        height: locked ? "26px" : "28px",
         borderRadius: "14px",
         padding: "8px 2px",
         margin: "-8px 0",
         display: "flex",
         alignItems: "center",
-        justifyContent: checked ? "flex-end" : "flex-start",
-        cursor: "pointer",
+        justifyContent: checked && !locked ? "flex-end" : "flex-start",
+        cursor: locked ? "default" : "pointer",
         backgroundClip: "content-box",
-        backgroundColor: checked ? "var(--c-gold)" : "var(--c-locked-bg)",
+        backgroundColor: locked
+          ? "var(--c-locked-bg)"
+          : checked
+            ? "var(--c-gold)"
+            : "var(--c-locked-bg)",
       }}
     >
       <span
@@ -65,7 +84,11 @@ export function ToggleSwitch({
           width: "24px",
           height: "24px",
           borderRadius: "50%",
-          background: checked ? "var(--c-ongold)" : "var(--c-bg)",
+          background: locked
+            ? "var(--c-locked-ink)"
+            : checked
+              ? "var(--c-ongold)"
+              : "var(--c-bg)",
         }}
       />
     </button>
