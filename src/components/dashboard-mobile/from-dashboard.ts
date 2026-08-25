@@ -21,10 +21,10 @@ import type { Resolution } from "@/lib/desk-record";
 import type { DashboardData, DashMarketCell, DashStory } from "./fixture";
 import {
   DASH_BRIEF_TITLE,
-  DASH_DESK_RECORD_INTRO,
   DASH_DISCLAIMER,
   DASH_WAITING_EYEBROW,
   DASH_YOUR_RECORD_INTRO,
+  deskRecordIntro,
 } from "./copy";
 
 /**
@@ -326,8 +326,10 @@ export function buildDashboardData(sources: DashboardSources): DashboardData {
     yourRecord: sources.yourRecord
       ? { intro: DASH_YOUR_RECORD_INTRO, ...sources.yourRecord }
       : null,
+    /* The bars clause is appended only when the record has entries, because
+       that is exactly when the bars draw. `deskRecordIntro` owns that test. */
     deskRecord: sources.deskRecord
-      ? { intro: DASH_DESK_RECORD_INTRO, ...sources.deskRecord }
+      ? { intro: deskRecordIntro(sources.deskRecord.total > 0), ...sources.deskRecord }
       : null,
     /* Null and "failed" pass straight through to the screen, which draws no
        Top Stories section on the first and a failed section on the second.

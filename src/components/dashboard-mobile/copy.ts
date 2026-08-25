@@ -20,16 +20,38 @@ export const DASH_YOUR_RECORD_INTRO =
   "Your own calls, graded on their own outcomes. Nothing here borrows the desk's result.";
 
 /**
- * The desk record's intro, and the only place the bars are described.
- *
- * The bars clause used to live in the closing disclaimer, which renders in
- * every state including the ones where the desk record did not answer and no
- * bar is on screen. A sentence describing an element that is not there is
- * harmless but it is still a sentence about something nobody can see. It sits
- * with the bars now, so it renders exactly when they do.
+ * The desk record's intro. True whether or not the desk has graded anything.
  */
 export const DASH_DESK_RECORD_INTRO =
-  "Signalera's own graded calls. A separate record from yours, on the same four states. The bars draw each bucket's share of the whole record.";
+  "Signalera's own graded calls. A separate record from yours, on the same four states.";
+
+/**
+ * The sentence that describes the bars, and the only place they are described.
+ *
+ * It used to live in the closing disclaimer, which renders in every state
+ * including the ones where the desk record did not answer and no bar is on
+ * screen. Moving it up beside the bars fixed that case and left one more: the
+ * intro renders whenever the desk record was READ, and the bars render only
+ * when that record has entries. On day one, with nothing graded, the section
+ * draws "No graded calls yet" and four words about bars that are not there and
+ * a record there is none of to be proportional to.
+ *
+ * So it is a separate string, appended by `deskRecordIntro` only when the
+ * record has entries. One paragraph either way, so the populated state that
+ * parity fingerprints is byte-identical to before.
+ */
+export const DASH_DESK_RECORD_BARS =
+  "The bars draw each bucket's share of the whole record.";
+
+/**
+ * The desk intro as the section should state it, given whether the record has
+ * anything in it. `total > 0` is the same test the screen uses to decide
+ * between the bars and the day-one absence, so the sentence and the element it
+ * describes cannot come apart.
+ */
+export function deskRecordIntro(hasEntries: boolean): string {
+  return hasEntries ? `${DASH_DESK_RECORD_INTRO} ${DASH_DESK_RECORD_BARS}` : DASH_DESK_RECORD_INTRO;
+}
 
 /**
  * The closing line, and it has to be true in every state this screen has.
@@ -43,8 +65,9 @@ export const DASH_DESK_RECORD_INTRO =
  *
  * The replacement then described the bars, which was accurate whenever they
  * rendered and stranded whenever the record read did not answer. So the bars
- * clause moved to `DASH_DESK_RECORD_INTRO`, beside the bars, and what is left
- * here is true whether or not a single record section drew.
+ * clause moved to `DASH_DESK_RECORD_BARS`, appended beside the bars only when
+ * they draw, and what is left here is true whether or not a single record
+ * section drew.
  */
 export const DASH_DISCLAIMER =
   "Informational only and never investment advice. Every record figure here is a count; no rate or score is stated as a figure.";

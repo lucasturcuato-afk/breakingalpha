@@ -2,10 +2,10 @@ import type { SentimentTone } from "@/components/ui/sentiment-pill";
 import type { Resolution } from "@/lib/desk-record";
 import {
   DASH_BRIEF_TITLE,
-  DASH_DESK_RECORD_INTRO,
   DASH_DISCLAIMER,
   DASH_WAITING_EYEBROW,
   DASH_YOUR_RECORD_INTRO,
+  deskRecordIntro,
 } from "./copy";
 
 /**
@@ -198,7 +198,7 @@ export const DASH_FIXTURE: DashboardData = {
     awaiting: 7,
   },
   deskRecord: {
-    intro: DASH_DESK_RECORD_INTRO,
+    intro: deskRecordIntro(true),
     byResolution: { supported: 19, challenged: 11, noCleanRead: 6, notGraded: 5 },
     total: 41,
   },
@@ -259,7 +259,10 @@ export const DASH_FIXTURE_EMPTY: DashboardData = {
     awaiting: 0,
   },
   deskRecord: {
-    intro: DASH_DESK_RECORD_INTRO,
+    /* Day one, so no bars and no bars clause. Composed through the same
+       function the loader uses rather than written out, so the fixture cannot
+       depict a sentence the real path would not print. */
+    intro: deskRecordIntro(false),
     byResolution: { supported: 0, challenged: 0, noCleanRead: 0, notGraded: 0 },
     total: 0,
   },
