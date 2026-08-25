@@ -368,7 +368,10 @@ export async function loadLedger(
     // the answered calls read did establish, and says nothing about how many
     // are decided. The view draws the rest.
     briefProgress:
-      desk.total > 0
+      // `decided` is null only inside EMPTY_DESK, whose total is 0, so the two
+      // conditions are the same condition. Spelling both is what lets the view
+      // carry two states instead of an unreachable third.
+      desk.total > 0 && desk.decided !== null
         ? {
             decided: desk.decided,
             total: desk.total,

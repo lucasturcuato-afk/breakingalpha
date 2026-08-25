@@ -90,25 +90,30 @@ export interface LedgerData {
    * The desk's calls on this brief, and how many of them have been graded.
    * Null when the brief carries no calls to count.
    *
-   * `decided` is three states, because three things can be true of that read
-   * and each one is drawn differently. This is the shape PR #675 landed on
-   * `DashboardData.stories`, applied to a count instead of a list.
+   * `decided` is TWO states here, and the loader's own `DeskLoad.decided` is
+   * three. The difference is deliberate and it is worth reading once.
    *
    *   a number   the read ANSWERED. Zero is a real zero and may be published
    *              as one, because a read came back and found none graded.
    *   "failed"   the read ANSWERED WITH AN ERROR. The screen prints the total,
    *              says the decided count could not be read, and prints no
    *              numeral pair and no progress bar.
-   *   null       the read WAS NOT MADE. Same rendering as "failed" minus the
-   *              sentence, because there is no failure to report either.
    *
-   * A FAILED READ IS NOT A ZERO. Collapsing the last two into 0 is what put
+   * The third state a read can be in, NOT MADE, is `null` on `DeskLoad` and
+   * cannot reach this type: the outcomes read is skipped only when the brief
+   * carries no calls, and with no calls there is no progress block to build.
+   * It was in this union and unreachable, described in the PR as one of three
+   * things a reader could see when it was one of two. Narrowing it here deletes
+   * a branch of the view that could never run and keeps the honest three-state
+   * shape where the three states are real.
+   *
+   * A FAILED READ IS NOT A ZERO. Collapsing "failed" into 0 is what put
    * "0 decided" plus a full-width empty progress bar on this screen over a
    * read that never came back, and it is the same defect that printed
    * `SIGNALS TODAY 0` on the Dashboard and "Nothing on your watchlist yet"
    * on Watch.
    */
-  briefProgress: { decided: number | "failed" | null; total: number; status: string } | null;
+  briefProgress: { decided: number | "failed"; total: number; status: string } | null;
   today: LedgerDay;
   past: LedgerDay[];
   /** Entries beyond the ones rendered. Null when there are none. */

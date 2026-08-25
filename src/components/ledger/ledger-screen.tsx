@@ -665,12 +665,16 @@ function PulseProse({
 /**
  * The desk's calls on this brief and how many are graded.
  *
- * ONLY A NUMBER IS A COUNT. `"failed"` is a read that answered with an error
- * and `null` is a read that was never made, and neither of those is zero.
- * Drawing either as `0 / N` under a full row of unfilled segments states a
- * figure nothing established, in the most quantitative shape on the screen.
- * So the numeral pair and the bar are drawn for a real count and for nothing
- * else, and a failed read says it failed instead.
+ * ONLY A NUMBER IS A COUNT. `"failed"` is a read that answered with an error,
+ * and that is not a zero. Drawing it as `0 / N` under a full row of unfilled
+ * segments states a figure nothing established, in the most quantitative shape
+ * on the screen. So the numeral pair and the bar are drawn for a real count and
+ * for nothing else, and a failed read says it failed instead.
+ *
+ * The loader's `DeskLoad.decided` carries a third value, `null` for a read that
+ * was never made. It cannot arrive here: that read is skipped only when the
+ * brief has no calls, and then there is no progress block at all. See the note
+ * on `LedgerData.briefProgress`.
  */
 function BriefProgress({ progress }: { progress: NonNullable<LedgerData["briefProgress"]> }) {
   const { decided, total, status } = progress;
@@ -831,8 +835,16 @@ function BriefNone() {
       <p style={{ margin: 0, font: "500 17px/1.4 var(--font-playfair-display), serif", color: "var(--c-ink)" }}>
         No brief published yet.
       </p>
+      {/* This used to read "Nothing failed to load. The desk has not published
+          yet." Both halves overreach. `briefQuery` excludes the sentinel
+          headline the pipeline writes when a run fails upstream, so a brief
+          that published as a failure row lands here, and on that path
+          something did fail and the desk did publish. What the read actually
+          establishes is narrower and is all this says now: it answered, and it
+          returned no brief. The distinction from the error state, which is
+          what the old sentence was reaching for, survives in "answered". */}
       <p style={{ margin: "10px 0 0", font: "400 13px/1.6 var(--font-inter), sans-serif", color: "var(--c-secondary)", maxWidth: "32ch" }}>
-        Nothing failed to load. The desk has not published yet, and it publishes at 6:45.
+        The read answered and returned no brief. The desk publishes at 6:45.
       </p>
     </div>
   );
