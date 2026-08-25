@@ -3,12 +3,20 @@
 import { useState, useEffect, useMemo, Suspense, type ReactNode } from "react";
 import { createBrowserClient } from "@supabase/ssr";
 import { AppShell } from "@/components/shell";
-import { DashboardScreen, MobileDashboardRoute } from "@/components/dashboard-mobile";
+import {
+  DashboardScreen,
+  MobileDashboardRoute,
+  buildDashboardData,
+  useMobileRecords,
+  type DashQuote,
+  type DashStage,
+} from "@/components/dashboard-mobile";
 import { useUserProfile } from "@/hooks/useUserProfile";
 import { DashTile } from "@/components/dashboard/dash-tile";
 import {
   DashboardReadyProvider,
   DashboardRevealGate,
+  useDashboardReady,
   useDashboardSource,
 } from "@/components/dashboard/dashboard-ready";
 import { DeskRecordSummary } from "@/components/dashboard/desk-record-summary";
@@ -656,6 +664,70 @@ function DashboardPageInner() {
     return undefined;
   }, [profile, stories, watchlistTickers, marketTone]);
 
+  /* ── the mobile screen's data ─────────────────────────────────────────
+   *
+   * Below md the phone draws its own screen beside the desktop layout, and
+   * until now it drew a fixture. It reads the SAME state the widgets above
+   * read; not one loader on this page is rewired, moved or re-run to feed it,
+   * and the desktop tree below is byte-identical to what it was.
+   *
+   * `useDashboardReady` is the readiness signal, and it is free: the reveal
+   * gate already registers every page-level source and flips `isReady` when
+   * all of them have settled or the 10s ceiling is hit. Reading it here adds
+   * no source and holds nothing back. Before it flips, `mobileData` is null
+   * and the phone shows the loading skeleton rather than a half-built morning
+   * with a zero count in it.
+   *
+   * The two record reads are the one thing this page does not already do at
+   * page level; they live inside desktop widgets as component state. Lifting
+   * them would be rewiring two desktop loaders, so `useMobileRecords` reads
+   * the same two sources through the same two shared libraries, and only
+   * below the md breakpoint, so a desktop load fires nothing extra.
+   */
+  const { isReady: dashRevealed } = useDashboardReady();
+  const mobileRecords = useMobileRecords();
+  const mobileReady = dashRevealed && mobileRecords.status !== "loading";
+
+  const mobileData = useMemo(() => {
+    if (!mobileReady) return null;
+    return buildDashboardData({
+      now: new Date(),
+      firstName: profile?.first_name ?? null,
+      storyCount,
+      bullishCount,
+      bearishCount,
+      countsFailed,
+      marketSymbols: userMarketCards,
+      quotes: marketCards as Record<string, DashQuote | null | undefined>,
+      briefHeadline: briefingHeadline,
+      /* The base Top Stories list, not `displayStories`. The phone has its
+         own For You lens and must not inherit which tab the desk is on. */
+      stories,
+      watchlistTickers: profile?.watchlist_tickers ?? [],
+      profileSectors: profile?.sectors ?? [],
+      yourRecord: mobileRecords.yourRecord,
+      deskRecord: mobileRecords.deskRecord,
+      gradedInLastDay: mobileRecords.gradedInLastDay,
+    });
+  }, [
+    mobileReady,
+    profile,
+    storyCount,
+    bullishCount,
+    bearishCount,
+    countsFailed,
+    userMarketCards,
+    marketCards,
+    briefingHeadline,
+    stories,
+    mobileRecords,
+  ]);
+
+  /* A failed Top Stories read is the only page-level failure the phone can
+     state as one. Everything else is absent rather than broken, and absence is
+     drawn by leaving the section out. */
+  const mobileStage: DashStage = storiesError ? "error" : "ready";
+
   return (
     <AppShell
       pageTitle="Dashboard"
@@ -676,14 +748,17 @@ function DashboardPageInner() {
           rewriting, and it is deliberate for this unit: unmounting the desk
           below md means branching a 942-line page on a breakpoint, which is
           the rewrite this was meant to avoid. Worth revisiting once the
-          mobile screen has a loader of its own.
+          mobile screen has a loader of its own, which is now the case: the
+          phone reads `mobileData` below, built from this page's own state.
+          Unmounting the desk below md is the next step and it is not this
+          unit's.
 
           Gating lives in a CLASS, never in an inline style. An inline display
           beats the class at every breakpoint, which is the defect that shipped
           the tab bar to desktop once already. */}
       <div className="md:hidden">
-        <Suspense fallback={<DashboardScreen stage="loading" />}>
-          <MobileDashboardRoute />
+        <Suspense fallback={<DashboardScreen stage="loading" data={null} />}>
+          <MobileDashboardRoute data={mobileData} stage={mobileStage} />
         </Suspense>
       </div>
 

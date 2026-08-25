@@ -1,37 +1,37 @@
 import type { SentimentTone } from "@/components/ui/sentiment-pill";
 import type { Resolution } from "@/lib/desk-record";
+import {
+  DASH_BRIEF_TITLE,
+  DASH_DESK_RECORD_INTRO,
+  DASH_DISCLAIMER,
+  DASH_WAITING_EYEBROW,
+  DASH_YOUR_RECORD_INTRO,
+} from "./copy";
 
 /**
- * Sample content for the mobile Dashboard, taken verbatim from the rendered
- * prototype.
+ * The mobile Dashboard's data contract, and sample content shaped to it.
  *
- * The screen has no data source in this unit. The desktop page's four loaders
- * stay exactly where they are and are not rewired here, so the mobile screen
- * is built against a typed fixture and the shape below IS the contract a real
- * loader has to satisfy. Swapping the fixture for a fetch should not touch a
- * single component.
+ * `DashboardData` is what the screen paints and the only thing it paints. The
+ * real loader lives in `from-dashboard.ts`, which maps `/dashboard`'s existing
+ * page-level reads plus the reader's own record into this shape; the desktop
+ * loaders are not rewired and the desktop layout is untouched.
+ *
+ * EVERY FIELD THAT CAN BE ABSENT IS NULLABLE, and that is the point of the
+ * type. A field the loader could not source is null, and the screen draws
+ * nothing for it. There is no branch anywhere below the loader that can invent
+ * a sentence about the reader, because there is no non-null value to invent
+ * one from.
+ *
+ * The sample content is a development and preview affordance for parity
+ * fingerprinting. It is reached only through a dynamic import behind
+ * `DASH_FIXTURES_ALLOWED` and an explicit `?stage=` in the URL, so production
+ * never downloads it and never renders it.
  *
  * Compliance note on sample content: the rule against an aggregate figure
  * reaches sample data too. Nothing here is a rate. Every record figure is a
  * count, the desk's denominator is a count, and the two market deltas are one
  * instrument's own move over one session.
  */
-
-/**
- * Whether sample content may render at all.
- *
- * One constant, imported by every consumer, because the first version of this
- * gate lived inline in `dashboard-screen.tsx` and the splash rendered beside
- * that screen rather than inside it. The screen was gated and the splash was
- * not, so production still opened on a full-screen overlay asserting a story
- * count and a check against the reader's own record. A gate that has to be
- * remembered at each call site is a gate that gets missed at one of them.
- *
- * Fails closed: production renders no sample content anywhere.
- */
-export const DASH_FIXTURES_ALLOWED =
-  process.env.NODE_ENV !== "production" ||
-  process.env.NEXT_PUBLIC_VERCEL_ENV === "preview";
 
 export type DashStage = "ready" | "loading" | "error" | "empty" | "stale";
 
@@ -65,13 +65,14 @@ export interface DashStory {
    * The lens has to filter something. A control that restyles itself and
    * leaves the identical list is a filter that silently did nothing, which on
    * a product whose claim is that nothing is curated away is worse than no
-   * control at all. The real screen will read this off the personalization
-   * scorer; the fixture states it per story so the lens is honest today.
+   * control at all. The real loader reads this off the reader's own watchlist
+   * and sectors, the same two inputs the desk's For You tab scores on.
    */
   forYou: boolean;
   tone: SentimentTone;
   toneLabel: string;
-  sector: string;
+  /** Null when the article carries no sector. The chip is then not drawn. */
+  sector: string | null;
   source: string;
   age: string;
   headline: string;
@@ -94,29 +95,58 @@ export interface DashboardData {
   eyebrow: string;
   greeting: string;
   /**
+   * The reader's initials, for the profile control in the screen head. Null
+   * when no name is known, and the control then draws an empty disc rather
+   * than someone else's letters.
+   */
+  initials: string | null;
+  /**
    * The line under the greeting. Nullable by design, matching
    * `greeting.tsx`'s contract: a hardcoded fallback reads as a measured
    * observation and is not one, so when nothing true can be said about the
    * tape the greeting says nothing about it.
    */
   context: string | null;
+  /**
+   * One cell per instrument the reader actually has a quote for. A symbol the
+   * feed never answered on is omitted rather than drawn as "no quote", which
+   * would claim the feed answered and had nothing.
+   */
   market: DashMarketCell[];
   /** The overnight resolution, or null when nothing of the reader's moved. */
   waiting: { eyebrow: string; line: string } | null;
-  brief: { title: string; sub: string };
-  yourRecord: DashRecordCounts & { intro: string };
-  deskRecord: { intro: string; byResolution: Record<Resolution, number>; total: number };
+  /** `sub` is null until a real brief headline has been read. */
+  brief: { title: string; sub: string | null };
+  /** Null while the reader's own record has not been read, or the read failed. */
+  yourRecord: (DashRecordCounts & { intro: string }) | null;
+  /** Null while the desk's record has not been read, or the read failed. */
+  deskRecord: { intro: string; byResolution: Record<Resolution, number>; total: number } | null;
   stories: DashStory[];
   /** Published only when the reader is looking at yesterday's briefing. */
-  staleNotice: string;
+  staleNotice: string | null;
   disclaimer: string;
 }
+
+/**
+ * The opening overlay's sample copy.
+ *
+ * It lives here, with the rest of the invented content, because both of its
+ * lines are invented: a story count nothing read and a check against a record
+ * nobody looked at. Kept out of `dashboard-route.tsx` so the only way to reach
+ * it is the same dynamic import behind the same gate.
+ */
+export const DASH_SPLASH = {
+  date: "THURSDAY, AUGUST 6",
+  headline: "Your briefing is ready.",
+  detail: "142 stories read overnight. One of your calls was checked.",
+};
 
 export const DASH_FIXTURE: DashboardData = {
   date: "Thursday, August 6",
   clock: "6:52",
   eyebrow: "Your morning briefing",
   greeting: "Good morning, Maya.",
+  initials: "MR",
   context: "142 high-signal stories worth your attention.",
   market: [
     { symbol: "SPY", label: "S&P 500", value: "6,412.08", delta: "−0.17%", tone: "down" },
@@ -125,20 +155,20 @@ export const DASH_FIXTURE: DashboardData = {
     { symbol: "SIGNALS", label: "SIGNALS TODAY", value: "142", counts: { up: "58↑", down: "41↓" } },
   ],
   waiting: {
-    eyebrow: "RESOLVED OVERNIGHT",
+    eyebrow: DASH_WAITING_EYEBROW,
     line: "One of your calls was checked.",
   },
   brief: {
-    title: "This morning's brief",
+    title: DASH_BRIEF_TITLE,
     sub: "Five calls, none decided yet",
   },
   yourRecord: {
-    intro: "Your own calls, graded on their own outcomes. Nothing here borrows the desk's result.",
+    intro: DASH_YOUR_RECORD_INTRO,
     byResolution: { supported: 17, challenged: 12, noCleanRead: 5, notGraded: 0 },
     awaiting: 7,
   },
   deskRecord: {
-    intro: "Signalera's own graded calls. A separate record from yours, on the same four states.",
+    intro: DASH_DESK_RECORD_INTRO,
     byResolution: { supported: 19, challenged: 11, noCleanRead: 6, notGraded: 5 },
     total: 41,
   },
@@ -170,8 +200,7 @@ export const DASH_FIXTURE: DashboardData = {
   ],
   staleNotice:
     "Today's briefing has not published yet. This is yesterday's, generated 6:45 AM ET. Your review dates are unaffected.",
-  disclaimer:
-    "Informational only and never investment advice. No rate, ratio or score is computed over either record.",
+  disclaimer: DASH_DISCLAIMER,
 };
 
 /**
@@ -179,21 +208,32 @@ export const DASH_FIXTURE: DashboardData = {
  * anything yet. The prototype draws populated counts in every state, so this
  * is the state the design does not depict, built from copy that already
  * exists in `your-record.ts` and `desk-record.ts` rather than invented here.
+ *
+ * Written out in full rather than spread over DASH_FIXTURE. A spread kept the
+ * populated market band and a brief line reading "Five calls, none decided
+ * yet", which is a specific claim about a morning with nothing behind it.
  */
 export const DASH_FIXTURE_EMPTY: DashboardData = {
-  ...DASH_FIXTURE,
+  date: DASH_FIXTURE.date,
+  clock: DASH_FIXTURE.clock,
+  eyebrow: DASH_FIXTURE.eyebrow,
+  greeting: DASH_FIXTURE.greeting,
+  initials: DASH_FIXTURE.initials,
   context: null,
+  market: [],
   waiting: null,
-  brief: { title: "This morning's brief", sub: "Five calls, none decided yet" },
+  brief: { title: DASH_BRIEF_TITLE, sub: null },
   yourRecord: {
-    intro: DASH_FIXTURE.yourRecord.intro,
+    intro: DASH_YOUR_RECORD_INTRO,
     byResolution: { supported: 0, challenged: 0, noCleanRead: 0, notGraded: 0 },
     awaiting: 0,
   },
   deskRecord: {
-    intro: DASH_FIXTURE.deskRecord.intro,
+    intro: DASH_DESK_RECORD_INTRO,
     byResolution: { supported: 0, challenged: 0, noCleanRead: 0, notGraded: 0 },
     total: 0,
   },
   stories: [],
+  staleNotice: null,
+  disclaimer: DASH_DISCLAIMER,
 };

@@ -1,0 +1,128 @@
+div|hidden md:block|1440x0
+  aside|fixed left-0 top-0 bottom-0 w-[64px] lg:w-[var(--sidebar-width)] bg-sidebar-bg border-r border-border-base flex flex-col z-40|220x1000
+    div|border-b border-border-base px-4 py-4 hidden lg:flex items-center justify-center|219x59
+      span|font-display font-bold tracking-tight leading-none whitespace-nowrap inline-flex|112x26
+        span||73x26
+        span|dark:[filter:drop-shadow(0_0_12px_rgba(212,168,75,0.25))]|38x26
+    div|lg:hidden h-[57px] border-b border-border-base|0x0
+    nav|flex-1 overflow-y-auto px-2 lg:px-3 py-3.5 space-y-5|219x810
+      div|hidden lg:flex items-center justify-between px-3|195x24
+        span|font-sans text-[11px] font-semibold text-text-faint|47x18
+        button|w-6 h-6 flex items-center justify-center rounded-md transition-colors duration-[var(--duration-base)] cursor-pointer text-text-faint hover:bg-parchment-mid hover:text-espresso|24x24
+          svg||12x12
+            path||10x10
+            path||2x2
+      div||195x185
+        p|hidden lg:block px-3 mb-1.5 font-sans text-[11px] font-semibold text-text-faint|195x18
+        ul|space-y-0.5|195x161
+          li||195x39
+            a|flex items-center gap-2.5 px-2 lg:px-3 py-[9px] rounded-lg justify-center lg:justify-start font-sans text-[13px] font-medium transition-all duration-[var(--duration-base)] ease-[var(--ease-out)] relative border-l-2 border-transparent bg-espresso text-cream [&_svg]:text-gold dark:bg-elevated dark:text-foreground dark:border-border-default|195x39
+              svg||16x16
+                rect||5x5
+                rect||5x5
+                rect||5x5
+                rect||5x5
+              span|hidden lg:inline flex-1|143x21
+          li||195x39
+            a|flex items-center gap-2.5 px-2 lg:px-3 py-[9px] rounded-lg justify-center lg:justify-start font-sans text-[13px] font-medium transition-all duration-[var(--duration-base)] ease-[var(--ease-out)] relative border-l-2 border-transparent text-text-muted [&_svg]:text-text-faint hover:bg-parchment-mid hover:text-espresso hover:border-l-gold [&:hover_svg]:text-gold-dark dark:text-text-secondary dark:hover:bg-overlay|195x39
+              svg||16x16
+                circle||13x13
+                path||3x5
+              span|hidden lg:inline flex-1|105x21
+              span|flex items-center gap-1|28x14
+                span|w-1.5 h-1.5 rounded-full bg-signal-up animate-pulse|6x6
+                span|hidden lg:inline text-[9px] font-bold uppercase text-signal-up|18x14
+          li||195x39
+            a|flex items-center gap-2.5 px-2 lg:px-3 py-[9px] rounded-lg justify-center lg:justify-start font-sans text-[13px] font-medium transition-all duration-[var(--duration-base)] ease-[var(--ease-out)] relative border-l-2 border-transparent text-text-muted [&_svg]:text-text-faint hover:bg-parchment-mid hover:text-espresso hover:border-l-gold [&:hover_svg]:text-gold-dark dark:text-text-secondary dark:hover:bg-overlay|195x39
+              svg||16x16
+                circle||13x13
+                path||5x13
+                path||13x0
+              span|hidden lg:inline flex-1|143x21
+          li||195x39
+            a|flex items-center gap-2.5 px-2 lg:px-3 py-[9px] rounded-lg justify-center lg:justify-start font-sans text-[13px] font-medium transition-all duration-[var(--duration-base)] ease-[var(--ease-out)] relative border-l-2 border-transparent text-text-muted [&_svg]:text-text-faint hover:bg-parchment-mid hover:text-espresso hover:border-l-gold [&:hover_svg]:text-gold-dark dark:text-text-secondary dark:hover:bg-overlay|195x39
+              svg||16x16
+                path||12x0
+                path||8x0
+                path||9x0
+              span|hidden lg:inline flex-1|143x21
+      div||195x226
+        p|hidden lg:block px-3 mb-1.5 font-sans text-[11px] font-semibold text-text-faint|195x18
+        ul|space-y-0.5|195x202
+          li||195x39
+            a|flex items-center gap-2.5 px-2 lg:px-3 py-[9px] rounded-lg justify-center lg:justify-start font-sans text-[13px] font-medium transition-all duration-[var(--duration-base)] ease-[var(--ease-out)] relative border-l-2 border-transparent text-text-muted [&_svg]:text-text-faint hover:bg-parchment-mid hover:text-espresso hover:border-l-gold [&:hover_svg]:text-gold-dark dark:text-text-secondary dark:hover:bg-overlay|195x39
+              svg||16x16
+                path||8x2
+                path||0x0
+                path||13x9
+                path||7x7
+                path||0x0
+                path||1x3
+                circle||3x3
+                path||4x4
+              span|hidden lg:inline flex-1|143x21
+          li||195x39
+            a|flex items-center gap-2.5 px-2 lg:px-3 py-[9px] rounded-lg justify-center lg:justify-start font-sans text-[13px] font-medium transition-all duration-[var(--duration-base)] ease-[var(--ease-out)] relative border-l-2 border-transparent text-text-muted [&_svg]:text-text-faint hover:bg-parchment-mid hover:text-espresso hover:border-l-gold [&:hover_svg]:text-gold-dark dark:text-text-secondary dark:hover:bg-overlay|195x39
+              svg||16x16
+                path||5x12
+                rect||13x9
+              span|hidden lg:inline flex-1|143x21
+          li||195x39
+            a|flex items-center gap-2.5 px-2 lg:px-3 py-[9px] rounded-lg justify-center lg:justify-start font-sans text-[13px] font-medium transition-all duration-[var(--duration-base)] ease-[var(--ease-out)] relative border-l-2 border-transparent text-text-muted [&_svg]:text-text-faint hover:bg-parchment-mid hover:text-espresso hover:border-l-gold [&:hover_svg]:text-gold-dark dark:text-text-secondary dark:hover:bg-overlay|195x39
+              svg||16x16
+                path||3x3
+                circle||11x11
+              span|hidden lg:inline flex-1|143x21
+          li||195x39
+            a|flex items-center gap-2.5 px-2 lg:px-3 py-[9px] rounded-lg justify-center lg:justify-start font-sans text-[13px] font-medium transition-all duration-[var(--duration-base)] ease-[var(--ease-out)] relative border-l-2 border-transparent text-text-muted [&_svg]:text-text-faint hover:bg-parchment-mid hover:text-espresso hover:border-l-gold [&:hover_svg]:text-gold-dark dark:text-text-secondary dark:hover:bg-overlay|195x39
+              svg||16x16
+                path||4x4
+                path||13x7
+              span|hidden lg:inline flex-1|143x21
+          li||195x39
+            a|flex items-center gap-2.5 px-2 lg:px-3 py-[9px] rounded-lg justify-center lg:justify-start font-sans text-[13px] font-medium transition-all duration-[var(--duration-base)] ease-[var(--ease-out)] relative border-l-2 border-transparent text-text-muted [&_svg]:text-text-faint hover:bg-parchment-mid hover:text-espresso hover:border-l-gold [&:hover_svg]:text-gold-dark dark:text-text-secondary dark:hover:bg-overlay|195x39
+              svg||16x16
+                path||13x13
+                path||0x3
+                path||3x0
+                circle||3x3
+              span|hidden lg:inline flex-1|143x21
+    div|px-2 lg:px-3 pb-2|219x45
+      button|flex items-center justify-center lg:justify-start gap-2 w-full px-2 lg:px-3 py-2 rounded-lg text-text-muted hover:bg-parchment-mid hover:text-espresso transition-colors cursor-pointer relative|195x37
+        svg||15x15
+          path||2x1
+          path||11x9
+        span|hidden lg:inline font-sans text-[13px] font-medium flex-1 text-left|148x21
+    div|border-t border-border-base px-2 lg:px-3 py-3.5|219x86
+      div|group flex items-center justify-center lg:justify-start gap-2.5 bg-parchment-mid border border-border-base rounded-lg px-2 lg:px-3 py-2.5|195x57
+        a|lg:hidden|0x0
+          span|w-8 h-8 rounded-lg bg-espresso flex items-center justify-center overflow-hidden flex-shrink-0|0x0
+            span|font-display text-[11px] font-bold text-gold leading-none|0x0
+        div|hidden lg:flex items-center gap-2.5 flex-1 min-w-0|169x35
+          span|w-8 h-8 rounded-lg bg-espresso flex items-center justify-center overflow-hidden flex-shrink-0|32x32
+            span|font-display text-[11px] font-bold text-gold leading-none|9x11
+          div|flex-1 min-w-0|127x35
+            p|font-sans text-[12px] font-bold text-text-primary truncate|127x19
+            p|font-sans text-[10px] text-text-muted truncate|127x16
+          div|hidden group-hover:flex focus-within:flex items-center gap-2 flex-shrink-0|0x0
+            a||0x0
+              svg||0x0
+                path||0x0
+                circle||0x0
+            button|text-text-faint hover:text-signal-dn transition-colors cursor-pointer|0x0
+              svg||0x0
+                path||0x0
+                path||0x0
+                path||0x0
+  div|fixed top-0 right-0 bottom-0 z-[9001] overflow-hidden flex flex-col bg-elevated border-l border-border-base|1x1000
+    div|flex items-center justify-between px-4 pt-4 pb-3 border-b border-border-base flex-shrink-0 whitespace-nowrap|32x50
+      span|font-sans text-[13px] font-bold text-text-primary|81x21
+      div|flex items-center gap-2|19x19
+        button|cursor-pointer text-text-faint hover:text-text-muted p-0.5|19x19
+          svg||15x15
+            path||8x8
+            path||8x8
+    div|flex-1 overflow-y-auto py-2|0x950
+      div|px-4 py-6 text-center|32x250
+        p|font-sans text-[12px] text-text-secondary mb-1|0x58
+        p|font-sans text-[11px] text-text-faint|0x141
