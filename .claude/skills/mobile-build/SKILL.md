@@ -365,3 +365,77 @@ suddenly starts working anonymously again, that is worth reporting.
 The batch numbers are file names only. `DECISIONS.md` retired the eight-batch
 grouping as a sequence; the authoritative order is
 `IMPLEMENTATION_PROMPT.md:101-116`.
+
+## When a screen is done
+
+**A screen is done when it renders a real user's real data, or states plainly
+that it cannot. Rendering a fixture is not done.**
+
+This is the bar, and nothing else is. A screen that draws the design perfectly
+from invented data is a prototype that happens to live at a route. Say so in
+the PR title and body, in those words, so the state of the screen survives
+being read six PRs later by someone counting what shipped.
+
+Three states are acceptable in production:
+
+1. **Wired.** The screen reads a loader and paints what it returns.
+2. **Honest empty.** There is a source, it returned nothing, and the screen
+   says so without asserting anything about the reader.
+3. **Unwired.** There is no source. The screen says that, or renders loading,
+   and asserts nothing at all.
+
+Anything else is a defect, including an empty state that makes a claim.
+`BriefNone` said "Your six open calls are unaffected", which reads as
+reassurance and is a fact about the reader that the screen cannot know. The
+copy has no source behind it. Delete the sentence rather than soften it.
+
+### The two fixture rules, now enforced by design-lint
+
+**A fixture is never a default.** Not `data = LEDGER_FIXTURE`, not
+`data ?? DASH_FIXTURE`. The caller resolves the gate and passes the result:
+
+```tsx
+<LedgerScreen data={mobileFixtureScreensEnabled() ? LEDGER_FIXTURE : null} />
+```
+
+Make the prop REQUIRED and NULLABLE, and early-return the loading state when
+it is null. Below that guard the type is non-null, so no later edit can bring
+the fixture back by leaving a prop off. A missing gate becomes a build failure
+instead of invented data in front of a reader.
+
+This is not hypothetical. `/ledger` shipped with `data = LEDGER_FIXTURE` and no
+gate anywhere in its path, and served every signed-in reader on a phone three
+fabricated claims and the sentence "One of your calls was checked overnight."
+Rule `fixture-default` catches it now.
+
+**A fixture is never imported by a client component.** The gate is a runtime
+constant, so it stops the render and not the download: fixture prose reaches
+`.next/static` whether or not it can ever paint. Resolve on the server and pass
+the value down, the way `/trends-mobile` does. Rule `fixture-in-client-bundle`
+catches it, and the number to check afterwards is bytes in `.next/static`, not
+whether the screen looks right.
+
+`deals-mobile`, `feed/mobile` and `trends-mobile` all measure zero. Copy one of
+those three rather than inventing a fourth method.
+
+## The rollup, before any screen merges
+
+After the units finish and BEFORE the first merge, one agent reads **only the
+disclosures** across every open PR in the batch: the caveats, the "not wired"
+notes, the known-issue sections. It reads no code. It answers one question:
+
+> If every one of these merges, what is then true of production?
+
+It writes that as a single paragraph and posts it on the tracking PR.
+
+This step exists because of a specific failure. Twelve screen PRs merged, and
+ten of the twelve disclosed in their own bodies that the screen had no data
+source: #649 said it seven times, #651 and #658 eight times each. Not one unit
+claimed a working screen and not one hid anything. But twelve scoped caveats
+each read as a small caveat, and nobody added them up, so what actually shipped
+was a mobile surface where most screens cannot show a reader their own data. The
+reviewer who read all thirteen PRs did not add them up either.
+
+Aggregation is a separate job from review, and it has to be someone's job or it
+is nobody's. The rollup is cheap: it is a read of thirteen PR bodies. It is the
+only step in this process that looks at the batch rather than at a screen.
