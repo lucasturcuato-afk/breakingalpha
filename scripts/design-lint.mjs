@@ -491,6 +491,176 @@ function lintFile(file) {
   }
 }
 
+/* ── Rules 11 and 12: fixtures ─────────────────────────────────────────
+ *
+ * A fixture is invented data. It exists so a screen can be built and
+ * fingerprinted before a loader exists. Two ways it escapes into production,
+ * both of which have already happened in merged code:
+ *
+ *  11. As a DEFAULT. `data = LEDGER_FIXTURE` or `data ?? DASH_FIXTURE` means
+ *      the fixture renders whenever the caller passes nothing, so deleting a
+ *      single gate serves invented data to real readers. `/ledger` shipped
+ *      this way and served three fabricated claims and "One of your calls was
+ *      checked overnight" to every signed-in reader on a phone.
+ *
+ *  12. As BYTES. A gate is a runtime constant, so it stops the render but not
+ *      the download. Fixture prose imported by a client component ships in
+ *      the public bundle whether or not it can ever paint.
+ *
+ * An explicitly gated prop is the correct shape and is NOT a finding:
+ *     data={GATE ? LEDGER_FIXTURE : null}
+ * The gate is visible at the call site, and the screen has no default to fall
+ * back to.
+ */
+
+/* A fixture identifier, excluding the gate constants named after one
+ * (RECORD_FIXTURE_ENABLED and friends), which are booleans, not data. */
+const FIXTURE_ID = /^[A-Z][A-Z0-9_]*FIXTURE[A-Z0-9_]*$/;
+const FIXTURE_GATE_SUFFIX = /_(ENABLED|ALLOWED|VISIBLE|ON|OFF)$/;
+
+/* `=` or `??` immediately followed by a fixture identifier. The lookbehind
+ * drops `==`, `===`, `!==`, `>=` and `<=`, which are comparisons rather than
+ * defaults, and `=>`, which cannot be followed by an identifier here. */
+const FIXTURE_DEFAULT = /(?<![=!<>])(?:=|\?\?)\s*([A-Za-z0-9_]+)/g;
+
+function fixtureDefaults(text, file = '') {
+  /* A test names fixtures constantly and ships none of them. */
+  if (/\.(test|spec)\.[tj]sx?$/.test(file)) return [];
+  const out = [];
+  for (const m of text.matchAll(FIXTURE_DEFAULT)) {
+    const id = m[1];
+    if (!FIXTURE_ID.test(id) || FIXTURE_GATE_SUFFIX.test(id)) continue;
+    out.push({ index: m.index, id });
+  }
+  return out;
+}
+
+/* An import of a VALUE from a module whose path names it a fixture. A
+ * type-only import erases at build time and ships nothing, so it is fine. */
+const FIXTURE_IMPORT = /import\s+(type\s+)?({[^}]*}|[A-Za-z0-9_$]+)\s*from\s*["']([^"']*fixture[^"']*)["']/g;
+const USE_CLIENT = /^\s*(["'])use client\1/m;
+
+function clientFixtureImports(text, file = '') {
+  if (/\.(test|spec)\.[tj]sx?$/.test(file)) return [];
+  if (!USE_CLIENT.test(text.slice(0, 400))) return [];
+  const out = [];
+  for (const m of text.matchAll(FIXTURE_IMPORT)) {
+    if (m[1]) continue;                       // `import type { ... }`
+    const clause = m[2];
+    const names = clause.startsWith('{')
+      ? clause.slice(1, -1).split(',').map(x => x.trim()).filter(Boolean)
+      : [clause.trim()];
+    /* Inline `type X` inside the braces erases too. A clause that is nothing
+     * but type imports ships no bytes. */
+    const values = names
+      .filter(n => !/^type\s/.test(n))
+      /* A gate constant is a boolean. `fixture-gate.ts` exports nothing else,
+         and importing one is how a client component is SUPPOSED to check its
+         gate. Flagging it would make the correct shape a lint error. */
+      .filter(n => !FIXTURE_GATE_SUFFIX.test(n))
+      /* Lowercase means a function or a helper. That is code, which the
+         bundle needs anyway; this rule is about invented prose. */
+      .filter(n => /^[A-Z]/.test(n));
+    if (!values.length) continue;
+    out.push({ index: m.index, mod: m[3], values });
+  }
+  return out;
+}
+
+function lintFixtureRules(file, text) {
+  for (const hit of fixtureDefaults(text, file)) {
+    add('ERROR', file, lineOf(text, hit.index), 'fixture-default',
+        `${hit.id} is a default, not a gated prop. Pass GATE ? ${hit.id} : null from the caller`);
+  }
+  for (const hit of clientFixtureImports(text, file)) {
+    add('ERROR', file, lineOf(text, hit.index), 'fixture-in-client-bundle',
+        `client component imports ${hit.values.join(', ')} from ${hit.mod}; the prose ships in .next/static`);
+  }
+}
+
+/* ── Self-test ─────────────────────────────────────────────────────────
+ *
+ * Runs on EVERY invocation, before any file is read.
+ *
+ * This exists because both of these happened while writing these rules, and
+ * each one produced a confident all-clear from a rule that was matching
+ * nothing at all:
+ *
+ *   - The first sweep regex for rule 11 returned zero hits on a tree that
+ *     contained six. The anchoring was wrong. A null result reads exactly
+ *     like a clean result.
+ *   - The first sweep for rule 12 matched `from "./fixture"`, which is every
+ *     module's own local import, so all twelve fixtures reported the same
+ *     twenty-two importers. A result that is too broad is as useless as one
+ *     that is too narrow.
+ *
+ * A lint rule that silently stops matching is worse than no rule, because it
+ * is indistinguishable from compliance. So every rule below carries specimens
+ * it MUST flag and specimens it MUST NOT, and a mismatch is a hard exit.
+ */
+const SELFTEST = [
+  {
+    rule: 'fixture-default',
+    run: (t, f) => fixtureDefaults(t, f).length,
+    bad: [
+      '  data = LEDGER_FIXTURE,',
+      '  const d = data ?? DASH_FIXTURE;',
+      'function S({ data = RECORD_FIXTURE }) {}',
+      'export function matchFixture(q, data = SEARCH_FIXTURE) {}',
+    ],
+    good: [
+      'export const LEDGER_FIXTURE = { a: 1 };',
+      'import { LEDGER_FIXTURE } from "./fixture";',
+      'const stage = RECORD_FIXTURE_ENABLED ? requested : "unavailable";',
+      'data={GATE ? LEDGER_FIXTURE : null}',
+      'const same = data === LEDGER_FIXTURE;',
+      'const other = data !== RECORD_FIXTURE;',
+    ],
+    goodFiles: [['x.test.ts', 'const E = RECORD_FIXTURE.entries;']],
+  },
+  {
+    rule: 'fixture-in-client-bundle',
+    run: (t, f) => clientFixtureImports(t, f).length,
+    bad: [
+      '"use client";\nimport { EVENING_FIXTURE } from "./fixture";',
+      "'use client';\nimport { A, B } from \"@/components/x/fixture\";",
+      '"use client";\nimport FIX from "./fixture";',
+      '"use client";\nimport { type T, DASH_FIXTURE } from "./fixture";',
+    ],
+    good: [
+      '"use client";\nimport type { LedgerData } from "./fixture";',
+      '"use client";\nimport { type A, type B } from "./fixture";',
+      'import { EVENING_FIXTURE } from "./fixture";',
+      '"use client";\nimport { useState } from "react";',
+      /* The correct shape: a client component reading its own gate. */
+      '"use client";\nimport { FIXTURE_ALLOWED } from "./fixture-gate";',
+      '"use client";\nimport { matchFixture, isEmptyResult } from "./fixture";',
+    ],
+  },
+];
+
+function selfTest() {
+  const failures = [];
+  for (const t of SELFTEST) {
+    t.bad.forEach((src, i) => {
+      if (t.run(src) === 0) failures.push(`${t.rule}: MISSED a known-bad specimen #${i + 1}: ${JSON.stringify(src)}`);
+    });
+    t.good.forEach((src, i) => {
+      if (t.run(src) !== 0) failures.push(`${t.rule}: FLAGGED a known-good specimen #${i + 1}: ${JSON.stringify(src)}`);
+    });
+    (t.goodFiles || []).forEach(([f, src], i) => {
+      if (t.run(src, f) !== 0) failures.push(`${t.rule}: FLAGGED a known-good file specimen #${i + 1} (${f})`);
+    });
+  }
+  if (failures.length) {
+    console.error('design-lint: SELF-TEST FAILED. The rules below are not measuring what they claim,');
+    console.error('so a clean run means nothing. Fix the rule before trusting any result.\n');
+    for (const f of failures) console.error(`  ${f}`);
+    process.exit(2);
+  }
+}
+
+
 function walk(dir, out = []) {
   for (const e of readdirSync(dir)) {
     if (EXCLUDE_DIRS.has(e) || e.startsWith('.')) continue;
@@ -573,6 +743,8 @@ function uncommitted(files) {
   }
 }
 
+selfTest();
+
 const sinceIdx = args.indexOf('--since');
 const sinceRef = sinceIdx === -1 ? null : args[sinceIdx + 1];
 if (sinceIdx !== -1 && (!sinceRef || sinceRef.startsWith('--'))) {
@@ -642,7 +814,10 @@ if (!files.length) {
 }
 
 for (const f of files) {
-  try { lintFile(f); } catch (e) { add('WARN', f, 0, 'unreadable', e.message); }
+  try {
+    lintFile(f);
+    lintFixtureRules(f, readFileSync(f, 'utf8'));
+  } catch (e) { add('WARN', f, 0, 'unreadable', e.message); }
 }
 
 /* In --since mode a finding survives only if it sits on an added line.
