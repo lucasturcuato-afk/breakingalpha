@@ -77,7 +77,7 @@ export interface MobileRecords {
    * `setState` in its own body, which is exactly what
    * `react-hooks/set-state-in-effect` catches and which cost this branch its
    * only new lint warning. Deleting "idle" outright cleared the warning and
-   * broke something: above `md` the effect returns early, so nothing was left
+   * broke something: above `md` the effect exits early, so nothing was left
    * to move the status off "loading", and a page narrowed from 1440 to 390
    * without a reload sat on a PERMANENT SKELETON. Measured at 28s, 16s past
    * the read budget. A screen showing a state that will never resolve is the
