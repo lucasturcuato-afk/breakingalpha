@@ -67,6 +67,12 @@ const BANNED_ALLOW = [
   { pattern: /\bstakeholder(s)?\b/i, why: 'contains hold' },
   { pattern: /\bplaceholder(s)?\b/i, why: 'contains hold, DOM attribute' },
   { pattern: /\bwithhold(s|ing)?\b/i, why: 'contains hold, used in the reportable_min_n pattern' },
+  /* The Russell 2000. An index name, and the only one of the four the Evening
+     Wrap's scorecard draws that collides with the substring list. It names
+     something the desk quotes, not something anyone is told to do, and the
+     label is not ours to rename: the design draws RUSSELL and so does
+     `SCORECARD_SYMBOLS` in `src/app/evening-wrap/page.tsx`. */
+  { pattern: /\bRussell\b/i, why: 'contains sell, index name, no claim' },
 ];
 
 /* performance.now() is specifically called out in github.md as having been

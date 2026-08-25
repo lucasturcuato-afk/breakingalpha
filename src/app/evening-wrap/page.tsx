@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect, useMemo, useRef } from "react";
+import { Suspense, useState, useEffect, useMemo, useRef } from "react";
 import { AppShell } from "@/components/shell";
+import { EveningWrapMobile } from "@/components/evening";
 import { PanelWidget } from "@/components/shell/right-panel";
 import { TickerStrip } from "@/components/brief/ticker-strip";
 import CatalystStrip, { type CatalystItem } from "@/components/brief/CatalystStrip";
@@ -193,6 +194,31 @@ function formatTimePretty(d: Date): string {
     timeZoneName: "short",
   });
 }
+
+/**
+ * Whether the mobile redesign's fixture-rendered wrap may draw.
+ *
+ * `/evening-wrap` is not `/ledger`. The Ledger was a new route with no prior
+ * behaviour, so a fixture there regressed nothing. This route is live and
+ * authenticated: it already reads the reader's own wrap off
+ * `/api/briefing?type=evening`. Letting the fixture render unconditionally
+ * would put invented index levels, an invented dateline and an invented call
+ * in front of a real reader on a phone, on a product whose entire claim is
+ * that nothing is fabricated and nothing is hidden. So the fixture is gated
+ * and production keeps exactly the behaviour it has today.
+ *
+ * Only NEXT_PUBLIC_ names survive into the client bundle, so the two signals
+ * below are the only ones this component can read. It fails CLOSED: if
+ * NEXT_PUBLIC_VERCEL_ENV is not exposed to the build, the preview loses the
+ * screen and production still cannot reach it. Never the other way round.
+ *
+ * Delete this constant and render the branch unconditionally the moment the
+ * screen is wired to the real briefing payload. That is one line, and it is
+ * the only thing standing between this screen and production.
+ */
+const MOBILE_FIXTURE_VISIBLE =
+  process.env.NODE_ENV !== "production" ||
+  process.env.NEXT_PUBLIC_VERCEL_ENV === "preview";
 
 export default function EveningWrapPage() {
   const { profile } = useUserProfile();
@@ -756,6 +782,33 @@ export default function EveningWrapPage() {
   };
 
   return (
+    <>
+      {/* The mobile Evening Wrap. A new component composed beside the desk
+          layout below, never an edit to it: nothing in the desktop render
+          changes shape, and above the breakpoint this branch does not exist.
+          Gating lives in a CLASS and the wrapper carries no inline style, or
+          the class would be beaten at every width.
+
+          It sits OUTSIDE AppShell rather than inside it, and that is the
+          design rather than a shortcut. The prototype gates its nav on
+          `showNav: ['dash','ledger','watch','ask'].includes(s.screen)` at line
+          3460, so `evening` renders full screen with no bottom bar and no pole
+          lit. That is DECISIONS.md open item O2, a recorded design bug, and
+          this reproduces it rather than resolving it. Mounting the shell here
+          would put a tab bar on a surface the design draws without one, and
+          `mobile-tab-bar.tsx` is not this unit's to edit either way.
+
+          Suspense is required, not decorative: the branch reads `?stage=` with
+          `useSearchParams`, which needs a boundary above whatever calls it. */}
+      {MOBILE_FIXTURE_VISIBLE ? (
+        <Suspense fallback={null}>
+          <div className="md:hidden">
+            <EveningWrapMobile />
+          </div>
+        </Suspense>
+      ) : null}
+
+      <div className={MOBILE_FIXTURE_VISIBLE ? "hidden md:block" : "contents"}>
     <AppShell
       pageTitle="Evening Wrap"
       mood={liveMood.mood}
@@ -1538,6 +1591,8 @@ export default function EveningWrapPage() {
         type="brief"
       />
     </AppShell>
+      </div>
+    </>
   );
 }
 
