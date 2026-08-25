@@ -299,7 +299,14 @@ function Masthead({ data }: { data: LedgerData }) {
         <span style={{ font: "700 19px/1 var(--font-playfair-display), serif", letterSpacing: "-0.01em", color: "var(--c-oninv)" }}>
           Signal<span style={{ display: "inline-block", font: "700 19px/1 var(--font-playfair-display), serif", color: "var(--c-oninv-gold)" }}>era</span>
         </span>
+        {/* Decorative, and now actually marked so. The PR previously claimed this
+            was aria-hidden while the attribute was absent from the node, which
+            left an unlabelled node in the accessibility tree, and an unlabelled
+            EMPTY one whenever no initials are derivable. The shell's own avatar
+            is the labelled affordance; this disc repeats it and announces
+            nothing. */}
         <span
+          aria-hidden="true"
           style={{
             width: "33px",
             height: "33px",

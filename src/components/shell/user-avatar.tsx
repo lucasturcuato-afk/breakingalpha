@@ -5,6 +5,7 @@ import Image from "next/image";
 import { createBrowserClientAsync } from "@/lib/supabase-browser";
 import type { User } from "@supabase/supabase-js";
 import { cn } from "@/lib/utils";
+import { initialsFromUser } from "@/lib/user-initials";
 
 /**
  * Single source of truth for rendering a user's avatar across the shell
@@ -59,23 +60,13 @@ function deriveAvatar(user: User | null | undefined): AvatarShape {
     (typeof meta.picture === "string" && meta.picture) ||
     null;
 
-  const fullName =
-    (typeof meta.full_name === "string" && meta.full_name) ||
-    (typeof meta.name === "string" && meta.name) ||
-    "";
-
-  const source =
-    fullName ||
-    user.email?.split("@")[0] ||
-    "";
-
-  const initials = source
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((w) => w[0]!)
-    .join("")
-    .toUpperCase()
-    .slice(0, 2) || (user.email?.[0]?.toUpperCase() ?? "U");
+  // The derivation moved to src/lib/user-initials.ts unchanged, so the mobile
+  // Ledger's masthead disc and this avatar read the same record through the
+  // same function and cannot disagree about one reader. The last-resort letter
+  // stays here, because it is this component's own policy: the shell avatar is
+  // persistent chrome and must always be visible, where the Ledger's masthead
+  // disc draws empty rather than show a letter nothing supports.
+  const initials = initialsFromUser(user) ?? (user.email?.[0]?.toUpperCase() ?? "U");
 
   return { imageUrl: rawImage, initials, isSignedIn: true };
 }

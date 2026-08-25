@@ -3,6 +3,7 @@ import { LedgerScreen, type BriefStage } from "@/components/ledger";
 import { LEDGER_FIXTURE, type LedgerData } from "@/components/ledger/fixture";
 import { mobileFixtureScreensEnabled } from "@/lib/mobile-fixture-gate";
 import { getSupabaseWithUser } from "@/lib/supabase-server";
+import { initialsFromUser } from "@/lib/user-initials";
 import { loadLedger } from "@/lib/ledger-data";
 
 /**
@@ -50,9 +51,13 @@ export default async function LedgerPage({
   const { supabase, user } = await getSupabaseWithUser();
   const sampleAllowed = user === null && mobileFixtureScreensEnabled();
 
+  // The masthead disc's letters come from the reader's own auth record through
+  // `src/lib/user-initials.ts`, which is the same record and the same function
+  // the shell avatar reads, so the two cannot show one reader different
+  // letters. Null when nothing is derivable, and the disc then draws empty.
   const loaded = sampleAllowed
     ? null
-    : await loadLedger(supabase, user?.id ?? null, user?.email?.split("@")[0] ?? null);
+    : await loadLedger(supabase, user?.id ?? null, initialsFromUser(user));
 
   // The gate is resolved HERE and the result is passed down. The screen has no
   // default and no fallback, so a missing gate is a build failure rather than

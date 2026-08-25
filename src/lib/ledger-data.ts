@@ -151,25 +151,6 @@ function asObject(value: unknown): Record<string, unknown> | null {
   }
 }
 
-/**
- * Up to two initials from a name, or null. Never a stand-in letter: a disc
- * with nothing in it is honest and a disc with somebody else's letters is not.
- * Same derivation `src/components/shell/user-avatar.tsx` already uses, so the
- * masthead disc and the shell avatar cannot disagree about one reader.
- */
-function initialsFrom(source: string | null): string | null {
-  const trimmed = (source ?? "").trim();
-  if (!trimmed) return null;
-  const letters = trimmed
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((w) => w[0] ?? "")
-    .join("")
-    .toUpperCase()
-    .replace(/[^A-Z0-9]/g, "");
-  return letters.slice(0, 2) || null;
-}
-
 function asNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
@@ -311,15 +292,20 @@ function briefQuery(supabase: SupabaseClient) {
  * when the brief read itself failed, which is the one case the screen must
  * report as a failure rather than as an absence.
  *
- * `emailName` is the local part of the reader's own address, and it is the
- * fallback the masthead initials fall to when the profile carries no name. It
- * is the reader's own data either way and never anybody else's; with neither,
- * the disc draws empty.
+ * `initials` is derived by the caller, from the reader's own auth record,
+ * through `src/lib/user-initials.ts`. It is a parameter rather than a read
+ * because the identity lives on the auth record the page already holds and not
+ * in any table this file queries, and because that is the same record and the
+ * same function `src/components/shell/user-avatar.tsx` uses. It used to be
+ * derived here from `user_profiles.full_name`, which is a different store: the
+ * two are not kept in step, so a reader who had set a name in one and not the
+ * other got one set of letters on the masthead and another in the shell. Null
+ * means nothing was derivable and the disc draws empty.
  */
 export async function loadLedger(
   supabase: SupabaseClient,
   userId: string | null,
-  emailName: string | null,
+  initials: string | null,
 ): Promise<LedgerLoad> {
   const today = todayPt();
 
@@ -365,9 +351,7 @@ export async function loadLedger(
 
   const data: LedgerData = {
     generatedAt,
-    // The reader's own, or nothing. Profile name first, their own address
-    // second, and an empty disc when neither exists.
-    initials: initialsFrom(personal.name) ?? initialsFrom(emailName),
+    initials,
     readMinutes: readWords > 0 ? Math.max(1, Math.round(readWords / READING_PACE)) : null,
     // No source. The masthead line in the design describes the brief's shape
     // and nothing stored says what shape today's brief has.
@@ -498,8 +482,6 @@ async function loadDeskCalls(
 
 interface PersonalLoad {
   sectors: string[];
-  /** The reader's own stored name, for the masthead initials. Null when unset. */
-  name: string | null;
   past: LedgerDay[];
   entriesBefore: number | null;
   /** Ids of desk calls this reader has already taken onto their own record. */
@@ -508,7 +490,6 @@ interface PersonalLoad {
 
 const EMPTY_PERSONAL: PersonalLoad = {
   sectors: [],
-  name: null,
   past: [],
   entriesBefore: null,
   adopted: new Set(),
@@ -531,7 +512,7 @@ async function loadPersonal(
   if (!userId) return EMPTY_PERSONAL;
 
   const [profileRes, claimRes] = await Promise.all([
-    supabase.from("user_profiles").select("sectors, full_name").eq("id", userId).maybeSingle(),
+    supabase.from("user_profiles").select("sectors").eq("id", userId).maybeSingle(),
     supabase
       .from("user_claims")
       .select("id, user_claim, claim_type, target_symbol, created_at, adopted_from_call_id")
@@ -541,21 +522,36 @@ async function loadPersonal(
       .limit(CLAIM_LIMIT),
   ]);
 
-  const profile = profileRes.data as { sectors: unknown; full_name: unknown } | null;
+  // The profile read's error is checked, deliberately and not incidentally.
+  // It used to be destructured for `.data` alone, and it degraded to absence
+  // only because `null?.sectors` happens to be undefined. That is the right
+  // OUTCOME reached by accident, one function away from the read whose
+  // identical shape published "0 decided" over a failure, and the accident is
+  // the thing worth removing.
+  //
+  // Absence IS the correct rendering here, and this is where a sector list
+  // differs from a count. The banner reads "Personalized for:" over the
+  // reader's own sectors, so an empty list draws no banner at all and asserts
+  // nothing: not that the reader has no sectors, not that a read succeeded. A
+  // failure notice over a personalization strip would be noise about a block
+  // that carries no claim. So a failed read and an empty list render the same
+  // nothing, on purpose, which is not true of anything this file counts.
+  const profile = profileRes.error
+    ? null
+    : (profileRes.data as { sectors: unknown } | null);
   const rawSectors = profile?.sectors;
   const sectors = Array.isArray(rawSectors)
     ? rawSectors.filter((s): s is string => typeof s === "string" && s.trim().length > 0)
     : [];
-  const name = asText(profile?.full_name);
 
-  if (claimRes.error) return { ...EMPTY_PERSONAL, sectors, name };
+  if (claimRes.error) return { ...EMPTY_PERSONAL, sectors };
   const rows = (claimRes.data ?? []) as UserClaimRow[];
   const claims = rows.filter((c) => asText(c.user_claim));
 
   const adopted = new Set(
     claims.map((c) => c.adopted_from_call_id).filter((id): id is string => Boolean(id)),
   );
-  if (claims.length === 0) return { sectors, name, past: [], entriesBefore: null, adopted };
+  if (claims.length === 0) return { sectors, past: [], entriesBefore: null, adopted };
 
   const { data: outcomeData, error: outcomeError } = await supabase
     .from("user_claim_outcomes")
@@ -567,7 +563,7 @@ async function loadPersonal(
       claims.map((c) => c.id),
     )
     .order("graded_at", { ascending: false });
-  if (outcomeError) return { sectors, name, past: [], entriesBefore: null, adopted };
+  if (outcomeError) return { sectors, past: [], entriesBefore: null, adopted };
 
   // Newest row per claim. There is no unique constraint on claim_id.
   const latest = new Map<string, UserOutcomeRow>();
@@ -641,7 +637,6 @@ async function loadPersonal(
   const before = dated.length - shown;
   return {
     sectors,
-    name,
     past,
     entriesBefore: !capped && before > 0 ? before : null,
     adopted,
