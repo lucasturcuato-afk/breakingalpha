@@ -36,7 +36,14 @@ export default async function PreferencesPage() {
    * standing in for a date. Making the refresh report its own write is a
    * shared-library change and is split into its own PR. */
   const storedAt = profile.inferred_weights_updated_at;
-  const stored = storedAt !== null;
+  /* `typeof === "string"`, not `!== null`, and the difference is the whole
+     honesty of the screen. `stored` is false today only because
+     `DEFAULT_PROFILE` happens to set this key to null at `user-profile.ts:109`
+     and `getUserProfile` spreads `{...defaults, ...data}` over a `select("*")`
+     row that simply lacks it. Drop that default and `storedAt` becomes
+     `undefined`, `!== null` becomes true, and the ranking claim comes back
+     silently on both surfaces. A positive test cannot fail that way. */
+  const stored = typeof storedAt === "string";
   const updatedAt = storedAt ? new Date(storedAt).toLocaleString() : null;
 
   return (
@@ -141,9 +148,9 @@ export default async function PreferencesPage() {
           <BehavioralInsights />
         </div>
 
-        <p className="font-sans text-[11px] text-text-muted text-center">
-          Learned preferences update automatically after each reading session.
-        </p>
+        {/* Removed, same reason as the mobile screen: the recompute runs on a page
+              visit rather than per reading session, and with no column to write to
+              the result is discarded either way. */}
       </div>
     </AppShell>
   );

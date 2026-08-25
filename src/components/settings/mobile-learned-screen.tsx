@@ -24,6 +24,8 @@ import { FONT_DISPLAY, FONT_MONO, FONT_SANS } from "@/components/mobile/fonts";
  * a second tap.
  */
 
+const NOTHING_TO_CLEAR_ID = "learned-reset-locked-reason";
+
 const SCALE_MIN = 0.3;
 const SCALE_MAX = 2.5;
 
@@ -51,9 +53,18 @@ export function MobileLearnedScreen({
    */
   updatedAt: string | null;
   /**
-   * The route's weight refresh threw and it fell back to the stored values.
-   * The source swallows this and reports zero events, which is
-   * indistinguishable from a genuine zero. Said out loud instead.
+   * The route's weight refresh THREW. Narrow on purpose, and narrower than it
+   * looks: `updateInferredWeights` resolves normally on both a read error and
+   * a write error, and it deliberately suppresses even the warn when the error
+   * names either ghost column, so this cannot catch the failure that actually
+   * happens in production. That one is reported by `stored` instead.
+   *
+   * This branch is left in place because an unexpected throw is still possible
+   * and silence would be worse, but its copy no longer says the numbers fell
+   * back to "the last stored values": nothing is stored, so that would have
+   * been a second false claim hiding inside a failure message. Widening the
+   * signal means unpicking the swallow in `src/lib/user-profile.ts`, which is
+   * PR #681's file, not this one's.
    */
   refreshFailed: boolean;
   /**
@@ -83,24 +94,27 @@ export function MobileLearnedScreen({
         >
           Your preferences
         </h1>
-        <p
-          style={{
-            margin: "9px 0 0",
-            font: `400 13px/1.6 ${FONT_SANS}`,
-            color: "var(--c-secondary)",
-            textWrap: "pretty",
-          }}
-        >
-          Manage every dimension of how Signalera personalizes your intelligence feed. Changes take
-          effect immediately.
-        </p>
+        {/* DECK REMOVED. It read "Manage every dimension of how Signalera
+            personalizes your intelligence feed. Changes take effect
+            immediately." Both halves are false on this route: the screen's only
+            control is Reset, and roughly 120px below this the same screen says
+            the numbers were not saved and that nothing reads them.
+
+            Round 1 refused this on the ground that the words are the
+            prototype's verbatim and rewriting the design unprompted is
+            forbidden. That refusal does not survive its own screen any more.
+            The design wrote this deck for the Settings screen, where twenty
+            controls do save; the route split hoisted it onto a page where it is
+            simply untrue, and faithfulness to the prototype does not outrank
+            the rule the rest of this batch spent two rounds enforcing. The H1
+            above already names the page. */}
 
         <section style={{ ...CARD, marginTop: "20px" }}>
           <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "12px" }}>
             <h2 style={{ margin: 0, font: `700 16px/1.3 ${FONT_DISPLAY}`, color: "var(--c-ink)" }}>
               What Signalera has learned
             </h2>
-            <ResetLearned />
+            <ResetLearned stored={stored} />
           </div>
 
           <p
@@ -147,8 +161,8 @@ export function MobileLearnedScreen({
                 textWrap: "pretty",
               }}
             >
-              These weights could not be refreshed just now, so they are the last stored values and the
-              event count above is not current. Nothing was changed.
+              These weights could not be worked out just now, so the numbers above are incomplete.
+              Nothing was changed.
             </p>
           ) : null}
 
@@ -174,17 +188,13 @@ export function MobileLearnedScreen({
 
         <BehavioralInsights />
 
-        <p
-          style={{
-            margin: "16px 0 0",
-            font: `400 11px/1.5 ${FONT_SANS}`,
-            color: "var(--c-muted)",
-            textAlign: "center",
-            textWrap: "pretty",
-          }}
-        >
-          Learned preferences update automatically after each reading session.
-        </p>
+        {/* CADENCE LINE REMOVED. It read "Learned preferences update
+            automatically after each reading session." It is pre-existing on
+            /settings/preferences and this batch copied it here verbatim, so
+            this instance is the batch's own. It is a cadence claim, the exact
+            class stripped off Alerts, and it is false twice over: the recompute
+            runs on a page VISIT rather than per reading session, and the result
+            is then discarded because there is no column to keep it in. */}
       </ScreenBody>
     </Screen>
   );
@@ -271,7 +281,7 @@ function WeightRow({ sector, weight }: { sector: string; weight: number }) {
  * negative margin takes the hit box to 44 without moving it. The prototype
  * uses 2px there and lands on 42.
  */
-function ResetLearned() {
+function ResetLearned({ stored }: { stored: boolean }) {
   const router = useRouter();
   const [stage, setStage] = useState<"idle" | "arming" | "working" | "done" | "failed">("idle");
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -314,6 +324,67 @@ function ResetLearned() {
           : stage === "failed"
             ? "Not cleared"
             : "Reset learned";
+
+  /* NOTHING STORED, NOTHING TO CLEAR, so the control does not offer to.
+   *
+   * This PATCHed `{ inferred_sector_weights: {} }` to `/api/user-profile`.
+   * That column is in `OPTIONAL_COLUMNS` (`api/user-profile/route.ts:21-27`),
+   * so when the upsert fails on the missing column the route strips the
+   * optional keys, retries, and answers 200 `{success: true}`. `res.ok` was
+   * therefore true on a write that had been discarded: the button relabelled
+   * to "Reset", the reader was told it worked, and nothing had happened. The
+   * `failed` branch and its "Nothing was cleared" line were unreachable.
+   *
+   * That is worse than the five Alerts switches this batch locked. Those look
+   * closed. This one reported success. Same treatment, and here it is the
+   * treatment `evening-wrap-screen.tsx:684-690` established literally, because
+   * that precedent closed a BUTTON: a button carries no state, so `disabled`
+   * asserts nothing untrue about a stored value the way a switch's "off" does.
+   *
+   * Gated on `stored` rather than hardcoded, so the control comes back by
+   * itself on the day the column exists. */
+  if (!stored) {
+    return (
+      <div style={{ flex: "none", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "6px" }}>
+        <button
+          type="button"
+          disabled
+          className={styles.bare}
+          aria-describedby={NOTHING_TO_CLEAR_ID}
+          style={{
+            boxSizing: "content-box",
+            flex: "none",
+            minHeight: "38px",
+            padding: "3px 11px",
+            margin: "-3px 0",
+            display: "inline-flex",
+            alignItems: "center",
+            border: "1px solid var(--c-frame)",
+            borderRadius: "9px",
+            backgroundColor: "var(--c-locked-bg)",
+            font: `500 11px/1 ${FONT_SANS}`,
+            color: "var(--c-locked-ink)",
+            whiteSpace: "nowrap",
+            cursor: "default",
+          }}
+        >
+          Reset learned
+        </button>
+        <span
+          id={NOTHING_TO_CLEAR_ID}
+          style={{
+            maxWidth: "150px",
+            font: `400 10px/1.4 ${FONT_SANS}`,
+            color: "var(--c-muted)",
+            textAlign: "right",
+            textWrap: "pretty",
+          }}
+        >
+          Nothing is stored, so there is nothing to clear.
+        </span>
+      </div>
+    );
+  }
 
   return (
     <div style={{ flex: "none", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "6px" }}>
@@ -443,7 +514,7 @@ function BehavioralInsights() {
 
       {state === "ready" && bullets.length === 0 ? (
         <p style={{ ...BODY, margin: "13px 0 0" }}>
-          Nothing to report yet. This fills in once there are a few reading sessions to read from.
+          Nothing to report yet.
         </p>
       ) : null}
 

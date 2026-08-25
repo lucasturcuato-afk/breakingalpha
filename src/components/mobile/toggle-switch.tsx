@@ -51,9 +51,10 @@ export function ToggleSwitch({
   /** Id of the row's sub-label, so the switch reads its qualifier too. */
   describedBy?: string;
   /**
-   * Nothing reads this setting, so the control takes no change. Not a styling
-   * flag: it sets `disabled` on the element as well, so the switch cannot be
-   * clicked, focused or announced as operable.
+   * Nothing stores this setting, so there is no control. Not a styling flag:
+   * `locked` renders a decorative `aria-hidden` span instead of a `<button>`,
+   * so there is nothing to click, nothing to focus, and no state for assistive
+   * technology to report. See the note above for why "off" would be a lie.
    */
   locked?: boolean;
 }) {

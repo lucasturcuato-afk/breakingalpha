@@ -275,6 +275,13 @@ export function MobileSettingsScreen(props: MobileSettingsScreenProps) {
               <button
                 type="button"
                 onClick={props.onToggleTheme}
+                /* The visible word is "Switch", which announces as
+                   "Switch, button" and names neither what is switched nor what
+                   it becomes. The row's own text is not associated with the
+                   control, which is the exact hazard `toggle-switch.tsx`
+                   documents and this row was doing anyway. The visible label is
+                   unchanged; only the accessible name grows. */
+                aria-label={theme === "dark" ? "Switch to the light theme" : "Switch to the dark theme"}
                 className={styles.bare}
                 style={{
                   flex: "none",

@@ -65,7 +65,7 @@ import { FONT_DISPLAY, FONT_MONO, FONT_SANS } from "@/components/mobile/fonts";
  * Noah wants the switches operable, they need a migration behind them.
  */
 
-const ROWS: { key: string; group: "publication" | "ledger"; label: string; sub: string }[] = [
+const ROWS: { key: string; group: "publication" | "ledger"; label: string; sub?: string }[] = [
   /* PUBLICATION TIMES REMOVED, and this is the second correction.
    *
    * The design says "Published 6:45, weekdays" and "Published 4:35, after the
@@ -87,9 +87,24 @@ const ROWS: { key: string; group: "publication" | "ledger"; label: string; sub: 
    * nothing in the repo can source it. */
   { key: "brief", group: "publication", label: "Morning brief", sub: "Weekday mornings" },
   { key: "wrap", group: "publication", label: "Evening wrap", sub: "After the close" },
-  { key: "review", group: "ledger", label: "Review days", sub: "The morning a call is checked" },
-  { key: "window", group: "ledger", label: "Window closing", sub: "Two days before, so nothing surprises you" },
-  { key: "names", group: "ledger", label: "Followed names", sub: "Only when the desk writes on one" },
+  /* THREE QUALIFIERS REMOVED, and this is the row-level half of the same fix.
+   *
+   *   Review days      "The morning a call is checked"
+   *   Window closing   "Two days before, so nothing surprises you"
+   *   Followed names   "Only when the desk writes on one"
+   *
+   * The line above the group stopped claiming a delivery cadence, and then
+   * these three kept claiming one row lower, in the same anatomy as the two
+   * that can be sourced, with nothing to tell a reader them apart. The header
+   * comment on this file already sets out why none of the three has a
+   * producer. Naming the alert is not a claim; describing when it arrives is,
+   * so the labels stay and the descriptions go.
+   *
+   * `sub` is optional now rather than empty-string, so a row without a
+   * sourceable qualifier renders one line instead of a blank second one. */
+  { key: "review", group: "ledger", label: "Review days" },
+  { key: "window", group: "ledger", label: "Window closing" },
+  { key: "names", group: "ledger", label: "Followed names" },
 ];
 
 export function MobileAlertsScreen() {
@@ -243,7 +258,7 @@ function Row({
   );
 }
 
-/* Never called: `locked` drops the handler and sets `disabled`. Declared once
- * at module scope so the prop stays required on the primitive rather than
- * becoming optional for one caller. */
+/* Never called: a locked switch renders no button at all, so there is nothing
+ * to attach a handler to. Declared once at module scope so the prop stays
+ * required on the primitive rather than becoming optional for one caller. */
 function NOOP() {}

@@ -297,7 +297,13 @@ export function MobileShareScreen({
           }}
         >
           <p style={{ margin: 0, font: `400 13px/1.55 ${FONT_SANS}`, color: "var(--c-secondary)" }}>
-            Want briefings like this every morning?
+            {/* "every morning" is the prototype's, and it overstates by two days
+                a week. `brief-heartbeat.yml:32` crons the morning window `1-5`,
+                and the ten `briefings` rows this batch measured are all
+                weekdays, which is why the Alerts row says "Weekday mornings".
+                A recruiting line on a public page should not promise a cadence
+                the sender does not keep. */}
+            Want briefings like this every weekday morning?
           </p>
           <Link
             href="/auth"

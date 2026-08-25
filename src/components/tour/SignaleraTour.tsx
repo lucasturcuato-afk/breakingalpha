@@ -201,6 +201,11 @@ export function SignaleraTour() {
 
   const { start } = useTourDriver(handleComplete);
 
+  /* Bumped when the desk breakpoint is crossed, purely to re-run the effect
+     below. A counter rather than a boolean, so repeated crossings each land. */
+  const [deskCrossings, setDeskCrossings] = useState(0);
+  const onDeskChange = useCallback(() => setDeskCrossings((n) => n + 1), []);
+
   useEffect(() => {
     if (loading || triggered) return;
     if (!profile) return;
@@ -234,7 +239,17 @@ export function SignaleraTour() {
 
        768 is the same breakpoint `md:` compiles to, so this and the class gate
        on TourHelpButton below agree by construction. */
-    if (typeof window !== "undefined" && !window.matchMedia("(min-width: 768px)").matches) return;
+    if (typeof window === "undefined") return;
+    const desk = window.matchMedia("(min-width: 768px)");
+    if (!desk.matches) {
+      /* Re-arm on the crossing rather than only sampling once. Read once per
+         pathname effect, a reader who loads below 768 and then widens, by
+         rotating the device or dragging a window, never became eligible again
+         because nothing re-ran this. The class gate on TourHelpButton has no
+         such gap, so the two disagreed above the breakpoint. */
+      desk.addEventListener("change", onDeskChange);
+      return () => desk.removeEventListener("change", onDeskChange);
+    }
 
     // Small delay to let the page render
     const timer = setTimeout(() => {
@@ -243,7 +258,7 @@ export function SignaleraTour() {
     }, 800);
 
     return () => clearTimeout(timer);
-  }, [loading, profile, pathname, triggered, start]);
+  }, [loading, profile, pathname, triggered, start, deskCrossings, onDeskChange]);
 
   return null;
 }

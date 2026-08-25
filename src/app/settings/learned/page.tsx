@@ -64,7 +64,14 @@ export default async function LearnedPage() {
    * which understates rather than overstates, and it self-corrects on the next
    * visit. Today the value is null on every visit for everyone. */
   const storedAt = profile.inferred_weights_updated_at;
-  const stored = storedAt !== null;
+  /* `typeof === "string"`, not `!== null`, and the difference is the whole
+     honesty of the screen. `stored` is false today only because
+     `DEFAULT_PROFILE` happens to set this key to null at `user-profile.ts:109`
+     and `getUserProfile` spreads `{...defaults, ...data}` over a `select("*")`
+     row that simply lacks it. Drop that default and `storedAt` becomes
+     `undefined`, `!== null` becomes true, and the ranking claim comes back
+     silently on both surfaces. A positive test cannot fail that way. */
+  const stored = typeof storedAt === "string";
 
   /* Null renders NOTHING. This used to fall back to the literal string
    * "not yet computed", which is what produced
