@@ -24,6 +24,10 @@
  * Failure is a state, not a blank. A read that fails leaves its record null,
  * the screen draws no record section at all, and nothing claims the reader has
  * an empty record when the truth is that it could not be read.
+ *
+ * The state seeds at "loading" and the effect never sets it synchronously.
+ * Above `md` it simply stays there, which the caller reads as "not answered"
+ * and draws as a skeleton in a hidden subtree.
  */
 
 import { useEffect, useState } from "react";
@@ -53,15 +57,27 @@ export const MOBILE_READ_BUDGET_MS = 12_000;
 const READ_BUDGET_MS = MOBILE_READ_BUDGET_MS;
 
 export interface MobileRecords {
-  /** "idle" above the breakpoint: nothing was asked for, so nothing is pending. */
-  status: "idle" | "loading" | "done";
+  /**
+   * "loading" until the two reads answer or the budget expires. Above the
+   * breakpoint it stays "loading" for the life of the page, which is correct:
+   * nothing was read, so no record is known, and the caller draws a skeleton
+   * into a subtree that is `display:none` anyway.
+   *
+   * There is no third "idle" state. There was, and the effect moved off it
+   * with a setState in its own body, which is the pattern
+   * `react-hooks/set-state-in-effect` exists to catch and which cost this
+   * branch its only new lint warning. Seeding at "loading" is not a workaround
+   * for the rule, it is the honest seed: at first paint the reads have not
+   * answered, on every viewport.
+   */
+  status: "loading" | "done";
   yourRecord: { byResolution: Record<Resolution, number>; awaiting: number } | null;
   deskRecord: { byResolution: Record<Resolution, number>; total: number } | null;
   gradedInLastDay: number | null;
 }
 
-const IDLE: MobileRecords = {
-  status: "idle",
+const PENDING: MobileRecords = {
+  status: "loading",
   yourRecord: null,
   deskRecord: null,
   gradedInLastDay: null,
@@ -107,13 +123,12 @@ function getSupabase() {
 }
 
 export function useMobileRecords(): MobileRecords {
-  const [state, setState] = useState<MobileRecords>(IDLE);
+  const [state, setState] = useState<MobileRecords>(PENDING);
 
   useEffect(() => {
     if (typeof window === "undefined" || !window.matchMedia(MOBILE_QUERY).matches) return;
 
     let cancelled = false;
-    setState({ ...IDLE, status: "loading" });
 
     const budget = setTimeout(() => {
       if (!cancelled) setState((prev) => (prev.status === "loading" ? { ...prev, status: "done" } : prev));
