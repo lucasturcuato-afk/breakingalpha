@@ -28,8 +28,8 @@
  * DUPLICATION, STATED. PR #673 built `src/components/mobile/fonts.ts` for
  * exactly this and it is not on this branch. PR #675 hit the same wall and
  * made `src/components/dashboard-mobile/fonts.ts`. This is the third copy of
- * three constants. When #673 merges, delete this file and repoint the imports.
- * The export names match #675's so the fold is a grep.
+ * three constants. When PR #673 merges, delete this file and repoint the
+ * imports. The export names match those in PR #675 so the fold is a grep.
  */
 
 /** Headlines, ledes and the section rules' italic. */
