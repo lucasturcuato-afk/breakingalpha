@@ -1,7 +1,17 @@
 "use client";
 
 import { Suspense, useState, useEffect, useCallback, useMemo } from "react";
+import { useSearchParams } from "next/navigation";
 import { AppShell } from "@/components/shell";
+import {
+  DealsScreen,
+  isDealLens,
+  resolveStage,
+  useDealsFixture,
+  type DealLens,
+  type DealsStatus,
+  type MobileDeal,
+} from "@/components/deals-mobile";
 import { useUserProfile } from "@/hooks/useUserProfile";
 import { redactRationale } from "@/lib/thesis-recommendation-guard";
 import { Input } from "@/components/ui/input";
@@ -92,6 +102,65 @@ function getDealStage(deal: Deal): string {
   return deal.stage || deal.status || "rumored";
 }
 
+/* ── Mobile projection ──
+ *
+ * The mobile card is claim-first and the desktop card is company-first, so the
+ * two do not share a shape. github.md: "Card layout is still this project's
+ * own." This maps a live `deal_flow` row onto the design's four slots and
+ * invents nothing: every string below is a column, or is absent.
+ *
+ * Measured against the live table this pass, the `Deal` interface above is
+ * wider than the table: `status`, `value`, `notes` and `summary` do not exist
+ * as columns, so `valuation` and `thesis` are the only text this screen can
+ * actually draw. Recorded in the PR body.
+ *
+ * The design's slug is TICKER, SECTOR, DATE. There is no ticker column and no
+ * ticker anywhere on the row, so the first slot carries the acquirer, which is
+ * the counterparty identity the desktop card puts beside the company name.
+ */
+function monthDay(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  /* UTC, because `updated_at` is stored in UTC and the slug states a calendar
+     day. Formatted in the reader's zone a 02:00Z row draws the previous day in
+     the Americas, so the same row would carry two different dates depending on
+     who opened it. */
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+}
+
+function toMobileDeal(deal: Deal): MobileDeal {
+  const parts = [deal.acquirer, deal.sector, deal.updated_at ? monthDay(deal.updated_at) : null];
+  /* The guard can empty a thesis outright when the whole of it is one sentence
+     carrying a recommendation, so the fallback has to run on the REDACTED
+     string rather than on the raw column. */
+  const redacted = deal.thesis ? redactRationale(deal.thesis) : "";
+  return {
+    id: deal.id,
+    stage: resolveStage(getDealStage(deal)),
+    figure: deal.value || deal.valuation || null,
+    claim: deal.company,
+    rationale: redacted || deal.summary || deal.notes || deal.deal_type || "",
+    slug: parts
+      .filter((p): p is string => !!p && p.trim().length > 0)
+      .join(" · ")
+      .toUpperCase(),
+  };
+}
+
+/** A day. Older than this and the newest row is not today's deal flow. */
+const STALE_AFTER_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Minimum quality: a row with no acquirer AND no figure says nothing. Lifted
+ * verbatim out of the desktop `filtered` predicate so both surfaces hide the
+ * same rows rather than drifting apart.
+ */
+function dealHasMinimumDetail(d: Deal): boolean {
+  const hasAcquirer = !!(d.acquirer && d.acquirer.trim());
+  const hasFigure = !!(d.valuation && d.valuation.trim()) || !!(d.value && d.value.trim());
+  return hasAcquirer || hasFigure;
+}
+
 const DEAL_TYPES = ["M&A", "IPO", "Secondary", "Debt Raise", "Other"];
 const STATUSES = ["rumored", "announced", "under_loi", "closed"];
 const SECTORS = [
@@ -166,10 +235,150 @@ export default function DealFlowPage() {
   );
 }
 
+/* ── Mobile ──
+ *
+ * The mobile screen carries its own lens and its own copy of the quality
+ * filter, deliberately: the desktop chip row, the search box, the activity
+ * and vertical facets and the "show every type" toggle are all desktop
+ * controls that the design does not draw, and binding the phone to their
+ * state would make the phone react to controls it cannot see.
+ *
+ * THE FIXTURE ARRIVES FROM THE SERVER, and that is the gate.
+ *
+ * The fixture is the design's four invented deals. `/deal-flow` serves real
+ * `deal_flow` rows, so a fixture that reached a reader would put transactions
+ * that did not happen under the names of real companies. The decision is taken
+ * in `layout.tsx`, which is this route's only server component: production gets
+ * `null` and the strings are not in this bundle at all. In development and on a
+ * preview the object arrives and the fixture is the default so parity has the
+ * design's own strings to pair against, and `?deals=live` reaches the real rows.
+ *
+ * Every fixture-adjacent affordance below hangs off that one value rather than
+ * off its own check, which is what makes the gate fail closed at every call
+ * site instead of at the one someone remembered. With `null` there is no
+ * fixture to draw and no `?state=` override to honour.
+ *
+ * This is a component rather than a block inside `DealFlowContent` for one
+ * reason: it is the only thing on the route that reads the query string, and
+ * `useSearchParams` costs its nearest Suspense boundary its prerender. Keeping
+ * the read down here keeps that cost off the rest of the page.
+ */
+function DealFlowMobile({
+  deals,
+  loading,
+  fetchFailed,
+  fetchedAt,
+  onRetry,
+  onOpenMemo,
+}: {
+  deals: Deal[];
+  loading: boolean;
+  fetchFailed: boolean;
+  /** When the read last settled, or null while it has never settled. */
+  fetchedAt: number | null;
+  onRetry: () => void;
+  onOpenMemo: (deal: Deal) => void;
+}) {
+  const searchParams = useSearchParams();
+  /** The design's invented deals in dev and preview, `null` in production. */
+  const fixture = useDealsFixture();
+
+  /* `?deals=live` opts out of the fixture where one exists. It cannot opt IN:
+     when the prop is null this is null too, whatever the query string says. */
+  const activeFixture = searchParams.get("deals") === "live" ? null : fixture;
+  const showFixture = activeFixture !== null;
+
+  const liveMobileDeals = useMemo(
+    () =>
+      deals
+        .filter(dealHasMinimumDetail)
+        .filter((d) => (d.deal_type || "").toLowerCase() !== "other")
+        .map(toMobileDeal),
+    [deals],
+  );
+
+  /* Lifecycle. The dev overrides exist because a runtime audit has to be able
+   * to reach a state, and a state reached by reproducing its conditions here
+   * would mean breaking the database read. Same precedent as /ledger?stage=.
+   *
+   * Gated on the fixture PROP, so the overrides travel with the invented data
+   * and are dead in production. Without this a reader could put the screen into
+   * `loading` or `error` over a read that succeeded, which is a claim about the
+   * table the screen has no source for. */
+  const stateOverride = fixture !== null ? searchParams.get("state") : null;
+
+  const mobileDeals =
+    stateOverride === "empty" ? [] : activeFixture ? activeFixture.deals : liveMobileDeals;
+  const mobileCounts =
+    stateOverride === "empty" ? undefined : (activeFixture?.counts ?? undefined);
+  const mobileStatus: DealsStatus =
+    stateOverride === "loading" || stateOverride === "error" || stateOverride === "ready"
+      ? (stateOverride as DealsStatus)
+      : showFixture
+        ? /* The fixture does not depend on the read, so it does not wait on it. */
+          "ready"
+        : loading
+          ? "loading"
+          : fetchFailed
+            ? "error"
+            : "ready";
+
+  const newestUpdate = useMemo(() => {
+    let newest = 0;
+    for (const d of deals) {
+      const t = d.updated_at ? new Date(d.updated_at).getTime() : 0;
+      if (t > newest) newest = t;
+    }
+    return newest;
+  }, [deals]);
+
+  const mobileStaleFor =
+    stateOverride === "stale"
+      ? /* The override has to render a string the real path can produce.
+           `timeAgo` emits "2d ago", never "2 days ago", so the first capture of
+           this state was pairing against copy production never draws. */
+        "2d ago"
+      : !showFixture &&
+          fetchedAt !== null &&
+          newestUpdate > 0 &&
+          fetchedAt - newestUpdate > STALE_AFTER_MS
+        ? timeAgo(new Date(newestUpdate).toISOString())
+        : null;
+
+  const rawLens = searchParams.get("lens");
+  const initialLens: DealLens = isDealLens(rawLens) ? rawLens : "all";
+
+  /* The fixture's rows are invented, so their memo control must not reach
+     /api/memo. Passing no handler leaves a real button with its drawn state and
+     no side effect, which is also what the Deal detail control does while
+     unit 18 is unruled. */
+  const mobileOnGenerateMemo = showFixture
+    ? undefined
+    : (m: MobileDeal) => {
+        const match = deals.find((d) => d.id === m.id);
+        if (match) onOpenMemo(match);
+      };
+
+  return (
+    <DealsScreen
+      deals={mobileDeals}
+      counts={mobileCounts}
+      status={mobileStatus}
+      staleFor={mobileStaleFor}
+      initialLens={initialLens}
+      onRetry={onRetry}
+      onGenerateMemo={mobileOnGenerateMemo}
+    />
+  );
+}
+
 function DealFlowContent() {
   const { mood, moodHeadline, moodDetails } = useLiveMood();
   const [deals, setDeals] = useState<Deal[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetchFailed, setFetchFailed] = useState(false);
+  /** When the deal read last settled. Drives the mobile freshness stamp. */
+  const [fetchedAt, setFetchedAt] = useState<number | null>(null);
   const [filterStage, setFilterStage] = useState<StageFilter>("ALL");
   const [search, setSearch] = useState("");
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -209,6 +418,13 @@ function DealFlowContent() {
 
   /* ── Fetch deals ── */
   const fetchDeals = useCallback(async () => {
+    /* Both flags, every time. Without `setLoading(true)` a retry after a failed
+       read leaves loading false and fetchFailed false while the request is in
+       flight, so the mobile screen computes status "ready" over an empty
+       `deals` and draws "Deal pipeline populating": the exact empty-for-failed
+       substitution the error state exists to prevent. */
+    setLoading(true);
+    setFetchFailed(false);
     try {
       const { data, error } = await getSupabase()
         .from("deal_flow")
@@ -217,13 +433,23 @@ function DealFlowContent() {
         .limit(200);
       if (error) {
         console.error("Deal flow query error:", error.message);
+        /* A failed read is not an empty result. Desktop still renders the way
+           it always has; the mobile screen says which one happened. */
+        setFetchFailed(true);
         return;
       }
       if (data) setDeals(data);
     } catch (e) {
       console.error("Failed to fetch deals:", e);
+      setFetchFailed(true);
     } finally {
       setLoading(false);
+      /* The clock, stamped once, where it belongs: freshness is the age of the
+         newest row AS OF THE READ. Taken here rather than in the mobile tree
+         because reading it during render is an eslint error (impure function)
+         and reading it in an effect is a `set-state-in-effect` warning, and
+         neither is necessary when the read itself is the moment that matters. */
+      setFetchedAt(Date.now());
     }
   }, []);
 
@@ -351,9 +577,7 @@ function DealFlowContent() {
   const filtered = useMemo(() => {
     return deals.filter((d) => {
       // Minimum quality: hide deals with no acquirer AND no valuation/value
-      const hasAcquirer = !!(d.acquirer && d.acquirer.trim());
-      const hasValue = !!(d.valuation && d.valuation.trim()) || !!(d.value && d.value.trim());
-      if (!hasAcquirer && !hasValue) return false;
+      if (!dealHasMinimumDetail(d)) return false;
 
       // Default hide deal_type "Other" unless showAllTypes is on
       if (!showAllTypes) {
@@ -387,9 +611,81 @@ function DealFlowContent() {
     });
   }, [deals, filterStage, search, selectedActivityTypes, activityMatchMode, selectedVerticals, verticalMatchMode, showAllTypes]);
 
+  /* Same side effect the desktop control fires, so a memo opened from the phone
+     is one the product can see. Only the event's origin differs. */
+  const openMemoForDeal = useCallback((deal: Deal) => {
+    setMemoDeal(deal);
+    fireEvent("memo_generated", { company: deal.company, sector: deal.sector ?? undefined });
+  }, []);
+
   return (
-    <AppShell pageTitle="Deal Flow" mood={mood} moodHeadline={moodHeadline} moodDetails={moodDetails}>
-      <div className="flex flex-1 overflow-hidden">
+    /* mobileFullBleed gates the desk chrome, the mood bar, the topbar and the
+       footer, to md and up. Below md this screen draws its own head and the tab
+       bar is the last row, and the first capture of this branch showed the desk
+       footer painted across the fourth deal. The flag changes nothing at md and
+       up: the same three components render, inside a block wrapper instead of
+       `display:contents`, which the 1440 audit confirms leaves the desktop
+       violation count unchanged at 130. */
+    <AppShell
+      pageTitle="Deal Flow"
+      mood={mood}
+      moodHeadline={moodHeadline}
+      moodDetails={moodDetails}
+      mobileFullBleed
+    >
+      {/* Below md, the mobile drawing. Gating lives in a CLASS and this wrapper
+          carries no inline style at all: an inline display, padding or margin
+          beats the breakpoint at every width, which is the defect design-lint
+          rule 10 exists to catch. The desktop tree below is untouched apart
+          from its own gate. */}
+      {/* backgroundColor and minHeight live on this wrapper rather than on the
+          screen root. Measured on the empty state at 390: the screen root is
+          283px tall inside an 844px scroll area, and `minHeight: 100%` on it
+          does not resolve because nothing in the chain above has a definite
+          height, so `main`'s own parchment showed under the screen's cream,
+          two different creams stacked. Painting the wrapper covers the tail
+          spacer too, and it leaves the screen root's height content-driven,
+          which is what parity measures. */}
+      <div className="md:hidden" style={{ backgroundColor: "var(--c-bg)", minHeight: "100dvh" }}>
+        {/* Its own boundary, and it has to be its own. `DealFlowMobile` reads
+            the query string, and `useSearchParams` throws the prerender out to
+            the client at the NEAREST Suspense boundary above it. Called from
+            `DealFlowContent` the nearest one is the page's, so the whole route
+            shipped as an empty shell. Measured, both builds on this branch:
+            `.next/server/app/deal-flow.html` was 12,705 bytes with the read up
+            there and is 35,531 bytes with it down here, and "Deal flow tracker"
+            (the desktop head) is absent from the first and present in the
+            second. The BAILOUT_TO_CLIENT_SIDE_RENDERING marker is in both, as
+            it should be: it now marks THIS subtree rather than the page.
+            `src/app/auth/page.tsx` already ruled against paying a whole-page
+            bailout for a query read. Only this subtree waits for JS, which it
+            does anyway: its data comes from a browser Supabase call. */}
+        <Suspense>
+          <DealFlowMobile
+            deals={deals}
+            loading={loading}
+            fetchFailed={fetchFailed}
+            fetchedAt={fetchedAt}
+            onRetry={fetchDeals}
+            onOpenMemo={openMemoForDeal}
+          />
+        </Suspense>
+        {/* Tail spacer, and it has to be an ELEMENT rather than padding.
+            `AppShell` reserves the tab bar with `pb-[calc(...)]` on the scroll
+            container itself, and Chrome drops a scroll container's bottom
+            padding once the content overflows. Measured on this page before
+            this spacer existed: at the end of the scroll the last "Generate a
+            deal memo" control sat 20px UNDER the tab bar. A real box in the
+            flow is not padding on the scroller, so it survives. It lives here
+            rather than inside the screen so the screen's own box still matches
+            the design's for parity. */}
+        <div
+          aria-hidden="true"
+          style={{ height: "calc(var(--mobile-tabbar-height) + env(safe-area-inset-bottom))" }}
+        />
+      </div>
+
+      <div className="hidden md:flex flex-1 overflow-hidden">
       <div className="flex-1 min-w-0 overflow-y-auto p-6">
         {/* Header */}
         <div className="flex items-start justify-between mb-1">
