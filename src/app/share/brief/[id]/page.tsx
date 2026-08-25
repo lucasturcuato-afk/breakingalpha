@@ -309,7 +309,19 @@ export default async function PublicBriefPage({ params }: Props) {
       {/* CTA footer */}
       <footer className="border-t border-border-base px-6 py-8 text-center bg-cream dark:bg-elevated">
         <p className="font-sans text-[13px] text-text-secondary mb-3">
-          Want briefings like this every morning?
+          {/* Matches the mobile twin in mobile-share-screen.tsx.
+
+              The evidence is the DATA, not a schedule in this repo: 60
+              consecutive `briefings` rows are weekdays only. The pipeline is
+              triggered by an EXTERNAL scheduler (see brief-heartbeat.yml's
+              header), so nothing checked in here can prove the cadence. The
+              nearest local signal is the heartbeat's own `0 17 * * 1-5` at
+              brief-heartbeat.yml:32, which watches weekdays because that is
+              when a brief is expected. That is corroboration, not proof.
+
+              A recruiting line on a public, unauthenticated page should not
+              promise a cadence the sender does not keep. */}
+          Want briefings like this every weekday morning?
         </p>
         <Link
           href="/auth"
