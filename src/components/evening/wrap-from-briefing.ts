@@ -259,13 +259,31 @@ function toMovers(src: WrapSource): EveningMover[] {
  * The one open call, and the line about the others.
  *
  * `note` is the eyebrow. The design's own word there described what the
- * evidence did that evening, which nothing in the payload knows: grading has
- * not run when the wrap publishes. So the eyebrow is the outcome state the row
- * actually carries. Every call reaching this function has a review date at or
- * after today, which is the definition of awaiting.
+ * evidence did that evening, which nothing in the payload knows. `awaiting` is
+ * what the row carries, and the reason is structural rather than a date
+ * comparison: `morning_brief_calls` has no outcome column at all. Its columns
+ * are id, brief_id, brief_date, claim_text, claim_type, target_symbol,
+ * expected_direction, confidence, created_at, is_lead and resolve_on. Grading
+ * is stored elsewhere and nothing on this path reads it, so no row reaching
+ * here can carry a decided state and `awaiting` is the only state available.
+ *
+ * The previous version of this comment justified the eyebrow with "a review
+ * date at or after today, which is the definition of awaiting". That reasoning
+ * was off by one, in the same place the copy below was.
  *
  * `reasoning` is the row's own two facts, target and review date, and never a
  * sentence about what the call is doing.
+ *
+ * WHAT `reviewedRest` MAY SAY. The read behind `otherOpenCalls` is
+ * `brief_date = this session AND resolve_on >= today`, and it is an exact
+ * count rather than a page of rows, so the number is the number. That
+ * establishes one thing: those calls have a review date that has not passed.
+ * It does NOT establish that none of them has reached its review date, because
+ * `>= today` includes a call whose review date IS today, and such a call has
+ * reached it. The table carries rows resolving today right now, so this was
+ * not exotic. The second sentence is therefore gone rather than reworded:
+ * dropping an unsupported claim is the fix, and any softer version of it would
+ * have been the same claim with a hedge on it.
  */
 function toReviewed(src: WrapSource): {
   reviewed: EveningWrapData["reviewed"];
@@ -291,7 +309,7 @@ function toReviewed(src: WrapSource): {
       others > 0
         ? `${others} other call${others === 1 ? "" : "s"} from this session ${
             others === 1 ? "is" : "are"
-          } still open. None of them has reached its review date.`
+          } still open.`
         : "No other call from this session is still open.",
   };
 }

@@ -256,6 +256,13 @@ export default function EveningWrapPage() {
      at or after today. The desk layout renders `BriefCallsSection`, which does
      its own reads; this does not feed it and does not change it. */
   const [openCalls, setOpenCalls] = useState<OpenDeskCall[]>([]);
+  /* How many there are, as an EXACT count rather than `openCalls.length`.
+     The select is capped at 24 rows because the card renders only the first
+     one, and a length read off a capped page silently understated a busy
+     session at 23. PostgREST returns the true count in the Content-Range
+     header when the request asks for it, so the sentence about the others
+     counts every one of them while the page still transfers 24. */
+  const [openCallCount, setOpenCallCount] = useState(0);
   /* Session moves for the tickers the story rail is carrying. Its own fetch on
      purpose: folding these into the scorecard request would put the desk
      grid's quotes behind a longer symbol list. */
@@ -796,8 +803,18 @@ export default function EveningWrapPage() {
   /* The session's still-open desk calls. Matched the way `BriefCallsSection`
      matches them, because the evening briefing's own id is not the morning
      brief's: on this wrap's PT session date, review date at or after today.
-     A call that satisfies that has not reached its review date, which is what
-     lets the card say `awaiting` and nothing stronger. */
+
+     WHAT THIS SET IS, EXACTLY. `resolve_on >= today` is inclusive, so a call
+     whose review date IS today is in it, and such a call HAS reached its
+     review date. The card's copy used to say none of them had, which this
+     query cannot establish and which the table contradicts today. The boundary
+     is left inclusive on purpose, because moving it to `>` would drop the call
+     that is due right now off the wrap that publishes on the day it is due;
+     the sentence is what changed instead, over in `toReviewed`.
+
+     `count: "exact"` rides along with the same request. It is what the
+     sentence about the others counts, so a session with more open calls than
+     the row cap is not understated. */
   const wrapSessionPt = briefing?.created_at
     ? new Date(briefing.created_at).toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" })
     : null;
@@ -807,15 +824,20 @@ export default function EveningWrapPage() {
     (async () => {
       try {
         const todayPt = new Date().toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
-        const { data, error } = await getSupabase()
+        const { data, count, error } = await getSupabase()
           .from("morning_brief_calls")
-          .select("id, claim_text, target_symbol, resolve_on, confidence")
+          .select("id, claim_text, target_symbol, resolve_on, confidence", { count: "exact" })
           .eq("brief_date", wrapSessionPt)
           .gte("resolve_on", todayPt)
           .order("confidence", { ascending: false })
           .limit(24);
         if (cancelled || error) return;
-        setOpenCalls((data as OpenDeskCall[] | null) ?? []);
+        const rows = (data as OpenDeskCall[] | null) ?? [];
+        setOpenCalls(rows);
+        /* A null count means the header did not come back. The rows did, so
+           fall to their length rather than to zero: understating is a smaller
+           lie than claiming no other call is open when some are. */
+        setOpenCallCount(count ?? rows.length);
       } catch { /* soft-fail: the card is absent, never invented */ }
     })();
     return () => { cancelled = true; };
@@ -944,7 +966,7 @@ export default function EveningWrapPage() {
             resolveOn: lead.resolve_on,
           }
         : null,
-      otherOpenCalls: Math.max(0, openCalls.length - 1),
+      otherOpenCalls: Math.max(0, openCallCount - 1),
       nextEventProse: briefing.sections?.tomorrow_setup || "",
     });
     /* `snapshotCell` closes over `tape` and `scorecard`; both are in the list
@@ -953,6 +975,7 @@ export default function EveningWrapPage() {
   }, [
     briefing, dateStr, timeStr, profile?.sectors, closeWord, tone, stories.length,
     thesesCount, vixQuote, scorecard, isCurrentSession, rankedStories, moverQuotes, openCalls,
+    openCallCount,
   ]);
 
   const handleAskAI = () => {
