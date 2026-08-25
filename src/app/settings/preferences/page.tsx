@@ -85,7 +85,7 @@ export default async function PreferencesPage() {
             <h2 className="font-display text-[16px] font-bold text-espresso">
               What Signalera has learned
             </h2>
-            <ResetLearnedPrefsButton />
+            <ResetLearnedPrefsButton stored={stored} />
           </div>
           <p className="font-sans text-[12px] text-text-secondary mb-4">
             {/* "Higher = boosted in ranking" is gated on the weights actually
