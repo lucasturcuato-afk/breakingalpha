@@ -82,6 +82,22 @@ function readStage(raw: string | string[] | undefined): CompanyStage {
  * client chunk on any build. The gate is still the thing that decides whether
  * it is drawn; this only makes the gate decide whether it is DOWNLOADED too.
  * `enabled` is always `mobileFixtureScreensEnabled()`, never a local guess.
+ *
+ * `if (!enabled) return null` IS UNREACHABLE ON THIS ROUTE TODAY, and it is
+ * belt-and-braces rather than a live path. Both call sites already sit inside
+ * a `mobileFixture ?` branch, and with the gate shut this page renders the
+ * desk tree instead of the mobile screen at all, so nothing ever calls this
+ * with `enabled` false. The gate above it is what does the work.
+ *
+ * It stays for two reasons and neither is "it might fire". First, it makes the
+ * gate visible AT the call site, which is what stops a third call site being
+ * added later without one. Second, it is what keeps `data` honestly typed
+ * `| null`, and that type is the thing that turns a forgotten prop into a
+ * build failure instead of an invented company.
+ *
+ * The consequence to be honest about: the screen's own null branch, which
+ * draws the loader, therefore never executes in production on this route and
+ * nothing exercises it. Do not read it as tested behaviour.
  */
 function companyFixture(enabled: boolean, stage: CompanyStage): CompanyIntelData | null {
   if (!enabled) return null;

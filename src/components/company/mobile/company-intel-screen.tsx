@@ -88,6 +88,12 @@ export function CompanyIntelScreen({
    * a build failure rather than an invented company in front of a reader, and
    * below the null guard the type is non-null, so no later edit can bring the
    * fixture back by omission.
+   *
+   * The null branch below is UNEXERCISED on `/company/[id]` today. That page
+   * renders its desk tree rather than this screen when the gate is shut, so
+   * `data` is never actually null there. The branch is what makes the type
+   * honest and what a second call site would land on; it is not tested
+   * behaviour and should not be read as such.
    */
   data,
   /**
