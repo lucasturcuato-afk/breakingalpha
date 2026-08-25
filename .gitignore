@@ -86,3 +86,9 @@ scripts/out/
 # Parity harness artifacts (scripts/parity_harness.py, scripts/screen-audit.mjs)
 .parity-proto*.html
 parity-*.json
+
+# ESLint cache. `npm run lint` is a bare `eslint`, and ESLint deletes a stale
+# cache file when caching is off, so a tracked one reappears as a deletion for
+# everyone who runs the gate. It also trips `design-lint --since`, which
+# refuses on a dirty tree. Untracked here; see the PR for the measurement.
+.eslintcache
