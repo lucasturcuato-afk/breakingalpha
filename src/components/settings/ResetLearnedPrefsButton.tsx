@@ -19,15 +19,15 @@ import { useRouter } from "next/navigation";
  * one side of that page created the juxtaposition, which is worse than either
  * half alone.
  *
- * This was deferred once as belonging with the migration decision. That was
- * wrong: `stored` is already computed at the call site, so the honest state is
- * reachable with no migration, no shared-library edit, and the same mechanism
- * the mobile twin uses.
+ * This was deferred once as belonging with the migration decision. That
+ * deferral does not survive. `stored` is already computed at the call site, so
+ * an honest rendering is reachable with no migration, no shared-library edit,
+ * and the same mechanism the mobile twin uses.
  *
- * `disabled` is the right closure for a BUTTON, and this is the distinction
- * that took a round to get right. A button carries no state, so `disabled`
- * asserts nothing untrue. A switch is a state display, which is why the five
- * locked Alerts switches render as decorative `aria-hidden` spans instead:
+ * `disabled` is the fitting closure for a BUTTON, and the distinction took a
+ * round to settle. A button has no state to misannounce, so `disabled` asserts
+ * nothing untrue. A switch IS a state display, which is why the five locked
+ * Alerts switches render as decorative `aria-hidden` spans instead:
  * `aria-checked="false"` would claim a setting that does not exist. Same
  * precedent, opposite mechanics, decided by the control type.
  */
