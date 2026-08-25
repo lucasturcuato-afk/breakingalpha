@@ -523,14 +523,46 @@ const FIXTURE_GATE_SUFFIX = /_(ENABLED|ALLOWED|VISIBLE|ON|OFF)$/;
  * defaults, and `=>`, which cannot be followed by an identifier here. */
 const FIXTURE_DEFAULT = /(?<![=!<>])(?:=|\?\?)\s*([A-Za-z0-9_]+)/g;
 
+/* The `??` case needs its own scan, and the reason is a real miss.
+ *
+ * The rule above only looks at the IDENTIFIER immediately after `=` or `??`,
+ * so it caught `data ?? DASH_FIXTURE` and sailed straight past
+ *
+ *     data ?? (stage === 'empty' ? COMPANY_INTEL_EMPTY : COMPANY_INTEL_FIXTURE)
+ *
+ * because the next character is `(`. That shipped on `/company/[id]` and was
+ * found by hand, not by this file, which is exactly the failure the self-test
+ * below exists to prevent.
+ *
+ * With `??` the semantics settle it: the right-hand side is what renders WHEN
+ * DATA IS MISSING. So ANY fixture reachable anywhere in that expression is the
+ * defect, whatever shape it is wrapped in. Scan the whole expression.
+ *
+ * `=` deliberately keeps the narrow identifier check, because
+ * `data={GATE ? LEDGER_FIXTURE : null}` is the CORRECT shape and must stay
+ * unflagged. */
+const NULLISH_TAIL = /\?\?([^;\n]*)/g;
+const FIXTURE_ANY = /\b([A-Z][A-Z0-9_]*FIXTURE[A-Z0-9_]*)\b/g;
+
 function fixtureDefaults(text, file = '') {
   /* A test names fixtures constantly and ships none of them. */
   if (/\.(test|spec)\.[tj]sx?$/.test(file)) return [];
   const out = [];
+  const seen = new Set();
   for (const m of text.matchAll(FIXTURE_DEFAULT)) {
     const id = m[1];
     if (!FIXTURE_ID.test(id) || FIXTURE_GATE_SUFFIX.test(id)) continue;
     out.push({ index: m.index, id });
+    seen.add(m.index);
+  }
+  for (const m of text.matchAll(NULLISH_TAIL)) {
+    for (const f of m[1].matchAll(FIXTURE_ANY)) {
+      const id = f[1];
+      if (FIXTURE_GATE_SUFFIX.test(id)) continue;
+      const at = m.index + 2 + f.index;
+      if (seen.has(m.index)) continue;
+      out.push({ index: at, id });
+    }
   }
   return out;
 }
@@ -607,6 +639,9 @@ const SELFTEST = [
       '  const d = data ?? DASH_FIXTURE;',
       'function S({ data = RECORD_FIXTURE }) {}',
       'export function matchFixture(q, data = SEARCH_FIXTURE) {}',
+      /* The shape that got past the first version of this rule. */
+      "const r = data ?? (stage === 'empty' ? COMPANY_INTEL_EMPTY : COMPANY_INTEL_FIXTURE);",
+      'const v = props.data ?? [DASH_FIXTURE][0];',
     ],
     good: [
       'export const LEDGER_FIXTURE = { a: 1 };',
