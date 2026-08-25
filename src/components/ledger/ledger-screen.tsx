@@ -84,7 +84,40 @@ export function LedgerScreen({
      non-null the error branch stays in the body below, beside the reader's own
      record, because a failed brief read is no reason to discard entries the
      reader already owns. Here there is nothing to keep: the read that failed
-     is the one that produces the entire payload. */
+     is the one that produces the entire payload.
+
+     THE SKELETON ARM BELOW IS UNREACHABLE FROM EVERY CURRENT CALL SITE, and
+     that is recorded here rather than left for the next reader to rediscover.
+     `loadLedger` gives back a null payload on exactly one condition, the failed
+     brief read, and that condition also sets `stage: "error"`. `page.tsx`, the
+     only call site, substitutes null only when the loader did. So today:
+
+         data === null   implies   stage === "error"
+
+     The `?stage=` preview path does NOT reach it either, which is worth being
+     precise about: that path requires `sampleAllowed`, which supplies the
+     fixture, so `data` is non-null and a forced `?stage=loading` draws the
+     skeleton from the body branch further down, under a masthead and a stats
+     band. Measured signed out on a dev build: 127 elements with the masthead
+     present, where this guard would draw a ticker and one block and no
+     masthead.
+
+     IT STAYS, and it is not the same call as deleting the unreachable `null`
+     arm of `briefProgress.decided` two commits ago. That was a value in a DATA
+     CONTRACT describing to a reader a state that could not occur, and the union
+     never had to carry it. This is the type-mandated guard on a REQUIRED,
+     NULLABLE prop, and the nullability is the safety property itself: it is
+     what makes a missing gate a build failure instead of invented data in front
+     of a reader, which is the whole of #670. The guard cannot be deleted
+     without giving that up, so the only real choice is what it draws.
+
+     A caller with no payload and no failure to report HAS NOT ANSWERED, and a
+     skeleton is what not having answered looks like. Drawing nothing instead
+     would make an unanswered read look like an answered and empty one, which is
+     the exact confusion this branch exists to prevent. What would make it
+     reachable: a loader that can give back a null payload without a failure, or
+     a second call site that passes one. Neither exists yet, and either should
+     arrive with a rendered proof of this arm. */
   if (data === null) {
     return (
       <div data-parity="ledger" style={{ backgroundColor: "var(--c-bg)", minHeight: "100%", padding: `0 ${PAD}` }}>
