@@ -67,9 +67,15 @@ export function LedgerScreen({
           the only thing in the product that keeps moving once a screen has
           settled. Without it the masthead floats. */}
       <MobileTickerStrip />
-      {bannerShown ? <PersonalizationBanner data={data} onDismiss={() => setBannerShown(false)} /> : null}
+      {/* No sectors, no banner. "Personalized for:" over an empty chip row is
+          a claim about the reader that an empty profile cannot support. */}
+      {bannerShown && data.sectors.length > 0 ? (
+        <PersonalizationBanner data={data} onDismiss={() => setBannerShown(false)} />
+      ) : null}
       <Masthead data={data} />
-      <StatsBar data={data} loading={stage === "loading"} />
+      {/* The band carries a LIVE lamp. With no figures beside it there is
+          nothing live to point at, so the whole band goes. */}
+      {data.stats.length > 0 ? <StatsBar data={data} loading={stage === "loading"} /> : null}
 
       <div style={{ padding: `0 ${PAD}` }}>
         {stage === "loading" ? <BriefSkeleton /> : null}
@@ -79,15 +85,19 @@ export function LedgerScreen({
 
         {stage === "ready" || stage === "stale" ? (
           <>
-            <Continuity data={data} />
+            {data.continuity ? <Continuity continuity={data.continuity} /> : null}
             <LedgerDateRule
               date={data.today.date}
               wrapPublishedAt={wrapPublishedAt ?? data.wrapPublishedAt}
               onOpenWrap={() => {}}
             />
-            <PulseHero data={data} />
-            <PulseProse data={data} open={pulseOpen} onToggle={() => setPulseOpen((v) => !v)} />
-            <BriefProgress data={data} />
+            {data.pulse ? (
+              <>
+                <PulseHero pulse={data.pulse} />
+                <PulseProse pulse={data.pulse} open={pulseOpen} onToggle={() => setPulseOpen((v) => !v)} />
+              </>
+            ) : null}
+            {data.briefProgress ? <BriefProgress progress={data.briefProgress} /> : null}
             {data.today.claims?.map((c, i) => (
               <LedgerClaimCard
                 key={c.id}
@@ -125,16 +135,18 @@ export function LedgerScreen({
           </div>
         ))}
 
-        <div
-          style={{
-            marginTop: "22px",
-            textAlign: "center",
-            font: "400 italic 12.5px/1 'Playfair Display', serif",
-            color: "var(--c-muted)",
-          }}
-        >
-          {data.entriesBefore} entries before this
-        </div>
+        {data.entriesBefore !== null ? (
+          <div
+            style={{
+              marginTop: "22px",
+              textAlign: "center",
+              font: "400 italic 12.5px/1 'Playfair Display', serif",
+              color: "var(--c-muted)",
+            }}
+          >
+            {data.entriesBefore} entries before this
+          </div>
+        ) : null}
 
         <TailAction label="Write your own call" weight={600} borderToken="var(--c-ink)" marginTop="18px" />
         <TailAction
@@ -255,29 +267,33 @@ function Masthead({ data }: { data: LedgerData }) {
       <div style={{ marginTop: "12px", font: "700 19px/1.1 'Playfair Display', serif", letterSpacing: "-0.01em", color: "var(--c-oninv)" }}>
         Morning Brief
       </div>
-      <div
-        style={{
-          marginTop: "6px",
-          maxWidth: "230px",
-          font: "400 italic 12.5px/1.3 'Playfair Display', serif",
-          color: "rgba(255,253,249,0.78)",
-        }}
-      >
-        {data.tagline}
-      </div>
-      <span
-        style={{
-          marginTop: "10px",
-          display: "inline-block",
-          font: "600 10px/1 Inter, sans-serif",
-          padding: "4px 9px",
-          borderRadius: "14px",
-          backgroundColor: "rgba(255,253,249,0.15)",
-          color: "rgba(255,253,249,0.9)",
-        }}
-      >
-        {data.readMinutes} min read
-      </span>
+      {data.tagline ? (
+        <div
+          style={{
+            marginTop: "6px",
+            maxWidth: "230px",
+            font: "400 italic 12.5px/1.3 'Playfair Display', serif",
+            color: "rgba(255,253,249,0.78)",
+          }}
+        >
+          {data.tagline}
+        </div>
+      ) : null}
+      {data.readMinutes !== null ? (
+        <span
+          style={{
+            marginTop: "10px",
+            display: "inline-block",
+            font: "600 10px/1 Inter, sans-serif",
+            padding: "4px 9px",
+            borderRadius: "14px",
+            backgroundColor: "rgba(255,253,249,0.15)",
+            color: "rgba(255,253,249,0.9)",
+          }}
+        >
+          {data.readMinutes} min read
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -332,8 +348,8 @@ function StatsBar({ data, loading }: { data: LedgerData; loading: boolean }) {
   );
 }
 
-function Continuity({ data }: { data: LedgerData }) {
-  const c = data.continuity;
+function Continuity({ continuity }: { continuity: NonNullable<LedgerData["continuity"]> }) {
+  const c = continuity;
   return (
     <div
       className={styles.enter}
@@ -440,8 +456,8 @@ function Continuity({ data }: { data: LedgerData }) {
   );
 }
 
-function PulseHero({ data }: { data: LedgerData }) {
-  const p = data.pulse;
+function PulseHero({ pulse }: { pulse: NonNullable<LedgerData["pulse"]> }) {
+  const p = pulse;
   return (
     <div
       className={styles.rise}
@@ -499,6 +515,7 @@ function PulseHero({ data }: { data: LedgerData }) {
         </span>
         .
       </p>
+      {p.drivers.length > 0 ? (
       <div style={{ marginTop: "15px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
         {p.drivers.map((d) => (
           <span
@@ -531,13 +548,22 @@ function PulseHero({ data }: { data: LedgerData }) {
           </span>
         ))}
       </div>
+      ) : null}
       </div>
     </div>
   );
 }
 
-function PulseProse({ data, open, onToggle }: { data: LedgerData; open: boolean; onToggle: () => void }) {
-  const p = data.pulse;
+function PulseProse({
+  pulse,
+  open,
+  onToggle,
+}: {
+  pulse: NonNullable<LedgerData["pulse"]>;
+  open: boolean;
+  onToggle: () => void;
+}) {
+  const p = pulse;
   return (
     <>
       <p style={{ margin: "16px 0 0", font: "400 17px/1.55 'Playfair Display', serif", color: "var(--c-ink)", textWrap: "pretty" }}>
@@ -548,26 +574,30 @@ function PulseProse({ data, open, onToggle }: { data: LedgerData; open: boolean;
           {b}
         </p>
       ))}
-      <button
-        type="button"
-        onClick={onToggle}
-        className={styles.bare}
-        style={{
-          minHeight: "44px",
-          display: "flex",
-          alignItems: "center",
-          font: "600 12.5px/1 Inter, sans-serif",
-          color: "var(--c-goldink)",
-        }}
-      >
-        {open ? "Less" : "Read the full pulse"}
-      </button>
+      {/* Nothing withheld, no control. The label promises more prose and an
+          empty body has none. */}
+      {p.body.length > 0 ? (
+        <button
+          type="button"
+          onClick={onToggle}
+          className={styles.bare}
+          style={{
+            minHeight: "44px",
+            display: "flex",
+            alignItems: "center",
+            font: "600 12.5px/1 Inter, sans-serif",
+            color: "var(--c-goldink)",
+          }}
+        >
+          {open ? "Less" : "Read the full pulse"}
+        </button>
+      ) : null}
     </>
   );
 }
 
-function BriefProgress({ data }: { data: LedgerData }) {
-  const { read, total, status } = data.briefProgress;
+function BriefProgress({ progress }: { progress: NonNullable<LedgerData["briefProgress"]> }) {
+  const { read, total, status } = progress;
   return (
     <div style={{ marginTop: "6px" }}>
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: "10px" }}>
@@ -666,7 +696,7 @@ function BriefError() {
         We could not load the morning brief.
       </p>
       <p style={{ margin: "10px 0 0", font: "400 13px/1.6 Inter, sans-serif", color: "var(--c-secondary)", maxWidth: "32ch" }}>
-        This is a failed read, not an empty result. Nothing is being hidden, and your open calls are unaffected.
+        This is a failed read, not an empty result. Nothing is being hidden.
       </p>
       <button
         type="button"
@@ -717,7 +747,7 @@ function StaleNotice({ data }: { data: LedgerData }) {
         You are reading yesterday&rsquo;s brief.
       </div>
       <div style={{ marginTop: "4px", font: "400 11.5px/1.5 Inter, sans-serif", color: "var(--c-body)" }}>
-        Today&rsquo;s has not published yet. Generated {data.generatedAt}. Your review dates are unaffected.
+        Today&rsquo;s has not published yet.{data.generatedAt ? ` Generated ${data.generatedAt}.` : ""}
       </div>
     </div>
   );

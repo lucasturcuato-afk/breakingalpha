@@ -1,15 +1,30 @@
 import { AppShell } from "@/components/shell";
 import { LedgerScreen, type BriefStage } from "@/components/ledger";
-import { LEDGER_FIXTURE } from "@/components/ledger/fixture";
+import { LEDGER_FIXTURE, type LedgerData } from "@/components/ledger/fixture";
 import { mobileFixtureScreensEnabled } from "@/lib/mobile-fixture-gate";
+import { getSupabaseWithUser } from "@/lib/supabase-server";
+import { loadLedger } from "@/lib/ledger-data";
 
 /**
- * The Ledger. Server component so it can read the lifecycle switch off the
- * async searchParams, matching the pattern already used at /waitlist.
+ * The Ledger. Server component, so the read happens before a byte of the
+ * screen is sent and the query never reaches the browser.
  *
- * ?stage= renders a lifecycle state directly. The screen has no data source in
- * this unit, so the states cannot be reached by reproducing their conditions,
- * and the runtime audit has to be able to reach each one.
+ * WIRED. `src/lib/ledger-data.ts` reads the real morning brief, the desk's
+ * calls on it, and the signed-in reader's own graded calls, and gives back the
+ * shape `LedgerScreen` already consumed. Fields with no source come back null
+ * and the screen draws nothing for them; that file's header lists which.
+ *
+ * WHERE THE SAMPLE CONTENT CAN STILL REACH:
+ * a non-production build, and only with nobody signed in. That is exactly the
+ * parity harness, the width audits and a signed-out local browse. A signed-in
+ * reader always takes the loader, in every environment, so no real person is
+ * shown invented data. The gate fails closed, so a production build takes the
+ * loader branch whatever the session turns out to be.
+ *
+ * ?stage= still forces a lifecycle state so the runtime audit can reach each
+ * one, and it too sits behind the gate. In production the stage is whatever
+ * the read found, and a query string cannot paint a failure over a brief that
+ * loaded.
  *
  * The shell is mounted the way every other page in this repo mounts it, per
  * page rather than by a layout. Without it the Ledger pole navigates to a
@@ -27,11 +42,24 @@ export default async function LedgerPage({
 }) {
   const params = await searchParams;
   const raw = Array.isArray(params.stage) ? params.stage[0] : params.stage;
-  const stage = STAGES.includes(raw as BriefStage) ? (raw as BriefStage) : "ready";
+  const named = STAGES.includes(raw as BriefStage) ? (raw as BriefStage) : null;
 
-  // The wrap slot on the date rule is driven by the artifact existing, never
-  // by a clock. ?wrap= stands in for that artifact until a loader supplies it.
+  const { supabase, user } = await getSupabaseWithUser();
+  const sampleAllowed = user === null && mobileFixtureScreensEnabled();
+
+  const loaded = sampleAllowed ? null : await loadLedger(supabase, user?.id ?? null);
+
+  // The gate is resolved HERE and the result is passed down. The screen has no
+  // default and no fallback, so a missing gate is a build failure rather than
+  // invented data in front of a reader.
+  const data: LedgerData | null = sampleAllowed ? LEDGER_FIXTURE : (loaded?.data ?? null);
+  const stage: BriefStage =
+    (mobileFixtureScreensEnabled() ? named : null) ?? loaded?.stage ?? "ready";
+
+  // The wrap slot on the date rule is driven by the artifact existing, never by
+  // a clock. The loader supplies it; ?wrap= only overrides it off production.
   const wrapRaw = Array.isArray(params.wrap) ? params.wrap[0] : params.wrap;
+  const wrapOverride = mobileFixtureScreensEnabled() ? (wrapRaw ?? null) : null;
 
   return (
     <AppShell pageTitle="Ledger" mobileFullBleed>
@@ -40,14 +68,7 @@ export default async function LedgerPage({
           inline style: an inline display beats the class at every breakpoint,
           which is the defect that shipped the tab bar to desktop once already. */}
       <div className="md:hidden">
-        {/* The gate is resolved HERE and passed down, never defaulted inside
-            the screen. In production this is null and the screen renders its
-            loading state instead of an invented brief. */}
-        <LedgerScreen
-          stage={stage}
-          data={mobileFixtureScreensEnabled() ? LEDGER_FIXTURE : null}
-          wrapPublishedAt={wrapRaw ?? null}
-        />
+        <LedgerScreen stage={stage} data={data} wrapPublishedAt={wrapOverride} />
       </div>
 
       {/* Above the breakpoint this route has no layout of its own. The desktop

@@ -4,10 +4,11 @@ import type { ClaimCardVariant } from "./ledger-claim-card";
 /**
  * Sample content for the Ledger, taken verbatim from the rendered prototype.
  *
- * This screen has no data source yet. The brief API is owned elsewhere and is
- * off limits to this unit, so the screen is built against a typed fixture and
- * the shape below IS the contract a real loader has to satisfy. Swapping the
- * fixture for a fetch should not touch a single component.
+ * THE SCREEN NOW HAS A LOADER: `src/lib/ledger-data.ts` reads the real brief
+ * and the reader's own record and gives back this exact shape. What remains below
+ * is sample content, and it is reachable only from a non-production build with
+ * nobody signed in, which is what the parity harness and the width audits
+ * drive. A signed-in reader is never shown any of it.
  *
  * Compliance note on sample content: the rule against an aggregate figure
  * reaches sample data too. Nothing here is a rate. The per-entry numbers are
@@ -40,32 +41,50 @@ export interface LedgerDay {
   entries?: LedgerEntry[];
 }
 
+/**
+ * The contract a loader has to satisfy. `src/lib/ledger-data.ts` is the loader.
+ *
+ * EVERY BLOCK A LOADER MAY NOT BE ABLE TO SOURCE IS NULLABLE, and the screen
+ * draws nothing at all for a null. That is deliberate and it is the whole
+ * safety property: a field with no source cannot become a plausible-looking
+ * stand-in, because there is no shape for it to occupy. Widening a null back
+ * into a required field is how "One of your calls was checked overnight"
+ * reached real readers.
+ */
 export interface LedgerData {
-  generatedAt: string;
-  readMinutes: number;
-  tagline: string;
+  /** Publication time of the brief, already formatted. Null when unknown. */
+  generatedAt: string | null;
+  /** Estimated from the prose actually rendered. Null when there is none. */
+  readMinutes: number | null;
+  /** Masthead subtitle. Null when nothing stored describes the brief. */
+  tagline: string | null;
   /** Publication time of today's evening wrap, or null when unpublished. */
   wrapPublishedAt: string | null;
+  /** The reader's own sector list. Empty hides the banner entirely. */
   sectors: string[];
   /** tone reads the figure, not the direction: a falling VIX is calm. */
   stats: { label: string; value: string; tone?: "calm" | "stress" | "mood" }[];
+  /** Null when nothing records what changed since the reader last looked. */
   continuity: {
     changeCount: number;
     lines: { text: string; before?: string; after?: string; emphasis?: boolean }[];
     openNow: string;
     nextIn: string;
-  };
+  } | null;
+  /** Null when no market pulse was published with the brief. */
   pulse: {
     stampedAt: string;
     verdict: string;
     drivers: { label: string; tone: "watch" | "bull" | "bear" | "mixed" | "neutral"; toneLabel: string }[];
     lede: string;
     body: string[];
-  };
-  briefProgress: { read: number; total: number; status: string };
+  } | null;
+  /** Null when the brief carries no calls to count. */
+  briefProgress: { read: number; total: number; status: string } | null;
   today: LedgerDay;
   past: LedgerDay[];
-  entriesBefore: number;
+  /** Entries beyond the ones rendered. Null when there are none. */
+  entriesBefore: number | null;
 }
 
 export const LEDGER_FIXTURE: LedgerData = {
