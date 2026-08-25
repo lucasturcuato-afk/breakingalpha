@@ -37,6 +37,7 @@ export function MobileLearnedScreen({
   eventCount,
   updatedAt,
   refreshFailed,
+  stored,
 }: {
   /** Already sorted by the route, heaviest first. */
   weights: LearnedWeight[];
@@ -55,6 +56,17 @@ export function MobileLearnedScreen({
    * indistinguishable from a genuine zero. Said out loud instead.
    */
   refreshFailed: boolean;
+  /**
+   * Whether the weights were PERSISTED, straight from `updateInferredWeights`.
+   *
+   * False in production on every render today: `user_profiles`
+   * `inferred_sector_weights` and `inferred_weights_updated_at` do not exist,
+   * verified read-only against the production REST API, both answering HTTP
+   * 400 with Postgres `42703`. The numbers are still a real derivation of real
+   * `user_events` rows, so they are shown, but nothing stored them and nothing
+   * ranked by them. The screen has to say which it is.
+   */
+  stored: boolean;
 }) {
   return (
     <Screen parity="learned">
@@ -99,10 +111,31 @@ export function MobileLearnedScreen({
               textWrap: "pretty",
             }}
           >
+            {/* "Higher = boosted in ranking" is the prototype's own clause and it
+                is only true if something read these numbers. Nothing does when
+                `stored` is false, so the clause is gated rather than printed as
+                a fact. Same rule that took "Published 6:45" off Alerts. */}
             These are inferred from your activity and blend with your declared preferences. 1.0 =
-            neutral. Higher = boosted in ranking. {eventCount} events considered
+            neutral.{stored ? " Higher = boosted in ranking." : ""} {eventCount} events considered
             {updatedAt === null ? "." : <> &middot; last updated {updatedAt}.</>}
           </p>
+
+          {stored ? null : (
+            <p
+              role="status"
+              style={{
+                margin: "10px 0 0",
+                font: `400 11.5px/1.5 ${FONT_SANS}`,
+                color: "var(--c-amberink)",
+                textWrap: "pretty",
+              }}
+            >
+              These numbers were worked out from your recorded activity when this page loaded, and
+              they were not saved. Signalera has nowhere to keep them yet, so nothing reads them and
+              nothing is ordered by them. They describe what your activity adds up to, not what the
+              product is doing with it.
+            </p>
+          )}
 
           {refreshFailed ? (
             <p
@@ -370,16 +403,22 @@ function BehavioralInsights() {
   const bullets: string[] = [];
   if (data) {
     if (data.narrative) bullets.push(data.narrative);
-    if (data.top_boosted.length > 0) {
-      bullets.push(
-        `Leaning in on ${data.top_boosted.map((b) => b.sector).join(", ")}, which now rank ahead of the rest of your feed.`,
-      );
-    }
-    if (data.top_muted.length > 0) {
-      bullets.push(
-        `Cooling on ${data.top_muted.map((b) => b.sector).join(", ")}, which are ranked lower than your declared sectors alone would put them.`,
-      );
-    }
+    /* TWO SENTENCES REMOVED HERE, and they were this batch's own invention.
+     *
+     *   "Leaning in on X, which now rank ahead of the rest of your feed."
+     *   "Cooling on X, which are ranked lower than your declared sectors
+     *    alone would put them."
+     *
+     * Neither is in `Signalera Mobile v3.dc.html` and neither is on main;
+     * `git log -S` puts both in this batch's first commit. Both assert that
+     * the reader's feed is being reordered. It is not: the column those
+     * weights would live in does not exist, every consumer reads it
+     * defensively (`deal-utils.ts:20`, `theses/route.ts:97`) and therefore
+     * always sees an empty object, so the weights reorder nothing anywhere.
+     *
+     * The API narrative bullet above already names the sectors without
+     * claiming an effect, so removing these also clears the duplicate pair
+     * that read as a stutter. */
   }
 
   return (

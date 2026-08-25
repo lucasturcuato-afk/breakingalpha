@@ -31,12 +31,7 @@ export default async function LearnedPage() {
 
   const refreshed = await updateInferredWeights(supabase, user.id).then(
     (r) => ({ ...r, failed: false }),
-    () => ({
-      weights: profile.inferred_sector_weights,
-      eventCount: 0,
-      updatedAt: profile.inferred_weights_updated_at,
-      failed: true,
-    }),
+    () => ({ weights: profile.inferred_sector_weights, eventCount: 0, failed: true }),
   );
   const { weights, eventCount, failed: refreshFailed } = refreshed;
 
@@ -44,23 +39,37 @@ export default async function LearnedPage() {
     .sort((a, b) => b[1] - a[1])
     .map(([sector, weight]) => ({ sector, weight }));
 
-  /* ORDERING, and this is a fix.
+  /* WHETHER THESE WEIGHTS ARE STORED AT ALL, which is the question the screen
+   * has to answer before it says anything about them.
    *
-   * This used to read `profile.inferred_weights_updated_at` off the snapshot
-   * taken above, which is read BEFORE `updateInferredWeights` runs and writes
-   * that same column. So the screen counted the events it had just computed
-   * and then reported a timestamp from the visit before, or, on a first visit,
-   * no timestamp at all. Signed in on a fresh account it rendered
-   * "12 events considered - last updated not yet computed" in one sentence.
+   * `user_profiles.inferred_sector_weights` and
+   * `user_profiles.inferred_weights_updated_at` DO NOT EXIST in production.
+   * Verified read-only against the production REST API: both answer HTTP 400
+   * with Postgres `42703`, "column does not exist". `updateInferredWeights`
+   * computes the numbers from real `user_events` rows and then writes them
+   * nowhere, and its warn deliberately swallows exactly that error, so nothing
+   * downstream could tell. Every consumer reads the column defensively
+   * (`deal-utils.ts:20`, `theses/route.ts:97`) and therefore always sees an
+   * empty object, which means the weights order nothing anywhere.
    *
-   * The refresh now hands back the timestamp it wrote. On the failure branch
-   * the stored value is used instead, which is the right value there: nothing
-   * new was written, so the last successful computation is what the reader
-   * should see. Either way it can be null, and null renders nothing rather
-   * than a phrase standing in for a date. */
-  const updatedAt = refreshed.updatedAt
-    ? new Date(refreshed.updatedAt).toLocaleString()
-    : null;
+   * The columns are missing on main too. This is not this branch's doing and
+   * the migration is a human decision, so the screen's job is to be honest
+   * about it rather than to hide it.
+   *
+   * A stored timestamp is the observable proof that the store exists and took
+   * a write. Absent, nothing was kept. This deliberately reads the PRE-refresh
+   * snapshot: making the refresh report its own write is a shared-library
+   * change and it is split into its own PR, so the reading here is one visit
+   * behind. That errs toward saying "not saved" when a write has just landed,
+   * which understates rather than overstates, and it self-corrects on the next
+   * visit. Today the value is null on every visit for everyone. */
+  const storedAt = profile.inferred_weights_updated_at;
+  const stored = storedAt !== null;
+
+  /* Null renders NOTHING. This used to fall back to the literal string
+   * "not yet computed", which is what produced
+   * "N events considered - last updated not yet computed" in one sentence. */
+  const updatedAt = storedAt ? new Date(storedAt).toLocaleString() : null;
 
   return (
     <>
@@ -70,6 +79,7 @@ export default async function LearnedPage() {
           eventCount={eventCount}
           updatedAt={updatedAt}
           refreshFailed={refreshFailed}
+          stored={stored}
         />
       </div>
 

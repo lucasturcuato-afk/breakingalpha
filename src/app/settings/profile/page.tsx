@@ -206,7 +206,9 @@ export default function ProfileSettingsPage() {
           Your Preferences
         </h1>
         <p className="font-sans text-[13px] text-text-secondary mb-8">
-          Changes save instantly and personalize your entire Signalera experience.
+          {/* Same correction as the mobile screen. Nothing here saves until the
+              Save changes button below is pressed. */}
+          Saved changes personalize your entire Signalera experience.
         </p>
 
         {loading ? (

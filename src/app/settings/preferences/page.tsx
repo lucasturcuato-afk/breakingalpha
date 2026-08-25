@@ -21,9 +21,23 @@ export default async function PreferencesPage() {
   );
 
   const sortedWeights = Object.entries(weights).sort((a, b) => b[1] - a[1]);
-  const updatedAt = profile.inferred_weights_updated_at
-    ? new Date(profile.inferred_weights_updated_at).toLocaleString()
-    : "not yet computed";
+  /* THE THIRD CALLER, and the one the mobile screen links straight at.
+   *
+   * It rendered "N events considered - last updated not yet computed" in one
+   * sentence, from the same literal fallback the mobile screen used. Fixing the
+   * mobile caller and leaving this one moves the contradiction one tap away:
+   * the mobile Learned screen's own desktop half says "on a wider screen the
+   * learned weights sit inside your preferences" and points here.
+   *
+   * Same reading as `/settings/learned`, and the same reasons, set out in full
+   * there: the two `user_profiles` columns do not exist in production, both
+   * answering Postgres `42703`, so a stored timestamp is the observable proof
+   * that anything was kept, and null renders nothing rather than a phrase
+   * standing in for a date. Making the refresh report its own write is a
+   * shared-library change and is split into its own PR. */
+  const storedAt = profile.inferred_weights_updated_at;
+  const stored = storedAt !== null;
+  const updatedAt = storedAt ? new Date(storedAt).toLocaleString() : null;
 
   return (
     <AppShell pageTitle="Preferences">
@@ -67,10 +81,23 @@ export default async function PreferencesPage() {
             <ResetLearnedPrefsButton />
           </div>
           <p className="font-sans text-[12px] text-text-secondary mb-4">
+            {/* "Higher = boosted in ranking" is gated on the weights actually
+                being stored, for the reason set out on the mobile screen: the
+                column does not exist in production, so nothing reads these and
+                nothing is ordered by them. */}
             These are inferred from your activity and blend with your declared
-            preferences above. 1.0 = neutral. Higher = boosted in ranking.{" "}
-            {eventCount} events considered &middot; last updated {updatedAt}.
+            preferences above. 1.0 = neutral.
+            {stored ? " Higher = boosted in ranking." : ""} {eventCount} events
+            considered{updatedAt === null ? "." : <> &middot; last updated {updatedAt}.</>}
           </p>
+
+          {stored ? null : (
+            <p className="font-sans text-[11px] text-text-muted mb-4" role="status">
+              These numbers were worked out from your recorded activity when this
+              page loaded, and they were not saved. Signalera has nowhere to keep
+              them yet, so nothing reads them and nothing is ordered by them.
+            </p>
+          )}
 
           {sortedWeights.length === 0 ? (
             <p className="font-sans text-[12px] text-text-muted italic">

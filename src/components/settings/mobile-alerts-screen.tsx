@@ -1,6 +1,5 @@
 "use client";
 
-import { useId } from "react";
 import { BackHeader, ListRowControl, Screen, ScreenBody, ToggleSwitch } from "@/components/mobile";
 import { FONT_DISPLAY, FONT_MONO, FONT_SANS } from "@/components/mobile/fonts";
 
@@ -39,11 +38,31 @@ import { FONT_DISPLAY, FONT_MONO, FONT_SANS } from "@/components/mobile/fonts";
  *
  * The treatment is PR #661's, established on the evening wrap
  * (`evening-wrap-screen.tsx:684-690`): a control with nothing behind it is
- * DISABLED rather than merely handler-less, drawn so the closed state is
- * visible and not only announced, with a line saying why. The rows still carry
- * the information the design put on this screen, which is what Signalera sends
- * and when it looks at your ledger. They no longer offer a change that would
- * be taken and dropped.
+ * closed rather than merely handler-less, drawn so the closed state is visible
+ * and not only announced, with a line saying why.
+ *
+ * WHAT THE EXPLANATION MAY CLAIM, and this is a correction to the first
+ * version of it. That line used to end "The schedule each row describes is
+ * what Signalera sends today, switch or no switch." Three of the five rows
+ * cannot support that. `watchlist_sync.py:611` is the only producer of a
+ * user-facing notification in `backend/`, and it fires on a price threshold
+ * being crossed, not when the desk writes on a followed name. Nothing in
+ * `src/` or `backend/` matches `review_date`, `due_for_review` or
+ * `review_due`, and no workflow mentions a review. Nothing produces a
+ * window-closing notice. Only the brief and the wrap have a producer, and they
+ * are the two rows already sourced to `brief-heartbeat.yml`. Removing four
+ * unsourceable claims and then writing a fifth is the same defect wearing the
+ * fix's clothes, so the sentence now says only the thing this file can prove:
+ * that no store is wired up.
+ *
+ * WHY THE LOCKED CONTROL NO LONGER ANNOUNCES A STATE. It was a
+ * `<button role="switch" aria-checked="false" disabled>`, which reads as
+ * "switch, off, dimmed". "Off" is a claim about a setting, and with no store
+ * there is no setting to be off: the value is absent, not false. The evening
+ * wrap's precedent closed a BUTTON, which carries no state; a switch does.
+ * So the locked control is now decorative and `aria-hidden`, the row is plain
+ * text, and the line above the group carries the fact. Flagged in the PR: if
+ * Noah wants the switches operable, they need a migration behind them.
  */
 
 const ROWS: { key: string; group: "publication" | "ledger"; label: string; sub: string }[] = [
@@ -78,7 +97,6 @@ export function MobileAlertsScreen() {
 }
 
 export function AlertsView() {
-  const idBase = useId();
   const publication = ROWS.filter((r) => r.group === "publication");
   const ledger = ROWS.filter((r) => r.group === "ledger");
 
@@ -98,9 +116,12 @@ export function AlertsView() {
           When the app reaches you
         </h1>
         {/* The design's sentence ends "…and what the home screen badge counts".
-            `grep -rn "setAppBadge" src/` matches nothing anywhere: there is no
-            badge, so there is nothing counting. The clause is dropped and the
-            rest of the design's sentence, which is true, is kept. */}
+            There is no badge: the Badging API call that would set one appears
+            nowhere in the codebase, so there is nothing counting. The clause is
+            dropped and the rest of the design's sentence, which is true, is
+            kept. (Stated this way on purpose. The previous wording quoted the
+            grep that proved it, which then made the comment its own only
+            match.) */}
         <p
           style={{
             margin: "8px 0 0",
@@ -123,25 +144,19 @@ export function AlertsView() {
             textWrap: "pretty",
           }}
         >
-          The five switches below are locked. Nothing behind them reads a setting yet, so they are
-          drawn closed rather than as controls that would take a change and drop it. The schedule
-          each row describes is what Signalera sends today, switch or no switch.
+          The five switches below are locked. Nothing behind them stores a setting yet, so they are
+          shown closed rather than as controls that would take a change and drop it.
         </p>
 
         <Group eyebrow="PUBLICATION" marginTop="0px">
           {publication.map((row, i) => (
-            <Row
-              key={row.key}
-              row={row}
-              idBase={idBase}
-              bottomRule={i === publication.length - 1}
-            />
+            <Row key={row.key} row={row} bottomRule={i === publication.length - 1} />
           ))}
         </Group>
 
         <Group eyebrow="YOUR LEDGER" marginTop="24px">
           {ledger.map((row, i) => (
-            <Row key={row.key} row={row} idBase={idBase} bottomRule={i === ledger.length - 1} />
+            <Row key={row.key} row={row} bottomRule={i === ledger.length - 1} />
           ))}
         </Group>
 
@@ -209,29 +224,21 @@ function Group({
 
 function Row({
   row,
-  idBase,
   bottomRule,
 }: {
   row: (typeof ROWS)[number];
-  idBase: string;
   bottomRule: boolean;
 }) {
-  const subId = `${idBase}-${row.key}`;
+  /* No `subId`. It existed to bind the row's qualifier to the switch through
+     `aria-describedby`, and the locked control is `aria-hidden` with nothing to
+     describe. An id nothing references is the kind of leftover that later reads
+     as a wired relationship. */
   return (
     <ListRowControl
       label={row.label}
       sub={row.sub}
-      subId={subId}
       bottomRule={bottomRule}
-      trailing={
-        <ToggleSwitch
-          checked={false}
-          onChange={NOOP}
-          label={row.label}
-          describedBy={subId}
-          locked
-        />
-      }
+      trailing={<ToggleSwitch checked={false} onChange={NOOP} label={row.label} locked />}
     />
   );
 }

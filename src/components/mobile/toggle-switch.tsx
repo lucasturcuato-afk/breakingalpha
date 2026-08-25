@@ -1,5 +1,7 @@
 "use client";
 
+import type { CSSProperties } from "react";
+
 /**
  * The mobile switch. The only toggle primitive in the repo; nothing existed to
  * extend, so this is a net-new extraction shared by the Alerts rows.
@@ -19,11 +21,20 @@
  * capsule, so the shape is kept and the scale is not bent.
  *
  * `locked` is the state PR #661 established for a control with nothing behind
- * it: disabled rather than merely handler-less, so it is closed in every
- * channel at once (no click, no focus, no pointer, announced disabled), and
- * drawn in the chrome border rather than the ink one so the closed state is
- * VISIBLE and not only announced. `--c-locked-bg` and `--c-locked-ink` are the
- * design system's own pair for exactly this; nothing here is invented.
+ * it, drawn in the chrome border rather than the ink one so the closed state
+ * is VISIBLE and not only announced. `--c-locked-bg` and `--c-locked-ink` are
+ * the design system's own pair for exactly this; nothing here is invented.
+ *
+ * A LOCKED SWITCH IS NOT A DISABLED SWITCH, and that distinction cost a round
+ * of review. The first version rendered `<button role="switch"
+ * aria-checked="false" disabled>`, which announces "switch, off, dimmed".
+ * "Off" is a claim about a stored setting, and there is no store: the value is
+ * ABSENT, not false. #661's precedent closed a `<button>`, which carries no
+ * state; a switch does, and drawing all of them off asserts five settings that
+ * do not exist. So `locked` renders no control at all. It is a decorative,
+ * `aria-hidden` span: nothing focusable, no role, no `aria-checked`, nothing
+ * for assistive technology to report a state from. The row's own text and the
+ * line above the group carry the meaning.
  */
 
 export function ToggleSwitch({
@@ -46,6 +57,45 @@ export function ToggleSwitch({
    */
   locked?: boolean;
 }) {
+  /* Same 50x44 outer box as the live control, so locking a row does not move
+     it and the drawn capsule stays identical. It simply is not a control. */
+  const track: CSSProperties = {
+    boxSizing: "content-box",
+    flex: "none",
+    width: "44px",
+    height: "26px",
+    borderRadius: "14px",
+    padding: "8px 2px",
+    margin: "-8px 0",
+    display: "flex",
+    alignItems: "center",
+    backgroundClip: "content-box",
+  };
+
+  if (locked) {
+    return (
+      <span
+        aria-hidden="true"
+        style={{
+          ...track,
+          border: "1px solid var(--c-frame)",
+          justifyContent: "flex-start",
+          backgroundColor: "var(--c-locked-bg)",
+        }}
+      >
+        <span
+          style={{
+            display: "block",
+            width: "24px",
+            height: "24px",
+            borderRadius: "50%",
+            background: "var(--c-locked-ink)",
+          }}
+        />
+      </span>
+    );
+  }
+
   return (
     <button
       type="button"
@@ -53,28 +103,16 @@ export function ToggleSwitch({
       aria-checked={checked}
       aria-label={label}
       aria-describedby={describedBy}
-      disabled={locked}
-      onClick={locked ? undefined : () => onChange(!checked)}
+      onClick={() => onChange(!checked)}
       style={{
+        ...track,
         appearance: "none",
-        border: locked ? "1px solid var(--c-frame)" : 0,
-        boxSizing: "content-box",
-        flex: "none",
-        width: locked ? "44px" : "46px",
-        height: locked ? "26px" : "28px",
-        borderRadius: "14px",
-        padding: "8px 2px",
-        margin: "-8px 0",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: checked && !locked ? "flex-end" : "flex-start",
-        cursor: locked ? "default" : "pointer",
-        backgroundClip: "content-box",
-        backgroundColor: locked
-          ? "var(--c-locked-bg)"
-          : checked
-            ? "var(--c-gold)"
-            : "var(--c-locked-bg)",
+        border: 0,
+        width: "46px",
+        height: "28px",
+        justifyContent: checked ? "flex-end" : "flex-start",
+        cursor: "pointer",
+        backgroundColor: checked ? "var(--c-gold)" : "var(--c-locked-bg)",
       }}
     >
       <span
@@ -84,11 +122,7 @@ export function ToggleSwitch({
           width: "24px",
           height: "24px",
           borderRadius: "50%",
-          background: locked
-            ? "var(--c-locked-ink)"
-            : checked
-              ? "var(--c-ongold)"
-              : "var(--c-bg)",
+          background: checked ? "var(--c-ongold)" : "var(--c-bg)",
         }}
       />
     </button>

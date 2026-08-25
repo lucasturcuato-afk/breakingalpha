@@ -298,17 +298,7 @@ export async function updateInferredWeights(
   supabase: SupabaseClient,
   userId: string,
   lookbackDays = 30,
-): Promise<{
-  weights: Record<string, number>;
-  eventCount: number;
-  /**
-   * The `inferred_weights_updated_at` this call WROTE, or null when it wrote
-   * nothing. Returned because a caller that re-reads the profile to find it
-   * gets the previous value: the read happens before this write lands, so the
-   * timestamp is always one visit stale and always absent on the first visit.
-   */
-  updatedAt: string | null;
-}> {
+): Promise<{ weights: Record<string, number>; eventCount: number }> {
   const since = new Date(
     Date.now() - lookbackDays * 24 * 60 * 60 * 1000,
   ).toISOString();
@@ -321,7 +311,7 @@ export async function updateInferredWeights(
 
   if (error) {
     console.warn("[user-profile] updateInferredWeights read:", error.message);
-    return { weights: {}, eventCount: 0, updatedAt: null };
+    return { weights: {}, eventCount: 0 };
   }
 
   const weights: Record<string, number> = {};
@@ -367,15 +357,7 @@ export async function updateInferredWeights(
     console.warn("[user-profile] updateInferredWeights write:", writeErr.message);
   }
 
-  /* `now` only counts as the stored timestamp if the write actually landed.
-   * `writeErr` on the two personalization columns is the pre-migration case
-   * the warn above deliberately swallows, and in that case nothing was
-   * stored, so there is no timestamp to report. */
-  return {
-    weights,
-    eventCount: events?.length ?? 0,
-    updatedAt: writeErr ? null : now,
-  };
+  return { weights, eventCount: events?.length ?? 0 };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

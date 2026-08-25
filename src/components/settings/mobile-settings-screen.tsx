@@ -94,7 +94,16 @@ export function MobileSettingsScreen(props: MobileSettingsScreenProps) {
             textWrap: "pretty",
           }}
         >
-          Changes save instantly and personalize your entire Signalera experience.
+{/* "Changes save instantly" was the design's, and it is false on this
+              screen: the only write path is the explicit Save changes button
+              below, wired to PATCH /api/user-profile, and nothing persists
+              until it is pressed. The clause came out on the same ground that
+              took "Published 6:45" off Alerts. Applying that standard to the
+              design's claims about a schedule and not to its claims about this
+              screen's own behaviour, four lines above the button that
+              falsifies it, would have been the standard applied for
+              convenience. */}
+          Saved changes personalize your entire Signalera experience.
         </p>
 
         {loading ? (

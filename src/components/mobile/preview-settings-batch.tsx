@@ -133,8 +133,16 @@ function LearnedPreview({ state }: { state: PreviewState }) {
     <MobileLearnedScreen
       weights={state === "empty" ? [] : WEIGHTS}
       eventCount={state === "empty" ? 0 : 214}
-      updatedAt={state === "empty" ? "not yet computed" : "Aug 13, 4:02 AM"}
+      /* Null, not the literal "not yet computed". That string was the source of
+         the sentence that contradicted itself, and the screen now renders
+         nothing for a missing timestamp. */
+      updatedAt={state === "empty" ? null : "Aug 13, 4:02 AM"}
       refreshFailed={state === "error"}
+      /* False, because false is what production does. The two columns these
+         weights would be stored in do not exist, so the harness would be
+         drawing a state the product cannot reach if this were true. The plate
+         is meant to be a picture of production, not of the fixture's wishes. */
+      stored={false}
     />
   );
 }
