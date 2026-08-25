@@ -35,6 +35,54 @@ import {
   filterAndClassifyArticles,
 } from "@/lib/company-intel";
 import { fetchCompanyArticles } from "@/app/api/companies/[id]/articles/route";
+import { CompanyIntelScreen, type CompanyStage } from "@/components/company/mobile";
+import {
+  mobileFixtureAuthBypass,
+  mobileFixtureScreensEnabled,
+} from "@/lib/mobile-fixture-gate";
+
+/**
+ * MOBILE REDESIGN, step 9, screen 15.
+ *
+ * Below `md` this route draws the redesign's Company Intel screen, and that
+ * screen is a FIXTURE: invented filings, invented Form 4 rows and invented
+ * validated XBRL. This page serves the real versions of all three for a real
+ * ticker in production today, so the fixture is gated behind
+ * mobileFixtureScreensEnabled(), which fails closed on production and opens
+ * only on a non-production build or an explicit Vercel preview.
+ *
+ * With the gate shut, nothing below `md` changes: the desktop tree renders
+ * exactly the element it renders today, with no extra wrapper, at every width.
+ */
+const STAGES: CompanyStage[] = ["ready", "loading", "error", "empty"];
+
+function readStage(raw: string | string[] | undefined): CompanyStage {
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  return STAGES.includes(value as CompanyStage) ? (value as CompanyStage) : "ready";
+}
+
+/**
+ * The truth strip. Sits ABOVE the screen and OUTSIDE `[data-parity="company"]`,
+ * so parity never sees it and a human always does. A reviewer on a preview
+ * deployment is looking at a real company's URL, and nothing inside the drawing
+ * says the numbers are not that company's.
+ */
+function FixtureNotice() {
+  return (
+    <p
+      style={{
+        margin: 0,
+        padding: "9px 20px",
+        backgroundColor: "var(--c-amber-well)",
+        borderBottom: "1px solid var(--c-amber-edge)",
+        font: "500 11px/1.4 Inter, sans-serif",
+        color: "var(--c-amberink)",
+      }}
+    >
+      Design fixture. Every figure below is invented and none of it describes this company.
+    </p>
+  );
+}
 
 // Convert a URL slug to a canonical company name.
 // e.g. "nvidia-corporation" -> "NVIDIA", "goldman-sachs" -> "Goldman Sachs",
@@ -72,15 +120,60 @@ export async function generateMetadata({
 
 export default async function CompanyDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ stage?: string | string[] }>;
 }) {
   const { id } = await params;
   const companyName = slugToCompanyName(id);
+  const stage = readStage((await searchParams).stage);
+  const mobileFixture = mobileFixtureScreensEnabled();
 
   // Auth gate -- middleware also enforces, but page must call to get a client.
   const { supabase, user } = await getSupabaseWithUser();
-  if (!user) redirect("/auth");
+  if (!user) {
+    // This second gate is why src/proxy.ts cannot open the route: the proxy's
+    // MOBILE_REDESIGN_DEV_PATHS list makes the request public and then this
+    // line sends it to /auth anyway, so every parity, audit and smoke run
+    // measures the sign-in page. Opened on a development server only, matching
+    // the proxy's own precedent. A preview deployment keeps its redirect.
+    //
+    // Order matters for the build, not just for the read. The bypass is the
+    // NODE_ENV-only test, so putting it first lets the production build fold
+    // the whole block to nothing rather than keep it as dead bytes behind a
+    // redirect that throws. Verified against a real production build; see the
+    // PR body.
+    if (mobileFixtureAuthBypass() && mobileFixture) {
+      return (
+        <LiveMoodShell pageTitle="Company Intel" mobileFullBleed>
+          {/* The screen paints its own ground. Without it the shell's parchment
+              shows below a short state, and the loading and error states are
+              exactly the short ones. backgroundColor is not a property any
+              responsive class here sets, so the inline value cannot defeat the
+              breakpoint. */}
+          <div className="md:hidden" style={{ backgroundColor: "var(--c-bg)", minHeight: "100%" }}>
+            <FixtureNotice />
+            {/* Stated rather than left to a default. The fixture describes a
+                public filer, so the sourced empty copy this picks is the
+                has-CIK branch. The signed-in path below reads the real
+                resolution instead. */}
+            <CompanyIntelScreen stage={stage} hasCik />
+          </div>
+          <div className="hidden md:block" style={{ padding: "48px" }}>
+            <p style={{ margin: 0, font: "500 17px/1.4 'Playfair Display', serif", color: "var(--c-ink)" }}>
+              Sign in to read Company Intel.
+            </p>
+            <p style={{ margin: "10px 0 0", font: "400 13px/1.6 Inter, sans-serif", color: "var(--c-secondary)" }}>
+              The desktop surface renders this company&apos;s own filings, insider record and
+              financials, so it is not drawn for a signed-out reader.
+            </p>
+          </div>
+        </LiveMoodShell>
+      );
+    }
+    redirect("/auth");
+  }
 
   // TODO(E3): wrap CompanyDetailLayout in <Suspense fallback={...}> once
   // streaming boundaries land. Today the page is a server component that
@@ -240,27 +333,60 @@ export default async function CompanyDetailPage({
     comps: <ComingSoonTab tabId="comps" />,
   };
 
+  // The desktop surface, unchanged. Held in a const so the gate can place it
+  // without the shut branch acquiring a wrapper element it does not have today.
+  //
+  // titleAs is the ONE difference between the two placements, and it exists
+  // because the gate open means both trees are in the same document. Only one
+  // is visible, so assistive tech already sees a single heading, but the
+  // document outline sees two h1s. The mobile screen keeps h1 because that is
+  // the reachable one below `md`; this steps to h2 on the gated path. With the
+  // gate shut, `mobileFixture` is false and this renders h1 exactly as today.
+  const desk = (
+    <CompanyDetailLayout
+      tabContent={tabContent}
+      header={
+        <CompanyDetailHeader detail={companyDetail} titleAs={mobileFixture ? "h2" : "h1"} />
+      }
+      aliasRibbon={
+        <CompanyAliasRibbon
+          canonical={companyDetail.canonical}
+          aliasMentions={companyDetail.aliasMentions}
+        />
+      }
+      kpiStrip={<CompanyKPIStrip companyDetail={companyDetail} />}
+      rightRail={
+        <CompanyTrendCard
+          company={companyDetail.canonical}
+          mentions7d={companyDetail.mentions7d}
+          tone={companyDetail.tone}
+          attention={companyDetail.attention}
+        />
+      }
+    />
+  );
+
   return (
-    <LiveMoodShell pageTitle="Company Intel">
-      <CompanyDetailLayout
-        tabContent={tabContent}
-        header={<CompanyDetailHeader detail={companyDetail} />}
-        aliasRibbon={
-          <CompanyAliasRibbon
-            canonical={companyDetail.canonical}
-            aliasMentions={companyDetail.aliasMentions}
-          />
-        }
-        kpiStrip={<CompanyKPIStrip companyDetail={companyDetail} />}
-        rightRail={
-          <CompanyTrendCard
-            company={companyDetail.canonical}
-            mentions7d={companyDetail.mentions7d}
-            tone={companyDetail.tone}
-            attention={companyDetail.attention}
-          />
-        }
-      />
+    <LiveMoodShell pageTitle="Company Intel" mobileFullBleed={mobileFixture}>
+      {mobileFixture ? (
+        <>
+          {/* Gating lives in a CLASS, never in an inline style: an inline
+              display beats the class at every breakpoint, which is the defect
+              that shipped the tab bar to desktop once already. */}
+          {/* The screen paints its own ground. Without it the shell's parchment
+              shows below a short state, and the loading and error states are
+              exactly the short ones. backgroundColor is not a property any
+              responsive class here sets, so the inline value cannot defeat the
+              breakpoint. */}
+          <div className="md:hidden" style={{ backgroundColor: "var(--c-bg)", minHeight: "100%" }}>
+            <FixtureNotice />
+            <CompanyIntelScreen stage={stage} hasCik={filingsResult.cik != null} />
+          </div>
+          <div className="hidden md:block">{desk}</div>
+        </>
+      ) : (
+        desk
+      )}
       <CompanyMemoModalListener
         companyName={canonical}
         memoContent={memoContent}
