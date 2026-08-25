@@ -84,6 +84,21 @@ jobs:
           # 2026-08-25 run, raising it to 3 would drop 362 of 726 stored
           # articles (49.9%). Retune here, not in a merge.
           RELEVANCE_NEW_GATE: ${{ vars.RELEVANCE_NEW_GATE }}
+          # WATCHLIST_GATE_EXCEPTION, read at backend/ingest.py via _int_env.
+          # Repo VARIABLE, not a secret. 0 = off (the default), non-zero = on.
+          #
+          # When on, an article scoring BELOW RELEVANCE_NEW_GATE is stored anyway
+          # if it matches a TICKER or COMPANY watchlist entry. Sector entries are
+          # excluded on purpose: they are generic English words and rescue the
+          # same price-recap templates the gate exists to remove.
+          #
+          # Only meaningful once RELEVANCE_NEW_GATE is above 1. Measured on run
+          # b64868c9 (2026-08-25) at a gate of 3: without it 362 of 726 stored
+          # articles are dropped, with it 227.
+          #
+          # SAFE TO MAP: _int_env coerces the EMPTY STRING an unset repo Variable
+          # renders to 0, so an unset Variable is off rather than a ValueError.
+          WATCHLIST_GATE_EXCEPTION: ${{ vars.WATCHLIST_GATE_EXCEPTION }}
           # INGEST_FRESHNESS_DAYS, read at backend/ingest.py via _int_env.
           # Repo VARIABLE, not a secret (a small integer). Feed-entry age cutoff
           # in days; default 7, unchanged from the previous hardcoded constant.

@@ -15,7 +15,12 @@ from supabase import create_client
 from google import genai
 from google.genai import types
 from dotenv import load_dotenv
-from watchlist import boost_watchlist_relevance
+from watchlist import (
+    boost_watchlist_relevance,
+    list_watchlist,
+    _build_identifier_matcher,
+    _matched_identifiers,
+)
 from wikidata import is_valid_company
 from fulltext import fetch_full_text, SCRAPEABLE_SOURCES
 from publishers import (
@@ -154,6 +159,33 @@ RELEVANCE_GRADE_MODEL = os.environ.get("RELEVANCE_GRADE_MODEL", GEMINI_MODEL).st
 # import and kill the run before ingest starts. Empty or garbage falls back to 1,
 # which is the value production has run since 2026-06-19.
 RELEVANCE_NEW_GATE = _int_env("RELEVANCE_NEW_GATE", 1)
+
+# Watchlist exception to the ingest gate. 0 = off (default), any non-zero = on.
+#
+# WHY. Raising RELEVANCE_NEW_GATE drops low-scoring articles outright, and since
+# #626 a watchlist hit no longer lifts the score (the match is RECORDED in
+# articles.watchlist_match instead of being folded into relevance_score). So at a
+# gate of 3, measured on run b64868c9 (2026-08-25), 135 of the 362 dropped
+# articles were about a ticker or company somebody actually tracks. They would
+# not rank low, they would not exist.
+#
+# When on, an article that is BELOW the gate is still stored if it matches a
+# watchlist identifier. Strictly a low-score rescue: the `relevant` check runs
+# first and is never overridden, so an article the filter rejected stays rejected.
+#
+# TICKER AND COMPANY ENTRIES ONLY. Sector entries are generic English words and
+# match constantly -- 'energy' inside "Bloom Energy Corp Stock (BE) Moved Up by
+# 5.30%", 'technology' inside "Seagate Technology Holdings". That is the same
+# false-positive class as the pre-#626 substring boost, and it rescues exactly
+# the price-recap templates the gate exists to remove. On the same run, 21 of the
+# 135 rescues came only from a sector word; excluding them is deliberate.
+#
+# Read through _int_env: an unset repo Variable renders as the EMPTY STRING and
+# int("") would raise at import. Empty or garbage falls back to 0, i.e. off.
+WATCHLIST_GATE_EXCEPTION = _int_env("WATCHLIST_GATE_EXCEPTION", 0)
+
+#: Which watchlist entry types may rescue an article. See above.
+WATCHLIST_EXCEPTION_TYPES = ("ticker", "company")
 
 # Shadow-window sampling: shadow mode pays for BOTH models (legacy Flash-Lite stays
 # authoritative AND the new Flash grade is computed). To bound that cost during the
@@ -3142,6 +3174,13 @@ def store_article(article, analysis):
         return None
 
 
+#: Payload keys whose ingest_run_stats column is added by a migration NEWER than
+#: the code that writes them. PostgREST rejects the WHOLE insert on one unknown
+#: column, so without this a pending migration costs the entire stats row rather
+#: than one field. Drop a key from here once its migration is applied everywhere.
+_STATS_OPTIONAL_KEYS = ("rescued_by_watchlist",)
+
+
 def _persist_ingest_run_stats(payload):
     """Best-effort write of one ingest_run_stats row.
 
@@ -3149,13 +3188,73 @@ def _persist_ingest_run_stats(payload):
     Until it lands this prints once per run and the run is otherwise unaffected;
     the same breakdown is already on stdout either way. Never raises: this runs
     in the ingest tail, and a failure here must not mark the step degraded.
+
+    On failure the write is retried ONCE without _STATS_OPTIONAL_KEYS. An unknown
+    column fails the whole insert, so a stats row that is merely missing the
+    newest field is strictly better than no stats row at all -- which is what the
+    previous single-attempt version would have produced on every run between this
+    code shipping and sql/0033 being applied by hand.
     """
     try:
         supabase.table("ingest_run_stats").insert(payload).execute()
         print("  [ingest:stats] run breakdown persisted to ingest_run_stats")
+        return
     except Exception as ex:
-        print(f"  [ingest:stats] not persisted, stdout breakdown above is the "
-              f"only record (apply sql/0028_ingest_observability.sql): {ex}")
+        first_error = ex
+
+    trimmed = {k: v for k, v in payload.items() if k not in _STATS_OPTIONAL_KEYS}
+    if len(trimmed) != len(payload):
+        try:
+            supabase.table("ingest_run_stats").insert(trimmed).execute()
+            dropped = ", ".join(k for k in _STATS_OPTIONAL_KEYS if k in payload)
+            print(f"  [ingest:stats] run breakdown persisted WITHOUT {dropped} "
+                  f"(apply sql/0033_ingest_run_stats_watchlist_rescue.sql to "
+                  f"record it): {first_error}")
+            return
+        except Exception as ex:
+            first_error = ex
+
+    print(f"  [ingest:stats] not persisted, stdout breakdown above is the "
+          f"only record (apply sql/0028_ingest_observability.sql): {first_error}")
+
+
+def _watchlist_exception_matcher():
+    """Compiled matcher over ticker/company watchlist identifiers, or None.
+
+    None means "no exception applies" and every caller treats it as off, so an
+    empty watchlist, a failed read, or the flag being off are all the same
+    no-op path. Built ONCE per run, before the gate loop: the alternative is a
+    watchlist read per article.
+
+    Never raises. This widens an ingest gate; it must not be able to stop one.
+    """
+    if not WATCHLIST_GATE_EXCEPTION:
+        return None
+    try:
+        entries = list_watchlist()
+    except Exception as ex:
+        print(f"  [3/4] watchlist exception ON but the watchlist read failed, "
+              f"gate unchanged: {ex}")
+        return None
+    idents = [
+        e.get("identifier") or ""
+        for e in entries
+        if (e.get("type") or "").strip().lower() in WATCHLIST_EXCEPTION_TYPES
+    ]
+    idents = [i for i in idents if i.strip()]
+    if not idents:
+        print("  [3/4] watchlist exception ON but no ticker/company entries, "
+              "gate unchanged")
+        return None
+    matcher = _build_identifier_matcher(idents)
+    if matcher is None:
+        print("  [3/4] watchlist exception ON but the matcher would not build, "
+              "gate unchanged")
+        return None
+    skipped = len(entries) - len(idents)
+    print(f"  [3/4] watchlist exception ON: {len(idents)} ticker/company "
+          f"identifiers ({skipped} sector/other entries excluded by design)")
+    return matcher
 
 
 def run_ingestion():
@@ -3261,6 +3360,9 @@ def run_ingestion():
     # short-circuit order the predicate itself uses, so the three buckets
     # partition the drops exactly.
     gate_dropped = {"result_none": 0, "relevant_falsy": 0, "below_gate": 0}
+    # Built once, before the loop. None when the flag is off, which is the default.
+    wl_matcher = _watchlist_exception_matcher()
+    gate_rescued = 0
     for a, result in zip(fresh, results):
         if result and result.get("relevant") and result.get("relevance_score", 0) >= ingest_gate:
             relevant.append((a, result))
@@ -3269,6 +3371,17 @@ def run_ingestion():
             gate_dropped["result_none"] += 1
         elif not result.get("relevant"):
             gate_dropped["relevant_falsy"] += 1
+        elif wl_matcher is not None and (wl_hits := _matched_identifiers(wl_matcher, a)):
+            # Below the gate, but about a ticker or company somebody tracks.
+            #
+            # Reached ONLY after both checks above have passed, so this rescues a
+            # low SCORE and can never resurrect an article the filter rejected:
+            # `not result` and `not result.get("relevant")` are consumed by the
+            # two branches above and never fall through to here.
+            relevant.append((a, result))
+            gate_rescued += 1
+            print(f"  ★ [{result['relevance_score']}/10] watchlist rescue "
+                  f"{wl_hits} {a['title'][:50]}...")
         else:
             gate_dropped["below_gate"] += 1
 
@@ -3279,7 +3392,8 @@ def run_ingestion():
         f"{gate_candidates} candidates, {len(relevant)} passed, {gate_total_dropped} dropped "
         f"(result-none {gate_dropped['result_none']}, "
         f"not-relevant {gate_dropped['relevant_falsy']}, "
-        f"below-gate {gate_dropped['below_gate']})"
+        f"below-gate {gate_dropped['below_gate']}), "
+        f"rescued-by-watchlist {gate_rescued}"
     )
     grade_sources = _grade_source_snapshot()
     if grade_sources:
@@ -3367,6 +3481,10 @@ def run_ingestion():
         "gate_passed": len(relevant),
         "gate_dropped": gate_total_dropped,
         "gate_dropped_by_reason": gate_dropped,
+        # Articles BELOW the gate that were stored anyway because they matched a
+        # ticker/company watchlist entry. Counted inside gate_passed, so the
+        # candidates = passed + dropped identity is unchanged. sql/0033.
+        "rescued_by_watchlist": gate_rescued,
         "gnews_tickers": len(gnews_stats),
         "gnews_entries_seen": gnews_totals["entries"],
         "gnews_fetched": gnews_totals["fetched"],
