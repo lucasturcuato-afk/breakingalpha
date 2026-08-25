@@ -68,12 +68,28 @@ export function LedgerScreen({
      PARAMETER here, which meant deleting one gate silently served an invented
      brief, three fabricated claims and "One of your calls was checked
      overnight" to real readers. That is the defect that blocked PR #646 and PR #653,
-     and it was live on this screen. */
+     and it was live on this screen.
+
+     A KNOWN FAILURE OUTRANKS AN ABSENT PAYLOAD, and the ordering inside this
+     guard is the whole of that. `loadLedger` returns `{data: null, stage:
+     "error"}` when the brief read fails, and this early return used to reach
+     `BriefSkeleton` without ever consulting `stage`, so `BriefError` was dead
+     on the loader path and every signed-in reader hit by a Supabase outage got
+     a spinner over a read that had already failed and would not be retried.
+     A screen that says "loading" about a terminal failure is publishing a
+     state it did not establish. It is not a zero, but it is the same untruth
+     in a different currency, and it is the defect this PR exists to remove.
+
+     The failure is scoped to the brief, not to the screen. When `data` is
+     non-null the error branch stays in the body below, beside the reader's own
+     record, because a failed brief read is no reason to discard entries the
+     reader already owns. Here there is nothing to keep: the read that failed
+     is the one that produces the entire payload. */
   if (data === null) {
     return (
       <div data-parity="ledger" style={{ backgroundColor: "var(--c-bg)", minHeight: "100%", padding: `0 ${PAD}` }}>
         <MobileTickerStrip />
-        <BriefSkeleton />
+        {stage === "error" ? <BriefError /> : <BriefSkeleton />}
       </div>
     );
   }
@@ -763,6 +779,15 @@ function BriefSkeleton() {
  * failed read that reads as an empty one is a trust failure.
  */
 function BriefError() {
+  /* `router.refresh()` re-runs the server component, which re-runs the read.
+     That is a real retry here, unlike a client screen whose loader only fires
+     on mount. Before this the control was a bare `<button>` with no handler:
+     inert, focusable, announced as a button. It escaped the control census
+     because that was taken on the ready stage, and it was unreachable in
+     production only because of the guard-ordering defect above. Fixing that
+     made it a live control on the screen whose own headline fix was removing
+     controls that do nothing. */
+  const router = useRouter();
   return (
     <div style={{ paddingTop: "18px" }} role="alert">
       <p style={{ margin: 0, font: "500 17px/1.4 var(--font-playfair-display), serif", color: "var(--c-ink)" }}>
@@ -773,6 +798,7 @@ function BriefError() {
       </p>
       <button
         type="button"
+        onClick={() => router.refresh()}
         className={styles.bare}
         style={{
           marginTop: "14px",
