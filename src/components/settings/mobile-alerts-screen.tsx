@@ -98,9 +98,9 @@ export function AlertsView() {
           When the app reaches you
         </h1>
         {/* The design's sentence ends "…and what the home screen badge counts".
-            `grep -rn "setAppBadge" src/` returns nothing: there is no badge, so
-            there is nothing counting. The clause is dropped and the rest of the
-            design's sentence, which is true, is kept. */}
+            `grep -rn "setAppBadge" src/` matches nothing anywhere: there is no
+            badge, so there is nothing counting. The clause is dropped and the
+            rest of the design's sentence, which is true, is kept. */}
         <p
           style={{
             margin: "8px 0 0",

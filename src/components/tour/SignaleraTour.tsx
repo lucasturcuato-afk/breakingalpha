@@ -218,8 +218,8 @@ export function SignaleraTour() {
     if (pathname !== "/dashboard") return;
 
     /* DESK WIDTHS ONLY, and this one has to be JS because there is no element
-       to hang a class on: this component returns null and drives driver.js,
-       which renders its overlay into <body> itself.
+       to hang a class on: this component renders null and drives driver.js,
+       which paints its overlay into <body> itself.
 
        Measured in a production build at 390x844, signed in, on /dashboard: the
        tour auto-fired and put a full-viewport <svg> at z-index 10000 plus a
