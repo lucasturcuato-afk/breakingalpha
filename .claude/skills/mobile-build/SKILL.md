@@ -268,9 +268,50 @@ Notes that will otherwise cost you a cycle:
 - No CI runs on a frontend PR. `.github/workflows/verify-py.yml` is the only
   `pull_request` trigger and is path-filtered to `backend/**`. Every gate here
   is local and self-reported, so run them honestly.
+- **Kill servers by port, never by process name.** Use
+  `lsof -ti tcp:<PORT> | xargs kill`. **Never `pkill -f next-server`, `pkill -f
+  "next dev"`, or any global pattern.** Several units run their own servers on
+  their own ports at the same time. A global pkill killed another unit's server
+  mid-probe during the performance work, and the run it corrupted would have
+  read as a 674 ms improvement if that unit had not noticed and thrown it out.
+  Kill what you started, on the port you started it on.
 
 Then `/run` to see the screen actually rendered, and `/code-review high --fix`
 on your own diff.
+
+## If you are measuring performance
+
+**Halve the model before sizing anything off it.** The attribution pass fitted
+
+    TTI = 800 ms + 2.7 ms per gzipped KB of pre-load JS
+
+across six routes. It ranks routes correctly and it correctly identifies bytes
+as the lever. **It also overpredicts.** The first fix to test it removed 73 KB
+and measured **95 to 105 ms against a predicted 197**. Use it to decide what to
+look at, never to claim what a fix returned.
+
+Three more things that pass already paid for:
+
+- **A refutation test can pass and still be worthless.** The AppShell
+  hypothesis was to be falsified by blocking its chunk, and the block moved TTI
+  165 ms, which read as confirmation. It was not. Blocking the entry chunk
+  stops the whole app hydrating, removing work no fix could remove. **Check
+  that your control removes only the thing you are testing.** Honest controls
+  put that cause at about 45 ms, not 165.
+- **TTI can move without the page getting faster.** Under a last-long-task
+  definition, deleting one late 100 ms task is worth over a second of metric.
+  One fix moved TTI 1380 ms on a page that was tappable at 860 ms **in both
+  builds**. Check your long-task list before and after. A shortened critical
+  path is real, a deleted late task is mostly cosmetic, and you should say
+  which one you have.
+- **More splitting can be slower.** Lazy-loading three further shell components
+  pushed one route from 1101 ms to 2249 ms. Bytes are the lever, and past some
+  point another chunk costs more than it saves. Measure the direction rather
+  than assuming it.
+
+`/ledger` and `/compose` make **zero Supabase requests** and are the clean
+instruments. `/trends` swings about **2 seconds** on Postgres buffer warmth
+alone, so report it separately or exclude it and say which.
 
 ## Preview requires a Vercel login. Your plates come from local.
 
