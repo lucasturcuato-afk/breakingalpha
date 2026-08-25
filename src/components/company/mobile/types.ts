@@ -11,7 +11,7 @@ import type { OutcomeState } from "@/components/ledger";
  * production build where they can never paint.
  *
  * Types erase at compile time, so this file contributes nothing to any bundle.
- * Keep it that way. Nothing here may hold a value.
+ * Keep it that way. Nothing here may carry a value.
  *
  * This IS the contract a real loader has to satisfy. The wiring unit replaces
  * `./fixture` with the loaders the page already resolves server-side:
