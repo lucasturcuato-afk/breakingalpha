@@ -12,6 +12,17 @@ import { getCompleteness, getAdjustedScore } from "@/lib/article-signal";
 import type { StoryData } from "@/components/dashboard";
 import { SignInModal } from "@/components/auth/sign-in-modal";
 import { useLiveMood } from "@/hooks/useLiveMood";
+import { FeedMobileScreen } from "@/components/feed/mobile";
+import type {
+  FeedBucket,
+  FeedData,
+  FeedLens,
+  FeedStage,
+  FeedStory,
+} from "@/components/feed/mobile";
+import { useUserProfile } from "@/hooks/useUserProfile";
+import { sectorMatchesProfile } from "@/lib/personalization";
+import { stripHtml } from "@/lib/strip-html";
 
 interface LiveStory extends StoryData {
   _publishedAt?: string;
@@ -123,8 +134,30 @@ function dedupeStories(stories: LiveStory[]): DedupedStory[] {
   return result;
 }
 
+/**
+ * A company name to the slug `/company/[id]` resolves. The route reconstructs
+ * the name from the slug and falls back to its own auto-resolve when the name
+ * is not indexed, so a miss lands on that screen's empty state rather than on a
+ * 404.
+ *
+ * The transform is the shipped one, verbatim: whitespace to hyphens, nothing
+ * else touched. Punctuation is LOAD BEARING on the way back. slugToCompanyName
+ * only swaps hyphens for spaces and then looks the result up in CANONICAL,
+ * whose keys carry their punctuation ("amazon.com, inc.", "apple inc.",
+ * "jpmorgan chase & co"). Stripping it here turns "Amazon.com, Inc." into
+ * "amazon-com-inc", which reconstructs as "Amazon Com Inc", misses CANONICAL,
+ * misses the resolver's exact name match, and lands the reader on the empty
+ * state. Kept local because the shipped copy lives inside a client page
+ * component and importing a page from a page is worse than the duplication.
+ */
+function companyHref(name: string): string | undefined {
+  const slug = name.trim().toLowerCase().replace(/\s+/g, "-");
+  return slug ? `/company/${encodeURIComponent(slug)}` : undefined;
+}
+
 export default function LiveFeedPage() {
   const { mood, moodHeadline, moodDetails } = useLiveMood();
+  const { profile, loading: profileLoading } = useUserProfile();
   const [selectedVerticals, setSelectedVerticals] = useState<string[]>([]);
   const [selectedActivityTypes, setSelectedActivityTypes] = useState<string[]>([]);
   const [showAlertsOnly, setShowAlertsOnly] = useState(false);
@@ -132,6 +165,11 @@ export default function LiveFeedPage() {
   const [sort, setSort] = useState<SortOption>("newest");
   const [articles, setArticles] = useState<LiveStory[]>([]);
   const [loading, setLoading] = useState(true);
+  /* The desk logs a failed poll and renders the last good list forever, so a
+     wire that has stopped coming back looks identical to a quiet one. Tracking
+     it is what lets the mobile screen tell error from stale. Nothing on the
+     desktop layout reads this, so that layout is unchanged. */
+  const [loadFailed, setLoadFailed] = useState(false);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const [newArticleIds, setNewArticleIds] = useState<Set<string>>(new Set());
   const [savedIds, setSavedIds] = useState<Set<string>>(() => {
@@ -234,8 +272,10 @@ export default function LiveFeedPage() {
 
       setArticles(stories);
       setLastRefresh(new Date());
+      setLoadFailed(false);
     } catch (e) {
       console.error("Failed to fetch articles:", e);
+      setLoadFailed(true);
     } finally {
       setLoading(false);
     }
@@ -380,8 +420,284 @@ export default function LiveFeedPage() {
       .map((b) => ({ label: b, stories: buckets[b] }));
   }, [filtered]);
 
+  /* ── The mobile screen ──────────────────────────────────────────────
+   *
+   * Composed beside the desk, never instead of it. The query, the dedupe, the
+   * time bucketing and the signed-out gate above are reused verbatim; what
+   * follows is a second lens over the same articles and a view model handed to
+   * a component that owns no data of its own.
+   *
+   * The mobile lens is deliberately independent of the desk's vertical and
+   * activity chips. The design draws four exclusive lenses; the desk carries
+   * two independent boolean toggles plus two multi-select chip groups. Driving
+   * both from one state would make one of the two surfaces lie. */
+  const [pickedLens, setPickedLens] = useState<FeedLens | null>(null);
+
+  const followsSectors = (profile?.sectors?.length ?? 0) > 0;
+
+  /* The design opens on Yours. A reader who has told us nothing about their
+     sectors would then open on a screen with nothing in it, so the untouched
+     default falls back to Everything for them. Once the reader picks a lens,
+     their pick wins whatever the profile says. */
+  const mobileLens: FeedLens = pickedLens ?? (followsSectors ? "yours" : "all");
+
+  const mobileData: FeedData = useMemo(() => {
+    const inYours = (s: LiveStory) =>
+      (s.industry_verticals ?? []).some((v) => sectorMatchesProfile(v, profile)) ||
+      sectorMatchesProfile(s.sector ?? null, profile);
+
+    const yoursCount = articles.reduce((n, s) => n + (inYours(s) ? 1 : 0), 0);
+    const savedCount = articles.reduce((n, s) => n + (savedIds.has(s.id) ? 1 : 0), 0);
+
+    const lensed = sortedArticles.filter((s) => {
+      if (mobileLens === "alerts") return !!s.isAlert;
+      if (mobileLens === "saved") return savedIds.has(s.id);
+      if (mobileLens === "yours") return inYours(s);
+      return true;
+    });
+
+    const deduped = dedupeStories(lensed);
+
+    // The same five-story truncation the desk applies. Dropping a shipped gate
+    // is a product change, not a screen port, so mobile carries it.
+    const limit = user === null ? 5 : deduped.length;
+    const visible = deduped.slice(0, limit);
+    const gated = user === null && deduped.length > limit;
+
+    const LABEL: Record<string, string> = {
+      "LAST HOUR": "Last hour",
+      TODAY: "Today",
+      YESTERDAY: "Yesterday",
+      EARLIER: "Earlier",
+    };
+    const bins = new Map<string, FeedStory[]>();
+    for (const s of visible) {
+      const company = (s.companies ?? []).find(
+        (c): c is string => typeof c === "string" && c.trim().length > 0,
+      );
+      const story: FeedStory = {
+        id: s.id,
+        headline: s.title,
+        summary: s.summary ? stripHtml(s.summary) : undefined,
+        source: s.source,
+        timeAgo: s.timestamp,
+        sentiment:
+          s.sentiment === "bullish" || s.sentiment === "bearish"
+            ? s.sentiment
+            : "neutral",
+        /* One badge, highest first, because the design never draws two.
+           `Not followed` only means anything to a reader who told us what they
+           follow, so it is suppressed for everyone else rather than labelling
+           every story on the wire. */
+        badge: s.isAlert
+          ? "alert"
+          : savedIds.has(s.id)
+            ? "saved"
+            : followsSectors && !inYours(s)
+              ? "unfollowed"
+              : null,
+        entity: company
+          ? { label: company, href: companyHref(company) }
+          : undefined,
+        url: s.url,
+        isNew: newArticleIds.has(s.id),
+        duplicates: s.duplicateArticles.map((d) => ({
+          id: d.id,
+          title: d.title,
+          source: d.source,
+          timeAgo: d.publishedAt ? timeAgo(d.publishedAt) : "",
+          url: d.url,
+        })),
+      };
+      const bucket = getTimeBucket(s._publishedAt || "");
+      const arr = bins.get(bucket) ?? [];
+      arr.push(story);
+      bins.set(bucket, arr);
+    }
+
+    const buckets: FeedBucket[] = ["LAST HOUR", "TODAY", "YESTERDAY", "EARLIER"]
+      .filter((b) => bins.get(b)?.length)
+      .map((b) => ({ id: b, label: LABEL[b], stories: bins.get(b) ?? [] }));
+
+    const shownCount = visible.length;
+    /* Every number in this sentence counts rows that are actually drawn below
+       it. `articles.length` was wrong twice over on the Everything lens: it is
+       the pre-dedupe total, and a signed-out reader is truncated to five by the
+       gate below, so the line read "The 100 most recent articles" over five
+       rows. `shownCount` is `visible.length`, which is the list the buckets are
+       built from, so the sentence and the screen cannot disagree.
+
+       The other three lenses describe the wire and the reader's own set rather
+       than the rows below, and each of their figures has a real source:
+       `alertCount` and `yoursCount` are counted over the loaded articles and
+       `savedCount` over the saved keys. They stay as they are. `yours` only
+       quotes a total when a profile has landed, and a signed-out reader has no
+       profile, so the gated case cannot reach that string. */
+    const standfirst =
+      mobileLens === "saved"
+        ? `${savedCount} ${savedCount === 1 ? "article" : "articles"} you kept.`
+        : mobileLens === "alerts"
+          ? `${alertCount} bearish ${alertCount === 1 ? "story" : "stories"} from the last 48 hours.`
+          : mobileLens === "yours"
+            ? /* `followsSectors` is false in two different worlds: the reader
+                 follows nothing, and the profile has not answered yet. Told
+                 apart here, because telling a reader who does follow sectors
+                 to go and choose some is a claim about their record made with
+                 no record in hand. This says only what is true while the fetch
+                 is in flight, which is that it is in flight. */
+              profileLoading
+              ? "Reading the sectors you follow."
+              : followsSectors
+                ? `${yoursCount} of ${articles.length} match the ${profile?.sectors?.length} sectors you follow.`
+                : "Choose your sectors and this lens narrows the wire to them."
+            : `The ${shownCount} most recent ${shownCount === 1 ? "article" : "articles"} from the last seven days.`;
+
+    const empty =
+      mobileLens === "saved"
+        ? {
+            /* The design's copy here is "Tap the bookmark on any article to
+               keep it here." There is no bookmark to tap below md: the design
+               draws a Saved badge on the row but no save control anywhere on
+               this screen, and the save affordance it does draw sits on the
+               Story screen, which is unit 22 and unruled. The saved set is one
+               localStorage key shared with the desk, so what a reader keeps on
+               a wider screen does show up here, and that is what the copy
+               says. Shipping an instruction to press a control that does not
+               exist is worse than deviating from the drawing. */
+            title: "Nothing saved yet",
+            body: "Articles you keep on a wider screen show up here.",
+          }
+        : mobileLens === "alerts"
+          ? {
+              title: "No bearish signals in the last 48 hours",
+              body: "The wire is calm. This lens fills as soon as one turns.",
+            }
+          : mobileLens === "yours"
+            ? /* Same fork, same reason. Null rather than a third placard:
+                 there is nothing true to say yet. Null is not by itself a
+                 guard, because the component falls back to its own "Nothing on
+                 the wire" copy when `empty` is null, which is the same claim in
+                 the shell's words. The guard is the stage below, which forces
+                 `loading` for this lens while the profile is in flight so no
+                 empty block renders at all. Both are here on purpose: if the
+                 stage guard is ever loosened, this yields nothing rather than
+                 a sentence about a record that has not been read. */
+              profileLoading
+              ? null
+              : followsSectors
+                ? {
+                    title: "Nothing in your sectors yet",
+                    body: "Nothing on the wire matched the sectors you follow. Everything shows the rest.",
+                  }
+                : {
+                    title: "No sectors chosen yet",
+                    body: "Choose your sectors in settings and this lens narrows the wire to them.",
+                  }
+            : {
+                title: "Nothing on the wire",
+                body: "No stories have come through in the last seven days.",
+              };
+
+    return {
+      /* 24 hour, as the design draws it. The desk renders the same instant as
+         "02:55 AM" beside a mono label that is drawn as "UPDATED 12:41". */
+      updatedAt: lastRefresh
+        ? lastRefresh.toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: false,
+          })
+        : null,
+      standfirst,
+      buckets,
+      counts: { yours: yoursCount, alerts: alertCount, saved: savedCount },
+      gated,
+      empty: shownCount === 0 ? empty : null,
+    };
+  }, [
+    articles,
+    sortedArticles,
+    savedIds,
+    newArticleIds,
+    mobileLens,
+    profile,
+    followsSectors,
+    profileLoading,
+    alertCount,
+    lastRefresh,
+    user,
+  ]);
+
+  /* A failed poll with nothing on screen is an error. A failed poll with the
+     last good list still on screen is stale, and the rows stay exactly where
+     they were.
+
+     The profile is part of the first load, not a decoration on top of it:
+     until it lands `followsSectors` is false and the untouched default reads
+     Everything, so a reader who does follow sectors would get the whole wire
+     and then have it swap to Yours under them a beat later. Keep the skeleton
+     up until both the wire and the profile have answered.
+
+     Neither latch can stick, but not for the reason an earlier version of this
+     comment gave. It claimed the profile fetch short-circuits on public paths.
+     It does not for this route: `useUserProfile.tsx:10` lists `/`, `/auth` and
+     `/preview` plus the `/auth/callback` and `/legal/` prefixes, and
+     `/live-feed` is in none of them. A signed-out visitor here does fire
+     `/api/user-profile` and does take a 401. That is harmless, and it is not
+     what clears the latch. What clears it is the `finally` on the fetch, which
+     sets `profileLoading` false on the 401 exactly as it does on a 200. */
+  const mobileStage: FeedStage =
+    (loading || profileLoading) && articles.length === 0
+      ? "loading"
+      : loadFailed && articles.length === 0
+        ? "error"
+        : /* Above `stale` and above `empty`, deliberately. The Yours lens is
+             the profile's answer and nothing else, so while the profile is in
+             flight this lens has no source and every downstream stage would
+             state something it cannot know. `empty` would read "No sectors
+             chosen yet" to a reader who follows nine; `stale` with no buckets
+             falls through to the component's own "Nothing on the wire"
+             placard, which is the same lie in the shell's words. A fetch is
+             genuinely running, so `loading` is honest here and `unwired` would
+             not be. The other three lenses do not consult the profile and are
+             unaffected. */
+          profileLoading && mobileLens === "yours"
+          ? "loading"
+          : loadFailed
+            ? "stale"
+            : mobileData.buckets.length === 0
+              ? "empty"
+              : "ready";
+
   return (
-    <AppShell pageTitle="Live Feed" mood={mood} moodHeadline={moodHeadline} moodDetails={moodDetails}>
+    <AppShell
+      pageTitle="Live Feed"
+      mood={mood}
+      moodHeadline={moodHeadline}
+      moodDetails={moodDetails}
+      mobileFullBleed
+    >
+      {/* Below md the screen is the design's. Gating lives in a class, never in
+          an inline style: an inline display beats the class at every
+          breakpoint. */}
+      <div className="md:hidden">
+        <FeedMobileScreen
+          data={mobileData}
+          stage={mobileStage}
+          lens={mobileLens}
+          onLensChange={setPickedLens}
+          onRetry={() => {
+            setLoading(true);
+            fetchArticles();
+          }}
+          onSignIn={() => setShowSignIn(true)}
+        />
+      </div>
+
+      {/* Above md the desk is untouched. Every element below this line is the
+          layout that shipped, moved behind one breakpoint gate and nothing
+          else. */}
+      <div className="hidden md:block">
       {/* Toolbar */}
       <div className="sticky top-0 z-10 bg-parchment border-b border-border-base">
         <FilterBar
@@ -623,6 +939,7 @@ export default function LiveFeedPage() {
             );
           })()
         )}
+      </div>
       </div>
 
       <SignInModal
