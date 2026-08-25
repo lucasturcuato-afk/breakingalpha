@@ -108,7 +108,7 @@ export function LedgerScreen({
      never had to carry it. This is the type-mandated guard on a REQUIRED,
      NULLABLE prop, and the nullability is the safety property itself: it is
      what makes a missing gate a build failure instead of invented data in front
-     of a reader, which is the whole of #670. The guard cannot be deleted
+     of a reader, which is the whole of PR #670. The guard cannot be deleted
      without giving that up, so the only real choice is what it draws.
 
      A caller with no payload and no failure to report HAS NOT ANSWERED, and a
