@@ -41,7 +41,7 @@ export interface TickerCell {
   pct: number;
 }
 
-const MONO = "'JetBrains Mono', monospace";
+const MONO = "var(--font-jetbrains-mono), monospace";
 
 export function MobileTickerStrip({ quotes: external }: { quotes?: TickerCell[] }) {
   const [fetched, setFetched] = useState<TickerCell[] | null>(null);

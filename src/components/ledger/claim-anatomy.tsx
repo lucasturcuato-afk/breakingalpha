@@ -29,13 +29,13 @@ export type ClaimScale = "card" | "row";
 
 const SCALE = {
   card: {
-    claim: "500 var(--v3-claim)/1.4 'Playfair Display', serif",
-    prose: "400 var(--v3-body)/var(--v3-lead) Inter, sans-serif",
+    claim: "500 var(--v3-claim)/1.4 var(--font-playfair-display), serif",
+    prose: "400 var(--v3-body)/var(--v3-lead) var(--font-inter), sans-serif",
     gap: "10px",
   },
   row: {
-    claim: "500 15px/1.42 'Playfair Display', serif",
-    prose: "400 12.5px/1.5 Inter, sans-serif",
+    claim: "500 15px/1.42 var(--font-playfair-display), serif",
+    prose: "400 12.5px/1.5 var(--font-inter), sans-serif",
     gap: "7px",
   },
 } as const;
@@ -180,14 +180,14 @@ export function OutcomeLead({ state, instrument }: { state: OutcomeState; instru
           transition: "none",
         }}
       />
-      <span style={{ font: "600 11px/1 Inter, sans-serif", color: t.text, transition: "none" }}>
+      <span style={{ font: "600 11px/1 var(--font-inter), sans-serif", color: t.text, transition: "none" }}>
         {LABEL[state]}
       </span>
       {instrument ? (
         <span
           style={{
             marginLeft: "auto",
-            font: "400 10px/1 'JetBrains Mono', monospace",
+            font: "400 10px/1 var(--font-jetbrains-mono), monospace",
             letterSpacing: "0.07em",
             color: "var(--c-muted)",
           }}

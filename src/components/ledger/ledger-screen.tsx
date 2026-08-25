@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Chevron } from "./chevron";
 import { MobileTickerStrip } from "./mobile-ticker-strip";
 import { LedgerClaimCard } from "./ledger-claim-card";
@@ -12,6 +13,20 @@ import styles from "./ledger.module.css";
 /**
  * The Ledger. The brief and the record as one continuous timeline, reverse
  * chronological and unfiltered, with a repeating date rule marking each day.
+ *
+ * FACES. Every font here names the loaded family through the back-compat
+ * variables globals.css declares on `body`: `--font-playfair-display` resolves
+ * to Fraunces, `--font-inter` to Space Grotesk, `--font-jetbrains-mono` to IBM
+ * Plex Mono. The app loads exactly those three. The literal names the design
+ * uses, Playfair Display, Inter and JetBrains Mono, are not loaded, so spelling
+ * them here rendered 96 of this screen's 152 elements in the browser's default
+ * serif, sans and mono. Measured with getComputedStyle over the
+ * [data-parity="ledger"] subtree on a production build.
+ *
+ * CONTROLS. Nothing here is a control without a destination. A row that cannot
+ * be opened is handed no handler, and both LedgerClaimCard and LedgerEntryRow
+ * fall back to a plain div in that case, so it is not focusable, takes no
+ * pointer cursor and is not announced as a button.
  *
  * Every measurement is taken off the rendered prototype with getComputedStyle.
  * The prototype's sc-if blocks need a runtime that does not resolve over
@@ -37,6 +52,7 @@ export function LedgerScreen({
    */
   wrapPublishedAt?: string | null;
 }) {
+  const router = useRouter();
   const [pulseOpen, setPulseOpen] = useState(false);
   const [bannerShown, setBannerShown] = useState(true);
 
@@ -89,7 +105,7 @@ export function LedgerScreen({
             <LedgerDateRule
               date={data.today.date}
               wrapPublishedAt={wrapPublishedAt ?? data.wrapPublishedAt}
-              onOpenWrap={() => {}}
+              onOpenWrap={() => router.push("/evening-wrap")}
             />
             {data.pulse ? (
               <>
@@ -109,8 +125,9 @@ export function LedgerScreen({
                 variant={c.variant}
                 ungradeableReason={c.ungradeableReason}
                 delayMs={60 + i * 60}
-                onOpen={() => {}}
-                onTrack={c.variant === "open" ? () => {} : undefined}
+                /* No onOpen. There is no claim detail route to send anyone to,
+                   and a card that opens nothing must not be a button. */
+                onTrack={c.variant === "open" ? () => router.push("/radar/calls") : undefined}
               />
             ))}
           </>
@@ -122,6 +139,8 @@ export function LedgerScreen({
           <div key={day.date}>
             <LedgerDateRule date={day.date} past />
             {day.entries?.map((e, i) => (
+              /* No onOpen, for the same reason as the claim cards: no entry
+                 detail route exists yet. The row renders as a plain div. */
               <LedgerEntryRow
                 key={e.id}
                 state={e.state}
@@ -129,7 +148,6 @@ export function LedgerScreen({
                 claim={e.claim}
                 result={e.result}
                 first={i === 0}
-                onOpen={() => {}}
               />
             ))}
           </div>
@@ -140,7 +158,7 @@ export function LedgerScreen({
             style={{
               marginTop: "22px",
               textAlign: "center",
-              font: "400 italic 12.5px/1 'Playfair Display', serif",
+              font: "400 italic 12.5px/1 var(--font-playfair-display), serif",
               color: "var(--c-muted)",
             }}
           >
@@ -148,15 +166,32 @@ export function LedgerScreen({
           </div>
         ) : null}
 
-        <TailAction label="Write your own call" weight={600} borderToken="var(--c-ink)" marginTop="18px" />
+        <TailAction
+          label="Write your own call"
+          href="/radar/calls"
+          weight={600}
+          borderToken="var(--c-ink)"
+          marginTop="18px"
+        />
         <TailAction
           label="The desk grades itself too"
+          href="/radar/desk-record"
           weight={500}
           borderToken="var(--c-border)"
           marginTop="10px"
           fillToken="var(--c-surface)"
         />
-        <div style={{ height: "calc(24px + env(safe-area-inset-bottom))" }} />
+        {/* Clears the fixed tab bar, not just the home indicator. Measured on a
+            production build at 390x844: at maximum scroll the last tail action
+            spanned 768 to 820 while the bar started at 785, so 35px of a 52px
+            control sat under it and could never be tapped. The bar is
+            --mobile-tabbar-row plus its 1px top edge plus the safe area. */}
+        <div
+          style={{
+            height:
+              "calc(24px + 1px + var(--mobile-tabbar-row) + env(safe-area-inset-bottom))",
+          }}
+        />
       </div>
     </div>
   );
@@ -180,14 +215,14 @@ function PersonalizationBanner({ data, onDismiss }: { data: LedgerData; onDismis
           padding: "8px 12px",
         }}
       >
-        <span style={{ font: "400 11px/1 Inter, sans-serif", color: "var(--c-muted)" }}>
+        <span style={{ font: "400 11px/1 var(--font-inter), sans-serif", color: "var(--c-muted)" }}>
           Personalized for:
         </span>
         {data.sectors.map((s) => (
           <span
             key={s}
             style={{
-              font: "600 10px/1.35 Inter, sans-serif",
+              font: "600 10px/1.35 var(--font-inter), sans-serif",
               padding: "3px 7px",
               borderRadius: "4px",
               border: "1px solid var(--c-border)",
@@ -198,8 +233,8 @@ function PersonalizationBanner({ data, onDismiss }: { data: LedgerData; onDismis
             {s}
           </span>
         ))}
-        <button
-          type="button"
+        <a
+          href="/settings/preferences"
           className={styles.bare}
           style={{
             boxSizing: "content-box",
@@ -208,12 +243,12 @@ function PersonalizationBanner({ data, onDismiss }: { data: LedgerData; onDismis
             margin: "-16px 0",
             display: "inline-flex",
             alignItems: "center",
-            font: "500 11px/1 Inter, sans-serif",
+            font: "500 11px/1 var(--font-inter), sans-serif",
             color: "var(--c-secondary)",
           }}
         >
           Edit →
-        </button>
+        </a>
       </div>
       <button
         type="button"
@@ -244,8 +279,8 @@ function Masthead({ data }: { data: LedgerData }) {
   return (
     <div style={{ backgroundColor: "var(--c-inverse)", padding: "11px 20px 12px", marginTop: "10px" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <span style={{ font: "700 19px/1 'Playfair Display', serif", letterSpacing: "-0.01em", color: "var(--c-oninv)" }}>
-          Signal<span style={{ display: "inline-block", font: "700 19px/1 'Playfair Display', serif", color: "var(--c-oninv-gold)" }}>era</span>
+        <span style={{ font: "700 19px/1 var(--font-playfair-display), serif", letterSpacing: "-0.01em", color: "var(--c-oninv)" }}>
+          Signal<span style={{ display: "inline-block", font: "700 19px/1 var(--font-playfair-display), serif", color: "var(--c-oninv-gold)" }}>era</span>
         </span>
         <span
           style={{
@@ -257,14 +292,14 @@ function Masthead({ data }: { data: LedgerData }) {
             display: "inline-flex",
             alignItems: "center",
             justifyContent: "center",
-            font: "600 11.5px/1 Inter, sans-serif",
+            font: "600 11.5px/1 var(--font-inter), sans-serif",
             color: "var(--c-oninv)",
           }}
         >
           MR
         </span>
       </div>
-      <div style={{ marginTop: "12px", font: "700 19px/1.1 'Playfair Display', serif", letterSpacing: "-0.01em", color: "var(--c-oninv)" }}>
+      <div style={{ marginTop: "12px", font: "700 19px/1.1 var(--font-playfair-display), serif", letterSpacing: "-0.01em", color: "var(--c-oninv)" }}>
         Morning Brief
       </div>
       {data.tagline ? (
@@ -272,7 +307,7 @@ function Masthead({ data }: { data: LedgerData }) {
           style={{
             marginTop: "6px",
             maxWidth: "230px",
-            font: "400 italic 12.5px/1.3 'Playfair Display', serif",
+            font: "400 italic 12.5px/1.3 var(--font-playfair-display), serif",
             color: "rgba(255,253,249,0.78)",
           }}
         >
@@ -284,7 +319,7 @@ function Masthead({ data }: { data: LedgerData }) {
           style={{
             marginTop: "10px",
             display: "inline-block",
-            font: "600 10px/1 Inter, sans-serif",
+            font: "600 10px/1 var(--font-inter), sans-serif",
             padding: "4px 9px",
             borderRadius: "14px",
             backgroundColor: "rgba(255,253,249,0.15)",
@@ -316,13 +351,13 @@ function StatsBar({ data, loading }: { data: LedgerData; loading: boolean }) {
           {/* One anatomy for all four cells. The design draws three labels in
               Inter 700 and the VIX label in mono at --c-oninv-dim, which is two
               anatomies in one band and measures 2.9:1 on cream. See the PR. */}
-          <span style={{ font: "700 10px/1 Inter, sans-serif", color: "var(--c-muted)" }}>{s.label}</span>
+          <span style={{ font: "700 10px/1 var(--font-inter), sans-serif", color: "var(--c-muted)" }}>{s.label}</span>
           {loading ? (
             <span className={styles.sk} style={{ display: "inline-block", width: "34px", height: "10px" }} />
           ) : (
             <span
               style={{
-                font: "700 12px/1 'JetBrains Mono', monospace",
+                font: "700 12px/1 var(--font-jetbrains-mono), monospace",
                 color:
                   s.tone === "calm"
                     ? "var(--c-greenink)"
@@ -340,7 +375,7 @@ function StatsBar({ data, loading }: { data: LedgerData; loading: boolean }) {
       ))}
       <span style={{ display: "inline-flex", alignItems: "center", gap: "5px", marginLeft: "auto" }}>
         <span style={{ width: "6px", height: "6px", borderRadius: "50%", backgroundColor: "var(--c-green)" }} />
-        <span style={{ font: "400 10px/1 'JetBrains Mono', monospace", letterSpacing: "0.07em", color: "var(--c-muted)" }}>
+        <span style={{ font: "400 10px/1 var(--font-jetbrains-mono), monospace", letterSpacing: "0.07em", color: "var(--c-muted)" }}>
           LIVE
         </span>
       </span>
@@ -366,10 +401,10 @@ function Continuity({ continuity }: { continuity: NonNullable<LedgerData["contin
       }}
     >
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
-        <span style={{ font: "400 10px/1 'JetBrains Mono', monospace", letterSpacing: "0.07em", color: "var(--c-goldink)" }}>
+        <span style={{ font: "400 10px/1 var(--font-jetbrains-mono), monospace", letterSpacing: "0.07em", color: "var(--c-goldink)" }}>
           SINCE YOU LAST LOOKED
         </span>
-        <span style={{ font: "400 10px/1 'JetBrains Mono', monospace", letterSpacing: "0.07em", color: "var(--c-muted)" }}>
+        <span style={{ font: "400 10px/1 var(--font-jetbrains-mono), monospace", letterSpacing: "0.07em", color: "var(--c-muted)" }}>
           {c.changeCount} CHANGES
         </span>
       </div>
@@ -394,8 +429,8 @@ function Continuity({ continuity }: { continuity: NonNullable<LedgerData["contin
               flex: 1,
               minWidth: 0,
               font: l.emphasis
-                ? "500 13px/1.4 Inter, sans-serif"
-                : "400 12.5px/1.45 Inter, sans-serif",
+                ? "500 13px/1.4 var(--font-inter), sans-serif"
+                : "400 12.5px/1.45 var(--font-inter), sans-serif",
               color: l.emphasis ? "var(--c-ink)" : "var(--c-body)",
             }}
           >
@@ -404,7 +439,7 @@ function Continuity({ continuity }: { continuity: NonNullable<LedgerData["contin
           {l.before ? (
             <span
               style={{
-                font: "500 10px/1 'JetBrains Mono', monospace",
+                font: "500 10px/1 var(--font-jetbrains-mono), monospace",
                 letterSpacing: "0.04em",
                 color: "var(--c-muted)",
               }}
@@ -432,9 +467,9 @@ function Continuity({ continuity }: { continuity: NonNullable<LedgerData["contin
           gap: "10px",
         }}
       >
-        <span style={{ font: "600 12px/1 Inter, sans-serif", color: "var(--c-ink)" }}>{c.openNow}</span>
+        <span style={{ font: "600 12px/1 var(--font-inter), sans-serif", color: "var(--c-ink)" }}>{c.openNow}</span>
         <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          <span style={{ font: "400 10px/1 'JetBrains Mono', monospace", letterSpacing: "0.04em", color: "var(--c-muted)" }}>
+          <span style={{ font: "400 10px/1 var(--font-jetbrains-mono), monospace", letterSpacing: "0.04em", color: "var(--c-muted)" }}>
             {c.nextIn}
           </span>
           {/* Drawn at rest, which is rotate(0deg), because the open-call list
@@ -495,10 +530,10 @@ function PulseHero({ pulse }: { pulse: NonNullable<LedgerData["pulse"]> }) {
           sibling: without this the stamp, the headline and the drivers all sit
           under the wash rather than on the card. */}
       <div style={{ position: "relative", padding: "18px 16px 16px" }}>
-      <div style={{ font: "400 10px/1 'JetBrains Mono', monospace", letterSpacing: "0.07em", color: "rgba(255,253,249,0.55)" }}>
+      <div style={{ font: "400 10px/1 var(--font-jetbrains-mono), monospace", letterSpacing: "0.07em", color: "rgba(255,253,249,0.55)" }}>
         {p.stampedAt}
       </div>
-      <p style={{ margin: "12px 0 0", font: "800 25px/1.24 'Playfair Display', serif", letterSpacing: "-0.025em", color: "var(--c-oninv)" }}>
+      <p style={{ margin: "12px 0 0", font: "800 25px/1.24 var(--font-playfair-display), serif", letterSpacing: "-0.025em", color: "var(--c-oninv)" }}>
         Today the market is{" "}
         <span
           style={{
@@ -524,7 +559,7 @@ function PulseHero({ pulse }: { pulse: NonNullable<LedgerData["pulse"]> }) {
               display: "inline-flex",
               alignItems: "center",
               gap: "8px",
-              font: "500 12px/1 Inter, sans-serif",
+              font: "500 12px/1 var(--font-inter), sans-serif",
               color: "var(--c-oninv)",
               backgroundColor: "rgba(255,253,249,0.08)",
               border: "1px solid rgba(212,168,75,0.25)",
@@ -535,7 +570,7 @@ function PulseHero({ pulse }: { pulse: NonNullable<LedgerData["pulse"]> }) {
             {d.label}
             <span
               style={{
-                font: "600 10px/1.35 Inter, sans-serif",
+                font: "600 10px/1.35 var(--font-inter), sans-serif",
                 padding: "3px 7px",
                 borderRadius: "4px",
                 backgroundColor: `var(--pill-${d.tone}-bg)`,
@@ -566,11 +601,11 @@ function PulseProse({
   const p = pulse;
   return (
     <>
-      <p style={{ margin: "16px 0 0", font: "400 17px/1.55 'Playfair Display', serif", color: "var(--c-ink)", textWrap: "pretty" }}>
+      <p style={{ margin: "16px 0 0", font: "400 17px/1.55 var(--font-playfair-display), serif", color: "var(--c-ink)", textWrap: "pretty" }}>
         {p.lede}
       </p>
       {(open ? p.body : p.body.slice(0, 1)).map((b) => (
-        <p key={b.slice(0, 24)} style={{ margin: "12px 0 0", font: "400 var(--v3-body)/var(--v3-lead) Inter, sans-serif", color: "var(--c-body)" }}>
+        <p key={b.slice(0, 24)} style={{ margin: "12px 0 0", font: "400 var(--v3-body)/var(--v3-lead) var(--font-inter), sans-serif", color: "var(--c-body)" }}>
           {b}
         </p>
       ))}
@@ -585,7 +620,7 @@ function PulseProse({
             minHeight: "44px",
             display: "flex",
             alignItems: "center",
-            font: "600 12.5px/1 Inter, sans-serif",
+            font: "600 12.5px/1 var(--font-inter), sans-serif",
             color: "var(--c-goldink)",
           }}
         >
@@ -601,10 +636,10 @@ function BriefProgress({ progress }: { progress: NonNullable<LedgerData["briefPr
   return (
     <div style={{ marginTop: "6px" }}>
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: "10px" }}>
-        <span style={{ font: "400 italic 12.5px/1 'Playfair Display', serif", color: "var(--c-secondary)" }}>
+        <span style={{ font: "400 italic 12.5px/1 var(--font-playfair-display), serif", color: "var(--c-secondary)" }}>
           {status}
         </span>
-        <span style={{ font: "400 10.5px/1 'JetBrains Mono', monospace", letterSpacing: "0.045em", color: "var(--c-muted)" }}>
+        <span style={{ font: "400 10.5px/1 var(--font-jetbrains-mono), monospace", letterSpacing: "0.045em", color: "var(--c-muted)" }}>
           {read} / {total}
         </span>
       </div>
@@ -626,12 +661,15 @@ function BriefProgress({ progress }: { progress: NonNullable<LedgerData["briefPr
 
 function TailAction({
   label,
+  href,
   weight,
   borderToken,
   marginTop,
   fillToken,
 }: {
   label: string;
+  /** Where it goes. Required: a tail action with nowhere to go is not one. */
+  href: string;
   weight: number;
   borderToken: string;
   marginTop: string;
@@ -639,8 +677,8 @@ function TailAction({
   fillToken?: string;
 }) {
   return (
-    <button
-      type="button"
+    <a
+      href={href}
       className={styles.bare}
       style={{
         marginTop,
@@ -658,14 +696,14 @@ function TailAction({
         border: `1px solid ${borderToken}`,
         borderRadius: "9px",
         backgroundColor: fillToken,
-        font: `${weight} 13px/1.4 Inter, sans-serif`,
+        font: `${weight} 13px/1.4 var(--font-inter), sans-serif`,
         color: "var(--c-ink)",
         textAlign: "left",
       }}
     >
       <span style={{ minWidth: 0, flex: 1 }}>{label}</span>
       <Chevron direction="right" size={15} />
-    </button>
+    </a>
   );
 }
 
@@ -692,10 +730,10 @@ function BriefSkeleton() {
 function BriefError() {
   return (
     <div style={{ paddingTop: "18px" }} role="alert">
-      <p style={{ margin: 0, font: "500 17px/1.4 'Playfair Display', serif", color: "var(--c-ink)" }}>
+      <p style={{ margin: 0, font: "500 17px/1.4 var(--font-playfair-display), serif", color: "var(--c-ink)" }}>
         We could not load the morning brief.
       </p>
-      <p style={{ margin: "10px 0 0", font: "400 13px/1.6 Inter, sans-serif", color: "var(--c-secondary)", maxWidth: "32ch" }}>
+      <p style={{ margin: "10px 0 0", font: "400 13px/1.6 var(--font-inter), sans-serif", color: "var(--c-secondary)", maxWidth: "32ch" }}>
         This is a failed read, not an empty result. Nothing is being hidden.
       </p>
       <button
@@ -709,7 +747,7 @@ function BriefError() {
           padding: "0 17px",
           border: "1px solid var(--c-ink)",
           borderRadius: "9px",
-          font: "600 13px/1 Inter, sans-serif",
+          font: "600 13px/1 var(--font-inter), sans-serif",
           color: "var(--c-ink)",
         }}
       >
@@ -722,10 +760,10 @@ function BriefError() {
 function BriefNone() {
   return (
     <div style={{ paddingTop: "18px" }}>
-      <p style={{ margin: 0, font: "500 17px/1.4 'Playfair Display', serif", color: "var(--c-ink)" }}>
+      <p style={{ margin: 0, font: "500 17px/1.4 var(--font-playfair-display), serif", color: "var(--c-ink)" }}>
         No brief published yet.
       </p>
-      <p style={{ margin: "10px 0 0", font: "400 13px/1.6 Inter, sans-serif", color: "var(--c-secondary)", maxWidth: "32ch" }}>
+      <p style={{ margin: "10px 0 0", font: "400 13px/1.6 var(--font-inter), sans-serif", color: "var(--c-secondary)", maxWidth: "32ch" }}>
         Nothing failed to load. The desk has not published yet, and it publishes at 6:45.
       </p>
     </div>
@@ -743,10 +781,10 @@ function StaleNotice({ data }: { data: LedgerData }) {
         padding: "13px 14px",
       }}
     >
-      <div style={{ font: "600 12px/1 Inter, sans-serif", color: "var(--c-ink)" }}>
+      <div style={{ font: "600 12px/1 var(--font-inter), sans-serif", color: "var(--c-ink)" }}>
         You are reading yesterday&rsquo;s brief.
       </div>
-      <div style={{ marginTop: "4px", font: "400 11.5px/1.5 Inter, sans-serif", color: "var(--c-body)" }}>
+      <div style={{ marginTop: "4px", font: "400 11.5px/1.5 var(--font-inter), sans-serif", color: "var(--c-body)" }}>
         Today&rsquo;s has not published yet.{data.generatedAt ? ` Generated ${data.generatedAt}.` : ""}
       </div>
     </div>

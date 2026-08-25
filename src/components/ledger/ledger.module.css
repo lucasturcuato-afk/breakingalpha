@@ -93,6 +93,9 @@
   font: inherit;
   color: inherit;
   cursor: pointer;
+  /* Also applied to the anchors that carry a real destination. Without this a
+     tail action picks up the user agent underline the design does not draw. */
+  text-decoration: none;
 }
 
 /* The ticker track. The keyframe moves it by half its own width, which is why
