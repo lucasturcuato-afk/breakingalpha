@@ -112,6 +112,22 @@ export function deskRecordToScreenData(record: DeskRecord): DeskRecordData {
        the exact "a count against a shorter list, unexplained" failure the line
        exists to prevent, so the flag and the count now cannot disagree. */
     hasUnlistedNotGraded: record.byResolution.notGraded > 0,
+    /* The other reason the list is shorter than the strip, and the bigger one.
+       `buildDeskRecord` slices `entries` to the caller's limit while
+       `byResolution` counts every row read, so with 99 rows read and a limit
+       of 40 the strip counted 99 over a list of 40, of which the not-graded
+       rows are then dropped again. Two of the three reasons were on the
+       screen and the largest was not.
+
+       Both numbers are read off the model. `record.entries.length` is how many
+       rows the list was given, NOT how many render: `entries` above is shorter
+       still, and the not-graded line is what accounts for that step. Null when
+       the limit did not bite, so the screen says nothing about a cap that did
+       not happen. */
+    listCap:
+      record.total > record.entries.length
+        ? { read: record.entries.length, counted: record.total }
+        : null,
     entries,
     /* The record model carries no grader-run timestamp, so the stale state has
        nothing to name and the wired path never selects it. */

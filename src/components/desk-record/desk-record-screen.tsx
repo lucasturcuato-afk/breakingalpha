@@ -191,6 +191,32 @@ export function DeskRecordScreen({
           ) : null}
 
           <SectionRule label={data.listHeading} />
+          {/* The cap, said before the reader counts rows rather than after.
+              The strip above counts every row the read returned; this list is
+              given only the newest page of them. A reader who counted 13
+              SUPPORTED rows under a cell reading SUPPORTED 32 had no way to
+              learn why, and the only cue was the word "recent" in the heading
+              above.
+
+              Both numbers come off the model, and the line claims nothing
+              beyond them: how many rows the list was given, and how many the
+              strip counts. It does not claim they are the only two steps
+              between the two figures. They are not: the not-graded rows are
+              dropped again below, which the line at the foot of the list
+              accounts for. Absent entirely when nothing was truncated. */}
+          {data.listCap !== null ? (
+            <p
+              style={{
+                margin: "11px 0 0",
+                font: "400 11.5px/1.55 Inter, sans-serif",
+                color: "var(--c-muted)",
+                textWrap: "pretty",
+              }}
+            >
+              Only the {data.listCap.read} most recent calls in the record are read into this list.
+              All {data.listCap.counted} are counted in the strip above.
+            </p>
+          ) : null}
           {/* NO `onOpen`. `ledger-entry-row.tsx:63` turns any truthy handler
               into a real `<button type="button">` with `.bare`'s pointer
               cursor, so `onOpen={() => {}}` shipped 35 focusable 350x117

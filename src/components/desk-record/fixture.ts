@@ -84,6 +84,23 @@ export interface DeskRecordData {
    */
   hasUnlistedNotGraded: boolean;
   /**
+   * Non-null only when the read truncated the list, which is the second and
+   * larger reason the list is shorter than the strip's counts.
+   *
+   * `read` is how many of the most recent calls were read into the list;
+   * `counted` is how many the strip counts. Both come off the model, never
+   * off the rendered rows: the rendered rows are fewer again, because
+   * not-graded calls carry no verdict word and are dropped, which is what
+   * `hasUnlistedNotGraded` explains. Null when nothing was truncated, and the
+   * line is then absent rather than saying a cap did not bite.
+   *
+   * This existed unstated before it existed stated. The strip could count 99
+   * over a list of 35 rows with two of the three reasons named and the
+   * largest one silent, which is the same "count against a shorter list,
+   * unexplained" shape as the not-graded gap, one size up.
+   */
+  listCap: { read: number; counted: number } | null;
+  /**
    * Rendered by the stale state only. The date the grader last completed, or
    * null when nothing supplies one.
    *
@@ -107,6 +124,11 @@ export const DESK_FIXTURE: DeskRecordData = {
     "Rates calls resolve challenged more often than any other category here. The desk has been early on policy timing in eleven of them, which is a stated weakness rather than a discovered one.",
   listHeading: "recent",
   hasUnlistedNotGraded: false,
+  /* Null, so the cap line is absent on this path. The cap line reports a real
+     truncation performed by a real read, and there is no read behind this
+     object: its three rows are the design's three rows and its counts are
+     invented. A number here would be a fourth invented figure. */
+  listCap: null,
   entries: [
     {
       id: "d1",
