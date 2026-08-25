@@ -674,7 +674,7 @@ function DashboardPageInner() {
    * `useDashboardReady` is the readiness signal, and it is free: the reveal
    * gate already registers every page-level source and flips `isReady` when
    * all of them have settled or the 10s ceiling is hit. Reading it here adds
-   * no source and holds nothing back. Before it flips, `mobileData` is null
+   * no source and delays nothing. Before it flips, `mobileData` is null
    * and the phone shows the loading skeleton rather than a half-built morning
    * with a zero count in it.
    *

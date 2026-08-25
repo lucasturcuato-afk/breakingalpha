@@ -26,7 +26,8 @@ import type { DashboardData, DashMarketCell, DashStage, DashStory } from "./fixt
  *
  * The screen paints `DashboardData` and nothing else. It has no fixture, no
  * default and no fallback: `data` is required and nullable, and a null one
- * early-returns the loading skeleton before any field is read. Below that
+ * takes an early exit to the loading skeleton before any field is read.
+ * Below that
  * guard the type is non-null, so no later edit can serve invented content by
  * leaving a prop off, and no branch here can author a sentence about the
  * reader from an absence.
@@ -73,12 +74,13 @@ export function DashboardScreen({
   /**
    * REQUIRED and NULLABLE. Not optional, and never defaulted.
    *
-   * `/ledger` shipped `data = LEDGER_FIXTURE` with no gate in its path and
-   * served every signed-in reader on a phone three fabricated claims and the
-   * sentence "One of your calls was checked overnight." This screen shipped
-   * the same shape one rule later, as `data ?? DASH_FIXTURE`. A default is the
-   * defect: it turns a forgotten prop into invented data instead of into a
-   * build failure. Required and nullable makes the caller resolve it.
+   * `/ledger` shipped with the ledger fixture as a default parameter and no
+   * gate in its path, and served every signed-in reader on a phone three
+   * fabricated claims and the sentence "One of your calls was checked
+   * overnight." This screen shipped the same shape one rule later, with the
+   * dashboard fixture behind a nullish coalesce. A default IS the defect: it
+   * turns a forgotten prop into invented data instead of into a build
+   * failure. Required and nullable makes the caller resolve it.
    */
   data: DashboardData | null;
 }) {

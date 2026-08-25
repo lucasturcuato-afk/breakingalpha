@@ -8,7 +8,7 @@
  * and the desktop loaders are not rewired to feed it.
  *
  * THE ONE RULE IN THIS FILE. A field with no source is null. There is no
- * fallback string anywhere below, no default count and no placeholder date,
+ * fallback string anywhere below, no default count and no stand-in date,
  * because every one of those reads to a signed-in reader as a measured fact
  * about their own morning.
  *
@@ -26,6 +26,12 @@ import {
   DASH_WAITING_EYEBROW,
   DASH_YOUR_RECORD_INTRO,
 } from "./copy";
+
+/**
+ * What the market API puts in `value` when it could not price a symbol. An em
+ * dash, written as an escape because the repo forbids the literal character.
+ */
+const UNPRICED = "\u2014";
 
 /** One quote as `/api/market-indices` gives it back to the desktop page. */
 export interface DashQuote {
@@ -215,7 +221,7 @@ export function toMarketCells(sources: DashboardSources): DashMarketCell[] {
     if (!quote) continue;
 
     const label = quote.label.toUpperCase();
-    if (quote.value === "—") {
+    if (quote.value === UNPRICED) {
       cells.push({ symbol, label, value: quote.value, note: "no quote" });
       continue;
     }
