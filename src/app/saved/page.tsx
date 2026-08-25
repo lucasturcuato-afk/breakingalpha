@@ -147,8 +147,14 @@ export default function SavedDealsPage() {
                 Saved Deals
               </span>
             </div>
+            {/* On a failed read `sorted.length` is 0, and printing "0 saved
+                deals" states a figure about the reader's own record that the app
+                just failed to read. The mobile screen says "Count unavailable"
+                for exactly this; this half said zero. */}
             <p className="font-sans text-[12px] text-text-muted">
-              {sorted.length} saved deal{sorted.length !== 1 ? "s" : ""}
+              {error && !isLoading
+                ? "Count unavailable"
+                : `${sorted.length} saved deal${sorted.length !== 1 ? "s" : ""}`}
             </p>
           </div>
           {hasSaved && (
@@ -194,8 +200,30 @@ export default function SavedDealsPage() {
           </div>
         )}
 
+        {/* Failed read. The desktop twin of a state the mobile screen already
+            had, in the same file.
+
+            `error` was destructured here and handed to MobileSavedScreen, and
+            this half ignored it, so a request that died rendered "No saved deals
+            yet" over a Go to Deal Flow button. That is the same trust failure
+            the mobile error state exists to prevent, on the wider surface. The
+            copy is the mobile screen's, written the way it is for the same
+            reason: it reports the failed request and explicitly declines to
+            describe what is behind it. */}
+        {!isLoading && error && (
+          <div className="text-center py-16" role="alert">
+            <p className="font-display text-[16px] font-semibold text-text-primary mb-1">
+              Your saved deals did not load
+            </p>
+            <p className="font-sans text-[13px] text-text-muted max-w-[46ch] mx-auto">
+              The request did not complete, so there is nothing to show here. This is not a reading
+              of what you have saved. Open the screen again in a moment.
+            </p>
+          </div>
+        )}
+
         {/* Empty state */}
-        {!isLoading && !hasSaved && (
+        {!isLoading && !error && !hasSaved && (
           <div className="text-center py-16">
             <Bookmark size={32} className="text-border-base mx-auto mb-3" />
             <p className="font-display text-[16px] font-semibold text-text-primary mb-1">No saved deals yet</p>
