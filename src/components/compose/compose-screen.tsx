@@ -8,24 +8,28 @@ import {
   horizonTypeFromDates,
   type HorizonType,
 } from "@/lib/call-horizons";
+/* `./fixture` is NOT imported here and must never be. This is a client
+   component, so a value import from that module is a download of the invented
+   draft, the invented note and both invented proposals: the gate stops the
+   render and not the download. Everything below is content-free, and the seed
+   arrives as a required prop, built on the server by
+   `src/app/compose/page.tsx` behind `COMPOSE_FIXTURE_ENABLED`. */
+import { COMPOSE_FIXTURE_ENABLED } from "./fixture-gate";
 import {
   COMPOSE_DEFAULT_HORIZON,
   COMPOSE_HORIZONS,
-  CONTEXT_DRAFT,
-  CONTEXT_PROPOSAL,
   DRAFT_MIN_CHARS,
-  GRADEABLE_DRAFT,
-  GRADEABLE_PROPOSAL,
+  EMPTY_SEED,
   MAX_CLAIM_CHARS,
   MAX_NOTE_CHARS,
   NOTE_MIN_CHARS,
-  SAMPLE_NOTE,
   longDate,
   settlementDate,
   type ComposeProposal,
+  type ComposeSeed,
   type ComposeStage,
   type Direction,
-} from "./fixture";
+} from "./compose-data";
 import styles from "./compose.module.css";
 
 /**
@@ -85,51 +89,36 @@ const DIRECTION_LABEL: Record<Direction, string> = {
 
 const DIRECTIONS: Direction[] = ["bullish", "bearish", "neutral"];
 
-/** The draft, the note and the proposal each stage opens on. */
-function seedFor(stage: ComposeStage): {
-  draft: string;
-  note: string;
-  proposal: ComposeProposal | null;
-} {
-  switch (stage) {
-    case "context":
-    case "committed-context":
-      return { draft: CONTEXT_DRAFT, note: SAMPLE_NOTE, proposal: CONTEXT_PROPOSAL };
-    case "gradeable":
-    case "saving":
-    case "save-error":
-    case "committed":
-      return { draft: GRADEABLE_DRAFT, note: SAMPLE_NOTE, proposal: GRADEABLE_PROPOSAL };
-    /*
-     * A read-back is only reachable from `readyToRead`, which requires the
-     * note as well as the draft. Seeding these two with an empty note drew a
-     * state the real flow cannot produce, and left the analyze error with no
-     * retry: the control stayed locked at "Write the claim and your
-     * reasoning" over an error telling the user to try again.
-     */
-    case "analyzing":
-    case "analyze-error":
-      return { draft: GRADEABLE_DRAFT, note: SAMPLE_NOTE, proposal: null };
-    default:
-      return { draft: "", note: "", proposal: null };
-  }
-}
-
-export function ComposeScreen({ stage = "empty" }: { stage?: ComposeStage }) {
-  const seed = seedFor(stage);
-  const [draft, setDraft] = useState(seed.draft);
-  const [note, setNote] = useState(seed.note);
-  const [proposal, setProposal] = useState<ComposeProposal | null>(seed.proposal);
+export function ComposeScreen({
+  stage = "empty",
+  /**
+   * What the composer opens on. REQUIRED and NULLABLE, never optional and
+   * never defaulted. The caller resolves the gate and passes `seedFor(stage)`
+   * or null; leaving the prop off is a build failure rather than an invented
+   * call in front of a reader.
+   */
+  seed,
+}: {
+  stage?: ComposeStage;
+  seed: ComposeSeed | null;
+}) {
+  /* Re-checked here, not trusted from the page. `EMPTY_SEED` is two blank
+     fields and no proposal, which asserts nothing: it is what a real composer
+     opens on and what production draws. */
+  const opening = COMPOSE_FIXTURE_ENABLED && seed !== null ? seed : EMPTY_SEED;
+  const [draft, setDraft] = useState(opening.draft);
+  const [note, setNote] = useState(opening.note);
+  const [proposal, setProposal] = useState<ComposeProposal | null>(opening.proposal);
   const [direction, setDirection] = useState<Direction>(
-    seed.proposal?.expected_direction ?? "bullish",
+    opening.proposal?.expected_direction ?? "bullish",
   );
   /* Derived from the proposal's own window, never transcribed. A chip that is
      hardcoded agrees with `resolution_window_end` only by coincidence, and
      stops agreeing the moment the window moves. */
   const [horizon, setHorizon] = useState<HorizonType>(
     horizonTypeFromDates(
-      seed.proposal?.resolution_window_start,
-      seed.proposal?.resolution_window_end,
+      opening.proposal?.resolution_window_start,
+      opening.proposal?.resolution_window_end,
     ) ?? COMPOSE_DEFAULT_HORIZON,
   );
 

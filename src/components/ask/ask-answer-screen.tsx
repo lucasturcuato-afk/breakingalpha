@@ -2,13 +2,18 @@ import Link from "next/link";
 import { AskComposer } from "./ask-composer";
 import { AskNotice, AskSkeleton, CONTENT_BOX, IconBack, PAD } from "./ask-parts";
 import styles from "./ask.module.css";
+/* `./fixture` is NOT imported here and must never be. The gate stops the
+   render and not the download, so a value import from that module would be a
+   download of the invented answer and its invented citation whether or not
+   they can paint. `EMPTY_KB_ANSWER` is the intelligence route's own copy, not
+   a fixture, and lives in `./ask-data` with the shape. The fixture arrives as
+   the `data` prop, resolved on the server by `src/app/ask/page.tsx`. */
+import { ASK_FIXTURE_ENABLED } from "./fixture-gate";
 import {
-  ASK_ANSWER_FIXTURE,
-  ASK_FIXTURE_ENABLED,
   EMPTY_KB_ANSWER,
   type AnswerRecordCitation,
   type AskAnswerData,
-} from "./fixture";
+} from "./ask-data";
 import type { AskStage } from "./ask-browse-screen";
 
 /**

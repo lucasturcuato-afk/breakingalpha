@@ -1,5 +1,10 @@
 import Link from "next/link";
-import { SearchScreen, type SearchStage } from "@/components/search";
+import { SearchScreen, SEARCH_FIXTURE_ENABLED, type SearchStage } from "@/components/search";
+/* Imported by path, never through the barrel. The barrel is reachable from the
+   client graph through `search-screen`, so pulling the invented result set
+   through it would put it back in the browser bundle. This page is a server
+   component, so from here it stays on the server unless the gate is open. */
+import { SEARCH_FIXTURE } from "@/components/search/fixture";
 
 /**
  * /search. A new route, and a mobile one.
@@ -63,7 +68,18 @@ export default async function SearchPage({
           would leave the previous query in the field and draw against it. The
           key is computed from the URL alone, so typing never remounts. */}
       <div className="md:hidden">
-        <SearchScreen key={`${stage}:${query}`} stage={stage} initialQuery={query} />
+        {/* The result set is resolved HERE, on the server, and passed down as
+            data. `SearchScreen` does not import the fixture module, so none of
+            the invented result copy is emitted into a client chunk on any
+            build. The screen re-checks the same gate before it matches
+            anything, so this line being wrong would not be enough on its
+            own. */}
+        <SearchScreen
+          key={`${stage}:${query}`}
+          stage={stage}
+          initialQuery={query}
+          fixture={SEARCH_FIXTURE_ENABLED ? SEARCH_FIXTURE : null}
+        />
       </div>
 
       {/* Above the breakpoint this route has no layout of its own. The desktop

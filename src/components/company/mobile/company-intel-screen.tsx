@@ -7,7 +7,13 @@ import { ClaimAnatomy, OutcomeLead, OUTCOME_TOKENS } from "@/components/ledger";
 import { useCompanyTabState, type CompanyTabId } from "@/hooks/useCompanyTabState";
 
 import styles from "./company-mobile.module.css";
-import { COMPANY_INTEL_EMPTY, COMPANY_INTEL_FIXTURE, type CompanyIntelData } from "./fixture";
+/* `./fixture` is NOT imported here and must never be. This is a client
+   component, so a value import from that module is a download of the invented
+   company: the gate stops the render and not the download. The shape lives in
+   `./types` and erases; the fixture arrives as the `data` prop, built behind
+   `mobileFixtureScreensEnabled()` on the server by
+   `src/app/company/[id]/page.tsx`. */
+import type { CompanyIntelData } from "./types";
 import { Chip, EmptyWell, SkeletonBar } from "./parts";
 import {
   FilingsSection,
@@ -76,6 +82,13 @@ const SECTION_IDS = new Set(SECTIONS.map((s) => s.id));
 
 export function CompanyIntelScreen({
   stage = "ready",
+  /**
+   * REQUIRED and NULLABLE, never optional and never defaulted. The caller
+   * resolves the gate and passes the fixture or null; leaving the prop off is
+   * a build failure rather than an invented company in front of a reader, and
+   * below the null guard the type is non-null, so no later edit can bring the
+   * fixture back by omission.
+   */
   data,
   /**
    * True when the company resolved to a SEC CIK. Drives which sourced empty
@@ -85,13 +98,15 @@ export function CompanyIntelScreen({
   hasCik = true,
 }: {
   stage?: CompanyStage;
-  data?: CompanyIntelData;
+  data: CompanyIntelData | null;
   hasCik?: boolean;
 }) {
   const router = useRouter();
   const { activeTab, setActiveTab } = useCompanyTabState();
 
-  const resolved = data ?? (stage === "empty" ? COMPANY_INTEL_EMPTY : COMPANY_INTEL_FIXTURE);
+  /* No data means no source answered, so the honest drawing is the loader.
+     Nothing below states a fact about the company while `data` is null. */
+  const effective: CompanyStage = data === null ? "loading" : stage;
   /* A desktop deep link can pin a tab this screen has no section for
      (articles, comps, and the three ids with no button). Fall back to the
      first section rather than drawing an empty body under no active chip. */
@@ -185,14 +200,14 @@ export function CompanyIntelScreen({
           padding: `22px ${PAD} calc(24px + var(--mobile-tabbar-height) + env(safe-area-inset-bottom))`,
         }}
       >
-        {stage === "loading" ? <CompanySkeleton /> : null}
-        {stage === "error" ? <CompanyError onRetry={retry} /> : null}
+        {effective === "loading" ? <CompanySkeleton /> : null}
+        {effective === "error" ? <CompanyError onRetry={retry} /> : null}
 
-        {stage === "ready" || stage === "empty" ? (
+        {data !== null && (effective === "ready" || effective === "empty") ? (
           <>
-            <Masthead data={resolved} />
-            <KpiGrid data={resolved} />
-            <YourEntries data={resolved} />
+            <Masthead data={data} />
+            <KpiGrid data={data} />
+            <YourEntries data={data} />
 
             <div
               style={{
@@ -218,16 +233,16 @@ export function CompanyIntelScreen({
             {/* Keyed on the section so the 200ms fade replays on every swap,
                 which is what the prototype's `sc-if` gives for free. */}
             <div key={active} className={styles.sectionIn} style={{ marginTop: "18px" }}>
-              {active === "brief" ? <PrimerSection data={resolved} /> : null}
-              {active === "trend" ? <ToneSection data={resolved} /> : null}
+              {active === "brief" ? <PrimerSection data={data} /> : null}
+              {active === "trend" ? <ToneSection data={data} /> : null}
               {active === "filings" ? (
-                <FilingsSection data={resolved} hasCik={hasCik} />
+                <FilingsSection data={data} hasCik={hasCik} />
               ) : null}
               {active === "financials" ? (
-                <FinancialsSection data={resolved} hasCik={hasCik} />
+                <FinancialsSection data={data} hasCik={hasCik} />
               ) : null}
               {active === "insider" ? (
-                <InsiderSection data={resolved} hasCik={hasCik} />
+                <InsiderSection data={data} hasCik={hasCik} />
               ) : null}
             </div>
           </>

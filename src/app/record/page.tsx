@@ -1,13 +1,15 @@
 import { AppShell } from "@/components/shell";
+import { RecordScreen, RECORD_UNAVAILABLE, type RecordStage } from "@/components/prepared-record";
+/* Imported by path, never through the barrel. The barrel is reachable from the
+   client graph through `record-screen`, so pulling the sample entries through
+   it would put the invented claims back in the browser bundle. This page is a
+   server component, so from here they stay on the server. */
+import { RECORD_FIXTURE_ENABLED } from "@/components/prepared-record/fixture-gate";
 import {
-  RecordScreen,
   RECORD_EMPTY_FIXTURE,
-  RECORD_UNRESOLVED_FIXTURE,
   RECORD_FIXTURE,
-  RECORD_UNAVAILABLE,
-  RECORD_FIXTURE_ENABLED,
-  type RecordStage,
-} from "@/components/prepared-record";
+  RECORD_UNRESOLVED_FIXTURE,
+} from "@/components/prepared-record/fixture";
 
 /**
  * The Prepared record, the user's own. Server component so it can read the

@@ -12,13 +12,19 @@ import {
   SearchJumpRow,
   SearchLedgerResult,
 } from "./search-parts";
+/* `./fixture` is NOT imported here and must never be. This is a client
+   component, so a value import from that module is a download of the invented
+   result set: the gate stops the render and not the download, and one of those
+   strings is a first-person claim about entries the reader does not have.
+   Everything below is content-free, and the result set arrives as a required
+   prop, resolved on the server by `src/app/search/page.tsx`. */
+import { SEARCH_FIXTURE_ENABLED } from "./fixture-gate";
 import {
   JUMP_GROUPS,
-  SEARCH_FIXTURE_ENABLED,
-  SEARCH_FIXTURE,
   isEmptyResult,
   matchFixture,
-} from "./fixture";
+  type SearchFixture,
+} from "./search-data";
 import styles from "./search.module.css";
 
 /**
@@ -64,25 +70,38 @@ export type SearchStage = "ready" | "loading" | "error" | "unwired";
 export function SearchScreen({
   stage = "ready",
   initialQuery = "",
+  /**
+   * The result set to match against. REQUIRED and NULLABLE, never optional and
+   * never defaulted. The caller resolves the gate and passes the fixture or
+   * null; leaving the prop off is a build failure rather than invented results
+   * in front of a reader. Null draws `unwired`, which is the honest state:
+   * there is no source, so no search ran and none is running.
+   */
+  fixture,
 }: {
   stage?: SearchStage;
   /** Seeds the field so a capture and the runtime audit can reach each state. */
   initialQuery?: string;
+  fixture: SearchFixture | null;
 }) {
   const router = useRouter();
   const [query, setQuery] = useState(initialQuery);
 
   const typed = query.trim().length > 0;
+  /* Matching runs here because it runs on every keystroke, but it runs over
+     what the server handed down rather than over a module this file imports.
+     The gate is re-checked, not trusted from the page. */
   const results = useMemo(
-    () => (SEARCH_FIXTURE_ENABLED ? matchFixture(query, SEARCH_FIXTURE) : null),
-    [query],
+    () => (SEARCH_FIXTURE_ENABLED && fixture !== null ? matchFixture(query, fixture) : null),
+    [query, fixture],
   );
 
   /* With the gate closed the screen is unwired whatever `?stage=` says, since
      that parameter is a way to reach the lifecycle states in development and
      is not a source. In development and preview `?stage=unwired` reaches this
      branch on purpose, so it can be audited and captured like the rest. */
-  const effective: SearchStage = SEARCH_FIXTURE_ENABLED ? stage : "unwired";
+  const effective: SearchStage =
+    SEARCH_FIXTURE_ENABLED && fixture !== null ? stage : "unwired";
 
   /* Which branch the results area draws, resolved once so what follows reads
      as a list of states rather than a nest of conditions. */
