@@ -56,9 +56,19 @@ export default async function PreferencesPage() {
           <h1 className="font-display text-[28px] font-extrabold text-espresso">
             Your preferences
           </h1>
+          {/* "Changes take effect immediately." dropped. `PreferencesForm`
+              carries an explicit "Save preferences" button wired to a PATCH at
+              `PreferencesForm.tsx:142`, so nothing takes effect until it is
+              pressed. Identical defect to "Changes save instantly" on
+              /settings/profile, which was corrected on both halves.
+
+              The first sentence STAYS, unlike on the mobile Learned route where
+              the whole deck went. That route's only control was Reset, so
+              "manage every dimension" was false there; this page really does
+              carry the form. Only the false clause goes. */}
           <p className="font-sans text-[13px] text-text-secondary mt-2">
             Manage every dimension of how Signalera personalizes your
-            intelligence feed. Changes take effect immediately.
+            intelligence feed.
           </p>
         </header>
 
@@ -79,7 +89,7 @@ export default async function PreferencesPage() {
         {/* Divider */}
         <div className="border-t border-border-base my-8" />
 
-        {/* SECTION 6 — What Signalera has learned (read-only) */}
+        {/* SECTION 6. What Signalera has learned (read-only) */}
         <section className="bg-parchment border border-border-base rounded-2xl p-6 mb-6">
           <div className="flex items-center justify-between mb-1">
             <h2 className="font-display text-[16px] font-bold text-espresso">
@@ -108,7 +118,7 @@ export default async function PreferencesPage() {
 
           {sortedWeights.length === 0 ? (
             <p className="font-sans text-[12px] text-text-muted italic">
-              Not enough data yet — interact with a few theses and come back.
+              Not enough data yet. Interact with a few theses and come back.
             </p>
           ) : (
             <ul className="space-y-2">
