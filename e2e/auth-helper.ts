@@ -43,11 +43,28 @@ export async function signIn(page: Page): Promise<void> {
 
   await page.goto(baseUrl ? `${baseUrl}/auth` : "/auth");
 
-  const submitButton = page.locator("form").getByRole("button", { name: "Sign In" });
+  /* Scope every field to the VISIBLE form, and that is load-bearing.
+   *
+   * `/auth` always has TWO forms in the DOM at every viewport: `MobileAuth` is
+   * mounted unconditionally, and the desktop form is hidden with a CSS class
+   * (`hidden md:flex`, src/app/auth/page.tsx:178) rather than unmounted. So a
+   * page-level `getByPlaceholder("Email address")` resolves to 2 elements and
+   * Playwright's strict mode throws before a single character is typed.
+   *
+   * That took out the `setup` project, and because the chromium project
+   * depends on `setup`, it took out the whole suite: the repo could not
+   * authenticate as written. Two agents hit it independently on separate
+   * branches before anyone read this file.
+   *
+   * `form:visible` is Playwright's own pseudo-class, so this keeps working
+   * whichever form is the visible one at the current viewport. */
+  const form = page.locator("form:visible").first();
+
+  const submitButton = form.getByRole("button", { name: "Sign In" });
   await expect(submitButton).toBeVisible({ timeout: 10_000 });
 
-  await page.getByPlaceholder("Email address").fill(email);
-  await page.getByPlaceholder("Password").fill(password);
+  await form.getByPlaceholder("Email address").fill(email);
+  await form.getByPlaceholder("Password").fill(password);
   await submitButton.click();
 
   try {
