@@ -25,12 +25,18 @@
  * the screen draws no record section at all, and nothing claims the reader has
  * an empty record when the truth is that it could not be read.
  *
- * The state seeds at "loading" and the effect never sets it synchronously.
- * Above `md` it simply stays there, which the caller reads as "not answered"
- * and draws as a skeleton in a hidden subtree.
+ * THE BREAKPOINT IS A SUBSCRIPTION, NOT A ONE-TIME QUESTION. The effect used
+ * to ask `matchMedia` once and never again, so a page opened on a desktop and
+ * then narrowed below `md` never ran these two reads at all. Both record
+ * sections were silently absent for the life of that page. It is a real
+ * viewport now, read through `useSyncExternalStore`, so narrowing starts the
+ * reads and the sections arrive.
+ *
+ * That subscription is also what lets the state machine be complete without a
+ * `setState` in an effect body. See `MobileRecords.status`.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { createBrowserClient } from "@supabase/ssr";
 import {
   resolveClaimOutcome,
@@ -58,19 +64,33 @@ const READ_BUDGET_MS = MOBILE_READ_BUDGET_MS;
 
 export interface MobileRecords {
   /**
-   * "loading" until the two reads answer or the budget expires. Above the
-   * breakpoint it stays "loading" for the life of the page, which is correct:
-   * nothing was read, so no record is known, and the caller draws a skeleton
-   * into a subtree that is `display:none` anyway.
+   * THREE STATES, AND ONLY TWO OF THEM ARE EVER STORED.
    *
-   * There is no third "idle" state. There was, and the effect moved off it
-   * with a setState in its own body, which is the pattern
-   * `react-hooks/set-state-in-effect` exists to catch and which cost this
-   * branch its only new lint warning. Seeding at "loading" is not a workaround
-   * for the rule, it is the honest seed: at first paint the reads have not
-   * answered, on every viewport.
+   *   "idle"     above `md`. Nothing was asked for, so nothing is pending and
+   *              nothing is known. DERIVED from the viewport at return time,
+   *              never held in state and never set from anywhere.
+   *   "loading"  below `md`, reads outstanding. The stored seed.
+   *   "done"     below `md`, both reads answered or the budget expired.
+   *
+   * The history is worth keeping, because both of the obvious shapes are
+   * wrong. "idle" was originally STORED, and the effect moved off it with a
+   * `setState` in its own body, which is exactly what
+   * `react-hooks/set-state-in-effect` catches and which cost this branch its
+   * only new lint warning. Deleting "idle" outright cleared the warning and
+   * broke something: above `md` the effect returns early, so nothing was left
+   * to move the status off "loading", and a page narrowed from 1440 to 390
+   * without a reload sat on a PERMANENT SKELETON. Measured at 28s, 16s past
+   * the read budget. A screen showing a state that will never resolve is the
+   * defect class this whole branch exists to close, so trading it for a lint
+   * warning was not a trade at all.
+   *
+   * Deriving the third state is what makes the machine complete. `isMobile` is
+   * a live subscription, so "idle" is a fact about the current viewport rather
+   * than a value someone has to remember to update, the stored half never
+   * needs a synchronous transition, and the rule is satisfied by the shape
+   * rather than by a disable directive.
    */
-  status: "loading" | "done";
+  status: "idle" | "loading" | "done";
   yourRecord: { byResolution: Record<Resolution, number>; awaiting: number } | null;
   deskRecord: { byResolution: Record<Resolution, number>; total: number } | null;
   gradedInLastDay: number | null;
@@ -78,6 +98,18 @@ export interface MobileRecords {
 
 const PENDING: MobileRecords = {
   status: "loading",
+  yourRecord: null,
+  deskRecord: null,
+  gradedInLastDay: null,
+};
+
+/**
+ * What the hook gives back above `md`. A module constant, so its identity is
+ * stable across renders and the caller's `mobileData` memo is not invalidated
+ * on every desktop render by a fresh object.
+ */
+const IDLE: MobileRecords = {
+  status: "idle",
   yourRecord: null,
   deskRecord: null,
   gradedInLastDay: null,
@@ -115,6 +147,35 @@ export function countGradedInLastDay(
   return n;
 }
 
+/**
+ * The breakpoint as an external store.
+ *
+ * `useSyncExternalStore` rather than an effect and a `setState`, for two
+ * reasons and not only the lint rule. It gives the correct value on the FIRST
+ * client render instead of one render later, and it hands React the
+ * server snapshot explicitly, so hydration has one answer rather than two.
+ */
+function subscribeToBreakpoint(onChange: () => void): () => void {
+  if (typeof window === "undefined") return () => {};
+  const mql = window.matchMedia(MOBILE_QUERY);
+  mql.addEventListener("change", onChange);
+  return () => mql.removeEventListener("change", onChange);
+}
+
+function isMobileSnapshot(): boolean {
+  return window.matchMedia(MOBILE_QUERY).matches;
+}
+
+/**
+ * There is no viewport on the server, and guessing one would make the markup
+ * disagree with the first client render. False means "not reading", which is
+ * the safe answer either way: it renders no record section rather than an
+ * invented one.
+ */
+function isMobileServerSnapshot(): boolean {
+  return false;
+}
+
 function getSupabase() {
   return createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -123,10 +184,19 @@ function getSupabase() {
 }
 
 export function useMobileRecords(): MobileRecords {
+  const isMobile = useSyncExternalStore(
+    subscribeToBreakpoint,
+    isMobileSnapshot,
+    isMobileServerSnapshot,
+  );
   const [state, setState] = useState<MobileRecords>(PENDING);
 
   useEffect(() => {
-    if (typeof window === "undefined" || !window.matchMedia(MOBILE_QUERY).matches) return;
+    /* Not a one-time question any more: `isMobile` is a dependency, so
+       crossing the breakpoint downwards starts the reads. Crossing it upwards
+       tears them down, and the return below stops reporting the stored state
+       at all. */
+    if (!isMobile) return;
 
     let cancelled = false;
 
@@ -176,7 +246,11 @@ export function useMobileRecords(): MobileRecords {
       cancelled = true;
       clearTimeout(budget);
     };
-  }, []);
+  }, [isMobile]);
 
-  return state;
+  /* The third state, derived. Above `md` no read was asked for, so the answer
+     is not "still loading", it is "nothing pending and nothing known", and the
+     caller draws every record section as absent rather than as a skeleton that
+     would never resolve. */
+  return isMobile ? state : IDLE;
 }
