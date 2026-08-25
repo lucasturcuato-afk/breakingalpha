@@ -30,18 +30,19 @@ import type { AskStage } from "./ask-browse-screen";
 export function AskAnswerScreen({
   stage = "ready",
   question,
-  data = ASK_ANSWER_FIXTURE,
+  data,
 }: {
   stage?: AskStage;
   /** What the reader actually typed. Echoed only when no fixture answers it. */
   question: string;
-  data?: AskAnswerData;
+  /** The gated fixture, or null when no source exists. Never defaulted. */
+  data: AskAnswerData | null;
 }) {
   /* The fixture answers exactly one question. Echoing a different one above it
      would put a fabricated pairing on the screen, so while the fixture supplies
      the answer it also supplies the question. Off the fixture there is no
      invented answer to contradict, and the reader's own words are echoed. */
-  const asked = ASK_FIXTURE_ENABLED ? data.question : question;
+  const asked = ASK_FIXTURE_ENABLED ? data?.question : question;
   const effective: AskStage | "unwired" = ASK_FIXTURE_ENABLED ? stage : "unwired";
 
   return (
@@ -126,7 +127,7 @@ export function AskAnswerScreen({
         </div>
 
         <div style={{ flex: "none", display: "flex", flexDirection: "column", gap: "11px" }}>
-          {effective === "stale" ? <AskNotice style={{ margin: 0 }}>{data.answeredAt}</AskNotice> : null}
+          {effective === "stale" ? <AskNotice style={{ margin: 0 }}>{data?.answeredAt}</AskNotice> : null}
 
           {effective === "loading" ? (
             <>
@@ -156,7 +157,7 @@ export function AskAnswerScreen({
           ) : null}
 
           {effective === "ready" || effective === "stale"
-            ? data.blocks.map((block, i) =>
+            ? data?.blocks.map((block, i) =>
                 block.kind === "head" ? (
                   <p
                     key={i}
@@ -174,8 +175,8 @@ export function AskAnswerScreen({
               )
             : null}
 
-          {(effective === "ready" || effective === "stale") && data.record ? (
-            <RecordCitation record={data.record} />
+          {(effective === "ready" || effective === "stale") && data?.record ? (
+            <RecordCitation record={data?.record} />
           ) : null}
         </div>
       </div>
@@ -183,7 +184,7 @@ export function AskAnswerScreen({
       {/* The two chips come off the data, not off a second hardcoded pair here.
           Two sources for one pair means a `data` override silently keeps the
           fixture's chips. */}
-      <AskComposer prompts={data.prompts} />
+      <AskComposer prompts={data?.prompts} />
     </div>
   );
 }

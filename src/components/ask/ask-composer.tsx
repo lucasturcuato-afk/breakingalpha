@@ -21,7 +21,7 @@ function askHref(question: string): string {
   return `/ask?q=${encodeURIComponent(question)}`;
 }
 
-export function AskComposer({ prompts }: { prompts: readonly [string, string] }) {
+export function AskComposer({ prompts }: { prompts?: readonly [string, string] }) {
   const router = useRouter();
   const [value, setValue] = useState("");
 
@@ -36,7 +36,7 @@ export function AskComposer({ prompts }: { prompts: readonly [string, string] })
           padding: `10px ${PAD} 0`,
         }}
       >
-        {prompts.map((prompt) => (
+        {(prompts ?? []).map((prompt) => (
           <Link
             key={prompt}
             href={askHref(prompt)}

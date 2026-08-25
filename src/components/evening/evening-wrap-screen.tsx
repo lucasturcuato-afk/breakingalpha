@@ -15,7 +15,6 @@ import { ClaimAnatomy, MobileTickerStrip } from "@/components/ledger";
 import motion from "@/components/ledger/ledger.module.css";
 import {
   CLOSE_VISIBLE_PARAGRAPHS,
-  EVENING_FIXTURE,
   type EveningMover,
   type EveningWrapData,
   type ScorecardCell,
@@ -58,10 +57,11 @@ const ON_ESPRESSO = {
 
 export function EveningWrapScreen({
   stage = "ready",
-  data = EVENING_FIXTURE,
+  data,
 }: {
   stage?: WrapStage;
-  data?: EveningWrapData;
+  /** The gated fixture, or null when no source exists. Never defaulted. */
+  data: EveningWrapData | null;
 }) {
   const [closeOpen, setCloseOpen] = useState(false);
   const [bannerShown, setBannerShown] = useState(true);
@@ -76,6 +76,20 @@ export function EveningWrapScreen({
      the wrap 40px too narrow to satisfy a measuring bug. Run the harness at
      --width 430 instead: 430 minus the injected gutter is 390, and both sides
      then measure 350. */
+  /* No source, no screen. See the note on `LedgerScreen`: the fixture used to
+     arrive here as a DEFAULT PARAMETER, so this screen rendered invented index
+     levels, an invented 4:35 close and a fabricated CALL-0413 the moment the
+     mount gate above it was deleted. Early return, so below this line `data`
+     is non-null and no later edit can reintroduce it by omission. */
+  if (data === null) {
+    return (
+      <div data-parity="evening" style={{ backgroundColor: "var(--c-bg)", minHeight: "100%" }}>
+        <MobileTickerStrip />
+        <WrapSkeleton />
+      </div>
+    );
+  }
+
   return (
     <div data-parity="evening" style={{ backgroundColor: "var(--c-bg)", minHeight: "100%" }}>
       {/* Built once, in src/components/ledger, and imported here. The barrel

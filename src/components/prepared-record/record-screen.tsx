@@ -60,10 +60,11 @@ const PAD = "var(--v3-pad)";
 
 export function RecordScreen({
   stage = "ready",
-  data = RECORD_FIXTURE,
+  data,
 }: {
   stage?: RecordStage;
-  data?: RecordData;
+  /** Always supplied by the caller, which resolves the gate. Never defaulted. */
+  data: RecordData;
 }) {
   /* The gate is enforced HERE, not only at the call site. `page.tsx` also
      resolves it, because the server component picks which fixture to hand

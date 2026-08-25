@@ -1,5 +1,7 @@
 import { AppShell } from "@/components/shell";
 import { LedgerScreen, type BriefStage } from "@/components/ledger";
+import { LEDGER_FIXTURE } from "@/components/ledger/fixture";
+import { mobileFixtureScreensEnabled } from "@/lib/mobile-fixture-gate";
 
 /**
  * The Ledger. Server component so it can read the lifecycle switch off the
@@ -38,7 +40,14 @@ export default async function LedgerPage({
           inline style: an inline display beats the class at every breakpoint,
           which is the defect that shipped the tab bar to desktop once already. */}
       <div className="md:hidden">
-        <LedgerScreen stage={stage} wrapPublishedAt={wrapRaw ?? null} />
+        {/* The gate is resolved HERE and passed down, never defaulted inside
+            the screen. In production this is null and the screen renders its
+            loading state instead of an invented brief. */}
+        <LedgerScreen
+          stage={stage}
+          data={mobileFixtureScreensEnabled() ? LEDGER_FIXTURE : null}
+          wrapPublishedAt={wrapRaw ?? null}
+        />
       </div>
 
       {/* Above the breakpoint this route has no layout of its own. The desktop

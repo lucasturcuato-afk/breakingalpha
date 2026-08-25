@@ -176,7 +176,7 @@ export const SEARCH_FIXTURE: SearchFixture = {
  *
  * Prefix on the ticker, substring on everything else. Case-insensitive.
  */
-export function matchFixture(query: string, data: SearchFixture = SEARCH_FIXTURE): SearchFixture {
+export function matchFixture(query: string, data: SearchFixture): SearchFixture {
   const q = query.trim().toLowerCase();
   if (!q) return { companies: [], ledger: [], deals: [] };
   const hit = (haystack: string) => haystack.toLowerCase().includes(q);
