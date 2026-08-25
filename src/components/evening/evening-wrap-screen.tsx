@@ -16,8 +16,9 @@ import motion from "@/components/ledger/ledger.module.css";
 import { useIsMobileViewport } from "./use-mobile-viewport";
 /* The three families the app loads, named by the variables `next/font`
  * emits. This screen wrote the literals `Playfair Display`, `JetBrains Mono`
- * and `Inter`, none of which the app loads, so 99 of its 147 text-bearing
- * nodes were rendering in a generic fallback. See `./fonts.ts`. */
+ * and `Inter` 44 times between them, none of which the app loads, so most of
+ * its text rendered in a generic fallback. See `./fonts.ts`; the nodes that
+ * still do are all inside `src/components/ledger`. */
 import { MONO, SANS, SERIF } from "./fonts";
 import type {
   EveningMover,
@@ -251,14 +252,6 @@ export function EveningWrapScreen({
 /* ── blocks ─────────────────────────────────────────────────────────── */
 
 /**
- * The screen root, shared by every branch.
- *
- * `data-parity="evening"` lives here and nowhere else, so parity scopes to the
- * same element whatever the loader answered, and the ticker strip is drawn
- * once instead of once per branch. The strip is the tape and it is live on
- * every branch, including the ones where no wrap exists.
- */
-/**
  * The ticker strip, drawn only where the screen is visible.
  *
  * `MobileTickerStrip` is imported from `src/components/ledger` and never
@@ -281,6 +274,16 @@ function Tape() {
   return <MobileTickerStrip />;
 }
 
+/**
+ * The screen root, shared by every branch.
+ *
+ * `data-parity="evening"` lives here and nowhere else, so parity scopes to the
+ * same element whatever the loader answered, and the ticker strip is drawn
+ * once instead of once per branch. The strip is the tape and it is live on
+ * every branch, including the ones where no wrap exists, at every width the
+ * screen is visible at. See `Tape` above for why that last clause is now
+ * doing work.
+ */
 function WrapFrame({ children }: { children: ReactNode }) {
   return (
     <div data-parity="evening" style={{ backgroundColor: "var(--c-bg)", minHeight: "100%" }}>
