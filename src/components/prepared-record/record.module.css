@@ -1,0 +1,102 @@
+/* Prepared record: motion, the button reset, and the one rule that cannot be
+ * expressed inline.
+ *
+ * This is a second copy of `.bare`, `.enter` and `.sk` rather than an import of
+ * `ledger.module.css`. A CSS module is scoped output, not a component contract:
+ * importing another component's module couples this screen to class names that
+ * file is free to rename, and the ledger sheet documents itself as the Ledger's
+ * own. The shared thing here is the design's single easing curve and its
+ * durations, and those are transcribed identically.
+ *
+ * Nothing in this file is responsive. An inline style beats a class at every
+ * breakpoint, so a module carrying breakpoints and components carrying inline
+ * measured values would collide. Breakpoint gating lives on the page. */
+
+.bare {
+  appearance: none;
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.enter {
+  /* Rests in the drawn state and animates FROM the hidden one, so a subtree
+   * that never animates is still readable. */
+  opacity: 1;
+  transform: none;
+  animation: recordIn 240ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+
+@keyframes recordIn {
+  from {
+    opacity: 0;
+    transform: translateY(7px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.sk {
+  border-radius: 4px;
+  background: linear-gradient(
+    90deg,
+    var(--c-hair) 0%,
+    var(--c-surface) 50%,
+    var(--c-hair) 100%
+  );
+  background-size: 200% 100%;
+  animation: recordShimmer 1.8s ease-in-out infinite;
+}
+
+@keyframes recordShimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+/* The export bar.
+ *
+ * The design pins it to the foot of the phone frame, which it can do because
+ * the prototype draws this screen with no tab bar under it (`showNav` at
+ * prototype line 3460 lists four screens and `record` is not one of them). The
+ * build has the tab bar, since the Ledger pole owns /record, so the bar sits
+ * one tab bar above the scrollport floor instead of on it. Same intent, which
+ * is that the two export actions are reachable without scrolling past forty
+ * entries to find them.
+ *
+ * Sticky rather than fixed: fixed would take the bar out of the scrollport and
+ * leave it floating over the desktop branch too.
+ *
+ * `bottom: 0`, and the zero is measured rather than assumed. The shell's
+ * scroller already reserves the tab bar with
+ * `pb-[calc(var(--mobile-tabbar-height)+env(safe-area-inset-bottom))]`, and
+ * Chrome resolves a sticky offset against that scroller's CONTENT box, so the
+ * padding is already out of the sticky rect. Repeating the token here as an
+ * offset reserved the bar's height twice and parked it 59px above the tab bar
+ * with two lines of an entry showing through the gap. Measured at 390x844:
+ * bar bottom 726 against a tab bar top of 785. With zero they meet at 785. */
+.exportBar {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  background-color: var(--c-bg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Nothing is hidden rather than merely unanimated: both animated rules above
+   * already rest in their drawn state, so removing the animation leaves the
+   * content exactly where it was going to end up. */
+  .enter,
+  .sk {
+    animation: none;
+  }
+}
