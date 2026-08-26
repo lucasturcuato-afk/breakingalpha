@@ -44,6 +44,38 @@ ruling names no step, the work sits off the mobile build path entirely.
 | 8 | SIGNAL scores. **Stay.** Not a compliance issue. It is a relevance score, not an accuracy figure. Relevance ranking is editorial judgment, not a claim about accuracy, so it does not fall under the compliance rule. | **Lands on step 2, the Ledger card**, not the nav shell. The Ledger is the anatomy every other card reuses, so the design needs a slot for the badge before that card is written. Also touches steps 5, 9 and 10. | No production change. The design carries the deviation, not the code. |
 | 9 | cross-source palette. **Retoken.** One file, no shared surface. | Off the build path, same route as ruling 1. | Queued, own PR. |
 | 10 | Stats band, the VIX label. **Deviate from the design.** One anatomy across all four cells: Inter 700 in `--c-muted`. The design draws three labels in Inter 700 and the fourth in `"JetBrains Mono"` 400 at `--c-oninv-dim`, which is two anatomies in one band of equivalent cells, the thing the README's own responsive rule forbids. It also fails contrast on its own terms: `--c-oninv-dim` `#a2937a` on `--c-bg` `#fffdf9` measures **2.96:1** at a 10px label, against a 4.5 floor. The built `--c-muted` `#786a52` measures **5.19:1**. | Step 2 surface (Ledger). | **Shipped in #622.** Not to be reverted. The design carries the deviation, not the code. |
+| 13 | `/code-review` in dispatch templates. **Removed. Units review their own diff.** It resolves its target through `$CLAUDE_PROJECT_DIR`, which is the primary clone for every subagent regardless of the agent's cwd, and it never consults that cwd. A dispatch that fences a unit to a worktree therefore cannot bind it: one run reviewed the primary clone and left uncommitted edits in a working tree nobody had asked it to touch. **A prose fence cannot bind a tool that does not read cwd.** | Every dispatch template, and SKILL.md in two places. | **Applied.** Replaced with: read `git diff origin/main...HEAD` yourself and say in the PR body what you found. |
+
+### Ruling 13, and why the replacement is not a downgrade
+
+The mechanism, so nobody re-adds it: `.claude/commands/` holds only `learn.md`
+and `preflight.md`. `/code-review` is bundled by the harness, not repo-local,
+and every hook in `settings.json` resolves through `$CLAUDE_PROJECT_DIR`. That
+variable is the session's project directory, which is the primary clone, for
+every subagent no matter where it is working.
+
+Bash and Edit are bindable by prose because they take explicit paths. A bundled
+skill that resolves its own root is not. This is a class of failure, not one
+incident: any tool that resolves a root independently is outside the fence by
+construction.
+
+**Reading your own diff turned out to be better anyway.** The unit that did it
+after the misfire found two defects the tool had not: a 2000-character cap
+written twice, in the field's `maxLength` and again in the route's slice, so the
+field could accept more than the column stores; and an overlay not keyed on its
+subject, so a second open inherited the previous note and window.
+
+### Ruling on `fixture-default`, logged here rather than as its own row
+
+**Leave the rule as is.** It reports three false positives on
+`src/components/entry/fixture.ts`, where a fixture module references its own
+fixtures and the caller gates correctly at `entry/[id]/page.tsx`.
+
+Three false positives on one file is cheaper than narrowing a rule that has
+caught real defects, including a `??` fallback on `/company/[id]` that a hand
+sweep missed. The cost is three permanent rows in `--all`; the benefit is that
+the rule keeps firing on the shape that put invented data in front of readers.
+
 
 ## Open items
 
