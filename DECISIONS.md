@@ -44,6 +44,33 @@ ruling names no step, the work sits off the mobile build path entirely.
 | 8 | SIGNAL scores. **Stay.** Not a compliance issue. It is a relevance score, not an accuracy figure. Relevance ranking is editorial judgment, not a claim about accuracy, so it does not fall under the compliance rule. | **Lands on step 2, the Ledger card**, not the nav shell. The Ledger is the anatomy every other card reuses, so the design needs a slot for the badge before that card is written. Also touches steps 5, 9 and 10. | No production change. The design carries the deviation, not the code. |
 | 9 | cross-source palette. **Retoken.** One file, no shared surface. | Off the build path, same route as ruling 1. | Queued, own PR. |
 | 10 | Stats band, the VIX label. **Deviate from the design.** One anatomy across all four cells: Inter 700 in `--c-muted`. The design draws three labels in Inter 700 and the fourth in `"JetBrains Mono"` 400 at `--c-oninv-dim`, which is two anatomies in one band of equivalent cells, the thing the README's own responsive rule forbids. It also fails contrast on its own terms: `--c-oninv-dim` `#a2937a` on `--c-bg` `#fffdf9` measures **2.96:1** at a 10px label, against a 4.5 floor. The built `--c-muted` `#786a52` measures **5.19:1**. | Step 2 surface (Ledger). | **Shipped in #622.** Not to be reverted. The design carries the deviation, not the code. |
+| 12 | `--c-ink` fill with `--c-oninv` text. **A DESIGN defect, not a build one. Deviate.** In dark the two tokens resolve to the SAME value, `#f5efe3` at `tokens.css:503` and `:518`, so text inked with `--c-oninv` on a fill of `--c-ink` measures **1.00:1 against its own fill and is invisible**. Light is unaffected: `#1a1208` on `#fffdf9`. The fix is `--c-inverse`, which is what `--c-oninv` is named for: byte-identical in light, **17.34:1** in dark. | Commit sheet (step 3). Swept repo-wide. | **Shipped in #686.** The design carries the defect, not the code. |
+
+### Ruling 12, and the sweep behind it
+
+Found by the Commit sheet unit on **the most consequential control in the
+product**: the button that enters a call on the reader's record. In dark it drew
+its label invisibly against its own fill.
+
+**The token names are the trap.** `--c-oninv` means "on inverse", and it is
+correct on `--c-inverse`. `--c-ink` is a *text* token that also happens to read
+as a plausible dark fill, and pairing the two is a natural mistake that light
+mode never punishes. Nothing in the naming warns you, and the defect is
+invisible in the theme most people build in.
+
+**The sweep, so this is not just one screen's fix.** All 17 uses of
+`--c-oninv` across 9 files were checked, and every other one is correct:
+
+- `ledger-screen.tsx` was the only other file containing both tokens, and they
+  are on different elements. Its `--c-oninv` text sits on `var(--c-inverse)`;
+  its single `--c-ink` fill is a progress-bar segment with no text in it.
+- The other 8 files carry `--c-oninv` text and **no `--c-ink` fill at all**.
+
+So the Commit sheet was the only instance, and it is fixed. The pairing to
+watch for is a fill of `--c-ink` carrying text in `--c-oninv`, which is the
+shape a linter could catch: design-lint already has `ink-as-fill` for the
+`--c-*ink` family, and this is the same class one token over.
+
 
 ## Open items
 
