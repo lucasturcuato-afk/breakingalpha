@@ -127,7 +127,7 @@ export function ClaimScreen({
             display: "flex",
             alignItems: "center",
             gap: "6px",
-            font: "500 13px/1 Inter, sans-serif",
+            font: "500 13px/1 var(--font-inter), sans-serif",
             color: "var(--c-secondary)",
             textDecoration: "none",
           }}
@@ -143,7 +143,7 @@ export function ClaimScreen({
         {showsClaim ? (
           <span
             style={{
-              font: "400 10.5px/1 'JetBrains Mono', monospace",
+              font: "400 10.5px/1 var(--font-jetbrains-mono), monospace",
               letterSpacing: "0.045em",
               color: "var(--c-muted)",
             }}
@@ -165,7 +165,7 @@ export function ClaimScreen({
             <ClaimAnatomy
               scale="screen"
               lead={
-                <span style={{ font: "600 11px/1 Inter, sans-serif", color: "var(--c-secondary)" }}>
+                <span style={{ font: "600 11px/1 var(--font-inter), sans-serif", color: "var(--c-secondary)" }}>
                   {data.eyebrow}
                 </span>
               }
@@ -177,7 +177,7 @@ export function ClaimScreen({
             <div
               style={{
                 marginTop: "16px",
-                font: "400 italic 12.5px/1 'Playfair Display', serif",
+                font: "400 italic 12.5px/1 var(--font-playfair-display), serif",
                 color: "var(--c-secondary)",
               }}
             >
@@ -212,13 +212,13 @@ export function ClaimScreen({
                   they survive in the monospace machine record and nowhere
                   else; this is a mono label on a well, set as literal capitals
                   rather than by text-transform, so it is what it says it is. */}
-              <div style={{ font: "400 11px/1 'JetBrains Mono', monospace", color: "var(--c-muted)" }}>
+              <div style={{ font: "400 11px/1 var(--font-jetbrains-mono), monospace", color: "var(--c-muted)" }}>
                 WHAT WOULD SETTLE IT
               </div>
               <p
                 style={{
                   margin: "9px 0 0",
-                  font: "400 13.5px/1.6 Inter, sans-serif",
+                  font: "400 13.5px/1.6 var(--font-inter), sans-serif",
                   color: "var(--c-body)",
                   textWrap: "pretty",
                 }}
@@ -250,10 +250,10 @@ function Hairline({ marginTop }: { marginTop: string }) {
 function SettlementRow({ label, value }: { label: string; value: string }) {
   return (
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: "12px" }}>
-      <span style={{ font: "400 12.5px/1 Inter, sans-serif", color: "var(--c-secondary)" }}>{label}</span>
+      <span style={{ font: "400 12.5px/1 var(--font-inter), sans-serif", color: "var(--c-secondary)" }}>{label}</span>
       <span
         style={{
-          font: "500 12px/1 'JetBrains Mono', monospace",
+          font: "500 12px/1 var(--font-jetbrains-mono), monospace",
           color: "var(--c-ink)",
           textAlign: "right",
         }}
@@ -327,7 +327,7 @@ function ActionBar({ ungradeable }: { ungradeable: boolean }) {
         <p
           style={{
             margin: 0,
-            font: "400 11.5px/1.5 Inter, sans-serif",
+            font: "400 11.5px/1.5 var(--font-inter), sans-serif",
             color: "var(--c-muted)",
           }}
         >
@@ -383,7 +383,7 @@ function ActionBar({ ungradeable }: { ungradeable: boolean }) {
               border: 0,
               backgroundColor: "var(--c-inverse)",
               borderRadius: "9px",
-              font: "600 14.5px/1 Inter, sans-serif",
+              font: "600 14.5px/1 var(--font-inter), sans-serif",
               color: "var(--c-oninv)",
               ...INERT_CONTROL,
             }}
@@ -427,13 +427,13 @@ function ClaimSkeleton() {
 function ClaimError() {
   return (
     <div role="alert">
-      <p style={{ margin: 0, font: "500 17px/1.4 'Playfair Display', serif", color: "var(--c-ink)" }}>
+      <p style={{ margin: 0, font: "500 17px/1.4 var(--font-playfair-display), serif", color: "var(--c-ink)" }}>
         We could not load this claim.
       </p>
       <p
         style={{
           margin: "10px 0 0",
-          font: "400 13px/1.6 Inter, sans-serif",
+          font: "400 13px/1.6 var(--font-inter), sans-serif",
           color: "var(--c-secondary)",
           maxWidth: "32ch",
         }}
@@ -454,13 +454,13 @@ function ClaimError() {
 function ClaimMissing() {
   return (
     <div>
-      <p style={{ margin: 0, font: "500 17px/1.4 'Playfair Display', serif", color: "var(--c-ink)" }}>
+      <p style={{ margin: 0, font: "500 17px/1.4 var(--font-playfair-display), serif", color: "var(--c-ink)" }}>
         There is no claim at this address.
       </p>
       <p
         style={{
           margin: "10px 0 0",
-          font: "400 13px/1.6 Inter, sans-serif",
+          font: "400 13px/1.6 var(--font-inter), sans-serif",
           color: "var(--c-secondary)",
           maxWidth: "32ch",
         }}
@@ -484,13 +484,13 @@ function ClaimMissing() {
 function ClaimUnwired() {
   return (
     <div role="status">
-      <p style={{ margin: 0, font: "500 17px/1.4 'Playfair Display', serif", color: "var(--c-ink)" }}>
+      <p style={{ margin: 0, font: "500 17px/1.4 var(--font-playfair-display), serif", color: "var(--c-ink)" }}>
         This screen is not wired to a claim yet.
       </p>
       <p
         style={{
           margin: "10px 0 0",
-          font: "400 13px/1.6 Inter, sans-serif",
+          font: "400 13px/1.6 var(--font-inter), sans-serif",
           color: "var(--c-secondary)",
           maxWidth: "32ch",
         }}
@@ -513,10 +513,10 @@ function StaleNotice({ generatedAt }: { generatedAt: string }) {
         padding: "13px 14px",
       }}
     >
-      <div style={{ font: "600 12px/1 Inter, sans-serif", color: "var(--c-ink)" }}>
+      <div style={{ font: "600 12px/1 var(--font-inter), sans-serif", color: "var(--c-ink)" }}>
         This claim is from yesterday&rsquo;s brief.
       </div>
-      <div style={{ marginTop: "4px", font: "400 11.5px/1.5 Inter, sans-serif", color: "var(--c-body)" }}>
+      <div style={{ marginTop: "4px", font: "400 11.5px/1.5 var(--font-inter), sans-serif", color: "var(--c-body)" }}>
         Generated {generatedAt}. Its review date is unaffected.
       </div>
     </div>
