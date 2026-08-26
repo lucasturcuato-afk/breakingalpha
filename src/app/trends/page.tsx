@@ -481,10 +481,45 @@ export default function TrendsPage() {
           setAllSignals(deduplicateSignals(mapped));
         }
 
-        // Fetch real total article count from DB
+        // Total article count for the "Signalera scanned N articles" line.
+        //
+        // count: "planned" (planner estimate), NOT "exact". An exact count here
+        // is an unfiltered count(*) over the whole articles table, so Postgres
+        // scans the entire heap. Measured: it exceeded the statement timeout and
+        // returned HTTP 500 on 24 of 40 loads (10 of 10 on a cold pass), latency
+        // tracking buffer-cache state. supabase-js reports a 500 as count: null
+        // rather than throwing, so the guard below skipped, totalArticleCount
+        // stayed null, and the `totalArticles` fallback summed only the loaded
+        // signal rows: the page told the reader it had scanned 1,475 articles.
+        //
+        // Why "planned" is correct HERE: this count has NO predicate, and an
+        // unfiltered count falls back to pg_class.reltuples, which ANALYZE
+        // maintains directly. Measured error 0.362%.
+        //
+        // Do NOT generalise that to filtered counts. The dashboard moved to
+        // "planned" and then back to "exact" in 7ef7c1c3 because the estimate
+        // came out 4.5x wrong, and that count (dashboard/page.tsx, the `total`
+        // in loadCounts) carries only .gte("ingested_at", ...) with no wildcard
+        // at all. ANY predicate, wildcard or not, puts you on a scaled
+        // selectivity guess that can be badly wrong. "Unfiltered" is the safe
+        // condition, NOT "no leading-wildcard ILIKE".
+        //
+        // Two caveats on the 0.362%, which is a live sample and not a bound.
+        // reltuples only moves on VACUUM/ANALYZE, so this figure can drift
+        // between refreshes and can tick down as well as up. And it is valid
+        // only while articles has no row-filtering RLS SELECT policy: add one and
+        // "planned" silently becomes a predicate estimate again, with no
+        // visible signal that the guarantee has gone.
         const { count } = await supabase
           .from("articles")
-          .select("id", { count: "exact", head: true });
+          .select("id", { count: "planned", head: true });
+        // Guard kept deliberately, but be clear about what it does NOT do: when
+        // count is null the `totalArticles` fallback below still renders the
+        // summed-signals number (1,475) with no degraded marker. That is
+        // verified by forcing this request to 500, not theoretical. With
+        // "planned" the guard should never fire. The honest fix is a
+        // countsFailed flag rendering "no count", as the dashboard does since
+        // 7ef7c1c3; that is a rendering-behaviour change and is Lucas's call.
         if (count !== null) setTotalArticleCount(count);
       } catch (e) {
         console.error("[trends] load error:", e);
