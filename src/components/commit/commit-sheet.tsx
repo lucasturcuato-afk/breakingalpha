@@ -19,7 +19,7 @@ import styles from "./commit.module.css";
  *
  * THE FAILURE PATH IS THE POINT OF THIS SCREEN, so it is the first thing below
  * the props and the first thing that was written. A reader types the one
- * sentence that makes their record evidence rather than a list of taps, holds a
+ * sentence that makes their record evidence rather than a list of taps, presses a
  * control for seven tenths of a second, and the sheet closes. If the write was
  * not acknowledged and the sheet closes anyway, that sentence is gone and
  * nothing on the screen ever said so. README: "A call that silently fails to
@@ -52,8 +52,8 @@ import styles from "./commit.module.css";
 /** The note gate. CLIENT-SIDE, deliberately: see the adopt route's header. */
 export const COMMIT_NOTE_MIN = 12;
 
-/** Length of the hold, in ms. Matches `v3fill` and `commit.module.css`. */
-export const COMMIT_HOLD_MS = 700;
+/** Length of the press, in ms. Matches `v3fill` and `commit.module.css`. */
+export const COMMIT_PRESS_MS = 700;
 
 /**
  * The sheet's own machine. `saving` has no counterpart in the prototype, which
@@ -65,7 +65,7 @@ type CommitPhase = "editing" | "pressing" | "saving" | "failed";
 export interface CommitSheetProps {
   /**
    * REQUIRED. What is being committed to. There is no default and no fallback:
-   * the provider renders this component only when it holds a target, so an
+   * the provider renders this component only when it has a target, so an
    * absent one is a component that never mounted rather than a sheet drawing
    * something plausible over nothing.
    */
@@ -161,7 +161,7 @@ export function CommitSheet({ target, onDismiss, onCommitted }: CommitSheetProps
     timer.current = setTimeout(() => {
       timer.current = null;
       void commit();
-    }, COMMIT_HOLD_MS);
+    }, COMMIT_PRESS_MS);
   }, [clearTimer, commit, ready]);
 
   const endPress = useCallback(() => {
@@ -548,8 +548,8 @@ export function CommitSheet({ target, onDismiss, onCommitted }: CommitSheetProps
           </div>
         ) : null}
 
-        {/* The hold. A real button, so it is reachable by keyboard, and the
-            gesture is bound to pointer AND key events: a press-and-hold that
+        {/* The press. A real button, so it is reachable by keyboard, and the
+            gesture is bound to pointer AND key events: a long press that
             exists only on a pointer is a control a keyboard reader cannot
             operate at all. `touchAction: none` stops the browser claiming the
             press as a scroll. */}

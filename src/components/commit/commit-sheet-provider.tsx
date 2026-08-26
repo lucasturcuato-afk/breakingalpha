@@ -25,9 +25,9 @@ import type { CommitTarget } from "./commit-target";
  *     const commit = useCommitSheet();
  *     <button onClick={() => commit?.open(target)}>Track this call</button>
  *
- * Deal detail is the same two lines. The overlay, the note gate, the hold, the
- * write and the failure path are all on this side of the boundary, so a new
- * surface adds a trigger and inherits every one of them.
+ * Deal detail is the same two lines. The overlay, the note gate, the press,
+ * the write and the failure path are all on this side of the boundary, so a
+ * new surface adds a trigger and inherits every one of them.
  *
  * WHY THE HOOK GIVES BACK NULL RATHER THAN THROWING. A surface that forgets the
  * provider should render no action, not crash the screen it is on. A card whose

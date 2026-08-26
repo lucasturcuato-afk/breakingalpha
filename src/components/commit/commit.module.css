@@ -55,7 +55,7 @@
   }
 }
 
-/* The hold. The gold sweeps left to right over exactly the hold duration, so
+/* The press. The gold sweeps left to right over exactly the press duration, so
  * the width of the fill IS the progress of the gesture and the reader can see
  * how much longer to press. */
 .fill {
@@ -83,7 +83,7 @@
    * decided rather than listed. Stopping the sweep at width 0 would delete the
    * only visible sign that a press is being counted, which is content going
    * missing rather than motion going away. So it rests FILLED: the button goes
-   * gold the instant the press starts and stays gold for the hold. The reader
+   * gold the instant the press starts and stays gold for the press. The reader
    * loses the progress, not the state, and the label still moves through its
    * own three words. */
   .fill {

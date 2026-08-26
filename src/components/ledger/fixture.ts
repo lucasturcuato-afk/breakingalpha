@@ -27,7 +27,7 @@ export interface LedgerClaim {
    * own span through `adoptWindowForCall`, and `window` above is already
    * formatted prose ("reviewed Nov 4") that cannot be parsed back. A call with
    * no resolve_on falls to the shared default rather than to a span it is not,
-   * which is the defect #535 fixed.
+   * which is the defect PR #535 fixed.
    */
   resolveOn?: string | null;
   reasoning?: string;
