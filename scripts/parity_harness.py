@@ -65,6 +65,33 @@ from html.parser import HTMLParser
 DEFAULT_SRC = "design_handoff_signalera_mobile/Signalera Mobile v3.dc.html"
 DEFAULT_OUT = ".parity-proto.html"
 
+# OVERLAYS. A screen the prototype does not name in `s.screen`.
+#
+# `--list` reads `is*: s.screen === '<name>'` out of the source, and
+# `screen_to_root_flag` insists on exactly one live `is*` flag. Both are right
+# for the thirty screens and both are blind to the commit sheet, which is gated
+# on `sheetOpen` (`s.sheet`) at `:2579`. That block sits at the same
+# indentation as `isLedger` and every other screen block and refers to
+# `s.screen` nowhere, so it is a sibling of all of them rather than a child of
+# one. There is no `s.screen` value that reaches it and no amount of `--state`
+# makes one.
+#
+# Each entry names the flag to open, the state that opens it, and any CSS the
+# harness page needs for the block to have the geometry it has in the phone.
+OVERLAYS: dict[str, dict] = {
+    "commit": {
+        "root_flag": "sheetOpen",
+        "state": {"sheet": True},
+        # The overlay is `position:absolute;inset:0` over the phone frame. With
+        # no positioned ancestor of the phone's own height it collapses, and
+        # every height in the fingerprint is then measured against nothing.
+        # The sheet supplies its own `padding:10px var(--v3-pad) 22px`, so the
+        # frame's horizontal padding is dropped rather than applied twice.
+        "css": "#v3phone{position:relative;height:844px;padding:0}",
+    },
+}
+
+
 # Tags that carry no closing tag, so the emitter must not write one.
 VOID = {
     "br", "img", "input", "hr", "meta", "link", "source", "wbr", "area",
@@ -1005,6 +1032,10 @@ def main() -> int:
     if args.list:
         screens = sorted(set(re.findall(r"is[A-Z][A-Za-z0-9]*:\s*s\.screen === '([a-z]+)'", src)))
         print("\n".join(screens))
+        # Named separately because they are not `s.screen` values and nothing
+        # in the prototype's own flag list can find them.
+        for name in sorted(OVERLAYS):
+            print(f"{name}  (overlay, via {OVERLAYS[name]['root_flag']})")
         return 0
 
     if not args.screen:
@@ -1018,17 +1049,32 @@ def main() -> int:
         print(f"parity-harness: bad JSON: {exc}", file=sys.stderr)
         return 2
 
+    overlay = OVERLAYS.get(args.screen)
+    if overlay is not None:
+        # The overlay's own state first, so an explicit --state still wins.
+        merged = dict(overlay["state"])
+        merged.update(state_overrides)
+        state_overrides = merged
+
     res = resolve(src, args.screen, state_overrides)
     res.flags.update({k: bool(v) for k, v in flag_overrides.items()})
-    if args.screen not in res.screens:
+    if overlay is None and args.screen not in res.screens:
         print(f"parity-harness: unknown screen {args.screen!r}", file=sys.stderr)
         print(f"  the prototype defines: {', '.join(res.screens)}", file=sys.stderr)
+        print(f"  overlays: {', '.join(sorted(OVERLAYS))}", file=sys.stderr)
         return 2
 
-    root_flag = screen_to_root_flag(args.screen, res.flags)
-    if root_flag is None:
-        print(f"parity-harness: {args.screen!r} did not resolve to exactly one root flag", file=sys.stderr)
-        return 2
+    if overlay is not None:
+        root_flag = overlay["root_flag"]
+        if not res.flags.get(root_flag):
+            print(f"parity-harness: overlay flag {root_flag} did not open", file=sys.stderr)
+            print(f"  resolved from state {state_overrides}", file=sys.stderr)
+            return 2
+    else:
+        root_flag = screen_to_root_flag(args.screen, res.flags)
+        if root_flag is None:
+            print(f"parity-harness: {args.screen!r} did not resolve to exactly one root flag", file=sys.stderr)
+            return 2
 
     values = dict(res.values)
     values.update({k: str(v) for k, v in value_overrides.items()})
@@ -1060,7 +1106,9 @@ def main() -> int:
         # its background the same way, so the two sides match by construction.
         + "<style>body{margin:0;background:var(--c-bg)}"
         f"#v3phone{{width:{args.width}px;padding:0 var(--v3-pad);"
-        "box-sizing:border-box;background:var(--c-bg)}</style>"
+        "box-sizing:border-box;background:var(--c-bg)}"
+        + (overlay.get("css", "") if overlay else "")
+        + "</style>"
         + "</head><body>"
         + f"<div id=\"v3phone\" data-theme=\"{args.theme}\" data-parity=\"{args.screen}\">"
         + markup

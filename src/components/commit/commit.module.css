@@ -1,0 +1,93 @@
+/* Commit sheet motion.
+ *
+ * Nothing here is responsive, for the reason ledger.module.css states: an
+ * inline style beats a class at every breakpoint, so a module that carries a
+ * breakpoint cannot be safely mixed with the inline measured values the
+ * screens are written in.
+ *
+ * Every rule below RESTS IN ITS DRAWN STATE and animates from the hidden one.
+ * That is the property the reduced-motion block at the bottom depends on:
+ * removing the animation leaves the sheet up, the fill visible and the label
+ * readable. Nothing here is hidden rather than merely unanimated. */
+
+.sheet {
+  transform: none;
+  animation: commitUp 300ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+
+@keyframes commitUp {
+  from {
+    transform: translateY(101%);
+  }
+  to {
+    transform: none;
+  }
+}
+
+.scrimIn {
+  opacity: 1;
+  animation: commitFade 300ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+
+@keyframes commitFade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.notice {
+  opacity: 1;
+  transform: none;
+  animation: commitNotice 240ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+
+@keyframes commitNotice {
+  from {
+    opacity: 0;
+    transform: translateY(7px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* The press. The gold sweeps left to right over exactly the press duration, so
+ * the width of the fill IS the progress of the gesture and the reader can see
+ * how much longer to press. */
+.fill {
+  width: 0;
+  animation: commitFill 700ms linear forwards;
+}
+
+@keyframes commitFill {
+  from {
+    width: 0;
+  }
+  to {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sheet,
+  .scrimIn,
+  .notice {
+    animation: none;
+  }
+
+  /* The one animation here that is not an entrance, so the one that had to be
+   * decided rather than listed. Stopping the sweep at width 0 would delete the
+   * only visible sign that a press is being counted, which is content going
+   * missing rather than motion going away. So it rests FILLED: the button goes
+   * gold the instant the press starts and stays gold for the press. The reader
+   * loses the progress, not the state, and the label still moves through its
+   * own three words. */
+  .fill {
+    width: 100%;
+    animation: none;
+  }
+}
