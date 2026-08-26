@@ -280,9 +280,12 @@ function toReviewData(claim: ClaimRow, outcome: OutcomeRow, noteReadFailed: bool
 
   /* Overnight means the grade landed on the session before this one. The
      design asserts it unconditionally; a three-week-old grade did not land
-     overnight and the screen does not say it did. */
+     overnight and the screen does not say it did.
+
+     Strictly EARLIER than today, so a grade stamped ahead of the current
+     session cannot read as having happened while the reader was away. */
   const gradedSession = sessionDatePt(new Date(gradedAt));
-  const overnight = gradedSession !== today && daysBetween(gradedSession, today) <= 1;
+  const overnight = gradedSession < today && daysBetween(gradedSession, today) <= 1;
 
   return {
     resolvedAt: { overnight, day: gradedDayLabel(gradedAt) },
