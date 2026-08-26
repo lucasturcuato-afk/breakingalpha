@@ -1,9 +1,16 @@
 /**
  * The design's chevron, in the three forms it actually draws.
  *
- * Every one is a 24-unit viewBox at stroke-width 2 with round caps, rendered at
- * 14px beside body copy and 15px on a tail action. Two paths, right and down,
- * and nothing else: the design has no left or up chevron anywhere on the Ledger.
+ * Every one is a 24-unit viewBox with round caps, rendered at 14px beside body
+ * copy, 15px on a tail action and 16px on a back control. Three paths, right,
+ * down and left. The Ledger draws no left chevron; the screens opened out of it
+ * draw one on the control that goes back to it, so the direction is data in the
+ * table below rather than a second component.
+ *
+ * Weight is data for the same reason. The design strokes all 29 of its right
+ * and down chevrons at 2 and all 21 of its left ones at 1.8, without exception,
+ * so the width sits beside the path instead of being a constant the back
+ * control quietly breaks.
  *
  * The design strokes most of these with a colour literal whose value is exactly
  * `--c-muted` in both themes. Built with the token, per the same ruling that
@@ -16,11 +23,12 @@
  * announcing "chevron" twice per card is worse than announcing nothing.
  */
 
-export type ChevronDirection = "right" | "down";
+export type ChevronDirection = "right" | "down" | "left";
 
-const PATH: Record<ChevronDirection, string> = {
-  right: "M9 6l6 6-6 6",
-  down: "M6 9l6 6 6-6",
+const PATH: Record<ChevronDirection, { d: string; width: number }> = {
+  right: { d: "M9 6l6 6-6 6", width: 2 },
+  down: { d: "M6 9l6 6 6-6", width: 2 },
+  left: { d: "M15 6l-6 6 6 6", width: 1.8 },
 };
 
 export function Chevron({
@@ -30,11 +38,12 @@ export function Chevron({
   style,
 }: {
   direction: ChevronDirection;
-  size?: 14 | 15;
+  size?: 14 | 15 | 16;
   /** `--c-gold` on the continuity lead row, `--c-muted` everywhere else. */
   stroke?: string;
   style?: React.CSSProperties;
 }) {
+  const p = PATH[direction];
   return (
     <svg
       width={size}
@@ -42,12 +51,12 @@ export function Chevron({
       viewBox="0 0 24 24"
       fill="none"
       stroke={stroke}
-      strokeWidth="2"
+      strokeWidth={p.width}
       strokeLinecap="round"
       aria-hidden="true"
       style={{ flex: "none", ...style }}
     >
-      <path d={PATH[direction]} />
+      <path d={p.d} />
     </svg>
   );
 }
