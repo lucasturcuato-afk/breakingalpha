@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Chevron } from "./chevron";
 import { MobileTickerStrip } from "./mobile-ticker-strip";
 import { LedgerClaimCard } from "./ledger-claim-card";
@@ -12,6 +14,20 @@ import styles from "./ledger.module.css";
 /**
  * The Ledger. The brief and the record as one continuous timeline, reverse
  * chronological and unfiltered, with a repeating date rule marking each day.
+ *
+ * FACES. Every font here names the loaded family through the back-compat
+ * variables globals.css declares on `body`: `--font-playfair-display` resolves
+ * to Fraunces, `--font-inter` to Space Grotesk, `--font-jetbrains-mono` to IBM
+ * Plex Mono. The app loads exactly those three. The literal names the design
+ * uses, Playfair Display, Inter and JetBrains Mono, are not loaded, so spelling
+ * them here rendered 96 of this screen's 152 elements in the browser's default
+ * serif, sans and mono. Measured with getComputedStyle over the
+ * [data-parity="ledger"] subtree on a production build.
+ *
+ * CONTROLS. Nothing here is a control without a destination. A row that cannot
+ * be opened is handed no handler, and both LedgerClaimCard and LedgerEntryRow
+ * fall back to a plain div in that case, so it is not focusable, takes no
+ * pointer cursor and is not announced as a button.
  *
  * Every measurement is taken off the rendered prototype with getComputedStyle.
  * The prototype's sc-if blocks need a runtime that does not resolve over
@@ -37,6 +53,7 @@ export function LedgerScreen({
    */
   wrapPublishedAt?: string | null;
 }) {
+  const router = useRouter();
   const [pulseOpen, setPulseOpen] = useState(false);
   const [bannerShown, setBannerShown] = useState(true);
 
@@ -51,12 +68,61 @@ export function LedgerScreen({
      PARAMETER here, which meant deleting one gate silently served an invented
      brief, three fabricated claims and "One of your calls was checked
      overnight" to real readers. That is the defect that blocked PR #646 and PR #653,
-     and it was live on this screen. */
+     and it was live on this screen.
+
+     A KNOWN FAILURE OUTRANKS AN ABSENT PAYLOAD, and the ordering inside this
+     guard is the whole of that. `loadLedger` gives back `{data: null, stage:
+     "error"}` when the brief read fails, and this early return used to reach
+     `BriefSkeleton` without ever consulting `stage`, so `BriefError` was dead
+     on the loader path and every signed-in reader hit by a Supabase outage got
+     a spinner over a read that had already failed and would not be retried.
+     A screen that says "loading" about a terminal failure is publishing a
+     state it did not establish. It is not a zero, but it is the same untruth
+     in a different currency, and it is the defect this PR exists to remove.
+
+     The failure is scoped to the brief, not to the screen. When `data` is
+     non-null the error branch stays in the body below, beside the reader's own
+     record, because a failed brief read is no reason to discard entries the
+     reader already owns. Here there is nothing to keep: the read that failed
+     is the one that produces the entire payload.
+
+     THE SKELETON ARM BELOW IS UNREACHABLE FROM EVERY CURRENT CALL SITE, and
+     that is recorded here rather than left for the next reader to rediscover.
+     `loadLedger` gives back a null payload on exactly one condition, the failed
+     brief read, and that condition also sets `stage: "error"`. `page.tsx`, the
+     only call site, substitutes null only when the loader did. So today:
+
+         data === null   implies   stage === "error"
+
+     The `?stage=` preview path does NOT reach it either, which is worth being
+     precise about: that path requires `sampleAllowed`, which supplies the
+     fixture, so `data` is non-null and a forced `?stage=loading` draws the
+     skeleton from the body branch further down, under a masthead and a stats
+     band. Measured signed out on a dev build: 127 elements with the masthead
+     present, where this guard would draw a ticker and one block and no
+     masthead.
+
+     IT STAYS, and it is not the same call as deleting the unreachable `null`
+     arm of `briefProgress.decided` two commits ago. That was a value in a DATA
+     CONTRACT describing to a reader a state that could not occur, and the union
+     never had to carry it. This is the type-mandated guard on a REQUIRED,
+     NULLABLE prop, and the nullability is the safety property itself: it is
+     what makes a missing gate a build failure instead of invented data in front
+     of a reader, which is the whole of PR #670. The guard cannot be deleted
+     without giving that up, so the only real choice is what it draws.
+
+     A caller with no payload and no failure to report HAS NOT ANSWERED, and a
+     skeleton is what not having answered looks like. Drawing nothing instead
+     would make an unanswered read look like an answered and empty one, which is
+     the exact confusion this branch exists to prevent. What would make it
+     reachable: a loader that can give back a null payload without a failure, or
+     a second call site that passes one. Neither exists yet, and either should
+     arrive with a rendered proof of this arm. */
   if (data === null) {
     return (
       <div data-parity="ledger" style={{ backgroundColor: "var(--c-bg)", minHeight: "100%", padding: `0 ${PAD}` }}>
         <MobileTickerStrip />
-        <BriefSkeleton />
+        {stage === "error" ? <BriefError /> : <BriefSkeleton />}
       </div>
     );
   }
@@ -67,9 +133,15 @@ export function LedgerScreen({
           the only thing in the product that keeps moving once a screen has
           settled. Without it the masthead floats. */}
       <MobileTickerStrip />
-      {bannerShown ? <PersonalizationBanner data={data} onDismiss={() => setBannerShown(false)} /> : null}
+      {/* No sectors, no banner. "Personalized for:" over an empty chip row is
+          a claim about the reader that an empty profile cannot support. */}
+      {bannerShown && data.sectors.length > 0 ? (
+        <PersonalizationBanner data={data} onDismiss={() => setBannerShown(false)} />
+      ) : null}
       <Masthead data={data} />
-      <StatsBar data={data} loading={stage === "loading"} />
+      {/* The band carries a LIVE lamp. With no figures beside it there is
+          nothing live to point at, so the whole band goes. */}
+      {data.stats.length > 0 ? <StatsBar data={data} loading={stage === "loading"} /> : null}
 
       <div style={{ padding: `0 ${PAD}` }}>
         {stage === "loading" ? <BriefSkeleton /> : null}
@@ -79,15 +151,19 @@ export function LedgerScreen({
 
         {stage === "ready" || stage === "stale" ? (
           <>
-            <Continuity data={data} />
+            {data.continuity ? <Continuity continuity={data.continuity} /> : null}
             <LedgerDateRule
               date={data.today.date}
               wrapPublishedAt={wrapPublishedAt ?? data.wrapPublishedAt}
-              onOpenWrap={() => {}}
+              onOpenWrap={() => router.push("/evening-wrap")}
             />
-            <PulseHero data={data} />
-            <PulseProse data={data} open={pulseOpen} onToggle={() => setPulseOpen((v) => !v)} />
-            <BriefProgress data={data} />
+            {data.pulse ? (
+              <>
+                <PulseHero pulse={data.pulse} />
+                <PulseProse pulse={data.pulse} open={pulseOpen} onToggle={() => setPulseOpen((v) => !v)} />
+              </>
+            ) : null}
+            {data.briefProgress ? <BriefProgress progress={data.briefProgress} /> : null}
             {data.today.claims?.map((c, i) => (
               <LedgerClaimCard
                 key={c.id}
@@ -99,8 +175,9 @@ export function LedgerScreen({
                 variant={c.variant}
                 ungradeableReason={c.ungradeableReason}
                 delayMs={60 + i * 60}
-                onOpen={() => {}}
-                onTrack={c.variant === "open" ? () => {} : undefined}
+                /* No onOpen. There is no claim detail route to send anyone to,
+                   and a card that opens nothing must not be a button. */
+                onTrack={c.variant === "open" ? () => router.push("/radar/calls") : undefined}
               />
             ))}
           </>
@@ -112,6 +189,8 @@ export function LedgerScreen({
           <div key={day.date}>
             <LedgerDateRule date={day.date} past />
             {day.entries?.map((e, i) => (
+              /* No onOpen, for the same reason as the claim cards: no entry
+                 detail route exists yet. The row renders as a plain div. */
               <LedgerEntryRow
                 key={e.id}
                 state={e.state}
@@ -119,32 +198,50 @@ export function LedgerScreen({
                 claim={e.claim}
                 result={e.result}
                 first={i === 0}
-                onOpen={() => {}}
               />
             ))}
           </div>
         ))}
 
-        <div
-          style={{
-            marginTop: "22px",
-            textAlign: "center",
-            font: "400 italic 12.5px/1 'Playfair Display', serif",
-            color: "var(--c-muted)",
-          }}
-        >
-          {data.entriesBefore} entries before this
-        </div>
+        {data.entriesBefore !== null ? (
+          <div
+            style={{
+              marginTop: "22px",
+              textAlign: "center",
+              font: "400 italic 12.5px/1 var(--font-playfair-display), serif",
+              color: "var(--c-muted)",
+            }}
+          >
+            {data.entriesBefore} entries before this
+          </div>
+        ) : null}
 
-        <TailAction label="Write your own call" weight={600} borderToken="var(--c-ink)" marginTop="18px" />
+        <TailAction
+          label="Write your own call"
+          href="/radar/calls"
+          weight={600}
+          borderToken="var(--c-ink)"
+          marginTop="18px"
+        />
         <TailAction
           label="The desk grades itself too"
+          href="/radar/desk-record"
           weight={500}
           borderToken="var(--c-border)"
           marginTop="10px"
           fillToken="var(--c-surface)"
         />
-        <div style={{ height: "calc(24px + env(safe-area-inset-bottom))" }} />
+        {/* Clears the fixed tab bar, not just the home indicator. Measured on a
+            production build at 390x844: at maximum scroll the last tail action
+            spanned 768 to 820 while the bar started at 785, so 35px of a 52px
+            control sat under it and could never be tapped. The bar is
+            --mobile-tabbar-row plus its 1px top edge plus the safe area. */}
+        <div
+          style={{
+            height:
+              "calc(24px + 1px + var(--mobile-tabbar-row) + env(safe-area-inset-bottom))",
+          }}
+        />
       </div>
     </div>
   );
@@ -168,14 +265,14 @@ function PersonalizationBanner({ data, onDismiss }: { data: LedgerData; onDismis
           padding: "8px 12px",
         }}
       >
-        <span style={{ font: "400 11px/1 Inter, sans-serif", color: "var(--c-muted)" }}>
+        <span style={{ font: "400 11px/1 var(--font-inter), sans-serif", color: "var(--c-muted)" }}>
           Personalized for:
         </span>
         {data.sectors.map((s) => (
           <span
             key={s}
             style={{
-              font: "600 10px/1.35 Inter, sans-serif",
+              font: "600 10px/1.35 var(--font-inter), sans-serif",
               padding: "3px 7px",
               borderRadius: "4px",
               border: "1px solid var(--c-border)",
@@ -186,8 +283,8 @@ function PersonalizationBanner({ data, onDismiss }: { data: LedgerData; onDismis
             {s}
           </span>
         ))}
-        <button
-          type="button"
+        <Link
+          href="/settings/preferences"
           className={styles.bare}
           style={{
             boxSizing: "content-box",
@@ -196,12 +293,12 @@ function PersonalizationBanner({ data, onDismiss }: { data: LedgerData; onDismis
             margin: "-16px 0",
             display: "inline-flex",
             alignItems: "center",
-            font: "500 11px/1 Inter, sans-serif",
+            font: "500 11px/1 var(--font-inter), sans-serif",
             color: "var(--c-secondary)",
           }}
         >
           Edit →
-        </button>
+        </Link>
       </div>
       <button
         type="button"
@@ -232,10 +329,17 @@ function Masthead({ data }: { data: LedgerData }) {
   return (
     <div style={{ backgroundColor: "var(--c-inverse)", padding: "11px 20px 12px", marginTop: "10px" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <span style={{ font: "700 19px/1 'Playfair Display', serif", letterSpacing: "-0.01em", color: "var(--c-oninv)" }}>
-          Signal<span style={{ display: "inline-block", font: "700 19px/1 'Playfair Display', serif", color: "var(--c-oninv-gold)" }}>era</span>
+        <span style={{ font: "700 19px/1 var(--font-playfair-display), serif", letterSpacing: "-0.01em", color: "var(--c-oninv)" }}>
+          Signal<span style={{ display: "inline-block", font: "700 19px/1 var(--font-playfair-display), serif", color: "var(--c-oninv-gold)" }}>era</span>
         </span>
+        {/* Decorative, and now actually marked so. The PR previously claimed this
+            was aria-hidden while the attribute was absent from the node, which
+            left an unlabelled node in the accessibility tree, and an unlabelled
+            EMPTY one whenever no initials are derivable. The shell's own avatar
+            is the labelled affordance; this disc repeats it and announces
+            nothing. */}
         <span
+          aria-hidden="true"
           style={{
             width: "33px",
             height: "33px",
@@ -245,39 +349,48 @@ function Masthead({ data }: { data: LedgerData }) {
             display: "inline-flex",
             alignItems: "center",
             justifyContent: "center",
-            font: "600 11.5px/1 Inter, sans-serif",
+            font: "600 11.5px/1 var(--font-inter), sans-serif",
             color: "var(--c-oninv)",
           }}
         >
-          MR
+          {/* The design's disc carries "MR", the sample reader's initials.
+              Printed over a real session those are another person's letters on
+              this person's screen, so they come from the reader's own profile
+              or the disc stays empty. Decorative either way: the shell's own
+              avatar is the labelled one. */}
+          {data.initials}
         </span>
       </div>
-      <div style={{ marginTop: "12px", font: "700 19px/1.1 'Playfair Display', serif", letterSpacing: "-0.01em", color: "var(--c-oninv)" }}>
+      <div style={{ marginTop: "12px", font: "700 19px/1.1 var(--font-playfair-display), serif", letterSpacing: "-0.01em", color: "var(--c-oninv)" }}>
         Morning Brief
       </div>
-      <div
-        style={{
-          marginTop: "6px",
-          maxWidth: "230px",
-          font: "400 italic 12.5px/1.3 'Playfair Display', serif",
-          color: "rgba(255,253,249,0.78)",
-        }}
-      >
-        {data.tagline}
-      </div>
-      <span
-        style={{
-          marginTop: "10px",
-          display: "inline-block",
-          font: "600 10px/1 Inter, sans-serif",
-          padding: "4px 9px",
-          borderRadius: "14px",
-          backgroundColor: "rgba(255,253,249,0.15)",
-          color: "rgba(255,253,249,0.9)",
-        }}
-      >
-        {data.readMinutes} min read
-      </span>
+      {data.tagline ? (
+        <div
+          style={{
+            marginTop: "6px",
+            maxWidth: "230px",
+            font: "400 italic 12.5px/1.3 var(--font-playfair-display), serif",
+            color: "rgba(255,253,249,0.78)",
+          }}
+        >
+          {data.tagline}
+        </div>
+      ) : null}
+      {data.readMinutes !== null ? (
+        <span
+          style={{
+            marginTop: "10px",
+            display: "inline-block",
+            font: "600 10px/1 var(--font-inter), sans-serif",
+            padding: "4px 9px",
+            borderRadius: "14px",
+            backgroundColor: "rgba(255,253,249,0.15)",
+            color: "rgba(255,253,249,0.9)",
+          }}
+        >
+          {data.readMinutes} min read
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -300,13 +413,13 @@ function StatsBar({ data, loading }: { data: LedgerData; loading: boolean }) {
           {/* One anatomy for all four cells. The design draws three labels in
               Inter 700 and the VIX label in mono at --c-oninv-dim, which is two
               anatomies in one band and measures 2.9:1 on cream. See the PR. */}
-          <span style={{ font: "700 10px/1 Inter, sans-serif", color: "var(--c-muted)" }}>{s.label}</span>
+          <span style={{ font: "700 10px/1 var(--font-inter), sans-serif", color: "var(--c-muted)" }}>{s.label}</span>
           {loading ? (
             <span className={styles.sk} style={{ display: "inline-block", width: "34px", height: "10px" }} />
           ) : (
             <span
               style={{
-                font: "700 12px/1 'JetBrains Mono', monospace",
+                font: "700 12px/1 var(--font-jetbrains-mono), monospace",
                 color:
                   s.tone === "calm"
                     ? "var(--c-greenink)"
@@ -324,7 +437,7 @@ function StatsBar({ data, loading }: { data: LedgerData; loading: boolean }) {
       ))}
       <span style={{ display: "inline-flex", alignItems: "center", gap: "5px", marginLeft: "auto" }}>
         <span style={{ width: "6px", height: "6px", borderRadius: "50%", backgroundColor: "var(--c-green)" }} />
-        <span style={{ font: "400 10px/1 'JetBrains Mono', monospace", letterSpacing: "0.07em", color: "var(--c-muted)" }}>
+        <span style={{ font: "400 10px/1 var(--font-jetbrains-mono), monospace", letterSpacing: "0.07em", color: "var(--c-muted)" }}>
           LIVE
         </span>
       </span>
@@ -332,8 +445,8 @@ function StatsBar({ data, loading }: { data: LedgerData; loading: boolean }) {
   );
 }
 
-function Continuity({ data }: { data: LedgerData }) {
-  const c = data.continuity;
+function Continuity({ continuity }: { continuity: NonNullable<LedgerData["continuity"]> }) {
+  const c = continuity;
   return (
     <div
       className={styles.enter}
@@ -350,10 +463,10 @@ function Continuity({ data }: { data: LedgerData }) {
       }}
     >
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
-        <span style={{ font: "400 10px/1 'JetBrains Mono', monospace", letterSpacing: "0.07em", color: "var(--c-goldink)" }}>
+        <span style={{ font: "400 10px/1 var(--font-jetbrains-mono), monospace", letterSpacing: "0.07em", color: "var(--c-goldink)" }}>
           SINCE YOU LAST LOOKED
         </span>
-        <span style={{ font: "400 10px/1 'JetBrains Mono', monospace", letterSpacing: "0.07em", color: "var(--c-muted)" }}>
+        <span style={{ font: "400 10px/1 var(--font-jetbrains-mono), monospace", letterSpacing: "0.07em", color: "var(--c-muted)" }}>
           {c.changeCount} CHANGES
         </span>
       </div>
@@ -378,8 +491,8 @@ function Continuity({ data }: { data: LedgerData }) {
               flex: 1,
               minWidth: 0,
               font: l.emphasis
-                ? "500 13px/1.4 Inter, sans-serif"
-                : "400 12.5px/1.45 Inter, sans-serif",
+                ? "500 13px/1.4 var(--font-inter), sans-serif"
+                : "400 12.5px/1.45 var(--font-inter), sans-serif",
               color: l.emphasis ? "var(--c-ink)" : "var(--c-body)",
             }}
           >
@@ -388,7 +501,7 @@ function Continuity({ data }: { data: LedgerData }) {
           {l.before ? (
             <span
               style={{
-                font: "500 10px/1 'JetBrains Mono', monospace",
+                font: "500 10px/1 var(--font-jetbrains-mono), monospace",
                 letterSpacing: "0.04em",
                 color: "var(--c-muted)",
               }}
@@ -416,9 +529,9 @@ function Continuity({ data }: { data: LedgerData }) {
           gap: "10px",
         }}
       >
-        <span style={{ font: "600 12px/1 Inter, sans-serif", color: "var(--c-ink)" }}>{c.openNow}</span>
+        <span style={{ font: "600 12px/1 var(--font-inter), sans-serif", color: "var(--c-ink)" }}>{c.openNow}</span>
         <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          <span style={{ font: "400 10px/1 'JetBrains Mono', monospace", letterSpacing: "0.04em", color: "var(--c-muted)" }}>
+          <span style={{ font: "400 10px/1 var(--font-jetbrains-mono), monospace", letterSpacing: "0.04em", color: "var(--c-muted)" }}>
             {c.nextIn}
           </span>
           {/* Drawn at rest, which is rotate(0deg), because the open-call list
@@ -440,8 +553,8 @@ function Continuity({ data }: { data: LedgerData }) {
   );
 }
 
-function PulseHero({ data }: { data: LedgerData }) {
-  const p = data.pulse;
+function PulseHero({ pulse }: { pulse: NonNullable<LedgerData["pulse"]> }) {
+  const p = pulse;
   return (
     <div
       className={styles.rise}
@@ -479,10 +592,10 @@ function PulseHero({ data }: { data: LedgerData }) {
           sibling: without this the stamp, the headline and the drivers all sit
           under the wash rather than on the card. */}
       <div style={{ position: "relative", padding: "18px 16px 16px" }}>
-      <div style={{ font: "400 10px/1 'JetBrains Mono', monospace", letterSpacing: "0.07em", color: "rgba(255,253,249,0.55)" }}>
+      <div style={{ font: "400 10px/1 var(--font-jetbrains-mono), monospace", letterSpacing: "0.07em", color: "rgba(255,253,249,0.55)" }}>
         {p.stampedAt}
       </div>
-      <p style={{ margin: "12px 0 0", font: "800 25px/1.24 'Playfair Display', serif", letterSpacing: "-0.025em", color: "var(--c-oninv)" }}>
+      <p style={{ margin: "12px 0 0", font: "800 25px/1.24 var(--font-playfair-display), serif", letterSpacing: "-0.025em", color: "var(--c-oninv)" }}>
         Today the market is{" "}
         <span
           style={{
@@ -499,6 +612,7 @@ function PulseHero({ data }: { data: LedgerData }) {
         </span>
         .
       </p>
+      {p.drivers.length > 0 ? (
       <div style={{ marginTop: "15px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
         {p.drivers.map((d) => (
           <span
@@ -507,7 +621,7 @@ function PulseHero({ data }: { data: LedgerData }) {
               display: "inline-flex",
               alignItems: "center",
               gap: "8px",
-              font: "500 12px/1 Inter, sans-serif",
+              font: "500 12px/1 var(--font-inter), sans-serif",
               color: "var(--c-oninv)",
               backgroundColor: "rgba(255,253,249,0.08)",
               border: "1px solid rgba(212,168,75,0.25)",
@@ -518,7 +632,7 @@ function PulseHero({ data }: { data: LedgerData }) {
             {d.label}
             <span
               style={{
-                font: "600 10px/1.35 Inter, sans-serif",
+                font: "600 10px/1.35 var(--font-inter), sans-serif",
                 padding: "3px 7px",
                 borderRadius: "4px",
                 backgroundColor: `var(--pill-${d.tone}-bg)`,
@@ -531,77 +645,126 @@ function PulseHero({ data }: { data: LedgerData }) {
           </span>
         ))}
       </div>
+      ) : null}
       </div>
     </div>
   );
 }
 
-function PulseProse({ data, open, onToggle }: { data: LedgerData; open: boolean; onToggle: () => void }) {
-  const p = data.pulse;
+function PulseProse({
+  pulse,
+  open,
+  onToggle,
+}: {
+  pulse: NonNullable<LedgerData["pulse"]>;
+  open: boolean;
+  onToggle: () => void;
+}) {
+  const p = pulse;
   return (
     <>
-      <p style={{ margin: "16px 0 0", font: "400 17px/1.55 'Playfair Display', serif", color: "var(--c-ink)", textWrap: "pretty" }}>
+      <p style={{ margin: "16px 0 0", font: "400 17px/1.55 var(--font-playfair-display), serif", color: "var(--c-ink)", textWrap: "pretty" }}>
         {p.lede}
       </p>
       {(open ? p.body : p.body.slice(0, 1)).map((b) => (
-        <p key={b.slice(0, 24)} style={{ margin: "12px 0 0", font: "400 var(--v3-body)/var(--v3-lead) Inter, sans-serif", color: "var(--c-body)" }}>
+        <p key={b.slice(0, 24)} style={{ margin: "12px 0 0", font: "400 var(--v3-body)/var(--v3-lead) var(--font-inter), sans-serif", color: "var(--c-body)" }}>
           {b}
         </p>
       ))}
-      <button
-        type="button"
-        onClick={onToggle}
-        className={styles.bare}
-        style={{
-          minHeight: "44px",
-          display: "flex",
-          alignItems: "center",
-          font: "600 12.5px/1 Inter, sans-serif",
-          color: "var(--c-goldink)",
-        }}
-      >
-        {open ? "Less" : "Read the full pulse"}
-      </button>
+      {/* Nothing withheld, no control. The closed state already renders the
+          first body paragraph, so a single-paragraph pulse has nothing left to
+          reveal and the label would promise prose the reader can already see.
+          The bar is more than one, not more than none. */}
+      {p.body.length > 1 ? (
+        <button
+          type="button"
+          onClick={onToggle}
+          className={styles.bare}
+          style={{
+            minHeight: "44px",
+            display: "flex",
+            alignItems: "center",
+            font: "600 12.5px/1 var(--font-inter), sans-serif",
+            color: "var(--c-goldink)",
+          }}
+        >
+          {open ? "Less" : "Read the full pulse"}
+        </button>
+      ) : null}
     </>
   );
 }
 
-function BriefProgress({ data }: { data: LedgerData }) {
-  const { read, total, status } = data.briefProgress;
+/**
+ * The desk's calls on this brief and how many are graded.
+ *
+ * ONLY A NUMBER IS A COUNT. `"failed"` is a read that answered with an error,
+ * and that is not a zero. Drawing it as `0 / N` under a full row of unfilled
+ * segments states a figure nothing established, in the most quantitative shape
+ * on the screen. So the numeral pair and the bar are drawn for a real count and
+ * for nothing else, and a failed read says it failed instead.
+ *
+ * The loader's `DeskLoad.decided` carries a third value, `null` for a read that
+ * was never made. It cannot arrive here: that read is skipped only when the
+ * brief has no calls, and then there is no progress block at all. See the note
+ * on `LedgerData.briefProgress`.
+ */
+function BriefProgress({ progress }: { progress: NonNullable<LedgerData["briefProgress"]> }) {
+  const { decided, total, status } = progress;
+  const counted = typeof decided === "number" ? decided : null;
   return (
     <div style={{ marginTop: "6px" }}>
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: "10px" }}>
-        <span style={{ font: "400 italic 12.5px/1 'Playfair Display', serif", color: "var(--c-secondary)" }}>
+        <span style={{ font: "400 italic 12.5px/1 var(--font-playfair-display), serif", color: "var(--c-secondary)" }}>
           {status}
         </span>
-        <span style={{ font: "400 10.5px/1 'JetBrains Mono', monospace", letterSpacing: "0.045em", color: "var(--c-muted)" }}>
-          {read} / {total}
-        </span>
+        {counted !== null ? (
+          <span style={{ font: "400 10.5px/1 var(--font-jetbrains-mono), monospace", letterSpacing: "0.045em", color: "var(--c-muted)" }}>
+            {counted} / {total}
+          </span>
+        ) : null}
       </div>
-      <div style={{ marginTop: "9px", display: "flex", gap: "5px" }} aria-hidden="true">
-        {Array.from({ length: total }, (_, i) => (
-          <div
-            key={i}
-            style={{
-              flex: 1,
-              height: "2px",
-              backgroundColor: i < read ? "var(--c-ink)" : "var(--c-border)",
-            }}
-          />
-        ))}
-      </div>
+      {counted !== null ? (
+        <div style={{ marginTop: "9px", display: "flex", gap: "5px" }} aria-hidden="true">
+          {Array.from({ length: total }, (_, i) => (
+            <div
+              key={i}
+              style={{
+                flex: 1,
+                height: "2px",
+                backgroundColor: i < counted ? "var(--c-ink)" : "var(--c-border)",
+              }}
+            />
+          ))}
+        </div>
+      ) : null}
+      {decided === "failed" ? (
+        <div
+          role="status"
+          style={{
+            marginTop: "8px",
+            font: "400 11.5px/1.5 var(--font-inter), sans-serif",
+            color: "var(--c-secondary)",
+          }}
+        >
+          We could not read which of these have been decided.
+        </div>
+      ) : null}
     </div>
   );
 }
 
 function TailAction({
   label,
+  href,
   weight,
   borderToken,
   marginTop,
   fillToken,
 }: {
   label: string;
+  /** Where it goes. Required: a tail action with nowhere to go is not one. */
+  href: string;
   weight: number;
   borderToken: string;
   marginTop: string;
@@ -609,8 +772,8 @@ function TailAction({
   fillToken?: string;
 }) {
   return (
-    <button
-      type="button"
+    <Link
+      href={href}
       className={styles.bare}
       style={{
         marginTop,
@@ -628,14 +791,14 @@ function TailAction({
         border: `1px solid ${borderToken}`,
         borderRadius: "9px",
         backgroundColor: fillToken,
-        font: `${weight} 13px/1.4 Inter, sans-serif`,
+        font: `${weight} 13px/1.4 var(--font-inter), sans-serif`,
         color: "var(--c-ink)",
         textAlign: "left",
       }}
     >
       <span style={{ minWidth: 0, flex: 1 }}>{label}</span>
       <Chevron direction="right" size={15} />
-    </button>
+    </Link>
   );
 }
 
@@ -660,16 +823,26 @@ function BriefSkeleton() {
  * failed read that reads as an empty one is a trust failure.
  */
 function BriefError() {
+  /* `router.refresh()` re-runs the server component, which re-runs the read.
+     That is a real retry here, unlike a client screen whose loader only fires
+     on mount. Before this the control was a bare `<button>` with no handler:
+     inert, focusable, announced as a button. It escaped the control census
+     because that was taken on the ready stage, and it was unreachable in
+     production only because of the guard-ordering defect above. Fixing that
+     made it a live control on the screen whose own headline fix was removing
+     controls that do nothing. */
+  const router = useRouter();
   return (
     <div style={{ paddingTop: "18px" }} role="alert">
-      <p style={{ margin: 0, font: "500 17px/1.4 'Playfair Display', serif", color: "var(--c-ink)" }}>
+      <p style={{ margin: 0, font: "500 17px/1.4 var(--font-playfair-display), serif", color: "var(--c-ink)" }}>
         We could not load the morning brief.
       </p>
-      <p style={{ margin: "10px 0 0", font: "400 13px/1.6 Inter, sans-serif", color: "var(--c-secondary)", maxWidth: "32ch" }}>
-        This is a failed read, not an empty result. Nothing is being hidden, and your open calls are unaffected.
+      <p style={{ margin: "10px 0 0", font: "400 13px/1.6 var(--font-inter), sans-serif", color: "var(--c-secondary)", maxWidth: "32ch" }}>
+        This is a failed read, not an empty result. Nothing is being hidden.
       </p>
       <button
         type="button"
+        onClick={() => router.refresh()}
         className={styles.bare}
         style={{
           marginTop: "14px",
@@ -679,7 +852,7 @@ function BriefError() {
           padding: "0 17px",
           border: "1px solid var(--c-ink)",
           borderRadius: "9px",
-          font: "600 13px/1 Inter, sans-serif",
+          font: "600 13px/1 var(--font-inter), sans-serif",
           color: "var(--c-ink)",
         }}
       >
@@ -692,11 +865,19 @@ function BriefError() {
 function BriefNone() {
   return (
     <div style={{ paddingTop: "18px" }}>
-      <p style={{ margin: 0, font: "500 17px/1.4 'Playfair Display', serif", color: "var(--c-ink)" }}>
+      <p style={{ margin: 0, font: "500 17px/1.4 var(--font-playfair-display), serif", color: "var(--c-ink)" }}>
         No brief published yet.
       </p>
-      <p style={{ margin: "10px 0 0", font: "400 13px/1.6 Inter, sans-serif", color: "var(--c-secondary)", maxWidth: "32ch" }}>
-        Nothing failed to load. The desk has not published yet, and it publishes at 6:45.
+      {/* This used to read "Nothing failed to load. The desk has not published
+          yet." Both halves overreach. `briefQuery` excludes the sentinel
+          headline the pipeline writes when a run fails upstream, so a brief
+          that published as a failure row lands here, and on that path
+          something did fail and the desk did publish. What the read actually
+          establishes is narrower and is all this says now: it answered, and it
+          returned no brief. The distinction from the error state, which is
+          what the old sentence was reaching for, survives in "answered". */}
+      <p style={{ margin: "10px 0 0", font: "400 13px/1.6 var(--font-inter), sans-serif", color: "var(--c-secondary)", maxWidth: "32ch" }}>
+        The read answered and returned no brief. The desk publishes at 6:45.
       </p>
     </div>
   );
@@ -713,11 +894,16 @@ function StaleNotice({ data }: { data: LedgerData }) {
         padding: "13px 14px",
       }}
     >
-      <div style={{ font: "600 12px/1 Inter, sans-serif", color: "var(--c-ink)" }}>
-        You are reading yesterday&rsquo;s brief.
+      {/* The bar is age-based: anything past 20 hours is stale, and a brief
+          three days old is not yesterday's. So it names the day the brief
+          carries rather than a relative word its own trigger cannot support.
+          That day is the one the date rule below already prints, so the
+          notice and the rule state the same frame. */}
+      <div style={{ font: "600 12px/1 var(--font-inter), sans-serif", color: "var(--c-ink)" }}>
+        You are reading the brief from {data.today.date}.
       </div>
-      <div style={{ marginTop: "4px", font: "400 11.5px/1.5 Inter, sans-serif", color: "var(--c-body)" }}>
-        Today&rsquo;s has not published yet. Generated {data.generatedAt}. Your review dates are unaffected.
+      <div style={{ marginTop: "4px", font: "400 11.5px/1.5 var(--font-inter), sans-serif", color: "var(--c-body)" }}>
+        Today&rsquo;s has not published yet.{data.generatedAt ? ` Generated ${data.generatedAt}.` : ""}
       </div>
     </div>
   );

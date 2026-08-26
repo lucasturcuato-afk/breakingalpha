@@ -55,7 +55,7 @@ export function LedgerDateRule({
     >
       <span
         style={{
-          font: "400 italic 13px/1 'Playfair Display', serif",
+          font: "400 italic 13px/1 var(--font-playfair-display), serif",
           color: "var(--c-secondary)",
         }}
       >
@@ -71,7 +71,7 @@ export function LedgerDateRule({
             minHeight: "44px",
             display: "inline-flex",
             alignItems: "center",
-            font: "600 11px/1 Inter, sans-serif",
+            font: "600 11px/1 var(--font-inter), sans-serif",
             color: "var(--c-ink)",
             textDecoration: "underline",
             textUnderlineOffset: "3px",

@@ -14,5 +14,11 @@ export { LedgerDateRule } from "./ledger-date-rule";
 export type { LedgerDateRuleProps } from "./ledger-date-rule";
 export { LedgerScreen } from "./ledger-screen";
 export type { BriefStage } from "./ledger-screen";
-export { LEDGER_FIXTURE } from "./fixture";
+/* LEDGER_FIXTURE is deliberately NOT re-exported here, and the type exports
+   below are types only, so nothing in this barrel carries fixture prose.
+   Six client components import Chevron, ClaimAnatomy, OUTCOME_TOKENS and
+   friends from this file, and a value export of the fixture pulled the whole
+   module into their graph: the prose measured in .next/static whether or not
+   the gate could ever let it paint. Import the fixture by path, from a server
+   component, the way src/app/ledger/page.tsx does. */
 export type { LedgerData, LedgerClaim, LedgerEntry, LedgerDay } from "./fixture";

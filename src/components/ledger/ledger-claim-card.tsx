@@ -62,7 +62,7 @@ export function LedgerClaimCard({
     <ClaimAnatomy
       scale="card"
       lead={
-        <span style={{ font: "600 11px/1 Inter, sans-serif", color: "var(--c-secondary)" }}>
+        <span style={{ font: "600 11px/1 var(--font-inter), sans-serif", color: "var(--c-secondary)" }}>
           {eyebrow}
         </span>
       }
@@ -104,7 +104,7 @@ export function LedgerClaimCard({
           <p
             style={{
               margin: "12px 0 0",
-              font: "400 11.5px/1.5 Inter, sans-serif",
+              font: "400 11.5px/1.5 var(--font-inter), sans-serif",
               color: "var(--c-muted)",
             }}
           >
@@ -121,7 +121,7 @@ export function LedgerClaimCard({
             gap: "12px",
           }}
         >
-          <div style={{ font: "400 11.5px/1.4 Inter, sans-serif", color: "var(--c-secondary)" }}>
+          <div style={{ font: "400 11.5px/1.4 var(--font-inter), sans-serif", color: "var(--c-secondary)" }}>
             {reviewWindow}
             {windowRelative ? (
               <>
@@ -140,7 +140,7 @@ export function LedgerClaimCard({
                 margin: "-16px 0",
                 display: "flex",
                 alignItems: "center",
-                font: "600 12px/1 Inter, sans-serif",
+                font: "600 12px/1 var(--font-inter), sans-serif",
                 color: "var(--c-muted)",
                 whiteSpace: "nowrap",
               }}
@@ -162,7 +162,7 @@ export function LedgerClaimCard({
                 padding: "0 17px",
                 border: "1px solid var(--c-ink)",
                 borderRadius: "9px",
-                font: "600 13px/1 Inter, sans-serif",
+                font: "600 13px/1 var(--font-inter), sans-serif",
                 color: "var(--c-ink)",
                 whiteSpace: "nowrap",
               }}
