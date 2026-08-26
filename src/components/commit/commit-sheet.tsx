@@ -330,7 +330,13 @@ export function CommitSheet({ target, onDismiss, onCommitted }: CommitSheetProps
             maxLength={2000}
             aria-label="Your reasoning"
             aria-describedby={hintId}
-            placeholder="Lending attach is carrying the segment and Square is only compounding at its mature rate."
+            /* The design writes a worked example here, an invented claim about
+               two named companies. A placeholder is a string literal in a
+               client component, so it ships in .next/static and is
+               downloadable whether or not anyone opens the sheet, which is
+               exactly the shape PR #676 removed from five screens. It teaches
+               the same register without asserting anything about anybody. */
+            placeholder="What has to be true for this, and what would change your mind."
             style={{
               width: "100%",
               minHeight: "86px",
