@@ -198,7 +198,23 @@ export function CommitSheet({ target, onDismiss, onCommitted }: CommitSheetProps
           ? "Press to enter this on your ledger"
           : "Write your reasoning first";
 
-  const buttonFill = ready ? "var(--c-ink)" : "var(--c-locked-bg)";
+  /* THE READY BUTTON IS INVISIBLE IN DARK AS THE DESIGN DRAWS IT, and this is
+     measured off the running build rather than reasoned about.
+     `commitStyle` (`:3493`) fills with `--c-ink` and inks with `--c-oninv`.
+     In light both resolve to the espresso and the cream, 18.23:1. In dark
+     `--c-ink` is #f5efe3 and `--c-oninv` is #f5efe3, THE SAME VALUE: the label
+     measures 1.00:1 against its own fill and cannot be read at all.
+
+     `--c-inverse` is the fill whose ink `--c-oninv` names, which is the whole
+     of why that pair exists. In light it is byte-identical to `--c-ink`, so
+     nothing measured on the light plate or in the parity fingerprint moves. In
+     dark it takes the ready state from 1.00:1 to 17.34:1.
+
+     Same class as DECISIONS.md ruling 10: a measurement that fails an
+     accessibility floor is not a style preference, and the design does not get
+     to overrule it by having been drawn first. Token-role errors surface in
+     one theme only, which is exactly why the check is per theme. */
+  const buttonFill = ready ? "var(--c-inverse)" : "var(--c-locked-bg)";
   const buttonInk = ready ? "var(--c-oninv)" : "var(--c-locked-ink)";
 
   return (
