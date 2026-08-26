@@ -1,0 +1,73 @@
+/* Claim screen motion, and the two rules that cannot be expressed inline.
+ *
+ * Nothing here is responsive, for the same reason the Ledger's module is not:
+ * an inline style beats a class at every breakpoint, so a screen that styles
+ * measured values inline cannot also carry breakpoints in its stylesheet
+ * without one silently defeating the other.
+ *
+ * Easing is the design's single curve. The duration is the value on the
+ * prototype's own claim block, `v3in 240ms`, which is the shorter of the two
+ * entrances it uses and matches every other screen-level arrival. */
+
+.enter {
+  /* Rests in the drawn state and animates FROM the hidden one, so a subtree
+   * that never animates is still readable. The prototype writes `both`, which
+   * makes the hidden frame the resting frame; the Ledger module records the
+   * same correction. */
+  opacity: 1;
+  transform: none;
+  animation: claimIn 240ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+
+@keyframes claimIn {
+  from {
+    opacity: 0;
+    transform: translateY(7px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* The press state on the action bar is DELIBERATELY ABSENT, and the prototype
+ * does draw one: `style-active="transform:scale(0.98)"` sits on both controls
+ * in the bar. It shipped here once and came out.
+ *
+ * Both controls are inert, and press feedback on an inert control is the only
+ * thing on the screen still telling a reader their tap landed. It is the
+ * design's own touch affordance repurposed into a small untruth. It comes back
+ * the day either control does something, with the rule above it: the animation
+ * belongs to the action, not to the shape of the button. */
+
+/* Loading. The shimmer is the design's own, at its own duration. */
+.sk {
+  border-radius: 4px;
+  background: linear-gradient(
+    90deg,
+    var(--c-hair) 0%,
+    var(--c-surface) 50%,
+    var(--c-hair) 100%
+  );
+  background-size: 200% 100%;
+  animation: claimShimmer 1.8s ease-in-out infinite;
+}
+
+@keyframes claimShimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Nothing is hidden rather than merely unanimated: every rule above already
+   * rests in its drawn state, so removing the animation leaves the content on
+   * screen. */
+  .enter,
+  .sk {
+    animation: none;
+  }
+}
