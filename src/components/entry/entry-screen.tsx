@@ -63,7 +63,7 @@ const SCREEN_HEIGHT =
    the ruling should export the table and replace this constant with a read of
    it; the two are one line apart. The reading and the well sit outside the
    anatomy's four slots either way, so the constant does not disappear. */
-const PROSE = "400 13.5px/1.6 Inter, sans-serif";
+const PROSE = "400 13.5px/1.6 var(--font-inter), sans-serif";
 
 /**
  * `entry` is required and nullable, and it has no default.
@@ -130,7 +130,7 @@ export function EntryScreen({
             <p
               style={{
                 margin: "11px 0 0",
-                font: "400 italic 16px/1.62 'Playfair Display', serif",
+                font: "400 italic 16px/1.62 var(--font-playfair-display), serif",
                 color: "var(--c-ink)",
                 textWrap: "pretty",
               }}
@@ -151,7 +151,7 @@ export function EntryScreen({
                 <p
                   style={{
                     margin: "10px 0 0",
-                    font: "500 15px/1.55 Inter, sans-serif",
+                    font: "500 15px/1.55 var(--font-inter), sans-serif",
                     color: "var(--c-ink)",
                   }}
                 >
@@ -181,7 +181,7 @@ export function EntryScreen({
                 <p
                   style={{
                     margin: 0,
-                    font: "400 13.5px/1.65 Inter, sans-serif",
+                    font: "400 13.5px/1.65 var(--font-inter), sans-serif",
                     color: "var(--c-body)",
                     textWrap: "pretty",
                   }}
@@ -194,7 +194,7 @@ export function EntryScreen({
             <div
               style={{
                 marginTop: "18px",
-                font: "400 10px/1.7 'JetBrains Mono', monospace",
+                font: "400 10px/1.7 var(--font-jetbrains-mono), monospace",
                 letterSpacing: "0.07em",
                 color: "var(--c-muted)",
               }}
@@ -226,7 +226,7 @@ function EntryHead() {
     minHeight: "44px",
     display: "flex",
     alignItems: "center",
-    font: "500 13px/1 Inter, sans-serif",
+    font: "500 13px/1 var(--font-inter), sans-serif",
     color: "var(--c-secondary)",
   };
 
@@ -308,13 +308,13 @@ function EntryLead({ state, sector }: { state: OutcomeState; sector: string }) {
           transition: "none",
         }}
       />
-      <span style={{ font: "600 12.5px/1 Inter, sans-serif", color: t.text, transition: "none" }}>
+      <span style={{ font: "600 12.5px/1 var(--font-inter), sans-serif", color: t.text, transition: "none" }}>
         {OUTCOME_LABEL[state]}
       </span>
       <span
         style={{
           marginLeft: "auto",
-          font: "400 11px/1 Inter, sans-serif",
+          font: "400 11px/1 var(--font-inter), sans-serif",
           color: "var(--c-secondary)",
         }}
       >
@@ -333,7 +333,7 @@ function MonoStamp({ children }: { children: React.ReactNode }) {
     <div
       style={{
         marginTop: "16px",
-        font: "400 11px/1 'JetBrains Mono', monospace",
+        font: "400 11px/1 var(--font-jetbrains-mono), monospace",
         color: "var(--c-muted)",
       }}
     >
@@ -347,7 +347,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
     <div
       style={{
         marginTop: "16px",
-        font: "400 italic 12.5px/1 'Playfair Display', serif",
+        font: "400 italic 12.5px/1 var(--font-playfair-display), serif",
         color: "var(--c-secondary)",
       }}
     >
@@ -381,13 +381,13 @@ function EntrySkeleton() {
 function EntryError() {
   return (
     <div role="alert">
-      <p style={{ margin: 0, font: "500 17px/1.4 'Playfair Display', serif", color: "var(--c-ink)" }}>
+      <p style={{ margin: 0, font: "500 17px/1.4 var(--font-playfair-display), serif", color: "var(--c-ink)" }}>
         We could not load this entry.
       </p>
       <p
         style={{
           margin: "10px 0 0",
-          font: "400 13px/1.6 Inter, sans-serif",
+          font: "400 13px/1.6 var(--font-inter), sans-serif",
           color: "var(--c-secondary)",
           maxWidth: "32ch",
         }}
@@ -414,7 +414,7 @@ function EntryError() {
           padding: "0 17px",
           border: "1px solid var(--c-ink)",
           borderRadius: "9px",
-          font: "600 13px/1 Inter, sans-serif",
+          font: "600 13px/1 var(--font-inter), sans-serif",
           color: "var(--c-ink)",
         }}
       >
@@ -440,13 +440,13 @@ function EntryError() {
 function EntryUnwired() {
   return (
     <div role="status">
-      <p style={{ margin: 0, font: "500 17px/1.4 'Playfair Display', serif", color: "var(--c-ink)" }}>
+      <p style={{ margin: 0, font: "500 17px/1.4 var(--font-playfair-display), serif", color: "var(--c-ink)" }}>
         This screen is not reading from your record yet.
       </p>
       <p
         style={{
           margin: "10px 0 0",
-          font: "400 13px/1.6 Inter, sans-serif",
+          font: "400 13px/1.6 var(--font-inter), sans-serif",
           color: "var(--c-secondary)",
           maxWidth: "34ch",
           textWrap: "pretty",
@@ -462,13 +462,13 @@ function EntryUnwired() {
 function EntryNotFound() {
   return (
     <div>
-      <p style={{ margin: 0, font: "500 17px/1.4 'Playfair Display', serif", color: "var(--c-ink)" }}>
+      <p style={{ margin: 0, font: "500 17px/1.4 var(--font-playfair-display), serif", color: "var(--c-ink)" }}>
         That entry is not on your record.
       </p>
       <p
         style={{
           margin: "10px 0 0",
-          font: "400 13px/1.6 Inter, sans-serif",
+          font: "400 13px/1.6 var(--font-inter), sans-serif",
           color: "var(--c-secondary)",
           maxWidth: "32ch",
         }}
@@ -503,10 +503,10 @@ function StaleCheckNotice({ entry }: { entry: EntryRecord }) {
         padding: "13px 14px",
       }}
     >
-      <div style={{ font: "600 12px/1 Inter, sans-serif", color: "var(--c-ink)" }}>
+      <div style={{ font: "600 12px/1 var(--font-inter), sans-serif", color: "var(--c-ink)" }}>
         {checked ? "This is the last completed check." : "Nothing has been checked yet."}
       </div>
-      <div style={{ marginTop: "4px", font: "400 11.5px/1.5 Inter, sans-serif", color: "var(--c-body)" }}>
+      <div style={{ marginTop: "4px", font: "400 11.5px/1.5 var(--font-inter), sans-serif", color: "var(--c-body)" }}>
         {checked
           ? `Recorded ${checked}. Nothing has been re-read since, and nothing here is estimated in the meantime.`
           : "The window is still open. Nothing here is estimated in the meantime."}
