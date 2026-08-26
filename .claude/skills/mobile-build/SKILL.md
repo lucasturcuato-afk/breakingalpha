@@ -456,3 +456,63 @@ reviewer who read all thirteen PRs did not add them up either.
 Aggregation is a separate job from review, and it has to be someone's job or it
 is nobody's. The rollup is cheap: it is a read of thirteen PR bodies. It is the
 only step in this process that looks at the batch rather than at a screen.
+
+## Verifying plates: enumerate and open, never match a filename
+
+**Before a branch merges, list every image blob reachable from it and open each
+one. Do not decide what a plate contains from what it is called.**
+
+```
+git rev-list --objects origin/main..HEAD \
+  | awk 'NF==2' | grep -iE '\.(png|jpe?g|gif|webp|svg)$' \
+  | sort -u -k1,1
+```
+
+Then open them. All of them. The list is short enough to read.
+
+### Why this is a rule and not a suggestion
+
+**Six plates were missed tonight by name-based sweeps and found by enumeration.**
+Three separate greps ran over these branches and every one of them passed.
+
+- `ledger-390-signed-in-wired-full.png` carried **"signed-in" in its own
+  filename** and was still missed, because the pattern anticipated `-wired` and
+  `-claims` and not the `-full` suffix.
+- `desk-wired-390-light.png`, `-dark` and `-tail` read exactly like the plates a
+  wiring PR should carry. They were captures of the real graded desk record,
+  with tickers, dates, thesis text and price attributions.
+- Two more sets survived a plate deletion **inside PR bodies**, as prose and as
+  `?raw=true` links, after the images themselves had been removed. **Check the
+  body as well as the commits.**
+
+In the other direction, a loose pattern manufactures findings that are not real:
+`1440-desktop-` matched two DOM-signature `.txt` files that contain only node
+names and box geometry, and reported them as a leak.
+
+**A plate is what it is regardless of what it is called.** The filename is
+written by whoever captured it, at the moment they were thinking about something
+else.
+
+### What each kind looks like when you open it
+
+- **Fixture parity plate**: design beside built, both sides showing invented
+  data. On this programme the fixture record is 64 / 39 / 18 / 22 and the
+  invented calls are CEG, MSFT and SOFI. Safe.
+- **Lifecycle state**: driven by `?stage=`, drawing a skeleton, an error, an
+  empty or an unwired notice. Safe.
+- **Empty E2E account**: "Your feed is empty", zero counts. Safe.
+- **Signed-in production capture**: real index levels, a real dateline, real
+  desk narrative, or any individual call with a ticker and a date. **Never
+  commit one while the repository is public.**
+
+The distinction that matters most is the last one: an OPEN call with a future
+review date is a live position thesis. A graded historical call is the record
+the product already publishes about itself. Both are auth-gated; only the first
+is time-sensitive.
+
+### What to do instead
+
+Structural evidence carries the same claims without reproducing content: node
+counts, character counts, request counts, byte counts, computed styles,
+geometry, parity numbers and timings. A box-tree diff proved "the desk did not
+move" better than a pixel diff did, and it is immune to live values.
