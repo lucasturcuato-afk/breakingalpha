@@ -293,8 +293,21 @@ Notes that will otherwise cost you a cycle:
   read as a 674 ms improvement if that unit had not noticed and thrown it out.
   Kill what you started, on the port you started it on.
 
-Then `/run` to see the screen actually rendered, and `/code-review high --fix`
-on your own diff.
+Then `/run` to see the screen actually rendered, and **review your own diff
+explicitly**: read `git diff origin/main...HEAD` yourself, top to bottom, and
+say in the PR body what you found and fixed.
+
+**Do NOT use `/code-review`.** It resolves its target through
+`$CLAUDE_PROJECT_DIR`, which is the primary clone for every subagent regardless
+of which worktree the agent is working in. It never consults your cwd. So a
+dispatch that fences you to a worktree cannot bind it: one run reviewed the
+primary clone and left uncommitted edits in a working tree nobody had asked it
+to touch. See DECISIONS.md ruling 13.
+
+Reading your own diff is also better at this. The unit that did it after the
+misfire found two real defects a fenced tool had not: a length cap written twice
+so the field could accept more than the column stores, and an overlay not keyed
+on its subject, so a second open inherited the previous note.
 
 ## If you are measuring performance
 
@@ -363,7 +376,7 @@ suddenly starts working anonymously again, that is worth reporting.
    `docs/<screen>-parity/`.
 6. Values not sourced from a token, strings changed and why, and anything in
    the design that looks wrong.
-7. The `/code-review high --fix` findings you applied.
+7. What your own read of the diff found, and what you fixed. Not a tool's output: your own.
 
 ## Brief for your screen
 
