@@ -45,6 +45,7 @@ ruling names no step, the work sits off the mobile build path entirely.
 | 9 | cross-source palette. **Retoken.** One file, no shared surface. | Off the build path, same route as ruling 1. | Queued, own PR. |
 | 10 | Stats band, the VIX label. **Deviate from the design.** One anatomy across all four cells: Inter 700 in `--c-muted`. The design draws three labels in Inter 700 and the fourth in `"JetBrains Mono"` 400 at `--c-oninv-dim`, which is two anatomies in one band of equivalent cells, the thing the README's own responsive rule forbids. It also fails contrast on its own terms: `--c-oninv-dim` `#a2937a` on `--c-bg` `#fffdf9` measures **2.96:1** at a 10px label, against a 4.5 floor. The built `--c-muted` `#786a52` measures **5.19:1**. | Step 2 surface (Ledger). | **Shipped in #622.** Not to be reverted. The design carries the deviation, not the code. |
 | 11 | Desktop `/radar/calls` grows the same note requirement. **Ruled 2026-08-25.** The note is part of what adopting a call MEANS, not a mobile enrichment. A call taken without stated reasoning is a different object from one taken with it, and the record cannot tell them apart later. Scope: the same 12-character gate on the desktop adopt flow. The API already accepts the note without requiring it, so desktop needs no second API change. | Desktop `/radar/calls`. Not built here. | **Logged, not scheduled.** Desktop has no design for this; it inherits mobile's contract or gets its own pass. |
+| 12 | `--c-ink` fill with `--c-oninv` text. **A DESIGN defect, not a build one. Deviate.** In dark the two tokens resolve to the SAME value, `#f5efe3` at `tokens.css:503` and `:518`, so text inked with `--c-oninv` on a fill of `--c-ink` measures **1.00:1 against its own fill and is invisible**. Light is unaffected: `#1a1208` on `#fffdf9`. The fix is `--c-inverse`, which is what `--c-oninv` is named for: byte-identical in light, **17.34:1** in dark. | Commit sheet (step 3). Swept repo-wide. | **Shipped in #686.** The design carries the defect, not the code. |
 | 14 | Thesis Tracker and Thesis detail. **CUT from mobile scope.** Tracker's desktop surface is a four-line redirect shim: `/radar/theses` answers `redirect('/radar/calls?views=open')`, `RadarTabs` carries four tabs and Theses is not among them, and three files call it retired in their own comments (`radar/calls/page.tsx:250`, `search-data.ts:35`, `TrackedViews.tsx:17`). There is nothing to port. Detail (`/radar/track-record/[thesis_id]`) still renders but is orphaned: reachable only from the command palette and one link at `TrackedViews.tsx:402`, and absent from RadarTabs. | Step 8. | **Cut.** Missing-screen count corrects from 6 to 5. |
 | 15 | Memo. **STAYS in scope, as a port.** Not retired: `MemoModal.tsx` is mounted at 21 sites across 17 files, the most widely mounted component in the product, and it has no mobile surface at all. | Step 9. | **In scope, unbuilt.** The largest live desktop surface with zero mobile presence. |
 | 16 | Signal, Story and Deal detail. **Reclassified: NEW SCREENS, not ports.** None has a desktop source. `src/app/signal` and `src/app/story` do not exist; `/deal-flow` exists with no `[id]` route. Calling them 'missing' overstated readiness: there is nothing to port from, so each is new work. | Step 10. | **Reclassified.** |
@@ -167,6 +168,31 @@ reclassified three from "missing" to "new work". The reclassification matters
 more than it sounds: an inventory that lists Signal, Story and Deal detail as
 missing implies a port is waiting to be done, when in fact no source exists and
 each is a screen to be designed and built from the prototype alone.
+
+### Ruling 12, and the sweep behind it
+
+Found by the Commit sheet unit on **the most consequential control in the
+product**: the button that enters a call on the reader's record. In dark it drew
+its label invisibly against its own fill.
+
+**The token names are the trap.** `--c-oninv` means "on inverse", and it is
+correct on `--c-inverse`. `--c-ink` is a *text* token that also happens to read
+as a plausible dark fill, and pairing the two is a natural mistake that light
+mode never punishes. Nothing in the naming warns you, and the defect is
+invisible in the theme most people build in.
+
+**The sweep, so this is not just one screen's fix.** All 17 uses of
+`--c-oninv` across 9 files were checked, and every other one is correct:
+
+- `ledger-screen.tsx` was the only other file containing both tokens, and they
+  are on different elements. Its `--c-oninv` text sits on `var(--c-inverse)`;
+  its single `--c-ink` fill is a progress-bar segment with no text in it.
+- The other 8 files carry `--c-oninv` text and **no `--c-ink` fill at all**.
+
+So the Commit sheet was the only instance, and it is fixed. The pairing to
+watch for is a fill of `--c-ink` carrying text in `--c-oninv`, which is the
+shape a linter could catch: design-lint already has `ink-as-fill` for the
+`--c-*ink` family, and this is the same class one token over.
 
 
 ## Open items
