@@ -202,8 +202,9 @@ export function CommitSheet({ target, onDismiss, onCommitted }: CommitSheetProps
      measured off the running build rather than reasoned about.
      `commitStyle` (`:3493`) fills with `--c-ink` and inks with `--c-oninv`.
      In light both resolve to the espresso and the cream, 18.23:1. In dark
-     `--c-ink` is #f5efe3 and `--c-oninv` is #f5efe3, THE SAME VALUE: the label
-     measures 1.00:1 against its own fill and cannot be read at all.
+     the two tokens resolve to THE SAME VALUE, so the label measures 1.00:1
+     against its own fill and cannot be read at all. The literals are in
+     `tokens.css` and are not repeated here; the ratio is the finding.
 
      `--c-inverse` is the fill whose ink `--c-oninv` names, which is the whole
      of why that pair exists. In light it is byte-identical to `--c-ink`, so
@@ -346,12 +347,12 @@ export function CommitSheet({ target, onDismiss, onCommitted }: CommitSheetProps
             maxLength={2000}
             aria-label="Your reasoning"
             aria-describedby={hintId}
-            /* The design writes a worked example here, an invented claim about
-               two named companies. A placeholder is a string literal in a
-               client component, so it ships in .next/static and is
+            /* The design writes a worked example into this field, an invented
+               claim about two named companies. The attribute below is a string
+               literal in a client component, so it ships in .next/static and is
                downloadable whether or not anyone opens the sheet, which is
-               exactly the shape PR #676 removed from five screens. It teaches
-               the same register without asserting anything about anybody. */
+               exactly the shape PR #676 removed from five screens. The prompt
+               teaches the same register and asserts nothing about anybody. */
             placeholder="What has to be true for this, and what would change your mind."
             style={{
               width: "100%",
