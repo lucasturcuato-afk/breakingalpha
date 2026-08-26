@@ -44,6 +44,33 @@ ruling names no step, the work sits off the mobile build path entirely.
 | 8 | SIGNAL scores. **Stay.** Not a compliance issue. It is a relevance score, not an accuracy figure. Relevance ranking is editorial judgment, not a claim about accuracy, so it does not fall under the compliance rule. | **Lands on step 2, the Ledger card**, not the nav shell. The Ledger is the anatomy every other card reuses, so the design needs a slot for the badge before that card is written. Also touches steps 5, 9 and 10. | No production change. The design carries the deviation, not the code. |
 | 9 | cross-source palette. **Retoken.** One file, no shared surface. | Off the build path, same route as ruling 1. | Queued, own PR. |
 | 10 | Stats band, the VIX label. **Deviate from the design.** One anatomy across all four cells: Inter 700 in `--c-muted`. The design draws three labels in Inter 700 and the fourth in `"JetBrains Mono"` 400 at `--c-oninv-dim`, which is two anatomies in one band of equivalent cells, the thing the README's own responsive rule forbids. It also fails contrast on its own terms: `--c-oninv-dim` `#a2937a` on `--c-bg` `#fffdf9` measures **2.96:1** at a 10px label, against a 4.5 floor. The built `--c-muted` `#786a52` measures **5.19:1**. | Step 2 surface (Ledger). | **Shipped in #622.** Not to be reverted. The design carries the deviation, not the code. |
+| 11 | Desktop `/radar/calls` grows the same note requirement. **Ruled 2026-08-25.** The note is part of what adopting a call MEANS, not a mobile enrichment. A call taken without stated reasoning is a different object from one taken with it, and the record cannot tell them apart later. Scope: the same 12-character gate on the desktop adopt flow. The API already accepts the note without requiring it, so desktop needs no second API change. | Desktop `/radar/calls`. Not built here. | **Logged, not scheduled.** Desktop has no design for this; it inherits mobile's contract or gets its own pass. |
+
+### Ruling 11, the two consequences that need owners
+
+**1. Claims adopted before 2026-08-25 have a permanently null note, and cannot be backfilled.**
+
+Nothing recorded when those notes would have been written, because there were no
+notes. So this is not a gap that closes over time from the old side. Review and
+the record both need a treatment that **reads as history rather than as a
+missing value**: a claim from before the feature existed is not a claim whose
+note failed to load, and rendering it as one would be the same defect class this
+programme spent its run removing.
+
+It must NOT fall back to `created_at`. That would put a real-looking timestamp
+above a note that does not exist.
+
+**2. Requiring a note will lower adoption conversion. That is intended.**
+
+A gate that costs nothing is not a gate. The point is that adopting a call
+should require saying why, and some people will decline — which is the feature
+working, not failing.
+
+But it should be **measured**, and it cannot be measured yet: the only accounts
+using this are the founders', and two people are not a conversion signal.
+**Measure once anyone outside the founder accounts is adopting calls**, and
+compare against the pre-gate rate rather than against an expectation.
+
 
 ## Open items
 
