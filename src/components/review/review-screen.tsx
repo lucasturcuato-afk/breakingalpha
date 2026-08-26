@@ -37,7 +37,7 @@ import styles from "./review.module.css";
  * This component cannot break that rule by accident. It never receives
  * `created_at` in any form. `ReviewData` carries no such field, the loader
  * resolves the one question that needs it into a boolean, and a grep for
- * `created_at` across `src/components/review/` returns nothing.
+ * `created_at` across `src/components/review/` finds nothing.
  *
  * THE NULL CASE IS PERMANENT AND IT IS MOST OF THE DATA. Every claim adopted
  * before 2026-08-25 has a null note and a null note timestamp, and there is no
@@ -225,7 +225,7 @@ export function ReviewScreen({
 
 /* ── the note, which is the screen's subject ───────────────────────────── */
 
-/** The mono eyebrow above the note slot, whatever the slot turns out to hold. */
+/** The mono eyebrow above the note slot, whatever that slot ends up carrying. */
 function NoteEyebrow({ children }: { children: ReactNode }) {
   return (
     <div style={{ font: `400 11px/1 ${FONT_MONO}`, color: "var(--c-oninv-dim)" }}>{children}</div>

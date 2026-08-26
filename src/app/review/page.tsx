@@ -93,17 +93,18 @@ function pick<T extends string>(
 
 /** The sample resolution, with one note outcome selected. */
 function sampleWithNote(note: NoteSelector): ReviewData {
-  if (note === "failed") return { ...REVIEW_FIXTURE, note: "failed" };
-  if (note === "historic") return { ...REVIEW_FIXTURE, note: null, predatesNotes: true };
-  if (note === "none") return { ...REVIEW_FIXTURE, note: null, predatesNotes: false };
+  const base: ReviewData = { ...REVIEW_FIXTURE };
+  if (note === "failed") return { ...base, note: "failed" };
+  if (note === "historic") return { ...base, note: null, predatesNotes: true };
+  if (note === "none") return { ...base, note: null, predatesNotes: false };
   if (note === "undated") {
-    const written = REVIEW_FIXTURE.note;
+    const written = base.note;
     return {
-      ...REVIEW_FIXTURE,
+      ...base,
       note: written === null || written === "failed" ? null : { ...written, writtenAt: null },
     };
   }
-  return REVIEW_FIXTURE;
+  return base;
 }
 
 export default async function ReviewPage({
@@ -121,8 +122,8 @@ export default async function ReviewPage({
      default and no `??` fallback, so a deleted gate is a type error rather
      than an invented resolution in front of a reader.
 
-     `redirect` returns `never`, so below this block `user` is known non-null
-     on the loader path without an assertion. */
+     `redirect` never yields to the next statement, so below this block `user`
+     is known non-null on the loader path without an assertion. */
   let stage: ReviewStage;
   let data: ReviewData | null;
 

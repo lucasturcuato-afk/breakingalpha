@@ -22,13 +22,15 @@ import { FONT_DISPLAY } from "@/components/mobile/fonts";
  * one file. A fifth word cannot be added without `claim-anatomy.tsx` changing.
  *
  * DEVIATION FROM THE PROTOTYPE, deliberate, recorded in the PR body. Line 502
- * fills the dot with `var(--c-red)`, which resolves to #dc2626 in light theme.
+ * fills the dot with `var(--c-red)`, which is the LIGHT-THEME red and resolves
+ * to a value with no contrast to spare on this surface.
  * The README: "On pinned-espresso surfaces use the literal on-espresso values,
  * not the ink tokens: #f87171 red, #4ade80 green, #fbbf24 amber. The ink
  * tokens are light-theme values and measure 2.86 to 3.76:1 on espresso."
  * The prototype breaks its own rule on the single most important instance of
  * the outcome word in the product. In dark theme `--c-red` already resolves to
- * #f87171, so the two agree there and differ only in light. Built to the
+ * the sanctioned literal, so the two agree there and differ only in light.
+ * Built to the
  * README. `design-lint` sanctions exactly these three literals for exactly
  * this case.
  *
