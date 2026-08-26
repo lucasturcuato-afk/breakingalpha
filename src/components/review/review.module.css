@@ -1,0 +1,98 @@
+/* Review motion. Only what cannot be an inline style lives here: keyframes and
+ * the reduced-motion block.
+ *
+ * Nothing here is responsive, deliberately. An inline style beats a class at
+ * every breakpoint, so mixing a responsive class with an inline property is a
+ * defect design-lint rejects. Keeping this module free of breakpoints lets the
+ * component style every measured value inline without ever colliding with it.
+ *
+ * Easing is the design's single curve. Durations are the prototype's own:
+ * 300ms for the screen (line 499), 560ms for the gold rule (line 503).
+ *
+ * Both classes REST IN THE DRAWN STATE. The prototype writes `both` on each,
+ * which makes the hidden frame the resting frame, so a subtree that mounts
+ * late hides itself permanently. The handoff states that rule and then breaks
+ * it here. */
+
+.enter {
+  opacity: 1;
+  transform: none;
+  animation: reviewIn 300ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+
+@keyframes reviewIn {
+  from {
+    opacity: 0;
+    transform: translateY(7px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.rule {
+  transform-origin: left;
+  transform: scaleX(1);
+  animation: reviewRule 560ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+
+@keyframes reviewRule {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+/* The loading skeleton, on espresso. The Ledger's shimmer reads across cream
+ * tokens and is invisible here, so this one runs between the two espresso
+ * surface values. */
+.sk {
+  border-radius: 4px;
+  background: linear-gradient(
+    90deg,
+    var(--c-inverse-well) 0%,
+    var(--c-inverse-border) 50%,
+    var(--c-inverse-well) 100%
+  );
+  background-size: 200% 100%;
+  animation: reviewShimmer 1.8s ease-in-out infinite;
+}
+
+@keyframes reviewShimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+/* A real button carrying none of the agent's default chrome, for the controls
+ * the design does not draw as buttons. The element stays a button for keyboard
+ * and assistive technology. */
+.bare {
+  appearance: none;
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Nothing is hidden rather than merely unanimated: every rule above already
+   * rests in its drawn state, so removing the animation leaves the gold rule
+   * at full width and the screen at full opacity. The skeleton keeps its
+   * mid-tone fill and simply stops moving. */
+  .enter,
+  .rule,
+  .sk {
+    animation: none;
+  }
+}
