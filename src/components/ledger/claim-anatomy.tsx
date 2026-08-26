@@ -66,10 +66,10 @@ export const CLAIM_TYPE_SCALE = {
     claimMargin: "14px 0 0",
     /* 13.5px/1.6, ruled 2026-08-25. 13.5 is what the rendered prototype
        measures on a detail screen, and a measured value beats the rounder 14
-       the handoff prose reaches for. The lead is 1.6, which is what
-       `--v3-lead` already holds, but it is written as a literal beside the
-       literal size: the token carries the card's density, and a screen that
-       borrowed it would follow the card the next time the card is retuned. */
+       the handoff prose reaches for. The lead is 1.6, the same number
+       `--v3-lead` carries, written as a literal beside the literal size: that
+       token is the card's density, and a screen borrowing it would follow the
+       card the next time the card is retuned. */
     prose: "400 13.5px/1.6 var(--font-inter), sans-serif",
     proseMargin: "9px 0 0",
   },
