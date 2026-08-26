@@ -28,6 +28,25 @@ const PROTOTYPE = process.env.SIG_PROTOTYPE || '.parity-proto.html';
 const WIDTH = Number(process.env.SIG_SHOT_WIDTH || 390);
 const SCALE = 2;
 
+/* URL substrings to abort while capturing, comma separated.
+ *
+ * THIS REPOSITORY IS PUBLIC, and a plate is a file anyone can open. Most of a
+ * fixture screen is invented and safe to publish beside the design. The ticker
+ * strip is not: it fetches live quotes on mount, so a capture of an otherwise
+ * entirely invented screen carries real index levels and, through them, the
+ * day it was taken. That is the one class the plate rules name and the one
+ * element on these screens that produces it.
+ *
+ * Blocking is better than cropping because the strip then renders its own
+ * empty state, which is a real state of the component rather than a hole.
+ *
+ *   SIG_SHOT_BLOCK=/api/watchlist-quotes node scripts/parity_shot.mjs ...
+ */
+const BLOCK = (process.env.SIG_SHOT_BLOCK || '')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+
 const [screen, url, selectorArg] = process.argv.slice(2);
 if (!screen || !url) {
   console.error('usage: parity_shot.mjs <screen> <url> [selector]');
@@ -102,6 +121,15 @@ async function shoot(page, target, theme, selector) {
   await page.setViewportSize({ width: WIDTH, height: Math.min(height + 80, 30_000) });
   await page.waitForTimeout(500);
 
+  /* The dev overlay is not part of the screen. Next mounts `nextjs-portal`
+     with its issue badge over the bottom-left corner, which on a bottom sheet
+     lands squarely on the tab bar and reads, to anyone opening the plate, as
+     something the design does. It is removed rather than hidden because it
+     lives in a shadow root that no injected stylesheet reaches. */
+  await page.evaluate(() => {
+    document.querySelectorAll('nextjs-portal').forEach((n) => n.remove());
+  });
+
   /* A marquee never settles on its own. Disabling animation rests every
    * animated rule in its drawn state, which is the frame worth comparing. */
   return page.locator(selector).screenshot({ animations: 'disabled' });
@@ -132,6 +160,11 @@ for (const theme of ['light', 'dark']) {
     viewport: { width: WIDTH, height: 900 },
     deviceScaleFactor: SCALE,
   });
+  if (BLOCK.length) {
+    await page.route('**/*', (route) =>
+      BLOCK.some((b) => route.request().url().includes(b)) ? route.abort() : route.continue(),
+    );
+  }
   const design = await shoot(page, 'file://' + process.cwd() + '/' + PROTOTYPE, theme, SELECTOR);
   const built = await shoot(page, url, theme, SELECTOR);
   await page.close();
