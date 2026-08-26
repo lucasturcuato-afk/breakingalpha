@@ -78,7 +78,7 @@ interface ClaimRow {
   commit_note_at?: string | null;
 }
 
-/** An outcome row with its claim embedded, which is the shape the read returns. */
+/** An outcome row with its claim embedded, which is the shape the read gives back. */
 interface JoinedOutcomeRow extends OutcomeRow {
   user_claims: ClaimRow | null;
 }
@@ -217,7 +217,7 @@ export async function loadReview(supabase: SupabaseClient, userId: string): Prom
      whenever the ungradable row happened to be newer.
 
      The two filters mirror the only two conditions under which the mapper
-     returns an absence rather than a verdict. The walk below re-checks against
+     yields an absence rather than a verdict. The walk below re-checks against
      the mapper anyway, so the mapper stays the authority on what counts as a
      verdict and this query stays an optimization of it. */
   const OUTCOME_COLUMNS =
