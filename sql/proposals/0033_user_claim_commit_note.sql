@@ -1,9 +1,16 @@
 -- =====================================================================
 -- 0033_user_claim_commit_note.sql
 --
---   *** PROPOSAL. NOT APPLIED. ***
+--   *** APPLIED TO PRODUCTION 2026-08-25, BY HAND, BY NOAH. ***
 --
--- Gives the user's own commit note somewhere to live.
+-- This file is now a RECORD of what was run, not a proposal. It was edited
+-- after the fact to match production, because the version that shipped in the
+-- PR contained only the first of the two columns. The second was ruled and run
+-- by hand. A migration file that does not match the database it describes is
+-- worse than no file, so this one was corrected rather than left as history.
+--
+-- Gives the user's own commit note, AND the moment it was written, somewhere
+-- to live.
 --
 -- WHY
 --
@@ -41,6 +48,7 @@
 -- REVERSIBLE
 --
 --   ALTER TABLE user_claims DROP COLUMN IF EXISTS commit_note;
+--   ALTER TABLE user_claims DROP COLUMN IF EXISTS commit_note_at;
 --
 -- Safe to run at any time before the API change merges. After it merges, the
 -- routes answer 503 rather than dropping the note, so a rollback degrades to
@@ -49,6 +57,11 @@
 
 ALTER TABLE user_claims
   ADD COLUMN IF NOT EXISTS commit_note text;
+
+-- The moment the note was written, which is NOT the moment the claim was
+-- adopted. See the ruling below: Review renders this, never created_at.
+ALTER TABLE user_claims
+  ADD COLUMN IF NOT EXISTS commit_note_at timestamptz;
 
 -- A note that is present must say something. The product requires it before
 -- the commit button unlocks, so an all-whitespace note is a client that got
@@ -101,21 +114,46 @@ COMMENT ON COLUMN user_claims.commit_note IS
 --   -- expect exactly: user_claims_owner_all | ALL
 --
 -- =====================================================================
--- OPEN QUESTION FOR THE RULING. Not decided here.
+-- RULED. Review renders commit_note_at, never created_at.
 -- =====================================================================
 --
 -- The design renders "YOU WROTE, 2026-08-06 06:58 PT" above the note
--- (prototype line 504). This proposal supplies no timestamp of its own and
--- expects Review to render user_claims.created_at, which is correct only while
--- the note cannot be edited after commitment.
+-- (prototype line 504). The question was which timestamp that is.
 --
--- The prototype never offers an edit affordance, so created_at is right today.
--- If a note ever becomes editable, "YOU WROTE" must track the note rather than
--- the row, and that needs its own column:
+-- RULING: it is commit_note_at, the moment the NOTE was written, not
+-- created_at, the moment the ROW was made. Noah, 2026-08-25.
 --
---   ALTER TABLE user_claims ADD COLUMN IF NOT EXISTS commit_note_at timestamptz;
+-- The reasoning, and it is the reason the column exists rather than a
+-- preference between two equally good options: the two values diverge the
+-- moment a note is edited. created_at is right only for as long as a note can
+-- never change after commitment, and nothing in the schema enforces that. A
+-- screen whose entire subject is "what you said, when you said it" should read
+-- the field that means that, not one that happens to coincide with it today.
 --
--- Deliberately not included. Adding an unused column now is cheap; adding it
--- later is one more migration. Ruling either way is fine, but the Review
--- screen should not be built until it is ruled, because it decides which
--- timestamp that screen reads.
+-- CONSEQUENCE FOR REVIEW. commit_note_at is NULL on every claim adopted before
+-- 2026-08-25, and there is no backfill: nothing recorded when those notes
+-- would have been written, because there were no notes. Review must render the
+-- honest-empty case for those rows. It must not fall back to created_at, which
+-- would show a real-looking timestamp above a note that does not exist.
+--
+-- The write sets both together or neither. A note with no timestamp and a
+-- timestamp with no note are both incoherent, and the API is the only place
+-- that can guarantee it.
+--
+-- =====================================================================
+-- VERIFY THE SECOND COLUMN
+-- =====================================================================
+--
+--   SELECT column_name, data_type, is_nullable
+--     FROM information_schema.columns
+--    WHERE table_name = 'user_claims'
+--      AND column_name IN ('commit_note', 'commit_note_at')
+--    ORDER BY column_name;
+--   -- expect: commit_note    | text                     | YES
+--   --         commit_note_at | timestamp with time zone | YES
+--
+--   SELECT count(*) FROM user_claims WHERE commit_note_at IS NOT NULL;
+--   -- expect: 0 before the first commit sheet write
+--
+-- Both confirmed against production on 2026-08-25: the REST endpoint answers
+-- 200 for each column rather than 42703.
