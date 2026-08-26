@@ -85,6 +85,13 @@ prev-date: 2026-08-11T23:31:00Z
 - Focus states from `globals.css` (2px gold, 2px offset, 4px radius). NOTE: this required giving all 287 interactive elements `tabindex="0"` and `role="button"` — they were plain divs, so nothing in the prototype was keyboard reachable at all.
 - Density: the prepared record now spans five months with month rules, not three entries.
 
+> **SCOPE CORRECTION, 2026-08-26 (DECISIONS.md rulings 14 to 16).** Three rows below are superseded. Read this before grounding any screen from them.
+>
+> - **Evidence tracker / Thesis Tracker and Thesis detail: CUT from mobile scope.** `/radar/theses` is a four-line redirect shim answering `redirect('/radar/calls?views=open')`. `RadarTabs.tsx` carries four tabs and Theses is not among them. Three files call it retired in their own comments: `radar/calls/page.tsx:250`, `search-data.ts:35`, `TrackedViews.tsx:17`. `/radar/track-record/[thesis_id]` still renders but is orphaned, reachable only from the command palette and `TrackedViews.tsx:402`. **There is nothing to port.**
+> - **Signal, Story and Deal detail are NEW SCREENS, not ports.** `src/app/signal` and `src/app/story` do not exist. `/deal-flow` exists with no `[id]` route. No desktop source means no port; each is designed and built from the prototype alone.
+> - **Memo STAYS in scope, as a port.** `MemoModal.tsx` is mounted at 21 sites across 17 files, the most widely mounted component in the product, with no mobile surface at all. It is the largest live desktop surface with zero mobile presence.
+
+
 ## Screen map
 | Screen | Built from |
 | --- | --- |
