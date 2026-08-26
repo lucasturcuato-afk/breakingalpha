@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { ClaimAnatomy, MobileTickerStrip } from "@/components/ledger";
 /* The Ledger's motion module, imported rather than copied.
  *
@@ -13,11 +13,18 @@ import { ClaimAnatomy, MobileTickerStrip } from "@/components/ledger";
  * the first, which is the failure the shared skill exists to prevent. The
  * module is not screen specific; only its file name is. */
 import motion from "@/components/ledger/ledger.module.css";
-import {
-  CLOSE_VISIBLE_PARAGRAPHS,
-  type EveningMover,
-  type EveningWrapData,
-  type ScorecardCell,
+import { useIsMobileViewport } from "./use-mobile-viewport";
+/* The three families the app loads, named by the variables `next/font`
+ * emits. This screen wrote the literals `Playfair Display`, `JetBrains Mono`
+ * and `Inter` 44 times between them, none of which the app loads, so most of
+ * its text rendered in a generic fallback. See `./fonts.ts`; the nodes that
+ * still do are all inside `src/components/ledger`. */
+import { MONO, SANS, SERIF } from "./fonts";
+import type {
+  EveningMover,
+  EveningReviewedCall,
+  EveningWrapData,
+  ScorecardCell,
 } from "./fixture";
 
 /**
@@ -40,9 +47,18 @@ import {
 
 export type WrapStage = "ready" | "loading" | "none" | "error" | "stale";
 
+/**
+ * Paragraphs of The Close that render before the toggle is opened.
+ *
+ * It lives here, with the block it governs, and no longer in `fixture.ts`. It
+ * is a render rule and never was sample content, and a client component that
+ * imports a value out of a fixture module drags that module's prose into
+ * `.next/static` whether or not the prose can ever paint. Types erase; this
+ * did not.
+ */
+export const CLOSE_VISIBLE_PARAGRAPHS = 2;
+
 const PAD = "var(--v3-pad)";
-const MONO = "'JetBrains Mono', monospace";
-const PLAYFAIR = "'Playfair Display', serif";
 
 /* Type on pinned espresso. The on-inverse ink family has no member at these
    alphas and no token can express an alpha of a token, so the alpha is spelled
@@ -56,10 +72,19 @@ const ON_ESPRESSO = {
 } as const;
 
 export function EveningWrapScreen({
-  stage = "ready",
+  stage,
   data,
 }: {
-  stage?: WrapStage;
+  /**
+   * REQUIRED, with no default.
+   *
+   * It used to default to `"ready"`, so a caller that left it off got a screen
+   * claiming a wrap had loaded rather than a compile error. `data` was already
+   * required and nullable and that is the half that matters, but the same
+   * argument applies one field over: the caller resolves the lifecycle and
+   * passes it, and omission is a build failure.
+   */
+  stage: WrapStage;
   /** The gated fixture, or null when no source exists. Never defaulted. */
   data: EveningWrapData | null;
 }) {
@@ -76,37 +101,38 @@ export function EveningWrapScreen({
      the wrap 40px too narrow to satisfy a measuring bug. Run the harness at
      --width 430 instead: 430 minus the injected gutter is 390, and both sides
      then measure 350. */
-  /* No source, no screen. See the note on `LedgerScreen`: the fixture used to
+  /* THE THREE GUARDS, IN THE ONLY ORDER THAT IS HONEST.
+     `none` and `error` are branches the loader picked deliberately, and both
+     are about the absence of a wrap, so neither needs a payload and neither
+     may be starved into a skeleton by one. They answer first.
+     Then the null guard. See the note on `LedgerScreen`: the fixture used to
      arrive here as a DEFAULT PARAMETER, so this screen rendered invented index
      levels, an invented 4:35 close and a fabricated CALL-0413 the moment the
-     mount gate above it was deleted. Early return, so below this line `data`
-     is non-null and no later edit can reintroduce it by omission. */
-  if (data === null) {
-    return (
-      <div data-parity="evening" style={{ backgroundColor: "var(--c-bg)", minHeight: "100%" }}>
-        <MobileTickerStrip />
-        <WrapSkeleton />
-      </div>
-    );
-  }
+     mount gate above it was deleted. Below this line `data` is non-null and no
+     later edit can reintroduce it by omission. A null that is not one of the
+     two named branches is a read still in flight, which is the loading state
+     and nothing else. */
+  if (stage === "none") return <WrapFrame><WrapNone /></WrapFrame>;
+  if (stage === "error") return <WrapFrame><WrapError /></WrapFrame>;
+  if (data === null) return <WrapFrame><WrapSkeleton /></WrapFrame>;
 
   return (
     <div data-parity="evening" style={{ backgroundColor: "var(--c-bg)", minHeight: "100%" }}>
       {/* Built once, in src/components/ledger, and imported here. The barrel
           says so in a comment: the design carries one ticker, not two. */}
-      <MobileTickerStrip />
-      {bannerShown ? <PersonalizationBanner data={data} onDismiss={() => setBannerShown(false)} /> : null}
+      <Tape />
+      {bannerShown && data.sectors.length > 0 ? (
+        <PersonalizationBanner data={data} onDismiss={() => setBannerShown(false)} />
+      ) : null}
 
       {stage === "loading" ? <WrapSkeleton /> : null}
-      {stage === "none" ? <WrapNone /> : null}
-      {stage === "error" ? <WrapError /> : null}
 
       {stage === "ready" || stage === "stale" ? (
         <div className={motion.enter} style={{ padding: `0 ${PAD} 26px` }}>
           <Masthead data={data} />
           <StatsBar data={data} />
           <DateRule data={data} />
-          <p style={{ margin: "9px 0 0", font: "400 12.5px/1.5 Inter, sans-serif", color: "var(--c-secondary)" }}>
+          <p style={{ margin: "9px 0 0", font: `400 12.5px/1.5 ${SANS}`, color: "var(--c-secondary)" }}>
             {data.tagline}
           </p>
 
@@ -114,78 +140,108 @@ export function EveningWrapScreen({
 
           <CloseHero data={data} />
 
-          <p style={{ margin: "18px 0 0", font: `400 17px/1.55 ${PLAYFAIR}`, color: "var(--c-ink)", textWrap: "pretty" }}>
-            {data.close.lede}
-          </p>
+          {data.close.lede ? (
+            <p style={{ margin: "18px 0 0", font: `400 17px/1.55 ${SERIF}`, color: "var(--c-ink)", textWrap: "pretty" }}>
+              {data.close.lede}
+            </p>
+          ) : null}
           {/* Keyed by position, not by content. A prefix of the paragraph is
               not unique: two paragraphs that open with the same clause collide
               and React drops one of them. The list is append-only and never
               reordered, so the index is the stable identity here. */}
           {data.close.body.slice(0, CLOSE_VISIBLE_PARAGRAPHS).map((b, i) => (
-            <p key={i} style={{ margin: `${i === 0 ? 12 : 11}px 0 0`, font: "400 var(--v3-body)/var(--v3-lead) Inter, sans-serif", color: "var(--c-body)", textWrap: "pretty" }}>
+            <p key={i} style={{ margin: `${i === 0 ? 12 : 11}px 0 0`, font: `400 var(--v3-body)/var(--v3-lead) ${SANS}`, color: "var(--c-body)", textWrap: "pretty" }}>
               {b}
             </p>
           ))}
           {closeOpen ? (
             <div className={motion.enter}>
               {data.close.body.slice(CLOSE_VISIBLE_PARAGRAPHS).map((b, i) => (
-                <p key={i} style={{ margin: "11px 0 0", font: "400 var(--v3-body)/var(--v3-lead) Inter, sans-serif", color: "var(--c-body)", textWrap: "pretty" }}>
+                <p key={i} style={{ margin: "11px 0 0", font: `400 var(--v3-body)/var(--v3-lead) ${SANS}`, color: "var(--c-body)", textWrap: "pretty" }}>
                   {b}
                 </p>
               ))}
             </div>
           ) : null}
-          <button
-            type="button"
-            onClick={() => setCloseOpen((v) => !v)}
-            aria-expanded={closeOpen}
-            className={motion.bare}
-            style={{
-              marginTop: "12px",
-              minHeight: "44px",
-              display: "flex",
-              alignItems: "center",
-              font: "600 12.5px/1 Inter, sans-serif",
-              color: "var(--c-goldink)",
-            }}
-          >
-            {closeOpen ? "Less" : "Read the full close"}
-          </button>
+          {/* A toggle with nothing behind it is a control that lies about what
+              it does. A wrap whose narrative is two paragraphs or shorter is
+              already fully on screen, so there is nothing to open. */}
+          {data.close.body.length > CLOSE_VISIBLE_PARAGRAPHS ? (
+            <button
+              type="button"
+              onClick={() => setCloseOpen((v) => !v)}
+              aria-expanded={closeOpen}
+              className={motion.bare}
+              style={{
+                marginTop: "12px",
+                minHeight: "44px",
+                display: "flex",
+                alignItems: "center",
+                font: `600 12.5px/1 ${SANS}`,
+                color: "var(--c-goldink)",
+              }}
+            >
+              {closeOpen ? "Less" : "Read the full close"}
+            </button>
+          ) : null}
 
-          <SectionRule label={"this morning's calls"} />
-          <ReviewedCall data={data} />
-          <div
-            style={{
-              marginTop: "10px",
-              padding: "13px 15px",
-              border: "1px solid var(--c-border)",
-              borderRadius: "12px",
-              backgroundColor: "var(--c-surface)",
-            }}
-          >
-            <p style={{ margin: 0, font: "400 12.5px/1.55 Inter, sans-serif", color: "var(--c-body)" }}>
-              {data.reviewedRest}
-            </p>
-          </div>
+          {/* The whole block goes when no open desk call could be read for
+              this session. A rule with an empty card under it would say the
+              desk published nothing, which is not what an absent read means. */}
+          {data.reviewed ? (
+            <>
+              <SectionRule label={"this morning's calls"} />
+              <ReviewedCall call={data.reviewed} />
+              {data.reviewedRest ? (
+                <div
+                  style={{
+                    marginTop: "10px",
+                    padding: "13px 15px",
+                    border: "1px solid var(--c-border)",
+                    borderRadius: "12px",
+                    backgroundColor: "var(--c-surface)",
+                  }}
+                >
+                  <p style={{ margin: 0, font: `400 12.5px/1.55 ${SANS}`, color: "var(--c-body)" }}>
+                    {data.reviewedRest}
+                  </p>
+                </div>
+              ) : null}
+            </>
+          ) : null}
 
-          <SectionRule label={"today's top stories"} />
-          <p style={{ margin: "11px 0 0", font: "400 var(--v3-body)/var(--v3-lead) Inter, sans-serif", color: "var(--c-body)", textWrap: "pretty" }}>
-            {data.stories.lede}
-          </p>
-          <div style={{ marginTop: "16px", display: "flex", flexDirection: "column" }}>
-            {data.stories.movers.map((m, i) => (
-              <MoverRow key={m.symbol} mover={m} last={i === data.stories.movers.length - 1} />
-            ))}
-          </div>
+          {data.stories.lede || data.stories.movers.length > 0 ? (
+            <>
+              <SectionRule label={"today's top stories"} />
+              {data.stories.lede ? (
+                <p style={{ margin: "11px 0 0", font: `400 var(--v3-body)/var(--v3-lead) ${SANS}`, color: "var(--c-body)", textWrap: "pretty" }}>
+                  {data.stories.lede}
+                </p>
+              ) : null}
+              <div style={{ marginTop: "16px", display: "flex", flexDirection: "column" }}>
+                {/* Keyed by position. A symbol is optional here, so it is not
+                    an identity, and the list is served in one order and never
+                    reordered in place. */}
+                {data.stories.movers.map((m, i) => (
+                  <MoverRow key={i} mover={m} last={i === data.stories.movers.length - 1} />
+                ))}
+              </div>
+            </>
+          ) : null}
 
-          <div style={{ marginTop: "22px", height: "1px", backgroundColor: "var(--c-border)" }} />
           {/* The wrap states its next event and offers no link to it. The
               Ledger's date rule links here and states no time. That asymmetry
               is DECISIONS.md O2, recorded as a design defect and reproduced
-              rather than resolved. */}
-          <p style={{ margin: "16px 0 0", font: `400 15px/1.6 ${PLAYFAIR}`, color: "var(--c-ink)", textWrap: "pretty" }}>
-            {data.nextEvent}
-          </p>
+              rather than resolved. The rule and the line go together: a rule
+              drawn over nothing is a heading for an absent section. */}
+          {data.nextEvent ? (
+            <>
+              <div style={{ marginTop: "22px", height: "1px", backgroundColor: "var(--c-border)" }} />
+              <p style={{ margin: "16px 0 0", font: `400 15px/1.6 ${SERIF}`, color: "var(--c-ink)", textWrap: "pretty" }}>
+                {data.nextEvent}
+              </p>
+            </>
+          ) : null}
           <div style={{ height: "calc(24px + env(safe-area-inset-bottom))" }} />
         </div>
       ) : null}
@@ -194,6 +250,48 @@ export function EveningWrapScreen({
 }
 
 /* ── blocks ─────────────────────────────────────────────────────────── */
+
+/**
+ * The ticker strip, drawn only where the screen is visible.
+ *
+ * `MobileTickerStrip` is imported from `src/components/ledger` and never
+ * rebuilt, exactly as the shared contract requires. What is added here is the
+ * gate around it, not a second strip.
+ *
+ * It needs one because this screen is composed BESIDE the desk layout under a
+ * `md:hidden` class, and a class is CSS: at 1440 the strip still mounted, and
+ * it polls its quotes route every 60 seconds for as long as the tab is open.
+ * That was a desktop cost on a mobile screen, and one of the three requests
+ * the independent report measured on a desk load. It is off above the
+ * breakpoint now.
+ *
+ * The gate is a measured viewport rather than a class because the strip's cost
+ * is a request, and a request does not care that the element is `display:none`.
+ */
+function Tape() {
+  const isMobileViewport = useIsMobileViewport();
+  if (!isMobileViewport) return null;
+  return <MobileTickerStrip />;
+}
+
+/**
+ * The screen root, shared by every branch.
+ *
+ * `data-parity="evening"` lives here and nowhere else, so parity scopes to the
+ * same element whatever the loader answered, and the ticker strip is drawn
+ * once instead of once per branch. The strip is the tape and it is live on
+ * every branch, including the ones where no wrap exists, at every width the
+ * screen is visible at. See `Tape` above for why that last clause is now
+ * doing work.
+ */
+function WrapFrame({ children }: { children: ReactNode }) {
+  return (
+    <div data-parity="evening" style={{ backgroundColor: "var(--c-bg)", minHeight: "100%" }}>
+      <Tape />
+      {children}
+    </div>
+  );
+}
 
 /**
  * The complete-profile variant of the personalization banner, which github.md
@@ -224,7 +322,7 @@ function PersonalizationBanner({ data, onDismiss }: { data: EveningWrapData; onD
       }}
     >
       <div style={{ minWidth: 0, display: "flex", alignItems: "center", gap: "7px", flexWrap: "wrap" }}>
-        <span style={{ font: "400 11px/1 Inter, sans-serif", color: "var(--c-muted)", whiteSpace: "nowrap" }}>
+        <span style={{ font: `400 11px/1 ${SANS}`, color: "var(--c-muted)", whiteSpace: "nowrap" }}>
           Personalized for:
         </span>
         {data.sectors.map((s) => (
@@ -236,7 +334,7 @@ function PersonalizationBanner({ data, onDismiss }: { data: EveningWrapData; onD
               borderRadius: "4px",
               backgroundColor: "var(--c-well)",
               border: "1px solid var(--c-border)",
-              font: "600 10px/1.35 Inter, sans-serif",
+              font: `600 10px/1.35 ${SANS}`,
               color: "var(--c-secondary)",
             }}
           >
@@ -253,7 +351,7 @@ function PersonalizationBanner({ data, onDismiss }: { data: EveningWrapData; onD
             minHeight: "12px",
             padding: "16px 0",
             margin: "-16px 0",
-            font: "500 11px/1 Inter, sans-serif",
+            font: `500 11px/1 ${SANS}`,
             color: "var(--c-secondary)",
             whiteSpace: "nowrap",
             textDecoration: "none",
@@ -300,7 +398,7 @@ function Masthead({ data }: { data: EveningWrapData }) {
   return (
     <div style={{ margin: `0 calc(-1 * ${PAD})`, backgroundColor: "var(--c-inverse)", padding: `11px ${PAD} 12px` }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px" }}>
-        <span style={{ display: "inline-flex", font: `700 19px/1 ${PLAYFAIR}`, letterSpacing: "-0.01em", color: "var(--c-oninv)" }}>
+        <span style={{ display: "inline-flex", font: `700 19px/1 ${SERIF}`, letterSpacing: "-0.01em", color: "var(--c-oninv)" }}>
           Signal<span style={{ color: "var(--c-oninv-gold)" }}>era</span>
         </span>
         {/* The only in-surface exit this screen has. A real anchor, because on
@@ -311,7 +409,7 @@ function Masthead({ data }: { data: EveningWrapData }) {
             minHeight: "44px",
             display: "flex",
             alignItems: "center",
-            font: "500 12px/1 Inter, sans-serif",
+            font: `500 12px/1 ${SANS}`,
             color: ON_ESPRESSO.control,
             textDecoration: "none",
           }}
@@ -321,10 +419,10 @@ function Masthead({ data }: { data: EveningWrapData }) {
       </div>
       <div style={{ marginTop: "9px", display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: "12px" }}>
         <div style={{ minWidth: 0 }}>
-          <div style={{ font: `700 19px/1.1 ${PLAYFAIR}`, letterSpacing: "-0.01em", color: "var(--c-oninv)" }}>
+          <div style={{ font: `700 19px/1.1 ${SERIF}`, letterSpacing: "-0.01em", color: "var(--c-oninv)" }}>
             Evening Wrap
           </div>
-          <div style={{ marginTop: "4px", font: `400 italic 12.5px/1.3 ${PLAYFAIR}`, color: ON_ESPRESSO.tagline }}>
+          <div style={{ marginTop: "4px", font: `400 italic 12.5px/1.3 ${SERIF}`, color: ON_ESPRESSO.tagline }}>
             {data.tagline}
           </div>
         </div>
@@ -335,7 +433,7 @@ function Masthead({ data }: { data: EveningWrapData }) {
             color: ON_ESPRESSO.pill,
             padding: "4px 9px",
             borderRadius: "14px",
-            font: "600 10px/1 Inter, sans-serif",
+            font: `600 10px/1 ${SANS}`,
             whiteSpace: "nowrap",
           }}
         >
@@ -348,7 +446,9 @@ function Masthead({ data }: { data: EveningWrapData }) {
 
 /**
  * The stats band. One anatomy across every cell, per DECISIONS.md ruling 10:
- * Inter 700 labels in --c-muted, mono values.
+ * sans 700 labels in --c-muted, mono values. The design names the faces
+ * Inter and JetBrains Mono; the app loads Space Grotesk and IBM Plex Mono and
+ * those are what render. See `./fonts.ts`.
  *
  * The design's per-cell skeleton is not reproduced. The prototype binds it to
  * `statLoading: s.briefStage === 'loading'`, which is the Morning Brief's
@@ -371,7 +471,7 @@ function StatsBar({ data }: { data: EveningWrapData }) {
     >
       {data.stats.map((s) => (
         <span key={s.label} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-          <span style={{ font: "700 10px/1 Inter, sans-serif", color: "var(--c-muted)" }}>{s.label}</span>
+          <span style={{ font: `700 10px/1 ${SANS}`, color: "var(--c-muted)" }}>{s.label}</span>
           <span
             style={{
               font: `700 12px/1 ${MONO}`,
@@ -398,7 +498,7 @@ function StatsBar({ data }: { data: EveningWrapData }) {
 function DateRule({ data }: { data: EveningWrapData }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: "11px", padding: "2px 0 0" }}>
-      <span style={{ font: `400 italic 13px/1 ${PLAYFAIR}`, color: "var(--c-secondary)" }}>{data.dateline}</span>
+      <span style={{ font: `400 italic 13px/1 ${SERIF}`, color: "var(--c-secondary)" }}>{data.dateline}</span>
       <span aria-hidden="true" style={{ flex: 1, height: "1px", backgroundColor: "var(--c-border)" }} />
       <span style={{ font: `400 10px/1 ${MONO}`, letterSpacing: "0.07em", color: "var(--c-muted)" }}>CLOSED</span>
     </div>
@@ -410,7 +510,7 @@ function DateRule({ data }: { data: EveningWrapData }) {
  *
  * The prose does NOT live inside the card. github.md's structural deviation
  * splits it: the hero keeps the stamp and the verdict at a fixed height and
- * the narrative moves below onto cream, first sentence as a Playfair lede,
+ * the narrative moves below onto cream, first sentence as a serif lede,
  * everything past the second paragraph behind the toggle.
  */
 function CloseHero({ data }: { data: EveningWrapData }) {
@@ -435,24 +535,53 @@ function CloseHero({ data }: { data: EveningWrapData }) {
       />
       <div style={{ position: "relative", padding: "18px 16px 15px" }}>
         <div style={{ font: `400 10px/1 ${MONO}`, letterSpacing: "0.07em", color: ON_ESPRESSO.dim }}>{c.stampedAt}</div>
-        <p style={{ margin: "13px 0 0", font: `800 25px/1.24 ${PLAYFAIR}`, letterSpacing: "-0.025em", color: "var(--c-oninv)" }}>
-          The market closed{" "}
-          <span
-            style={{
-              backgroundColor: "var(--c-gold)",
-              color: "var(--c-ongold)",
-              padding: "1px 11px",
-              borderRadius: "9px",
-              display: "inline-block",
-              transform: "rotate(-1deg)",
-              boxShadow: "0 4px 0 rgba(0,0,0,0.15)",
-            }}
-          >
-            {c.verdict}
-          </span>
-          .
+        {/* No stamp without a grounded word. `reconcileCloseWord` gives back
+            null on a tape it cannot describe, and the desk layout prints the
+            bare sentence in that case. This does the same rather than stamping
+            a word the tape did not support. */}
+        <p style={{ margin: "13px 0 0", font: `800 25px/1.24 ${SERIF}`, letterSpacing: "-0.025em", color: "var(--c-oninv)" }}>
+          {c.verdict ? (
+            <>
+              The market closed{" "}
+              <span
+                style={{
+                  backgroundColor: "var(--c-gold)",
+                  color: "var(--c-ongold)",
+                  padding: "1px 11px",
+                  borderRadius: "9px",
+                  display: "inline-block",
+                  transform: "rotate(-1deg)",
+                  boxShadow: "0 4px 0 rgba(0,0,0,0.15)",
+                }}
+              >
+                {c.verdict}
+              </span>
+              .
+            </>
+          ) : (
+            <>The market closed.</>
+          )}
         </p>
       </div>
+      {c.scorecard.length === 0 ? (
+        /* Word for word the desk layout's own line for this case, so the two
+           surfaces say the same thing about the same session. */
+        <div
+          style={{
+            position: "relative",
+            margin: "0 16px 16px",
+            padding: "18px 16px",
+            textAlign: "center",
+            backgroundColor: "rgba(255,253,249,0.05)",
+            border: "1px solid rgba(212,168,75,0.2)",
+            borderRadius: "9px",
+            font: `600 12px/1.4 ${SANS}`,
+            color: ON_ESPRESSO.dim,
+          }}
+        >
+          Index snapshot unavailable for this session.
+        </div>
+      ) : (
       <div
         style={{
           position: "relative",
@@ -476,6 +605,7 @@ function CloseHero({ data }: { data: EveningWrapData }) {
           />
         ))}
       </div>
+      )}
     </div>
   );
 }
@@ -514,10 +644,18 @@ function ScorecardTile({
         style={{
           marginTop: "4px",
           font: `600 10.5px/1 ${MONO}`,
-          color: cell.tone === "up" ? "var(--c-inv-green)" : "var(--c-inv-red)",
+          /* A move that rounds to 0.00% at the two places this cell prints
+             takes neither colour and draws no glyph. Green over `▲0.00%` is a
+             side the figure does not carry. */
+          color:
+            cell.tone === "flat"
+              ? "var(--c-oninv-dim)"
+              : cell.tone === "up"
+                ? "var(--c-inv-green)"
+                : "var(--c-inv-red)",
         }}
       >
-        {cell.direction === "up" ? "▲" : "▼"}
+        {cell.direction === "flat" ? null : cell.direction === "up" ? "▲" : "▼"}
         {cell.move}
       </div>
     </div>
@@ -527,7 +665,7 @@ function ScorecardTile({
 function SectionRule({ label }: { label: string }) {
   return (
     <div style={{ marginTop: "22px", display: "flex", alignItems: "center", gap: "11px" }}>
-      <span style={{ font: `400 italic 12.5px/1 ${PLAYFAIR}`, color: "var(--c-secondary)" }}>{label}</span>
+      <span style={{ font: `400 italic 12.5px/1 ${SERIF}`, color: "var(--c-secondary)" }}>{label}</span>
       <span aria-hidden="true" style={{ flex: 1, height: "1px", backgroundColor: "var(--c-border)" }} />
     </div>
   );
@@ -545,12 +683,16 @@ function SectionRule({ label }: { label: string }) {
  *
  * The card carries a 2px amber top edge and no state dot or state word. That
  * is the design as drawn, and it is a partial application of the state
- * anatomy the standing brief describes. Reported, not silently corrected: the
- * eyebrow says what the evidence did tonight, and nothing settled today, so
- * none of the four outcome states applies to it yet.
+ * anatomy the standing brief describes. Reported, not silently corrected.
+ *
+ * The eyebrow is now the call's OUTCOME STATE and not a reading of the
+ * evening's evidence. The design's own word there described what the evidence
+ * did after the bell, and nothing in the payload knows that: grading runs
+ * after the close and the wrap publishes before it. Every call that reaches
+ * this card has a review date at or after today, which is `awaiting`, one of
+ * the four permitted states, and the only one the row can support.
  */
-function ReviewedCall({ data }: { data: EveningWrapData }) {
-  const r = data.reviewed;
+function ReviewedCall({ call: r }: { call: EveningReviewedCall }) {
   return (
     <div style={{ marginTop: "12px", border: "1px solid var(--c-border)", borderRadius: "12px", backgroundColor: "var(--c-card)", overflow: "hidden" }}>
       <div aria-hidden="true" style={{ height: "2px", backgroundColor: "var(--c-amber)" }} />
@@ -580,17 +722,17 @@ function ReviewedCall({ data }: { data: EveningWrapData }) {
           scale="row"
           lead={
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px" }}>
-              <span style={{ font: "600 11px/1 Inter, sans-serif", color: "var(--c-amberink)" }}>{r.note}</span>
+              <span style={{ font: `600 11px/1 ${SANS}`, color: "var(--c-amberink)" }}>{r.note}</span>
               <span style={{ font: `400 10px/1 ${MONO}`, letterSpacing: "0.07em", color: "var(--c-muted)" }}>{r.id}</span>
             </div>
           }
           claim={r.claim}
-          prose={r.reasoning}
+          prose={r.reasoning || undefined}
         />
       </button>
       <p
         id="evening-reviewed-inert"
-        style={{ margin: 0, padding: "0 15px 12px", font: "400 11px/1.4 Inter, sans-serif", color: "var(--c-muted)", textWrap: "pretty" }}
+        style={{ margin: 0, padding: "0 15px 12px", font: `400 11px/1.4 ${SANS}`, color: "var(--c-muted)", textWrap: "pretty" }}
       >
         The review screen is not built yet, so this card does not open.
       </p>
@@ -609,12 +751,20 @@ function MoverRow({ mover, last }: { mover: EveningMover; last: boolean }) {
         borderBottom: last ? "1px solid var(--c-hair)" : undefined,
       }}
     >
-      <span style={{ flex: "none", width: "46px", font: `500 10.5px/1.5 ${MONO}`, letterSpacing: "0.045em", color: "var(--c-muted)" }}>
+      {/* The column keeps its 46px whatever is in it, so the headlines line up
+          down the list. Two lines when a quote resolved, one when only the
+          symbol did, none when the story named no symbol at all. A dash in the
+          move slot would read as a measured flat session. */}
+      <span aria-hidden={!mover.symbol} style={{ flex: "none", width: "46px", font: `500 10.5px/1.5 ${MONO}`, letterSpacing: "0.045em", color: "var(--c-muted)" }}>
         {mover.symbol}
-        <br />
-        {mover.move}
+        {mover.symbol && mover.move ? (
+          <>
+            <br />
+            {mover.move}
+          </>
+        ) : null}
       </span>
-      <p style={{ margin: 0, minWidth: 0, flex: 1, font: "400 13px/1.5 Inter, sans-serif", color: "var(--c-body)" }}>
+      <p style={{ margin: 0, minWidth: 0, flex: 1, font: `400 13px/1.5 ${SANS}`, color: "var(--c-body)" }}>
         {mover.headline}
       </p>
     </div>
@@ -664,18 +814,19 @@ function WrapNone() {
           <path d="M20 14.5A8 8 0 0 1 9.5 4a7 7 0 1 0 10.5 10.5z" />
         </svg>
       </span>
-      <p style={{ margin: "18px 0 0", font: `700 20px/1.25 ${PLAYFAIR}`, color: "var(--c-ink)" }}>
+      <p style={{ margin: "18px 0 0", font: `700 20px/1.25 ${SERIF}`, color: "var(--c-ink)" }}>
         No evening wrap available
       </p>
       {/* Two removals, both the mobile-build rule from PR #661.
           "Anything reviewed today is already on your record" is a sentence
           about the reader's own record stated on the branch that established
           only that no wrap exists. And the publication time came from
-          `data.publishesAt`, which on the empty branch is whatever object the
-          caller happened to pass; with no wrap there is no payload to read a
-          time out of, so an interpolated 4:35 would be invented precision. The
-          copy now says the one thing this branch actually knows. */}
-      <p style={{ margin: "10px 0 0", font: "400 13px/1.6 Inter, sans-serif", color: "var(--c-secondary)", maxWidth: "32ch", textWrap: "pretty" }}>
+          a `publishesAt` field, which on the empty branch was whatever object
+          the caller happened to pass; with no wrap there is no payload to read
+          a time out of, so an interpolated 4:35 was invented precision. The
+          field is gone from the contract entirely, and this branch now takes
+          no payload at all, so there is nothing left to interpolate from. */}
+      <p style={{ margin: "10px 0 0", font: `400 13px/1.6 ${SANS}`, color: "var(--c-secondary)", maxWidth: "32ch", textWrap: "pretty" }}>
         Nothing failed to load. The wrap publishes after the close.
       </p>
       {/* Disabled, not merely handler-less. TODO(PR #643 sibling units): the
@@ -692,13 +843,13 @@ function WrapNone() {
         disabled
         aria-describedby="evening-record-inert"
         className={motion.bare}
-        style={{ marginTop: "18px", minHeight: "46px", display: "inline-flex", alignItems: "center", padding: "0 18px", border: "1px solid var(--c-chrome-border)", borderRadius: "9px", font: "600 13px/1 Inter, sans-serif", color: "var(--c-secondary)", cursor: "default" }}
+        style={{ marginTop: "18px", minHeight: "46px", display: "inline-flex", alignItems: "center", padding: "0 18px", border: "1px solid var(--c-chrome-border)", borderRadius: "9px", font: `600 13px/1 ${SANS}`, color: "var(--c-secondary)", cursor: "default" }}
       >
         Open your record
       </button>
       <p
         id="evening-record-inert"
-        style={{ margin: "9px 0 0", font: "400 11px/1.4 Inter, sans-serif", color: "var(--c-muted)", maxWidth: "32ch", textWrap: "pretty" }}
+        style={{ margin: "9px 0 0", font: `400 11px/1.4 ${SANS}`, color: "var(--c-muted)", maxWidth: "32ch", textWrap: "pretty" }}
       >
         The record screen is not built yet, so this control does not open.
       </p>
@@ -722,7 +873,7 @@ function WrapNone() {
 function WrapError() {
   return (
     <div className={motion.enter} style={{ padding: `18px ${PAD} 26px` }} role="alert">
-      <p style={{ margin: 0, font: `500 17px/1.4 ${PLAYFAIR}`, color: "var(--c-ink)" }}>
+      <p style={{ margin: 0, font: `500 17px/1.4 ${SERIF}`, color: "var(--c-ink)" }}>
         We could not load the evening wrap.
       </p>
       {/* No sentence about the reader or their record. The earlier copy closed
@@ -732,7 +883,7 @@ function WrapError() {
           outranks matching the design. What survives is a claim about this
           screen only: the read failed, and it is not the same thing as an
           empty result. */}
-      <p style={{ margin: "10px 0 0", font: "400 13px/1.6 Inter, sans-serif", color: "var(--c-secondary)", maxWidth: "32ch", textWrap: "pretty" }}>
+      <p style={{ margin: "10px 0 0", font: `400 13px/1.6 ${SANS}`, color: "var(--c-secondary)", maxWidth: "32ch", textWrap: "pretty" }}>
         This is a failed read, not an empty result. Nothing is being hidden.
       </p>
       {/* A real retry, not a drawn one.
@@ -745,7 +896,7 @@ function WrapError() {
         type="button"
         onClick={() => window.location.reload()}
         className={motion.bare}
-        style={{ marginTop: "14px", minHeight: "44px", display: "inline-flex", alignItems: "center", padding: "0 17px", border: "1px solid var(--c-ink)", borderRadius: "9px", font: "600 13px/1 Inter, sans-serif", color: "var(--c-ink)" }}
+        style={{ marginTop: "14px", minHeight: "44px", display: "inline-flex", alignItems: "center", padding: "0 17px", border: "1px solid var(--c-ink)", borderRadius: "9px", font: `600 13px/1 ${SANS}`, color: "var(--c-ink)" }}
       >
         Try again
       </button>
@@ -767,14 +918,14 @@ function WrapError() {
 function StaleNotice({ data }: { data: EveningWrapData }) {
   return (
     <div style={{ marginTop: "14px", border: "1px solid var(--c-amber-edge)", backgroundColor: "var(--c-amber-well)", borderRadius: "12px", padding: "13px 14px" }}>
-      <div style={{ font: "600 12px/1 Inter, sans-serif", color: "var(--c-ink)" }}>
+      <div style={{ font: `600 12px/1 ${SANS}`, color: "var(--c-ink)" }}>
         You are reading an earlier session.
       </div>
       {/* "Your review dates are unaffected" is gone, same rule as the other
           two states: it is a sentence about the reader's own record, and this
           branch knows only which session the wrap in hand covers. What is left
           describes the tape on this screen and nothing else. */}
-      <div style={{ marginTop: "4px", font: "400 11.5px/1.5 Inter, sans-serif", color: "var(--c-body)" }}>
+      <div style={{ marginTop: "4px", font: `400 11.5px/1.5 ${SANS}`, color: "var(--c-body)" }}>
         {`This wrap covers ${data.coversSession}. The tape below is the close that was persisted then, not a live quote.`}
       </div>
     </div>

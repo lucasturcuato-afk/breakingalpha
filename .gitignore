@@ -93,3 +93,7 @@ parity-*.json
 # everyone who runs the gate. It also trips `design-lint --since`, which
 # refuses on a dirty tree. Untracked here; see the PR for the measurement.
 .eslintcache
+
+# Local verification probes. Scratch, never part of a change.
+.verify/
+.verify-*.mjs

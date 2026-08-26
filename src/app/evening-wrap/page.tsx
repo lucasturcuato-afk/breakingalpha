@@ -3,6 +3,15 @@
 import { Suspense, useState, useEffect, useMemo, useRef } from "react";
 import { AppShell } from "@/components/shell";
 import { EveningWrapMobile } from "@/components/evening";
+import type { EveningWrapData, WrapStage } from "@/components/evening";
+import {
+  MOBILE_MOVER_LIMIT,
+  displayIndexLevel,
+  wrapFromBriefing,
+  type ResolvedIndexCell,
+  type ResolvedStory,
+} from "@/components/evening/wrap-from-briefing";
+import { useIsMobileViewport } from "@/components/evening/use-mobile-viewport";
 import { PanelWidget } from "@/components/shell/right-panel";
 import { TickerStrip } from "@/components/brief/ticker-strip";
 import CatalystStrip, { type CatalystItem } from "@/components/brief/CatalystStrip";
@@ -80,6 +89,11 @@ const SCORECARD_SYMBOLS = [
   { sym: "^TNX",  label: "10Y YIELD", invert: true },
   { sym: "CL=F",  label: "WTI" },
 ] as const;
+
+// What counts as a quotable symbol on a story row. Anything else still
+// labels its row; it is only kept out of the quote request, where it would be
+// a guaranteed miss.
+const TICKER_SHAPE = /^[A-Z][A-Z.-]{0,5}$/;
 
 // Sherwood Direction C palette — pinned literals for the values that
 // must remain constant across light + dark. The theme flips --espresso
@@ -159,6 +173,21 @@ const SYM_TO_TAPE_KEY: Record<string, keyof NonNullable<MarketTape["indices"]>> 
   "^RUT": "russell",
 };
 
+/**
+ * One still-open desk call for this session.
+ *
+ * The subset of a `morning_brief_calls` row the mobile wrap needs.
+ * `confidence` orders the list and is never rendered: it is the stored model
+ * figure and `BriefCallsSection` does not render it either.
+ */
+interface OpenDeskCall {
+  id: string;
+  claim_text: string;
+  target_symbol: string | null;
+  resolve_on: string | null;
+  confidence: number | null;
+}
+
 function storyToContent(story: StoryData): ContentDescriptor {
   return {
     sectors: [story.sector].filter(Boolean) as string[],
@@ -195,31 +224,6 @@ function formatTimePretty(d: Date): string {
   });
 }
 
-/**
- * Whether the mobile redesign's fixture-rendered wrap may draw.
- *
- * `/evening-wrap` is not `/ledger`. The Ledger was a new route with no prior
- * behaviour, so a fixture there regressed nothing. This route is live and
- * authenticated: it already reads the reader's own wrap off
- * `/api/briefing?type=evening`. Letting the fixture render unconditionally
- * would put invented index levels, an invented dateline and an invented call
- * in front of a real reader on a phone, on a product whose entire claim is
- * that nothing is fabricated and nothing is hidden. So the fixture is gated
- * and production keeps exactly the behaviour it has today.
- *
- * Only NEXT_PUBLIC_ names survive into the client bundle, so the two signals
- * below are the only ones this component can read. It fails CLOSED: if
- * NEXT_PUBLIC_VERCEL_ENV is not exposed to the build, the preview loses the
- * screen and production still cannot reach it. Never the other way round.
- *
- * Delete this constant and render the branch unconditionally the moment the
- * screen is wired to the real briefing payload. That is one line, and it is
- * the only thing standing between this screen and production.
- */
-const MOBILE_FIXTURE_VISIBLE =
-  process.env.NODE_ENV !== "production" ||
-  process.env.NEXT_PUBLIC_VERCEL_ENV === "preview";
-
 export default function EveningWrapPage() {
   const { profile } = useUserProfile();
   const [briefing, setBriefing] = useState<BriefingData | null>(null);
@@ -241,6 +245,29 @@ export default function EveningWrapPage() {
   const [thesesCount, setThesesCount] = useState<number | null>(null);
   const [vixQuote, setVixQuote] = useState<{ price: string; pct: number } | null>(null);
   const [scorecard, setScorecard] = useState<Record<string, { price: string; pct: number } | null>>({});
+  /* A FAILED READ, TOLD APART FROM AN ABSENT WRAP. The desk layout cannot tell
+     the two apart: the catch below logs and falls through to `!briefing`, so a
+     network failure renders "No evening wrap available". The mobile screen has
+     both states and this is the flag that picks between them. Nothing about
+     the desk render reads it. */
+  const [wrapReadFailed, setWrapReadFailed] = useState(false);
+  /* The session's still-open desk calls, for the mobile screen's revisited
+     card. Same table and the same open-pool test `BriefCallsSection` uses:
+     `morning_brief_calls` matched on this wrap's PT session date, review date
+     at or after today. The desk layout renders `BriefCallsSection`, which does
+     its own reads; this does not feed it and does not change it. */
+  const [openCalls, setOpenCalls] = useState<OpenDeskCall[]>([]);
+  /* How many there are, as an EXACT count rather than `openCalls.length`.
+     The select is capped at 24 rows because the card renders only the first
+     one, and a length read off a capped page silently understated a busy
+     session at 23. PostgREST answers with the true count in the Content-Range
+     header when the request asks for it, so the sentence about the others
+     counts every one of them while the page still transfers 24. */
+  const [openCallCount, setOpenCallCount] = useState(0);
+  /* Session moves for the tickers the story rail is carrying. Its own fetch on
+     purpose: folding these into the scorecard request would put the desk
+     grid's quotes behind a longer symbol list. */
+  const [moverQuotes, setMoverQuotes] = useState<Record<string, { price: string; pct: number }>>({});
   const router = useRouter();
 
   // Banner mood comes from the global SSOT — same numbers + canonical 5-term
@@ -460,6 +487,7 @@ export default function EveningWrapPage() {
         } catch { /* soft-fail */ }
       } catch (e) {
         console.error("Failed to load briefing:", e);
+        setWrapReadFailed(true);
       } finally {
         setLoading(false);
       }
@@ -768,6 +796,207 @@ export default function EveningWrapPage() {
     : leadCards.length === 2 ? "md:grid-cols-2"
     : "md:grid-cols-1";
 
+  /* ── THE MOBILE WRAP'S DATA ────────────────────────────────────────────
+     Everything below feeds `EveningWrapMobile` and nothing below is read by
+     the desk layout. The two surfaces share the loaders above, not the shapes;
+     the desk render is untouched by every line in this section.
+
+     AND NOTHING BELOW COSTS THE DESK A REQUEST. `md:hidden` is CSS: at 1440
+     the mobile subtree still mounts, still hydrates and still runs its
+     effects, so the two reads in this section were firing on every desktop
+     load for a tree nobody can see. The PR body called them mobile-only and
+     the measurement said otherwise. Both are gated on a measured viewport
+     now, the way `src/components/dashboard-mobile/use-mobile-records.ts` gates
+     its own two reads, and the ticker strip inside the screen is gated the
+     same way because its poll repeats every 60 seconds. */
+  const isMobileViewport = useIsMobileViewport();
+
+  /* The session's still-open desk calls. Matched the way `BriefCallsSection`
+     matches them, because the evening briefing's own id is not the morning
+     brief's: on this wrap's PT session date, review date at or after today.
+
+     WHAT THIS SET IS, EXACTLY. `resolve_on >= today` is inclusive, so a call
+     whose review date IS today is in it, and such a call HAS reached its
+     review date. The card's copy used to say none of them had, which this
+     query cannot establish and which the table contradicts today. The boundary
+     is left inclusive on purpose, because moving it to `>` would drop the call
+     that is due right now off the wrap that publishes on the day it is due;
+     the sentence is what changed instead, over in `toReviewed`.
+
+     `count: "exact"` rides along with the same request. It is what the
+     sentence about the others counts, so a session with more open calls than
+     the row cap is not understated. */
+  const wrapSessionPt = briefing?.created_at
+    ? new Date(briefing.created_at).toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" })
+    : null;
+  useEffect(() => {
+    if (!wrapSessionPt || !isMobileViewport) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const todayPt = new Date().toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
+        const { data, count, error } = await getSupabase()
+          .from("morning_brief_calls")
+          .select("id, claim_text, target_symbol, resolve_on, confidence", { count: "exact" })
+          .eq("brief_date", wrapSessionPt)
+          .gte("resolve_on", todayPt)
+          .order("confidence", { ascending: false })
+          .limit(24);
+        if (cancelled || error) return;
+        const rows = (data as OpenDeskCall[] | null) ?? [];
+        setOpenCalls(rows);
+        /* A null count means the header did not come back. The rows did, so
+           fall to their length rather than to zero: understating is a smaller
+           lie than claiming no other call is open when some are. */
+        setOpenCallCount(count ?? rows.length);
+      } catch { /* soft-fail: the card is absent, never invented */ }
+    })();
+    return () => { cancelled = true; };
+  }, [wrapSessionPt, isMobileViewport]);
+
+  /* The tickers the RENDERED rows are carrying, in served order. Anything that
+     is not shaped like a symbol is still labelled on the row; it is only
+     excluded from the quote request, where it would be a guaranteed miss.
+
+     SAME SLICE THE ROWS COME FROM, which it was not before. This walked every
+     ranked story collecting up to five ticker-shaped tags while the list
+     renders the first five STORIES, so the request could ask for symbols no
+     row carries and skip the ones that do. The report caught exactly that: a
+     quote was fetched for a symbol from further down the rail while all five
+     rendered rows drew an empty symbol column. Both now read
+     `rankedStories.slice(0, MOBILE_MOVER_LIMIT)`, so the request covers the
+     rows and nothing else. */
+  const moverTickers = useMemo(() => {
+    const out: string[] = [];
+    for (const st of rankedStories.slice(0, MOBILE_MOVER_LIMIT)) {
+      const tag = (st.tags ?? []).find((t) => TICKER_SHAPE.test(t));
+      if (tag && !out.includes(tag)) out.push(tag);
+    }
+    return out;
+  }, [rankedStories]);
+  const moverTickerKey = moverTickers.join(",");
+
+  useEffect(() => {
+    if (!moverTickerKey || !isMobileViewport) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetch(`/api/watchlist-quotes?symbols=${encodeURIComponent(moverTickerKey)}`);
+        if (!r.ok || cancelled) return;
+        const d = await r.json();
+        const next: Record<string, { price: string; pct: number }> = {};
+        for (const sym of moverTickerKey.split(",")) {
+          const q = d?.quotes?.[sym];
+          const move: unknown = q?.pct;
+          if (typeof move === "number") {
+            next[sym] = { price: String(q.price ?? ""), pct: move };
+          }
+        }
+        if (!cancelled) setMoverQuotes(next);
+      } catch { /* soft-fail: the row prints its ticker and no move */ }
+    })();
+    return () => { cancelled = true; };
+  }, [moverTickerKey, isMobileViewport]);
+
+  /**
+   * Which of the five states the mobile screen is in.
+   *
+   * Read off the same loaders the desk layout uses, in the order that keeps
+   * each one honest: in flight is `loading`, a thrown read is `error`, no wrap
+   * is `none`, and a wrap the API marked stale is `stale`. The screen never
+   * has to guess, and there is no branch where it claims a wrap it does not
+   * have.
+   */
+  const mobileStage: WrapStage =
+    loading ? "loading"
+      : wrapReadFailed ? "error"
+        : !briefing ? "none"
+          : isStale ? "stale"
+            : "ready";
+
+  /**
+   * The wrap in the mobile screen's shape, or null.
+   *
+   * NULL UNTIL THERE IS A BRIEFING, and the screen renders its skeleton on a
+   * null. Nothing here substitutes for a value the loaders did not resolve:
+   * an absent close word, an absent snapshot, an absent open call and an
+   * absent tomorrow setup each land as null or empty and each draws nothing.
+   */
+  const mobileData = useMemo<EveningWrapData | null>(() => {
+    if (!briefing) return null;
+
+    const cells: ResolvedIndexCell[] = [];
+    for (const sym of SCORECARD_SYMBOLS) {
+      const q = snapshotCell(sym.sym);
+      if (!q) continue;
+      const move = q.pct ?? 0;
+      cells.push({
+        label: sym.label,
+        price: displayIndexLevel(sym.sym, q.price),
+        pct: move,
+        favorable: "invert" in sym && sym.invert ? move < 0 : move >= 0,
+      });
+    }
+
+    /* A story's own entities are as often a company name as a symbol, and a
+       name set in the mono column reads as a ticker. So the column takes the
+       first entity that is SHAPED like a symbol and nothing otherwise; the row
+       keeps its indent either way. */
+    const movers: ResolvedStory[] = [];
+    for (const st of rankedStories) {
+      const tag = (st.tags ?? []).find((t) => TICKER_SHAPE.test(t));
+      const q = tag ? moverQuotes[tag] : undefined;
+      movers.push({
+        symbol: tag,
+        headline: st.summary?.trim() || st.title,
+        move: q ? `${q.pct >= 0 ? "+" : "-"}${Math.abs(q.pct).toFixed(2)}%` : undefined,
+      });
+      if (movers.length >= MOBILE_MOVER_LIMIT) break;
+    }
+
+    const lead = openCalls[0] ?? null;
+
+    return wrapFromBriefing({
+      createdAt: briefing.created_at ?? null,
+      datePretty: dateStr,
+      timePretty: timeStr,
+      sectors: profile?.sectors ?? [],
+      closeWord,
+      /* A bearish tape is the stress read of the same figure. Same axis the
+         desk stats bar colours the Close cell on. */
+      closeIsStress: tone === "BEARISH",
+      /* The desk layout's last resort here is a stock sentence about the
+         session, which is a claim with no payload behind it. The mobile screen
+         takes the three real fields and draws nothing when all three are
+         absent. */
+      closeProse:
+        briefing.market_pulse?.narrative || briefing.summary || briefing.lead_paragraph || "",
+      storyProse: briefing.lead_paragraph || briefing.summary || "",
+      storyCount: stories.length,
+      thesesCount,
+      vix: vixQuote,
+      scorecard: cells,
+      movers,
+      reviewed: lead
+        ? {
+            id: lead.id,
+            claim: stripHtml(lead.claim_text).trim(),
+            symbol: lead.target_symbol,
+            resolveOn: lead.resolve_on,
+          }
+        : null,
+      otherOpenCalls: Math.max(0, openCallCount - 1),
+      nextEventProse: briefing.sections?.tomorrow_setup || "",
+    });
+    /* `snapshotCell` closes over `tape` and `scorecard`; both are in the list
+       through `briefing` and `scorecard` respectively. */
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    briefing, dateStr, timeStr, profile?.sectors, closeWord, tone, stories.length,
+    thesesCount, vixQuote, scorecard, isCurrentSession, rankedStories, moverQuotes, openCalls,
+    openCallCount,
+  ]);
+
   const handleAskAI = () => {
     document.dispatchEvent(
       new KeyboardEvent("keydown", { key: "k", metaKey: true, bubbles: true }),
@@ -789,6 +1018,21 @@ export default function EveningWrapPage() {
           Gating lives in a CLASS and the wrapper carries no inline style, or
           the class would be beaten at every width.
 
+          IT MOUNTS UNCONDITIONALLY NOW, AND THAT IS THE POINT OF THIS CHANGE.
+          It used to be wrapped in `MOBILE_FIXTURE_VISIBLE`, a build-time
+          constant that is false on production, and the desk wrapper below fell
+          back to `contents` when it was. So on production the mobile subtree
+          was never rendered at all and every reader on a phone got the desk
+          layout squeezed into 390px. The screen shipped in PR #648 and no
+          reader has ever seen it.
+
+          The gate that replaces it is the data itself. `mobileStage` is read
+          off the same loaders the desk layout uses, so the screen draws its
+          skeleton while the read is in flight, its own empty state when no
+          wrap exists, its own error state when the read failed, and the wrap
+          when there is one. There is no state in which it has to defer to the
+          desk layout, so there is no width at which both should draw.
+
           It sits OUTSIDE AppShell rather than inside it, and that is the
           design rather than a shortcut. The prototype gates its nav on
           `showNav: ['dash','ledger','watch','ask'].includes(s.screen)` at line
@@ -800,15 +1044,17 @@ export default function EveningWrapPage() {
 
           Suspense is required, not decorative: the branch reads `?stage=` with
           `useSearchParams`, which needs a boundary above whatever calls it. */}
-      {MOBILE_FIXTURE_VISIBLE ? (
-        <Suspense fallback={null}>
-          <div className="md:hidden">
-            <EveningWrapMobile />
-          </div>
-        </Suspense>
-      ) : null}
+      <Suspense fallback={null}>
+        <div className="md:hidden">
+          <EveningWrapMobile stage={mobileStage} data={mobileData} />
+        </div>
+      </Suspense>
 
-      <div className={MOBILE_FIXTURE_VISIBLE ? "hidden md:block" : "contents"}>
+      {/* `md:contents`, not `md:block`. Above the breakpoint this wrapper has
+          to vanish from the box tree exactly as it did before the mobile
+          branch existed, or the desk layout is measured inside a block box it
+          never had. Below the breakpoint it is display:none. */}
+      <div className="hidden md:contents">
     <AppShell
       pageTitle="Evening Wrap"
       mood={liveMood.mood}
