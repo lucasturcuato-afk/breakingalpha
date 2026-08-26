@@ -10,15 +10,8 @@ import { DESK_RECORD_COPY } from "@/lib/desk-record";
 import ledger from "@/components/ledger/ledger.module.css";
 import styles from "./dashboard.module.css";
 import { RecordBuckets } from "./record-buckets";
-import {
-  DASH_FIXTURE,
-  DASH_FIXTURE_EMPTY,
-  DASH_FIXTURES_ALLOWED,
-  type DashboardData,
-  type DashMarketCell,
-  type DashStage,
-  type DashStory,
-} from "./fixture";
+import { MONO, SANS, SERIF } from "./fonts";
+import type { DashboardData, DashMarketCell, DashStage, DashStory } from "./fixture";
 
 /**
  * Today. The mobile Dashboard: the briefing top to bottom, in the order a
@@ -32,14 +25,20 @@ import {
  * The desktop dashboard is untouched. It sits beside this, gated above `md`,
  * with its four loaders and its widgets exactly where they were.
  *
- * Everything on this screen comes from a fixture. Nothing here reads the
- * database, and the figures it draws are the design's sample content, not the
- * reader's. That is the unit's scope and it is the first thing to change when
- * a loader lands; see the PR body.
+ * The screen paints `DashboardData` and nothing else. It has no fixture, no
+ * default and no fallback: `data` is required and nullable, and a null one
+ * takes an early exit before any field is read. Which exit depends on `stage`,
+ * and the order of those tests is load-bearing; see the guards below. Past
+ * them the type is non-null, so no later edit can serve invented content by
+ * leaving a prop off, and no branch here can author a sentence about the
+ * reader from an absence.
+ *
+ * Sections whose source is null are not drawn at all. That is deliberate and
+ * it is the difference between "the desk has graded nothing" and "the desk's
+ * record could not be read". The first is a fact the screen may state; the
+ * second is not, and a section that is simply absent states neither.
  */
 
-const MONO = "'JetBrains Mono', monospace";
-const PLAYFAIR = "'Playfair Display', serif";
 const PAD = "var(--v3-pad)";
 
 /**
@@ -71,240 +70,312 @@ export function DashboardScreen({
   data,
 }: {
   stage?: DashStage;
-  data?: DashboardData;
+  /**
+   * REQUIRED and NULLABLE. Not optional, and never defaulted.
+   *
+   * `/ledger` shipped with the ledger fixture as a default parameter and no
+   * gate in its path, and served every signed-in reader on a phone three
+   * fabricated claims and the sentence "One of your calls was checked
+   * overnight." This screen shipped the same shape one rule later, with the
+   * dashboard fixture behind a nullish coalesce. A default IS the defect: it
+   * turns a forgotten prop into invented data instead of into a build
+   * failure. Required and nullable makes the caller resolve it.
+   */
+  data: DashboardData | null;
 }) {
-  /* The fixture is a development and preview affordance, never a production
-     fallback. `/dashboard` serves a real signed-in reader real data, so an
-     unguarded `data ?? DASH_FIXTURE` puts invented stories, invented record
-     counts and an invented market band in front of someone who will read them
-     as their own. Every other screen in this programme carries this gate; this
-     one shipped without it.
-
-     Falling back to DASH_FIXTURE_EMPTY is NOT sufficient and was the first
-     thing tried here. It zeroes the records and empties `stories`, but it
-     spreads `...DASH_FIXTURE`, so it still carries the invented market band,
-     and its `brief.sub` reads "Five calls, none decided yet", which is a
-     specific claim about a real reader's morning made with no data behind it.
-     An empty state that asserts a fact is not a safe fallback.
-
-     So in production, absent data renders as the loading skeleton, which
-     asserts nothing. `d` still needs a shape to destructure, and
-     DASH_FIXTURE_EMPTY supplies one that is never painted, because every
-     branch below is gated on `effectiveStage`.
-
-     The skeleton alone is still not the whole answer, and this is the second
-     half of the same rule. The design's loading state closes on the line
-     READING OVERNIGHT COVERAGE. That is honest while a loader is running and
-     false once nothing is running, and on this branch nothing ever will be:
-     there is no loader behind this screen at all, so a permanent skeleton
-     tells a reader that a briefing is on its way. `starved` is therefore
-     passed down, and the closing line says what the screen is instead of
-     narrating work that is not happening. This is the `unwired` third state
-     that /ask in PR #654 and /compose in PR #650 both landed, wearing the
-     skeleton's shape because that shape is the design's and is correct
-     here. */
-  const starved = !data && !DASH_FIXTURES_ALLOWED;
-  const effectiveStage: DashStage = starved ? "loading" : stage;
-  const d = data ?? (stage === "empty" || starved ? DASH_FIXTURE_EMPTY : DASH_FIXTURE);
   const [editing, setEditing] = useState(false);
   /* "all" is the resting lens, which is the state the design draws. */
   const [storyLens, setStoryLens] = useState<"you" | "all">("all");
-  const shown = storyLens === "you" ? d.stories.filter((s) => s.forYou) : d.stories;
+
+  /* THE THREE GUARDS, IN THE ONLY ORDER THAT IS HONEST.
+   *
+   * A KNOWN FAILURE OUTRANKS AN ABSENT PAYLOAD, and it has to, because the two
+   * arrive together. `/ledger` shipped the inversion: `loadLedger` gave back
+   * `{data: null, stage: "error"}` and the screen tested `data === null` first,
+   * so the early exit fired before `stage` was ever read and the error
+   * component was unreachable from the loader. A failed read painted an
+   * indefinite skeleton. A spinner over a terminal failure is the same untruth
+   * as a fabricated zero, in a different currency: one says a count it never
+   * measured, the other says an answer is still coming when none is.
+   *
+   * So the failure stage is tested first, the loading stage second, and the
+   * absent payload last, and each of the first two draws with or without a
+   * payload. `initials` is the one field either can use, and it is read
+   * through an explicit null test rather than a coalesce, because the rule for
+   * this screen is that `data` is never defaulted anywhere.
+   *
+   * Below the third guard `data` is non-null BY TYPE, so every branch that
+   * follows is painting something a loader actually gave back. The skeleton
+   * asserts nothing: it says a read is in progress, and on the paths that
+   * reach it one is.
+   */
+  const initials = data === null ? null : data.initials;
+
+  if (stage === "error") {
+    return (
+      <div data-parity="dash" style={{ backgroundColor: "var(--c-bg)", minHeight: "100%" }}>
+        <ScreenHead initials={initials} />
+        <DashError />
+        <TabBarSpacer />
+      </div>
+    );
+  }
+
+  if (stage === "loading" || data === null) {
+    return (
+      <div data-parity="dash" style={{ backgroundColor: "var(--c-bg)", minHeight: "100%" }}>
+        <ScreenHead initials={initials} />
+        <DashSkeleton />
+        <TabBarSpacer />
+      </div>
+    );
+  }
+
+  const d = data;
+  /* Null stories means the read has not answered and the section is not drawn
+     at all; "failed" means it answered with an error and the section says so.
+     `shown` is the answered case only, and is null in the other two. */
+  const answered = d.stories === null || d.stories === "failed" ? null : d.stories;
+  const shown =
+    answered === null ? null : storyLens === "you" ? answered.filter((s) => s.forYou) : answered;
 
   return (
     <div data-parity="dash" style={{ backgroundColor: "var(--c-bg)", minHeight: "100%" }}>
-      <ScreenHead />
-      {effectiveStage === "loading" ? <DashSkeleton unwired={starved} /> : null}
-      {effectiveStage === "error" ? <DashError /> : null}
-      {effectiveStage === "ready" || effectiveStage === "stale" || effectiveStage === "empty" ? (
-        <div className={styles.dots} style={{ padding: `0 ${PAD} 26px` }}>
-          <div className={styles.rise} style={{ display: "flex", alignItems: "center", gap: "11px" }}>
-            <span style={{ font: `400 italic 13px/1 ${PLAYFAIR}`, color: "var(--c-secondary)" }}>
-              {d.date}
-            </span>
-            <span aria-hidden="true" style={{ flex: 1, height: "1px", backgroundColor: "var(--c-border)" }} />
-            <span style={{ font: `400 10.5px/1 ${MONO}`, letterSpacing: "0.07em", color: "var(--c-muted)" }}>
-              {d.clock}
-            </span>
-          </div>
+      <ScreenHead initials={d.initials} />
+      {/* Only "ready", "stale" and "empty" get here; the other two took an
+          early exit above. No stage test wraps this block, because a test that
+          cannot be false is not a guard, it is a place for the next reader to
+          assume one of the exits above is optional. */}
+      <div className={styles.dots} style={{ padding: `0 ${PAD} 26px` }}>
+        <div className={styles.rise} style={{ display: "flex", alignItems: "center", gap: "11px" }}>
+          <span style={{ font: `400 italic 13px/1 ${SERIF}`, color: "var(--c-secondary)" }}>
+            {d.date}
+          </span>
+          <span aria-hidden="true" style={{ flex: 1, height: "1px", backgroundColor: "var(--c-border)" }} />
+          <span style={{ font: `400 10.5px/1 ${MONO}`, letterSpacing: "0.07em", color: "var(--c-muted)" }}>
+            {d.clock}
+          </span>
+        </div>
 
-          {effectiveStage === "stale" ? <StaleNotice text={d.staleNotice} /> : null}
+        {stage === "stale" && d.staleNotice ? <StaleNotice text={d.staleNotice} /> : null}
 
+        <p
+          className={styles.rise}
+          style={{
+            animationDelay: `${D.greeting}ms`,
+            margin: "16px 0 0",
+            font: `400 italic 15px/1.3 ${SERIF}`,
+            color: "var(--c-goldink)",
+          }}
+        >
+          {d.eyebrow}
+        </p>
+        <h1
+          className={styles.rise}
+          style={{
+            animationDelay: `${D.greeting}ms`,
+            margin: "8px 0 0",
+            font: `500 30px/1 ${SERIF}`,
+            letterSpacing: "-0.025em",
+            color: "var(--c-ink)",
+          }}
+        >
+          {d.greeting}
+        </h1>
+        {/* No fallback sentence. `context` is derived from the reader's own
+            watchlist, sectors and the latest briefing's tone; when none of
+            those produces a line there is nothing true to say about the
+            tape, so the greeting says nothing about it. */}
+        {d.context ? (
           <p
             className={styles.rise}
             style={{
-              animationDelay: `${D.greeting}ms`,
-              margin: "16px 0 0",
-              font: `400 italic 15px/1.3 ${PLAYFAIR}`,
-              color: "var(--c-goldink)",
+              animationDelay: `${D.context}ms`,
+              margin: "10px 0 0",
+              font: `400 italic 15px/1.5 ${SERIF}`,
+              color: "var(--c-secondary)",
+              textWrap: "pretty",
             }}
           >
-            {d.eyebrow}
+            {d.context}
           </p>
-          <h1
-            className={styles.rise}
-            style={{
-              animationDelay: `${D.greeting}ms`,
-              margin: "8px 0 0",
-              font: `500 30px/1 ${PLAYFAIR}`,
-              letterSpacing: "-0.025em",
-              color: "var(--c-ink)",
-            }}
-          >
-            {d.greeting}
-          </h1>
-          {/* No fallback sentence. `context` is derived from the reader's own
-              watchlist, sectors and the latest briefing's tone; when none of
-              those produces a line there is nothing true to say about the
-              tape, so the greeting says nothing about it. */}
-          {d.context ? (
-            <p
-              className={styles.rise}
-              style={{
-                animationDelay: `${D.context}ms`,
-                margin: "10px 0 0",
-                font: `400 italic 15px/1.5 ${PLAYFAIR}`,
-                color: "var(--c-secondary)",
-                textWrap: "pretty",
-              }}
-            >
-              {d.context}
-            </p>
-          ) : null}
+        ) : null}
 
+        {/* No cells, no band. An empty grid under a MARKET rule reads as a
+            tape with nothing on it; an absent band reads as what it is. */}
+        {d.market.length ? (
           <MarketBand cells={d.market} editing={editing} onToggle={() => setEditing((v) => !v)} />
+        ) : null}
 
-          {d.waiting ? (
-            <>
-              <SectionRule label="waiting for you" delayMs={D.waiting} />
-              <WaitingCard eyebrow={d.waiting.eyebrow} line={d.waiting.line} />
-            </>
-          ) : null}
+        {d.waiting ? (
+          <>
+            <SectionRule label="waiting for you" delayMs={D.waiting} />
+            <WaitingCard eyebrow={d.waiting.eyebrow} line={d.waiting.line} />
+          </>
+        ) : null}
 
-          <Link
-            href="/ledger"
-            className={styles.rise}
-            style={{
-              animationDelay: `${D.brief}ms`,
-              marginTop: d.waiting ? "10px" : "26px",
-              minHeight: "56px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: "14px",
-              padding: "13px 16px",
-              border: "1px solid var(--c-border)",
-              borderRadius: "12px",
-              backgroundColor: "var(--c-surface)",
-              textDecoration: "none",
-            }}
-          >
-            <span style={{ minWidth: 0 }}>
-              <span style={{ display: "block", font: "600 13px/1.3 Inter, sans-serif", color: "var(--c-ink)" }}>
-                {d.brief.title}
-              </span>
+        <Link
+          href="/ledger"
+          className={styles.rise}
+          style={{
+            animationDelay: `${D.brief}ms`,
+            marginTop: d.waiting ? "10px" : "26px",
+            minHeight: "56px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "14px",
+            padding: "13px 16px",
+            border: "1px solid var(--c-border)",
+            borderRadius: "12px",
+            backgroundColor: "var(--c-surface)",
+            textDecoration: "none",
+          }}
+        >
+          <span style={{ minWidth: 0 }}>
+            <span style={{ display: "block", font: `600 13px/1.3 ${SANS}`, color: "var(--c-ink)" }}>
+              {d.brief.title}
+            </span>
+            {/* No line at all when no brief headline has been read. The
+                fixture's "Five calls, none decided yet" is a specific claim
+                about a morning, and there is no source for it here. */}
+            {d.brief.sub ? (
               <span
                 style={{
                   display: "block",
                   marginTop: "4px",
-                  font: "400 11.5px/1.4 Inter, sans-serif",
+                  font: `400 11.5px/1.4 ${SANS}`,
                   color: "var(--c-muted)",
                 }}
               >
                 {d.brief.sub}
               </span>
-            </span>
-            <Chevron direction="right" size={15} />
-          </Link>
+            ) : null}
+          </span>
+          <Chevron direction="right" size={15} />
+        </Link>
 
-          <SectionRule label="your record" delayMs={D.yourRecord} />
-          <Explainer text={d.yourRecord.intro} />
-          {d.yourRecord.awaiting === 0 &&
-          Object.values(d.yourRecord.byResolution).every((n) => n === 0) ? (
-            /* The prototype draws populated counts in every state, so day one
-               is undepicted. The copy for it is already written, tested and
-               compliance-asserted in `your-record.ts`, and it is used verbatim
-               rather than re-authored here. */
-            <Absence title={YOUR_RECORD_COPY.noClaimsTitle} body={YOUR_RECORD_COPY.noClaimsBody} />
-          ) : (
-            <>
-              <RecordBuckets
-                variant="personal"
-                byResolution={d.yourRecord.byResolution}
-                awaiting={d.yourRecord.awaiting}
+        {/* The whole section, rule and all, only exists when the record was
+            read. "You have not made a call yet." is a true and useful
+            sentence over a record that came back empty and a fabrication
+            over one that never came back, and the two are indistinguishable
+            once a null has been turned into zeroes. So a null draws nothing
+            rather than an empty state. */}
+        {d.yourRecord ? (
+          <>
+            <SectionRule label="your record" delayMs={D.yourRecord} />
+            <Explainer text={d.yourRecord.intro} />
+            {d.yourRecord.awaiting === 0 &&
+            Object.values(d.yourRecord.byResolution).every((n) => n === 0) ? (
+              /* The prototype draws populated counts in every state, so day
+                 one is undepicted. The copy for it is already written,
+                 tested and compliance-asserted in `your-record.ts`, and it
+                 is used verbatim rather than re-authored here. */
+              <Absence
+                title={YOUR_RECORD_COPY.noClaimsTitle}
+                body={YOUR_RECORD_COPY.noClaimsBody}
               />
-              <p
-                style={{
-                  margin: "12px 0 0",
-                  font: `400 italic 11px/1.5 ${PLAYFAIR}`,
-                  color: "var(--c-muted)",
-                  textWrap: "pretty",
-                }}
-              >
-                Awaiting means the window has not closed yet, not that the call was missed.
-              </p>
-            </>
-          )}
-          {/* TODO: point at the Prepared record once step 6 lands. Held on
-              this branch, so the control is drawn in its own resting state
-              and does nothing rather than routing at a 404. The desk's
-              nearest equivalent today is /radar/calls, which the design
-              dismantles; sending a phone reader there is a decision, not a
-              default. Disabled until it exists. */}
-          <TailLink label="All calls →" />
+            ) : (
+              <>
+                <RecordBuckets
+                  variant="personal"
+                  byResolution={d.yourRecord.byResolution}
+                  awaiting={d.yourRecord.awaiting}
+                />
+                <p
+                  style={{
+                    margin: "12px 0 0",
+                    font: `400 italic 11px/1.5 ${SERIF}`,
+                    color: "var(--c-muted)",
+                    textWrap: "pretty",
+                  }}
+                >
+                  Awaiting means the window has not closed yet, not that the call was missed.
+                </p>
+              </>
+            )}
+            {/* TODO: point at the Prepared record once step 6 lands. Held on
+                this branch, so the control is drawn in its own resting state
+                and does nothing rather than routing at a 404. The desk's
+                nearest equivalent today is /radar/calls, which the design
+                dismantles; sending a phone reader there is a decision, not a
+                default. Disabled until it exists. */}
+            <TailLink label="All calls →" />
+          </>
+        ) : null}
 
-          <SectionRule label="the desk's record" delayMs={D.deskRecord} />
-          <Explainer text={d.deskRecord.intro} />
-          {d.deskRecord.total === 0 ? (
-            <Absence title={DESK_RECORD_COPY.emptyTitle} body={DESK_RECORD_COPY.emptyBody} />
-          ) : (
-            <RecordBuckets
-              variant="desk"
-              byResolution={d.deskRecord.byResolution}
-              total={d.deskRecord.total}
-            />
-          )}
-          {/* TODO: point at the Desk record once step 7 lands. Held on this
-              branch, same treatment. /radar/desk-record is the desk's
-              equivalent and is deliberately not linked, for the same reason.
-              Disabled until it exists. */}
-          <TailLink label="The whole record →" />
+        {d.deskRecord ? (
+          <>
+            <SectionRule label="the desk's record" delayMs={D.deskRecord} />
+            <Explainer text={d.deskRecord.intro} />
+            {d.deskRecord.total === 0 ? (
+              <Absence title={DESK_RECORD_COPY.emptyTitle} body={DESK_RECORD_COPY.emptyBody} />
+            ) : (
+              <RecordBuckets
+                variant="desk"
+                byResolution={d.deskRecord.byResolution}
+                total={d.deskRecord.total}
+              />
+            )}
+            {/* TODO: point at the Desk record once step 7 lands. Held on this
+                branch, same treatment. /radar/desk-record is the desk's
+                equivalent and is deliberately not linked, for the same
+                reason. Disabled until it exists. */}
+            <TailLink label="The whole record →" />
+          </>
+        ) : null}
 
-          <SectionRule label="top stories" delayMs={D.stories} />
-          <div style={{ marginTop: "10px", display: "flex", gap: "12px" }}>
-            <StoryLens label="For You" on={storyLens === "you"} onClick={() => setStoryLens("you")} />
-            <StoryLens label="All" on={storyLens === "all"} onClick={() => setStoryLens("all")} />
-          </div>
-          {shown.length ? (
-            <div style={{ marginTop: "10px" }}>
-              {shown.map((s, i) => (
-                <StoryRow key={s.id} story={s} last={i === shown.length - 1} />
-              ))}
+        {/* THE FAILED READ FAILS THIS SECTION AND NOTHING ELSE. It used to set
+            `stage="error"` on the whole screen, which threw away the market
+            band, the brief and both records even when all four had answered.
+            That is the inverse of the rule the null path above follows. */}
+        {d.stories === "failed" ? (
+          <>
+            <SectionRule label="top stories" delayMs={D.stories} />
+            <StoriesFailed />
+          </>
+        ) : shown !== null ? (
+          <>
+            <SectionRule label="top stories" delayMs={D.stories} />
+            <div style={{ marginTop: "10px", display: "flex", gap: "12px" }}>
+              <StoryLens
+                label="For You"
+                on={storyLens === "you"}
+                onClick={() => setStoryLens("you")}
+              />
+              <StoryLens label="All" on={storyLens === "all"} onClick={() => setStoryLens("all")} />
             </div>
-          ) : (
-            <Absence
-              title={storyLens === "you" ? "Nothing matched your sectors." : "No stories yet."}
-              body={
-                storyLens === "you"
-                  ? "Every story is still here. Switch to All to read the ones the lens set aside."
-                  : "The overnight read has not published. Nothing is being filtered out of this list."
-              }
-            />
-          )}
-          <TailLink label="The whole feed →" href="/live-feed" />
+            {shown.length ? (
+              <div style={{ marginTop: "10px" }}>
+                {shown.map((s, i) => (
+                  <StoryRow key={s.id} story={s} last={i === shown.length - 1} />
+                ))}
+              </div>
+            ) : (
+              <Absence
+                title={storyLens === "you" ? "Nothing matched your sectors." : "No stories yet."}
+                body={
+                  storyLens === "you"
+                    ? "Every story is still here. Switch to All to read the ones the lens set aside."
+                    : "The overnight read has not published. Nothing is being filtered out of this list."
+                }
+              />
+            )}
+            <TailLink label="The whole feed →" href="/live-feed" />
+          </>
+        ) : null}
 
-          <p
-            style={{
-              margin: "24px 0 0",
-              font: "400 11px/1.6 Inter, sans-serif",
-              color: "var(--c-muted)",
-              textWrap: "pretty",
-            }}
-          >
-            {d.disclaimer}
-          </p>
-        </div>
-      ) : null}
+        <p
+          style={{
+            margin: "24px 0 0",
+            font: `400 11px/1.6 ${SANS}`,
+            color: "var(--c-muted)",
+            textWrap: "pretty",
+          }}
+        >
+          {d.disclaimer}
+        </p>
+      </div>
       <TabBarSpacer />
     </div>
   );
@@ -353,7 +424,7 @@ function TabBarSpacer() {
 
 /* ── head ───────────────────────────────────────────────────────────── */
 
-function ScreenHead() {
+function ScreenHead({ initials }: { initials: string | null }) {
   /* `mounted` is read, not just `theme`. The provider seeds "light" and only
      learns the real preference in its own effect, so a dark reader would get
      the moon glyph and the label "Switch to the dark theme" for a frame while
@@ -368,7 +439,7 @@ function ScreenHead() {
         padding: `2px ${PAD} 12px`,
       }}
     >
-      <span style={{ display: "inline-flex", font: `700 19px/1 ${PLAYFAIR}`, letterSpacing: "-0.02em" }}>
+      <span style={{ display: "inline-flex", font: `700 19px/1 ${SERIF}`, letterSpacing: "-0.02em" }}>
         <span style={{ color: "var(--c-ink)" }}>Signal</span>
         {/* The design clips a three-stop gold gradient to this word. Solid
             --c-goldink here: no token expresses those stops, gold as type at
@@ -427,11 +498,15 @@ function ScreenHead() {
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              font: "600 11.5px/1 Inter, sans-serif",
+              font: `600 11.5px/1 ${SANS}`,
               color: "var(--c-secondary)",
             }}
           >
-            MR
+            {/* The design's disc carries "MR", which is the sample reader's
+                initials. Printed over a real session it is another reader's
+                name on this reader's screen, so it comes from the profile or
+                the disc stays empty. */}
+            {initials}
           </span>
         </Link>
       </span>
@@ -489,7 +564,7 @@ function SectionRule({ label, delayMs }: { label: string; delayMs: number }) {
         gap: "11px",
       }}
     >
-      <span style={{ font: `400 italic 12.5px/1 ${PLAYFAIR}`, color: "var(--c-secondary)" }}>
+      <span style={{ font: `400 italic 12.5px/1 ${SERIF}`, color: "var(--c-secondary)" }}>
         {label}
       </span>
       <span aria-hidden="true" style={{ flex: 1, height: "1px", backgroundColor: "var(--c-border)" }} />
@@ -502,7 +577,7 @@ function Explainer({ text }: { text: string }) {
     <p
       style={{
         margin: "10px 0 0",
-        font: "400 11.5px/1.5 Inter, sans-serif",
+        font: `400 11.5px/1.5 ${SANS}`,
         color: "var(--c-muted)",
         textWrap: "pretty",
       }}
@@ -545,7 +620,7 @@ function MarketBand({
             display: "flex",
             alignItems: "center",
             padding: "0 4px",
-            font: "500 11.5px/1 Inter, sans-serif",
+            font: `500 11.5px/1 ${SANS}`,
             color: "var(--c-secondary)",
           }}
         >
@@ -570,7 +645,7 @@ function MarketBand({
         <p
           style={{
             margin: "10px 0 0",
-            font: "400 11px/1.5 Inter, sans-serif",
+            font: `400 11px/1.5 ${SANS}`,
             color: "var(--c-muted)",
             textWrap: "pretty",
           }}
@@ -643,13 +718,17 @@ function MarketCell({
               <span style={{ font: `400 12px/1 ${MONO}`, color: "var(--c-muted)" }}> · {cell.note}</span>
             ) : null}
           </span>
-        ) : (
+        ) : cell.note ? (
           /* No quote is an absence, stated. `stat-card.tsx` says the same
-             thing in the same words on the desk. */
+             thing in the same words on the desk. The marker is the loader's
+             word, never this file's: `?? "no quote"` used to stand here and
+             would have authored an absence marker for a cell whose loader
+             never set one, which is the same shape as a fixture default. A
+             cell with neither a delta nor a note now draws its value alone. */
           <span style={{ font: `400 12px/1 ${MONO}`, color: "var(--c-muted)" }}>
-            · {cell.note ?? "no quote"}
+            · {cell.note}
           </span>
-        )}
+        ) : null}
       </p>
     </>
   );
@@ -736,7 +815,7 @@ function WaitingCard({ eyebrow, line }: { eyebrow: string; line: string }) {
           style={{
             display: "block",
             marginTop: "7px",
-            font: `500 15px/1.35 ${PLAYFAIR}`,
+            font: `500 15px/1.35 ${SERIF}`,
             color: "var(--c-oninv-strong)",
           }}
         >
@@ -776,7 +855,7 @@ function TailLink({ label, href }: { label: string; href?: string }) {
     minHeight: "44px",
     display: "flex",
     alignItems: "center",
-    font: "600 12px/1 Inter, sans-serif",
+    font: `600 12px/1 ${SANS}`,
     color: "var(--c-goldink)",
     textDecoration: "none",
   } as const;
@@ -807,7 +886,7 @@ function StoryLens({ label, on, onClick }: { label: string; on: boolean; onClick
         alignItems: "center",
         padding: "0 13px",
         borderRadius: "6px",
-        font: `${on ? 600 : 500} 12px/1 Inter, sans-serif`,
+        font: `${on ? 600 : 500} 12px/1 ${SANS}`,
         border: `1px solid ${on ? "var(--c-ink)" : "var(--c-border)"}`,
         color: on ? "var(--c-ink)" : "var(--c-secondary)",
         backgroundColor: on ? "var(--c-surface)" : "transparent",
@@ -859,7 +938,7 @@ function StoryRow({ story, last }: { story: DashStory; last: boolean }) {
           flex: "none",
           width: "22px",
           textAlign: "right",
-          font: `800 22px/1 ${PLAYFAIR}`,
+          font: `800 22px/1 ${SERIF}`,
           color: "var(--c-number)",
         }}
       >
@@ -876,25 +955,29 @@ function StoryRow({ story, last }: { story: DashStory; last: boolean }) {
           }}
         >
           <SentimentPill tone={story.tone} label={story.toneLabel} size="md" />
-          <span
-            style={{
-              flex: "none",
-              font: "600 10px/1.4 Inter, sans-serif",
-              padding: "2px 6px",
-              borderRadius: "4px",
-              backgroundColor: "var(--c-surface)",
-              color: "var(--c-secondary)",
-            }}
-          >
-            {story.sector}
-          </span>
-          <span style={{ font: "400 10px/1 Inter, sans-serif", color: "var(--c-muted)" }}>
+          {/* No sector, no chip. An empty chip is a box asserting a
+              classification the article does not carry. */}
+          {story.sector ? (
+            <span
+              style={{
+                flex: "none",
+                font: `600 10px/1.4 ${SANS}`,
+                padding: "2px 6px",
+                borderRadius: "4px",
+                backgroundColor: "var(--c-surface)",
+                color: "var(--c-secondary)",
+              }}
+            >
+              {story.sector}
+            </span>
+          ) : null}
+          <span style={{ font: `400 10px/1 ${SANS}`, color: "var(--c-muted)" }}>
             {story.source}
           </span>
           <span
             style={{
               marginLeft: "auto",
-              font: "400 10px/1 Inter, sans-serif",
+              font: `400 10px/1 ${SANS}`,
               color: "var(--c-muted)",
             }}
           >
@@ -904,7 +987,7 @@ function StoryRow({ story, last }: { story: DashStory; last: boolean }) {
         <span
           style={{
             display: "block",
-            font: `700 14px/1.34 ${PLAYFAIR}`,
+            font: `700 14px/1.34 ${SERIF}`,
             color: "var(--c-ink)",
             textWrap: "pretty",
           }}
@@ -922,11 +1005,11 @@ function StoryRow({ story, last }: { story: DashStory; last: boolean }) {
 function Absence({ title, body }: { title: string; body: string }) {
   return (
     <div style={{ marginTop: "12px" }}>
-      <p style={{ margin: 0, font: `500 15px/1.35 ${PLAYFAIR}`, color: "var(--c-ink)" }}>{title}</p>
+      <p style={{ margin: 0, font: `500 15px/1.35 ${SERIF}`, color: "var(--c-ink)" }}>{title}</p>
       <p
         style={{
           margin: "6px 0 0",
-          font: "400 11.5px/1.5 Inter, sans-serif",
+          font: `400 11.5px/1.5 ${SANS}`,
           color: "var(--c-muted)",
           maxWidth: "34ch",
           textWrap: "pretty",
@@ -949,10 +1032,10 @@ function StaleNotice({ text }: { text: string }) {
         padding: "13px 14px",
       }}
     >
-      <div style={{ font: "600 12px/1 Inter, sans-serif", color: "var(--c-ink)" }}>
+      <div style={{ font: `600 12px/1 ${SANS}`, color: "var(--c-ink)" }}>
         You are reading yesterday&rsquo;s briefing.
       </div>
-      <div style={{ marginTop: "4px", font: "400 11.5px/1.5 Inter, sans-serif", color: "var(--c-body)" }}>
+      <div style={{ marginTop: "4px", font: `400 11.5px/1.5 ${SANS}`, color: "var(--c-body)" }}>
         {text}
       </div>
     </div>
@@ -966,20 +1049,16 @@ function StaleNotice({ text }: { text: string }) {
  * pieces. The design replaces all of it with a single skeleton in the shape of
  * the real screen, closing on a line that states what is being waited on.
  *
- * `unwired` is the same shape saying a different, and the only true, thing.
- * The design's closing line and its `aria-busy` both describe a read in
- * progress. With a loader behind them that is what is happening. On this
- * branch there is no loader, so in production they would narrate work that
- * will never start, and `aria-busy` would tell a screen reader to expect the
- * region to settle. Neither survives that, so both change.
+ * The closing line and `aria-busy` both describe a read in progress, and a
+ * previous version of this file had to withdraw both because there was no
+ * loader behind the screen and a permanent skeleton told a reader a briefing
+ * was on its way. There is a loader now. The screen is only in this state
+ * while that loader is outstanding, so the design's own line is true again and
+ * `aria-busy` correctly tells a screen reader the region will settle.
  */
-function DashSkeleton({ unwired = false }: { unwired?: boolean }) {
+function DashSkeleton() {
   return (
-    <div
-      style={{ padding: `0 ${PAD} 26px` }}
-      aria-busy={unwired ? undefined : "true"}
-      aria-label={unwired ? "Preview of the Dashboard screen" : "Reading overnight coverage"}
-    >
+    <div style={{ padding: `0 ${PAD} 26px` }} aria-busy="true" aria-label="Reading overnight coverage">
       <div style={{ display: "flex", alignItems: "center", gap: "11px" }}>
         <span className={ledger.sk} style={{ width: "118px", height: "13px" }} />
         <span style={{ flex: 1, height: "1px", backgroundColor: "var(--c-border)" }} />
@@ -1018,18 +1097,13 @@ function DashSkeleton({ unwired = false }: { unwired?: boolean }) {
         style={{
           margin: "20px 0 0",
           font: `400 11px/1.5 ${MONO}`,
-          /* The design's caps and tracking are a short status label. A whole
-             sentence in them is the all-caps decorative treatment README
-             forbids, so the unwired line is sentence case at the same size. */
-          letterSpacing: unwired ? "0.01em" : "0.07em",
+          letterSpacing: "0.07em",
           color: "var(--c-muted)",
           textAlign: "center",
           textWrap: "pretty",
         }}
       >
-        {unwired
-          ? "Preview of the screen. No briefing is wired to it yet."
-          : "READING OVERNIGHT COVERAGE"}
+        READING OVERNIGHT COVERAGE
       </p>
     </div>
   );
@@ -1042,23 +1116,79 @@ function DashSkeleton({ unwired = false }: { unwired?: boolean }) {
  * failed. On a product whose claim is that nothing is curated away, a failed
  * read that reads as an empty one is a trust failure, so the screen states it.
  */
+/**
+ * The Top Stories read failed, said at section scope.
+ *
+ * Same words as `DashError`, narrowed to the one section they are true of, and
+ * carrying the same escape: the loader runs once on mount, so a reload is the
+ * only retry there is and the control says what it does. Everything above and
+ * below this section keeps rendering whatever its own read gave back.
+ */
+function StoriesFailed() {
+  return (
+    <div style={{ marginTop: "12px" }} role="alert">
+      <p style={{ margin: 0, font: `500 15px/1.35 ${SERIF}`, color: "var(--c-ink)" }}>
+        We could not load your top stories.
+      </p>
+      <p
+        style={{
+          margin: "6px 0 0",
+          font: `400 11.5px/1.5 ${SANS}`,
+          color: "var(--c-muted)",
+          maxWidth: "34ch",
+          textWrap: "pretty",
+        }}
+      >
+        This is a failed read, not an empty morning. Nothing is being hidden.
+      </p>
+      <button
+        type="button"
+        onClick={() => window.location.reload()}
+        className={ledger.bare}
+        style={{
+          marginTop: "12px",
+          minHeight: "44px",
+          display: "inline-flex",
+          alignItems: "center",
+          padding: "0 17px",
+          border: "1px solid var(--c-ink)",
+          borderRadius: "9px",
+          font: `600 13px/1 ${SANS}`,
+          color: "var(--c-ink)",
+        }}
+      >
+        Try again
+      </button>
+    </div>
+  );
+}
+
+/**
+ * The whole screen failed.
+ *
+ * REACHABLE ONLY FROM THE PREVIEW PATH NOW. `?stage=error` draws it so the
+ * design's error state stays fingerprintable, and the real loader never sets
+ * it: a failed Top Stories read fails its own section above, and every other
+ * read on this screen renders its absence by leaving its section out. If a
+ * future read genuinely cannot be survived section by section, this is where
+ * it lands, and the reason should be written here first.
+ */
 function DashError() {
   return (
     <div style={{ padding: `18px ${PAD} 26px` }} role="alert">
-      <p style={{ margin: 0, font: `500 17px/1.4 ${PLAYFAIR}`, color: "var(--c-ink)" }}>
+      <p style={{ margin: 0, font: `500 17px/1.4 ${SERIF}`, color: "var(--c-ink)" }}>
         We could not load your briefing.
       </p>
       <p
         style={{
           margin: "10px 0 0",
-          font: "400 13px/1.6 Inter, sans-serif",
+          font: `400 13px/1.6 ${SANS}`,
           color: "var(--c-secondary)",
           maxWidth: "34ch",
           textWrap: "pretty",
         }}
       >
-        This is a failed read, not an empty morning. Nothing is being hidden, and your open calls
-        are unaffected.
+        This is a failed read, not an empty morning. Nothing is being hidden.
       </p>
       <button
         type="button"
@@ -1072,7 +1202,7 @@ function DashError() {
           padding: "0 17px",
           border: "1px solid var(--c-ink)",
           borderRadius: "9px",
-          font: "600 13px/1 Inter, sans-serif",
+          font: `600 13px/1 ${SANS}`,
           color: "var(--c-ink)",
         }}
       >

@@ -1,0 +1,282 @@
+div|hidden md:block|1220x2071
+  div|relative|1220x2071
+    div|opacity-100 transition-opacity duration-300 ease-out|1220x2071
+      div|dash-contentwrap dash-dots max-w-[1440px] mx-auto px-6 md:px-12 py-6 md:py-8 pb-16|1220x2071
+        div|mb-2 flex items-center gap-2.5 bg-gold-muted/40 border border-gold-border rounded-xl px-3.5 py-2.5|1124x42
+          span|w-1.5 h-1.5 rounded-full bg-gold-dark flex-shrink-0|6x6
+          span|font-sans text-[11px] text-espresso|384x18
+          a|font-sans text-[11px] font-semibold text-gold hover:underline ml-auto flex-shrink-0|87x18
+          button|text-text-muted hover:text-text-primary text-sm ml-1 cursor-pointer|9x20
+        div|flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl border border-border-subtle bg-parchment-mid/40 mb-4|1124x41
+          div|flex items-center gap-2 min-w-0 flex-wrap|504x19
+            span|text-xs text-text-muted whitespace-nowrap|96x16
+            span|inline-flex items-center font-sans font-semibold px-2 py-0.5 rounded-md whitespace-nowrap bg-parchment-mid text-text-secondary border border-border-base text-[8px]|88x19
+            span|inline-flex items-center font-sans font-semibold px-2 py-0.5 rounded-md whitespace-nowrap bg-parchment-mid text-text-secondary border border-border-base text-[8px]|63x19
+            span|inline-flex items-center font-sans font-semibold px-2 py-0.5 rounded-md whitespace-nowrap bg-parchment-mid text-text-secondary border border-border-base text-[8px]|125x19
+            span|inline-flex items-center font-sans font-semibold px-2 py-0.5 rounded-md whitespace-nowrap bg-parchment-mid text-text-secondary border border-border-base text-[8px]|54x19
+            a|text-xs text-text-secondary hover:text-text-primary font-medium whitespace-nowrap|38x16
+              svg|lucide lucide-arrow-right inline h-3 w-3|12x12
+                path||7x0
+                path||4x7
+          button|shrink-0 p-0.5 rounded hover:bg-parchment-mid transition-colors|18x18
+            svg|lucide lucide-x h-3.5 w-3.5 text-text-muted|14x14
+              path||7x7
+              path||7x7
+        div|dash-rise flex items-start justify-between gap-4 flex-wrap mt-1|1124x179
+          div|max-w-[640px]|640x179
+            p|font-display italic text-[16px] text-gold-dark m-0 mb-2|640x26
+            h2|font-display text-[32px] md:text-[42px] font-medium text-espresso m-0 leading-[1] tracking-[-0.025em]|640x84
+            p|font-display italic text-[15px] md:text-[17px] text-text-secondary mt-2.5 leading-[1.5]|640x51
+          div|flex flex-col items-end gap-2.5 ml-auto|243x59
+            span|inline-flex items-center gap-2 font-data text-[12px] text-text-muted bg-white border border-border-base rounded-full px-3 py-1.5 tabular-nums whitespace-nowrap|243x33
+              span|w-1.5 h-1.5 rounded-full bg-gold-dark|6x6
+              span|text-text-faint|7x19
+              span|text-gold-dark|101x19
+            div|flex items-center gap-2|65x16
+              button|inline-flex items-center gap-1 font-sans text-[10px] font-semibold text-gold hover:text-gold-dark transition-colors cursor-pointer|65x16
+                svg|lucide lucide-pencil|11x11
+                  path||9x9
+                  path||2x2
+        div|dash-rise mt-2|1124x79
+          div|dash-tile relative rounded-2xl bg-white border border-border-base overflow-hidden|1124x79
+            div|grid grid-cols-4|1122x76
+              div|dash-figcell relative px-5 py-3.5 md:px-6 md:py-4|281x76
+                p|font-data text-[10px] tracking-[0.01em] text-text-muted m-0 mb-1.5|233x16
+                p|flex items-baseline gap-2 m-0|233x22
+                  span|font-data text-[22px] font-semibold tabular-nums leading-none text-gold|106x22
+                    span||106x29
+                  span|font-data text-[11px] text-text-muted leading-none|79x11
+              div|dash-figcell relative px-5 py-3.5 md:px-6 md:py-4 border-l border-[rgba(212,168,75,0.14)]|281x76
+                p|font-data text-[10px] tracking-[0.01em] text-text-muted m-0 mb-1.5|232x16
+                p|flex items-baseline gap-2 m-0|232x22
+                  span|font-data text-[22px] font-semibold tabular-nums leading-none text-espresso|53x22
+                    span||53x29
+                  span|font-data text-[12px] font-semibold leading-none tabular-nums text-signal-dn|43x12
+              div|dash-figcell relative px-5 py-3.5 md:px-6 md:py-4 border-l border-[rgba(212,168,75,0.14)]|281x76
+                p|font-data text-[10px] tracking-[0.01em] text-text-muted m-0 mb-1.5|232x16
+                p|flex items-baseline gap-2 m-0|232x22
+                  span|font-data text-[22px] font-semibold tabular-nums leading-none text-espresso|66x22
+                    span||66x29
+                  span|font-data text-[12px] font-semibold leading-none tabular-nums text-signal-dn|74x12
+              div|dash-figcell relative px-5 py-3.5 md:px-6 md:py-4 border-l border-[rgba(212,168,75,0.14)]|281x76
+                p|font-data text-[10px] tracking-[0.01em] text-text-muted m-0 mb-1.5|232x16
+                p|flex items-baseline gap-2 m-0|232x22
+                  span|font-data text-[22px] font-semibold tabular-nums leading-none text-gold|40x22
+                    span||40x29
+                  span|font-data text-[12px] leading-none tabular-nums|58x12
+                    span|text-signal-up|29x15
+                    span|text-signal-dn|22x15
+        div|dash-rise mt-2|1124x30
+          div|border border-border-base rounded-lg px-3 py-1.5 flex items-center gap-2.5|1124x30
+            span|font-sans text-[10px] font-semibold text-text-muted whitespace-nowrap|115x16
+              span|text-gold|11x13
+            div|relative inline-flex|10x10
+              button|inline-flex items-center justify-center cursor-help text-text-faint hover:text-text-muted transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-gold rounded-sm|10x10
+                svg|lucide lucide-info|10x10
+                  circle||8x8
+                  path||0x2
+                  path||0x0
+            span|border-l border-border-base h-3 self-center|1x12
+            span|font-sans text-[10px] text-text-secondary whitespace-nowrap|86x16
+              span|text-text-muted|42x13
+            span|border-l border-border-base h-3 self-center|1x12
+            span|font-sans text-[10px] text-text-secondary whitespace-nowrap|90x16
+            span|border-l border-border-base h-3 self-center|1x12
+            span|font-sans text-[10px] text-text-secondary whitespace-nowrap|93x16
+        div|dash-rise mt-3|1124x60
+          div|flex items-center gap-3 px-4 py-3 bg-espresso dark:bg-overlay dark:border dark:border-border-default rounded-xl ai-signal-glow|1124x60
+            div|w-8 h-8 rounded-lg bg-gold-muted border border-gold-border flex items-center justify-center flex-shrink-0|32x32
+              svg|lucide lucide-sparkles text-gold|13x13
+                path||11x11
+                path||0x2
+                path||2x0
+                circle||2x2
+            div|relative inline-flex|12x12
+              button|inline-flex items-center justify-center cursor-help transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-gold rounded-sm text-cream/30 hover:text-cream/50 flex-shrink-0|12x12
+                svg|lucide lucide-info|12x12
+                  circle||10x10
+                  path||0x2
+                  path||0x0
+            div|flex-1 min-w-0|903x36
+              p|font-sans text-[9px] text-text-muted font-semibold mb-0.5|903x14
+              p|font-sans text-[12px] text-gold-light leading-relaxed truncate|903x20
+            a|flex-shrink-0 font-sans text-[11px] font-bold text-gold hover:text-gold-light transition-colors whitespace-nowrap|109x18
+        div|dash-rise mt-[18px]|1124x499
+          div|flex items-center justify-between mb-3|1124x29
+            div|flex items-center gap-3|201x29
+              h2|font-display text-[18px] font-medium text-espresso inline-flex items-center gap-1.5|113x29
+                div|relative inline-flex|10x10
+                  button|inline-flex items-center justify-center cursor-help text-text-faint hover:text-text-muted transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-gold rounded-sm|10x10
+                    svg|lucide lucide-info|10x10
+                      circle||8x8
+                      path||0x2
+                      path||0x0
+              div|flex gap-3|76x24
+                button|font-sans text-[11px] pb-1 cursor-pointer transition-colors border-b-2 border-gold text-gold font-semibold|52x24
+                  div|relative inline-flex|10x10
+                    button|inline-flex items-center justify-center cursor-help text-text-faint hover:text-text-muted transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-gold rounded-sm|10x10
+                      svg|lucide lucide-info|10x10
+                        circle||8x8
+                        path||0x2
+                        path||0x0
+                button|font-sans text-[11px] pb-1 cursor-pointer transition-colors border-b-2 border-transparent text-text-muted hover:text-text-secondary|12x24
+            a|font-sans text-[10px] font-semibold text-gold hover:text-gold-dark transition-colors|49x16
+          div|dash-fill-in|1124x459
+            div|relative|1124x459
+              div|dash-lead-hero relative rounded-2xl overflow-visible border-t-2 border-t-[rgba(212,168,75,0.5)] p-6 md:p-9|1124x459
+                div|dash-hero-in|1052x327
+                  div|flex items-center justify-between gap-3 mb-4|1052x18
+                    span|inline-flex items-center gap-2 font-data text-[11px] tracking-[0.02em] text-[#e8c169]|96x18
+                      span|track-record-pending-dot w-1.5 h-1.5 rounded-full bg-[#e05c5c]|6x6
+                    span|font-data text-[10.5px] text-[#8a7d63] tabular-nums whitespace-nowrap|158x17
+                  div|flex items-center gap-2 mb-3 flex-wrap|1052x24
+                    span||43x20
+                    span|font-data text-[11px] px-2 py-0.5 rounded-full bg-[rgba(212,168,75,0.14)] border border-[rgba(212,168,75,0.3)] text-[#e8c169]|64x24
+                    span|font-data text-[10px] text-[#8a7d63]|60x16
+                  div|grid gap-x-8 gap-y-5 md:grid-cols-[1.6fr_1fr]|1052x180
+                    div|flex flex-col min-w-0|628x180
+                      h3|font-display text-[24px] md:text-[30px] font-medium text-[#f6ecdb] leading-[1.12] tracking-[-0.02em] text-wrap-pretty m-0|628x67
+                      div|flex flex-col justify-end gap-2 mt-5|628x62
+                        p|font-data text-[9px] tracking-[0.12em] text-[#e8c169] m-0 uppercase|628x14
+                        div|flex items-center gap-[11px]|628x16
+                          span|font-data text-[10px] text-[#b9ad97] w-[46px] shrink-0|46x16
+                          div|flex-1 h-2 rounded-full overflow-hidden bg-[rgba(212,168,75,0.09)]|506x8
+                            span|dash-hbar block h-full rounded-full|506x8
+                          span|font-data text-[10px] tabular-nums w-[54px] text-right|54x16
+                            span||24x13
+                        div|flex items-center gap-[11px]|628x16
+                          span|font-data text-[10px] text-[#b9ad97] w-[46px] shrink-0|46x16
+                          div|flex-1 h-2 rounded-full overflow-hidden bg-[rgba(212,168,75,0.09)]|506x8
+                            span|dash-hbar block h-full rounded-full|465x8
+                          span|font-data text-[10px] tabular-nums w-[54px] text-right|54x16
+                            span||24x13
+                    div|flex flex-col justify-center md:border-l md:border-[rgba(212,168,75,0.12)] md:pl-7|392x180
+                      p|font-data text-[10.5px] tracking-[0.02em] text-[#e8c169] m-0 mb-3|363x17
+                      div|flex flex-col gap-4|363x151
+                        div|flex gap-2.5 items-start|363x45
+                          span|w-[13px] h-[2px] rounded-[2px] bg-[#d4a84b] mt-[9px] shrink-0|13x2
+                          p|font-display text-[15px] leading-[1.5] text-[#eaddc6] m-0|340x45
+                        div|flex gap-2.5 items-start|363x90
+                          span|w-[13px] h-[2px] rounded-[2px] bg-[#d4a84b] mt-[9px] shrink-0|13x2
+                          p|font-display text-[15px] leading-[1.5] text-[#eaddc6] m-0|340x90
+                  div|flex items-center gap-2 mt-3|1052x32
+                    button|inline-flex items-center justify-center rounded-md p-1.5 transition-all duration-[var(--duration-base)] ease-[var(--ease-out)] hover:bg-gold-muted focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-gold cursor-pointer text-text-faint hover:text-gold-dark|26x26
+                      svg|lucide lucide-bookmark transition-all duration-[var(--duration-base)]|14x14
+                        path||8x10
+                    button|inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gold text-cream font-sans text-[11px] font-semibold hover:bg-gold-dark transition-colors cursor-pointer|124x30
+                      svg|lucide lucide-sparkles|11x11
+                        path||9x9
+                        path||0x2
+                        path||2x0
+                        circle||2x2
+                    button|inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg font-sans text-[11px] font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed bg-white/5 border border-[rgba(212,168,75,0.3)] text-[#e8c169] hover:border-[rgba(212,168,75,0.6)]|98x32
+                      svg|lucide lucide-plus|11x11
+                        path||6x0
+                        path||0x6
+                    button|inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg font-sans text-[11px] font-medium cursor-not-allowed bg-white/5 border border-white/10 text-[#8a7d63] opacity-70|108x32
+                      svg|lucide lucide-message-square|11x11
+                        path||9x9
+                      span|ml-1 px-1 py-0.5 rounded text-[8px] font-semibold bg-white/10 text-[#b9ad97]|28x17
+                  a|inline-flex items-center gap-1 font-data text-[11px] text-[#e8c169] hover:text-[#f6ecdb] transition-colors mt-4|140x18
+                    svg|lucide lucide-external-link|11x11
+                      path||3x3
+                      path||5x5
+                      path||7x7
+                div|flex items-center gap-x-4 gap-y-2 flex-wrap mt-5 pt-4 border-t border-[rgba(212,168,75,0.14)]|1052x38
+                  button|inline-flex items-baseline gap-[7px] cursor-pointer bg-transparent border-0 p-0 group|75x21
+                    span|font-data text-[11px] tabular-nums transition-colors text-[#14110b] bg-[#d4a84b] rounded-[3px] px-[5px] py-[1px]|23x20
+                    span|font-display italic text-[12.5px] transition-colors text-[#f6ecdb]|45x20
+                  button|inline-flex items-baseline gap-[7px] cursor-pointer bg-transparent border-0 p-0 group|61x20
+                    span|font-data text-[11px] tabular-nums transition-colors text-[#6f6650]|13x18
+                    span|font-display italic text-[12.5px] transition-colors text-[#8a7d63] group-hover:text-[#e8c169]|41x20
+                  button|inline-flex items-baseline gap-[7px] cursor-pointer bg-transparent border-0 p-0 group|109x20
+                    span|font-data text-[11px] tabular-nums transition-colors text-[#6f6650]|13x18
+                    span|font-display italic text-[12.5px] transition-colors text-[#8a7d63] group-hover:text-[#e8c169]|89x20
+                  button|inline-flex items-baseline gap-[7px] cursor-pointer bg-transparent border-0 p-0 group|102x20
+                    span|font-data text-[11px] tabular-nums transition-colors text-[#6f6650]|13x18
+                    span|font-display italic text-[12.5px] transition-colors text-[#8a7d63] group-hover:text-[#e8c169]|82x20
+                  span|font-data text-[10px] text-[#6f6650] ml-1|78x16
+        div|mt-[18px] grid grid-cols-1 lg:grid-cols-[1.5fr_1fr] gap-[18px] items-start|1124x511
+          div|flex flex-col gap-[18px]|664x511
+            section|dash-tile dash-rise bg-white border border-border-base p-5 md:p-6 rounded-2xl|664x261
+              div|flex items-baseline justify-between gap-3 border-b-[1.5px] border-[color:var(--espresso)] pb-2.5 mb-3.5|614x40
+                div|flex items-baseline gap-2 min-w-0|199x29
+                  h3|font-display text-[18px] font-medium text-espresso m-0 truncate|85x29
+                  span|font-display italic text-[12px] text-text-muted whitespace-nowrap|106x19
+              div|dash-fill-in|614x157
+                div|mb-3|614x68
+                  p|font-sans text-[11px] text-text-primary leading-snug m-0|614x15
+                  p|font-sans text-[10px] text-text-muted leading-snug mt-1 m-0|614x28
+                  p|font-data text-[9.5px] text-text-faint tabular-nums mt-1.5 m-0|614x15
+                div|space-y-2|614x51
+                  a|group block rounded-lg px-2 py-1.5 -mx-2 hover:bg-parchment-mid transition-colors|630x51
+                    div|flex items-center gap-1.5 mb-1|614x20
+                      span|font-data text-[8.5px] font-semibold uppercase px-1.5 py-0.5 rounded border text-signal-up border-signal-up/30 bg-signal-up/10|50x20
+                      span|font-data text-[9.5px] text-text-muted|23x15
+                      span|font-data text-[9px] text-text-faint ml-auto|43x14
+                    p|font-sans text-[11.5px] text-text-primary leading-snug line-clamp-2 group-hover:text-gold-dark transition-colors m-0|614x16
+                a|block mt-2.5 font-sans text-[10px] font-semibold text-gold hover:text-gold-dark transition-colors|614x16
+            section|dash-tile dash-rise bg-white border border-border-base p-5 md:p-6 rounded-2xl|664x232
+              div|flex items-baseline justify-between gap-3 border-b-[1.5px] border-[color:var(--espresso)] pb-2.5 mb-3.5|614x40
+                div|flex items-baseline gap-2 min-w-0|289x29
+                  h3|font-display text-[18px] font-medium text-espresso m-0 truncate|155x29
+                  span|font-display italic text-[12px] text-text-muted whitespace-nowrap|126x19
+              div|dash-fill-in|614x128
+                div|grid grid-cols-2 gap-x-3 gap-y-2.5|614x81
+                  div||301x35
+                    span|flex items-center gap-1.5|301x14
+                      span|inline-block h-1.5 w-1.5 shrink-0 rounded-full|6x6
+                      span|font-data text-[9px] tracking-[0.02em] text-text-faint uppercase|50x14
+                    span|font-data text-[17px] font-semibold text-espresso tabular-nums leading-none block mt-1|301x17
+                      span|font-data text-[9.5px] font-normal text-text-faint ml-1|34x13
+                  div||301x35
+                    span|flex items-center gap-1.5|301x14
+                      span|inline-block h-1.5 w-1.5 shrink-0 rounded-full|6x6
+                      span|font-data text-[9px] tracking-[0.02em] text-text-faint uppercase|56x14
+                    span|font-data text-[17px] font-semibold text-espresso tabular-nums leading-none block mt-1|301x17
+                      span|font-data text-[9.5px] font-normal text-text-faint ml-1|34x13
+                  div||301x35
+                    span|flex items-center gap-1.5|301x14
+                      span|inline-block h-1.5 w-1.5 shrink-0 rounded-full|6x6
+                      span|font-data text-[9px] tracking-[0.02em] text-text-faint uppercase|73x14
+                    span|font-data text-[17px] font-semibold text-espresso tabular-nums leading-none block mt-1|301x17
+                      span|font-data text-[9.5px] font-normal text-text-faint ml-1|34x13
+                  div||301x35
+                    span|flex items-center gap-1.5|301x14
+                      span|inline-block h-1.5 w-1.5 shrink-0 rounded-full|6x6
+                      span|font-data text-[9px] tracking-[0.02em] text-text-faint uppercase|56x14
+                    span|font-data text-[17px] font-semibold text-espresso tabular-nums leading-none block mt-1|301x17
+                      span|font-data text-[9.5px] font-normal text-text-faint ml-1|34x13
+                p|font-sans text-[9.5px] text-text-faint italic leading-snug mt-2.5 m-0|614x13
+                a|block mt-2 font-sans text-[10px] font-semibold text-gold hover:text-gold-dark transition-colors|614x16
+        div|mt-[18px] grid grid-cols-1 lg:grid-cols-[1fr_1.9fr] gap-[18px] items-start|1124x167
+          section|dash-tile dash-rise bg-white border border-border-base p-5 md:p-6 rounded-2xl|381x167
+            div|flex items-baseline justify-between gap-3 border-b-[1.5px] border-[color:var(--espresso)] pb-2.5 mb-3.5|331x40
+              div|flex items-baseline gap-2 min-w-0|82x29
+                h3|font-display text-[18px] font-medium text-espresso m-0 truncate|82x29
+            div||331x63
+              p|font-sans text-[11px] text-text-muted py-3 px-2 leading-snug|331x39
+              a|block mt-2 font-sans text-[10px] font-semibold text-gold hover:text-gold-dark transition-colors|331x16
+          section|dash-tile dash-rise bg-white border border-border-base p-5 md:p-6 rounded-2xl|725x151
+            div|flex items-baseline justify-between gap-3 border-b-[1.5px] border-[color:var(--espresso)] pb-2.5 mb-3.5|675x40
+              div|flex items-baseline gap-2 min-w-0|235x29
+                h3|font-display text-[18px] font-medium text-espresso m-0 truncate|85x29
+                span|font-display italic text-[12px] text-text-muted whitespace-nowrap|142x19
+            div||675x47
+              p|font-sans text-[11px] text-text-muted italic leading-snug py-1|675x23
+              a|block mt-2 font-sans text-[10px] font-semibold text-gold hover:text-gold-dark transition-colors|675x16
+        div|mt-[18px]|1124x276
+          section|dash-tile dash-rise bg-white border border-border-base p-5 md:p-6 rounded-2xl|1124x276
+            div|flex items-baseline justify-between gap-3 border-b-[1.5px] border-[color:var(--espresso)] pb-2.5 mb-3.5|1074x40
+              div|flex items-baseline gap-2 min-w-0|216x29
+                h3|font-display text-[18px] font-medium text-espresso m-0 truncate|101x29
+                span|font-display italic text-[12px] text-text-muted whitespace-nowrap|107x19
+            div||1074x172
+              div|flex gap-1.5 mb-3|1074x34
+                button|flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg font-sans text-[11px] font-semibold transition-all duration-[var(--duration-base)] cursor-pointer bg-espresso text-cream|534x34
+                button|flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg font-sans text-[11px] font-semibold transition-all duration-[var(--duration-base)] cursor-pointer bg-parchment text-text-muted hover:bg-parchment-mid|534x34
+              div|dash-fill-in|1074x98
+                p|font-display text-[15px] font-medium text-espresso leading-[1.3] m-0|1074x20
+                p|font-sans text-[11px] text-text-secondary leading-[1.5] mt-1.5 line-clamp-3 m-0|1074x50
+                p|font-data text-[9.5px] text-text-faint tabular-nums mt-2 m-0|1074x15
+              a|block mt-3 font-sans text-[10px] font-semibold text-gold hover:text-gold-dark transition-colors|1074x16

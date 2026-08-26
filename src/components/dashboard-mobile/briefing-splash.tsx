@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import styles from "./dashboard.module.css";
+import { MONO, SANS, SERIF } from "./fonts";
 
 /**
  * The briefing splash. The first frame of the first session.
@@ -147,7 +148,7 @@ export function BriefingSplash({
                 x="40.35"
                 y="74"
                 textAnchor="middle"
-                fontFamily="'Playfair Display', serif"
+                fontFamily={SERIF}
                 fontWeight="800"
                 fontSize="68"
                 fill="currentColor"
@@ -164,7 +165,7 @@ export function BriefingSplash({
         style={{
           animationDelay: `${DELAY[1]}ms`,
           marginTop: "22px",
-          font: "400 10px/1 'JetBrains Mono', monospace",
+          font: `400 10px/1 ${MONO}`,
           letterSpacing: "0.16em",
           color: "var(--c-goldink)",
         }}
@@ -176,7 +177,7 @@ export function BriefingSplash({
         style={{
           animationDelay: `${DELAY[2]}ms`,
           marginTop: "14px",
-          font: "500 26px/1.15 'Playfair Display', serif",
+          font: `500 26px/1.15 ${SERIF}`,
           letterSpacing: "-0.025em",
           color: "var(--c-ink)",
           textAlign: "center",
@@ -191,7 +192,7 @@ export function BriefingSplash({
         style={{
           animationDelay: `${DELAY[3]}ms`,
           marginTop: "12px",
-          font: "400 12.5px/1.6 Inter, sans-serif",
+          font: `400 12.5px/1.6 ${SANS}`,
           color: "var(--c-secondary)",
           textAlign: "center",
           padding: "0 44px",

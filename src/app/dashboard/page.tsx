@@ -3,12 +3,23 @@
 import { useState, useEffect, useMemo, Suspense, type ReactNode } from "react";
 import { createBrowserClient } from "@supabase/ssr";
 import { AppShell } from "@/components/shell";
-import { DashboardScreen, MobileDashboardRoute } from "@/components/dashboard-mobile";
+import {
+  DashboardScreen,
+  MobileDashboardRoute,
+  buildDashboardData,
+  useArrivalBudget,
+  useMobileMinute,
+  useMobileRecords,
+  MOBILE_READ_BUDGET_MS,
+  type DashQuote,
+  type DashStage,
+} from "@/components/dashboard-mobile";
 import { useUserProfile } from "@/hooks/useUserProfile";
 import { DashTile } from "@/components/dashboard/dash-tile";
 import {
   DashboardReadyProvider,
   DashboardRevealGate,
+  useDashboardReady,
   useDashboardSource,
 } from "@/components/dashboard/dashboard-ready";
 import { DeskRecordSummary } from "@/components/dashboard/desk-record-summary";
@@ -161,6 +172,15 @@ function DashboardPageInner() {
   // True when the count queries errored. Rendered as an explicit absence rather
   // than as 0, which would read as "no articles today".
   const [countsFailed, setCountsFailed] = useState(false);
+  // Whether the count read has ANSWERED, either way. `countsFailed` cannot
+  // stand in for this: it is false for a read that errored and false for a
+  // read still in flight, and the two are different facts. The phone reads it
+  // so an outstanding count is drawn as an absence rather than as 0.
+  const [countsRead, setCountsRead] = useState(false);
+  // The same signal for the market quotes. The reveal gate cannot supply it:
+  // `settleMarketCards` fires from an effect on mount, so the gate never waits
+  // for that fetch and the band would otherwise pop in seconds later.
+  const [quotesRead, setQuotesRead] = useState(false);
   const [marketCards, setMarketCards] = useState<Record<string, MarketCardData | null>>({});
   const [bullishCount, setBullishCount] = useState(0);
   const [bearishCount, setBearishCount] = useState(0);
@@ -425,7 +445,12 @@ function DashboardPageInner() {
     // one, and each function already swallows its own errors into an empty
     // state, so a failure reveals the page with that section empty.
     void Promise.allSettled([
-      loadCounts(),
+      /* `loadCounts` swallows a PostgREST error into `countsFailed` but lets a
+         thrown one out, so the settle marker goes on the outside of the
+         promise where BOTH paths reach it. A read that answered with an error
+         and a read that blew up are equally answered; a read still in flight
+         is the only one the phone must not print a number for. */
+      loadCounts().finally(() => setCountsRead(true)),
       loadSpark(),
       loadBriefing(),
       loadStories(),
@@ -528,7 +553,12 @@ function DashboardPageInner() {
         // Leave cards empty — will show "—"
       }
     }
-    loadMarketCards();
+    /* The mobile screen's marker only. Every exit counts as answered,
+       including the two early exits and the catch, so a dead feed cannot
+       keep the phone's skeleton open. It never goes back to false when the
+       reader reorders their cards: the first answer is what the screen was
+       waiting on. Nothing on the desktop side reads it. */
+    void loadMarketCards().finally(() => setQuotesRead(true));
   }, [userMarketCards]);
 
   // Dashboard reveal gate — page-level market cards. Settles once the effect
@@ -656,6 +686,139 @@ function DashboardPageInner() {
     return undefined;
   }, [profile, stories, watchlistTickers, marketTone]);
 
+  /* ── the mobile screen's data ─────────────────────────────────────────
+   *
+   * Below md the phone draws its own screen beside the desktop layout, and
+   * until now it drew a fixture. It reads the SAME state the widgets above
+   * read; not one loader on this page is rewired, moved or re-run to feed it,
+   * and the desktop tree below is byte-identical to what it was.
+   *
+   * READINESS IS PER READ, NOT ONE FLAG, AND THAT IS THE WHOLE POINT.
+   *
+   * `useDashboardReady` alone was the signal here and it is not enough. The
+   * reveal gate flips `isReady` when every source has settled OR when its 10s
+   * ceiling is hit, and on the ceiling path nothing has come back. Measured on
+   * a build of the previous commit with every read held open and never
+   * answered, the phone painted at the ceiling and stated
+   * "SIGNALS TODAY 0 / 0 up 0 down" and "No stories yet. The overnight read
+   * has not published." Three count queries had returned nothing and the story
+   * read had returned nothing. Both lines are claims and neither had a source.
+   *
+   * So each read the phone paints carries its own answered flag, and a flag
+   * that is still false makes its field null rather than zero. `storiesLoading`
+   * already existed on this page and was simply never consumed.
+   *
+   *   counts   `countsRead`, set in a finally so an error counts as answered
+   *   stories  `storiesLoading`, already here
+   *   quotes   `quotesRead`, because `settleMarketCards` fires on mount and
+   *            the reveal gate therefore never waits for that fetch
+   *   records  `useMobileRecords().status`, which carries its own budget
+   *   brief    `dashRevealed`, which is the only signal for it and which is
+   *            an absence on the screen either way
+   *
+   * `useArrivalBudget` is the escape hatch for a PARTIAL stall: past it the
+   * screen paints what did answer and nulls the rest, so one slow read cannot
+   * keep the whole morning back. It sets no timer above the md breakpoint.
+   *
+   * IT IS DELIBERATELY NOT AN ESCAPE FROM A TOTAL STALL. With nothing back at
+   * all the screen stays on its skeleton, however long that takes. Painting
+   * there would give a greeting, a rule and empty space, and a briefing screen
+   * with nothing under the greeting reads as "your morning is empty", which is
+   * a claim about the desk's night made from four reads that answered nothing.
+   * A skeleton over four outstanding requests says a read is in progress, and
+   * one is. That is the only true thing available.
+   *
+   * The two record reads are the one thing this page does not already do at
+   * page level; they live inside desktop widgets as component state. Lifting
+   * them would be rewiring two desktop loaders, so `useMobileRecords` reads
+   * the same two sources through the same two shared libraries, and only
+   * below the md breakpoint, so a desktop load fires nothing extra.
+   */
+  const { isReady: dashRevealed } = useDashboardReady();
+  const mobileRecords = useMobileRecords();
+  /* The clock, re-read once a minute below md. It used to be read once, inside
+     the memo below, so a phone left open on the briefing showed a frozen time
+     under a rule that reads as live. */
+  const mobileMinute = useMobileMinute();
+
+  const mobileReadsAnswered =
+    countsRead && quotesRead && !storiesLoading && mobileRecords.status !== "loading";
+  /* Whether ANY of the four came back with something. `mobileRecords.status`
+     is not the test for the records: its own budget flips it to "done" on a
+     stall, so the answer is whether a record actually arrived. */
+  const mobileSomethingAnswered =
+    countsRead ||
+    quotesRead ||
+    !storiesLoading ||
+    mobileRecords.yourRecord !== null ||
+    mobileRecords.deskRecord !== null;
+  const mobileBudgetSpent = useArrivalBudget(mobileReadsAnswered, MOBILE_READ_BUDGET_MS);
+  const mobileReady =
+    dashRevealed && (mobileReadsAnswered || (mobileBudgetSpent && mobileSomethingAnswered));
+
+  const mobileData = useMemo(() => {
+    if (!mobileReady) return null;
+    return buildDashboardData({
+      now: new Date(mobileMinute * 60_000),
+      firstName: profile?.first_name ?? null,
+      /* Null, not zero, until the count read has answered. `toMarketCells`
+         leaves the SIGNALS cell out entirely on a null, the same treatment an
+         unanswered quote gets, and `toContext` says nothing. */
+      storyCount: countsRead ? storyCount : null,
+      bullishCount: countsRead ? bullishCount : null,
+      bearishCount: countsRead ? bearishCount : null,
+      countsFailed,
+      marketSymbols: userMarketCards,
+      quotes: marketCards as Record<string, DashQuote | null | undefined>,
+      briefHeadline: briefingHeadline,
+      /* The base Top Stories list, not `displayStories`. The phone has its
+         own For You lens and must not inherit which tab the desk is on.
+         Three states, and the order matters: a failed read sets `storiesError`
+         and clears `storiesLoading` in the same finally, so failure is tested
+         first. Null while the read is outstanding, so the section is absent
+         rather than empty; an empty list is the one thing that entitles the
+         screen to say the overnight read has not published. */
+      stories: storiesError ? "failed" : storiesLoading ? null : stories,
+      watchlistTickers: profile?.watchlist_tickers ?? [],
+      profileSectors: profile?.sectors ?? [],
+      yourRecord: mobileRecords.yourRecord,
+      deskRecord: mobileRecords.deskRecord,
+      gradedInLastDay: mobileRecords.gradedInLastDay,
+    });
+  }, [
+    mobileReady,
+    mobileMinute,
+    profile,
+    countsRead,
+    storyCount,
+    bullishCount,
+    bearishCount,
+    countsFailed,
+    userMarketCards,
+    marketCards,
+    briefingHeadline,
+    storiesLoading,
+    storiesError,
+    stories,
+    mobileRecords,
+  ]);
+
+  /* NO PAGE-LEVEL FAILURE BLANKS THIS SCREEN.
+   *
+   * This was `storiesError ? "error" : "ready"`, and `stage="error"` draws the
+   * whole-screen failure: one failed Top Stories read discarded the market
+   * band, the brief headline and both records even when all four had answered.
+   * A reader whose story read failed lost their own record, which they can
+   * have, over a section they cannot. That is the inverse of the rule the rest
+   * of this block follows.
+   *
+   * The failure now travels as `stories: "failed"` and is drawn by the Top
+   * Stories section alone. Every other read on this screen renders its absence
+   * by leaving its own section out, so there is nothing left that has to take
+   * the morning down with it. `?stage=error` still reaches the whole-screen
+   * state on the preview path, which is where the design is fingerprinted. */
+  const mobileStage: DashStage = "ready";
+
   return (
     <AppShell
       pageTitle="Dashboard"
@@ -676,14 +839,17 @@ function DashboardPageInner() {
           rewriting, and it is deliberate for this unit: unmounting the desk
           below md means branching a 942-line page on a breakpoint, which is
           the rewrite this was meant to avoid. Worth revisiting once the
-          mobile screen has a loader of its own.
+          mobile screen has a loader of its own, which is now the case: the
+          phone reads `mobileData` below, built from this page's own state.
+          Unmounting the desk below md is the next step and it is not this
+          unit's.
 
           Gating lives in a CLASS, never in an inline style. An inline display
           beats the class at every breakpoint, which is the defect that shipped
           the tab bar to desktop once already. */}
       <div className="md:hidden">
-        <Suspense fallback={<DashboardScreen stage="loading" />}>
-          <MobileDashboardRoute />
+        <Suspense fallback={<DashboardScreen stage="loading" data={null} />}>
+          <MobileDashboardRoute data={mobileData} stage={mobileStage} />
         </Suspense>
       </div>
 
