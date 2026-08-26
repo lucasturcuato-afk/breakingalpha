@@ -58,8 +58,15 @@ export interface ReviewLoad {
   stage: ReviewStage;
 }
 
-/** Rows read for the reader's own calls. The newest resolution is picked here. */
-const CLAIM_LIMIT = 100;
+/**
+ * How many of the reader's newest VERDICT rows are read.
+ *
+ * Not a cap on the record and nothing is counted over it. The query already
+ * excludes every row that carries no verdict, so the first row is the answer;
+ * this exists only so a row the mapper still rejects has somewhere to fall
+ * through to.
+ */
+const VERDICT_SCAN = 5;
 
 interface ClaimRow {
   id: string;
@@ -69,6 +76,11 @@ interface ClaimRow {
   created_at: string | null;
   commit_note?: string | null;
   commit_note_at?: string | null;
+}
+
+/** An outcome row with its claim embedded, which is the shape the read returns. */
+interface JoinedOutcomeRow extends OutcomeRow {
+  user_claims: ClaimRow | null;
 }
 
 interface OutcomeRow {
@@ -128,6 +140,11 @@ function asText(value: unknown): string | null {
  * shows. A grade written at 5pm PT is still that session.
  */
 function gradedDayLabel(iso: string): string {
+  /* The caller has already rejected an unparseable stamp, so this cannot
+     render "Invalid Date". Kept symmetrical with `noteWrittenLabel`, which
+     guards for the same reason: the two formatters are read side by side and
+     an asymmetry between them invites the wrong conclusion about which one is
+     safe. */
   return new Date(iso).toLocaleDateString("en-US", {
     weekday: "long",
     month: "long",
@@ -171,78 +188,96 @@ function noteWrittenLabel(iso: string): string | null {
  * happen.
  */
 export async function loadReview(supabase: SupabaseClient, userId: string): Promise<ReviewLoad> {
-  /* The note columns are selected with the claim, and a schema that does not
-     carry them yet is a FAILED NOTE READ rather than a failed screen. The
-     retry drops only the two note columns, so the resolution above the note
-     still renders and only the note block says it could not be read. */
-  const selectClaims = (columns: string) =>
-    supabase
-      .from("user_claims")
-      .select(columns)
-      .eq("user_id", userId)
-      .neq("status", "archived")
-      .order("created_at", { ascending: false })
-      .limit(CLAIM_LIMIT);
+  /* THE READ IS DRIVEN FROM THE OUTCOME SIDE, and that is the whole of why the
+     empty state is allowed to say what it says.
 
+     It used to read the reader's newest 100 claims and then look for outcome
+     rows among those. Two things were wrong with that and both reached the
+     screen. A cap on claims makes "No call on your record has resolved yet." a
+     statement about a window rather than about the record, and the window was
+     ordered by creation date, which selects the claims LEAST likely to have
+     closed. A reader past the cap would have been told their record was empty
+     over a verdict the query never looked at.
+
+     Starting from `user_claim_outcomes` removes the cap entirely: a reader with
+     no row here has no verdict, full stop. RLS on that table is ownership
+     scoped through `user_claims` (sql/0012:95-105), so the embedded filter is a
+     narrowing of what the database would allow anyway and never a substitute
+     for it.
+
+     UNGRADABLE ROWS ARE FILTERED OUT IN THE QUERY, and this is not tidying.
+     `backend/grading/grade_user_claims.py` writes an outcome row for the
+     ungradable path too, with `graded_at` NOT NULL, so those rows are a normal
+     product of every run and they are the majority in production today. They
+     carry no verdict: `scoredCallProps` maps `verdict = 'ungradable'` and a null
+     attribution to `notGraded`, which this file buckets as `awaiting`. Selecting
+     one would have drawn the word "Awaiting" under the line "resolved
+     overnight", which is a resolution the grader explicitly declined to make,
+     and it would have hidden the reader's real most recent verdict behind it
+     whenever the ungradable row happened to be newer.
+
+     The two filters mirror the only two conditions under which the mapper
+     returns an absence rather than a verdict. The walk below re-checks against
+     the mapper anyway, so the mapper stays the authority on what counts as a
+     verdict and this query stays an optimization of it. */
+  const OUTCOME_COLUMNS =
+    "claim_id, verdict, attribution, actual_pct_change, actual_direction, verdict_notes, graded_at, metadata";
+
+  const selectVerdicts = (claimColumns: string) =>
+    supabase
+      .from("user_claim_outcomes")
+      .select(`${OUTCOME_COLUMNS}, user_claims!inner(${claimColumns})`)
+      .eq("user_claims.user_id", userId)
+      .neq("user_claims.status", "archived")
+      .neq("verdict", "ungradable")
+      .not("attribution", "is", null)
+      .order("graded_at", { ascending: false })
+      .limit(VERDICT_SCAN);
+
+  /* The note columns ride along with the claim, and a schema that does not
+     carry them yet is a FAILED NOTE READ rather than a failed screen. The retry
+     drops only those two columns, so the resolution still renders and only the
+     note block says it could not be read. */
   let noteReadFailed = false;
-  let claimRows: unknown[] | null = null;
-  let claimError: { code?: string; message?: string } | null = null;
+  let rows: unknown[] | null = null;
+  let readError: { code?: string; message?: string } | null = null;
 
   {
-    const first = await selectClaims(`${CLAIM_COLUMNS}, ${NOTE_COLUMNS}`);
+    const first = await selectVerdicts(`${CLAIM_COLUMNS}, ${NOTE_COLUMNS}`);
     if (first.error && isMissingNoteColumn(first.error)) {
       noteReadFailed = true;
-      const retry = await selectClaims(CLAIM_COLUMNS);
-      claimRows = retry.data;
-      claimError = retry.error;
+      const retry = await selectVerdicts(CLAIM_COLUMNS);
+      rows = retry.data;
+      readError = retry.error;
     } else {
-      claimRows = first.data;
-      claimError = first.error;
+      rows = first.data;
+      readError = first.error;
     }
   }
 
-  if (claimError) return { data: null, stage: "error" };
+  if (readError) return { data: null, stage: "error" };
 
-  const claims = ((claimRows ?? []) as ClaimRow[]).filter((c) => asText(c.user_claim));
-  if (claims.length === 0) return { data: null, stage: "empty" };
+  /* Newest first, straight off the query. The scan exists so a row the mapper
+     rejects has somewhere to fall through to; it is not a cap on the record,
+     because a reader with any verdict at all has one in the newest few. */
+  for (const raw of (rows ?? []) as JoinedOutcomeRow[]) {
+    const claim = raw.user_claims;
+    if (!claim || !asText(claim.user_claim)) continue;
+    if (!raw.graded_at || Number.isNaN(new Date(raw.graded_at).getTime())) continue;
 
-  const { data: outcomeData, error: outcomeError } = await supabase
-    .from("user_claim_outcomes")
-    .select(
-      "claim_id, verdict, attribution, actual_pct_change, actual_direction, verdict_notes, graded_at, metadata",
-    )
-    .in(
-      "claim_id",
-      claims.map((c) => c.id),
-    )
-    .order("graded_at", { ascending: false });
-
-  if (outcomeError) return { data: null, stage: "error" };
-
-  /* Newest row per claim, then the newest of those. There is no unique
-     constraint on claim_id, so "the latest grade" has to be resolved rather
-     than assumed from row order. */
-  const byClaim = new Map<string, OutcomeRow>();
-  for (const row of (outcomeData ?? []) as OutcomeRow[]) {
-    if (!row.graded_at) continue;
-    const prev = byClaim.get(row.claim_id);
-    if (!prev || (row.graded_at ?? "") > (prev.graded_at ?? "")) byClaim.set(row.claim_id, row);
+    const data = toReviewData(claim, raw, noteReadFailed);
+    /* The mapper, not this file, decides what a verdict is. `awaiting` means it
+       found none, and the filters above should already have excluded every row
+       that produces it. A row that reaches here and still maps to an absence is
+       skipped rather than drawn, because "resolved" over "Awaiting" is the
+       screen asserting something no grader said. */
+    if (data.state === "awaiting") continue;
+    return { data, stage: "ready" };
   }
 
-  let newest: { claim: ClaimRow; outcome: OutcomeRow } | null = null;
-  for (const claim of claims) {
-    const outcome = byClaim.get(claim.id);
-    if (!outcome?.graded_at) continue;
-    if (!newest || outcome.graded_at > (newest.outcome.graded_at ?? "")) {
-      newest = { claim, outcome };
-    }
-  }
-
-  /* The read answered and nothing of the reader's has resolved. That is an
+  /* The read answered and no row of the reader's records a verdict. That is an
      empty result, not a failure, and the two render differently. */
-  if (!newest) return { data: null, stage: "empty" };
-
-  return { data: toReviewData(newest.claim, newest.outcome, noteReadFailed), stage: "ready" };
+  return { data: null, stage: "empty" };
 }
 
 /** One claim and its own outcome row, mapped to what the screen draws. */
@@ -255,7 +290,14 @@ function toReviewData(claim: ClaimRow, outcome: OutcomeRow, noteReadFailed: bool
       claim_text: claim.user_claim as string,
       target_symbol: claim.target_symbol,
       claim_type: claim.claim_type,
-      created_at: claim.created_at,
+      /* Deliberately null, and it is not laziness. `openCallProps` turns
+         `created_at` into a `calledDate` this screen does not read, and the
+         only creation date Review is allowed to touch is the one
+         `predatesNotes` converts to a boolean. Passing null here leaves
+         exactly one reader of that column in this file rather than two, so the
+         containment is a property of the code and not of what a later edit
+         remembers not to render. */
+      created_at: null,
       brief_date: null,
     },
     {
@@ -336,6 +378,13 @@ function resolveNote(claim: ClaimRow, noteReadFailed: boolean): ReviewNote | nul
  * A row with no creation date at all is NOT assumed to be historic. Absence of
  * evidence is not evidence, and the milder sentence is the one that claims
  * less.
+ *
+ * The comparison is strict, so a claim written on 2026-08-25 itself reads as an
+ * ordinary absence rather than as history. The column was applied by hand part
+ * way through that session and nothing records at what hour, so rows from that
+ * one day cannot be told apart. The milder sentence is again the one that
+ * claims less: "Nothing was written with this call" is true of every row on
+ * that day, while the history sentence would be true of only some of them.
  */
 function predatesNotes(createdAt: string | null): boolean {
   const iso = asText(createdAt);
