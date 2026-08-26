@@ -75,12 +75,13 @@ export async function GET() {
     const profile = await getUserProfile(supabase, user.id);
 
     // Refresh weights so the response is always current.
-    const { weights, eventCount } = await updateInferredWeights(
+    const { weights, eventCount, updatedAt } = await updateInferredWeights(
       supabase,
       user.id,
     ).catch(() => ({
       weights: profile.inferred_sector_weights,
       eventCount: 0,
+      updatedAt: null,
     }));
 
     // Pull the raw events for sector-level positive/negative breakdown.
@@ -142,7 +143,11 @@ export async function GET() {
         risk_appetite: profile.risk_appetite,
         watchlist_tickers: profile.watchlist_tickers,
       },
-      weights_updated_at: profile.inferred_weights_updated_at,
+      /* The refresh above WRITES this column, and `profile` was read before it
+       * ran, so the snapshot's copy is always one call stale and always null on
+       * a first call. Take the value the refresh reports, and fall back to the
+       * snapshot only when the refresh wrote nothing. */
+      weights_updated_at: updatedAt ?? profile.inferred_weights_updated_at,
       event_count_30d: eventCount,
       top_boosted: topBoosted,
       top_muted: topMuted,

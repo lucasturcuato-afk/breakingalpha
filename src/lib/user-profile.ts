@@ -298,7 +298,25 @@ export async function updateInferredWeights(
   supabase: SupabaseClient,
   userId: string,
   lookbackDays = 30,
-): Promise<{ weights: Record<string, number>; eventCount: number }> {
+): Promise<{
+  weights: Record<string, number>;
+  eventCount: number;
+  /**
+   * The `inferred_weights_updated_at` this call WROTE, or null when it wrote
+   * nothing.
+   *
+   * Returned because a caller that re-reads the profile to find it gets the
+   * PREVIOUS value. Every caller loads the profile first and then calls this,
+   * and this writes the column, so the snapshot they hold is always one call
+   * behind and is always null on a first call. Two of the three callers
+   * rendered that null as "not yet computed" in the same sentence as a live
+   * event count.
+   *
+   * Null when the write did not land, rather than the timestamp it would have
+   * written, so a swallowed error cannot be reported as a successful store.
+   */
+  updatedAt: string | null;
+}> {
   const since = new Date(
     Date.now() - lookbackDays * 24 * 60 * 60 * 1000,
   ).toISOString();
@@ -311,7 +329,7 @@ export async function updateInferredWeights(
 
   if (error) {
     console.warn("[user-profile] updateInferredWeights read:", error.message);
-    return { weights: {}, eventCount: 0 };
+    return { weights: {}, eventCount: 0, updatedAt: null };
   }
 
   const weights: Record<string, number> = {};
@@ -357,7 +375,16 @@ export async function updateInferredWeights(
     console.warn("[user-profile] updateInferredWeights write:", writeErr.message);
   }
 
-  return { weights, eventCount: events?.length ?? 0 };
+  /* `now` counts as the stored timestamp only if the write actually landed.
+   * `writeErr` naming either personalization column is the pre-migration case
+   * the warn above deliberately swallows, and in that case nothing was stored,
+   * so there is no timestamp to report. See the PR body: in production today
+   * that is every call, because neither column exists yet. */
+  return {
+    weights,
+    eventCount: events?.length ?? 0,
+    updatedAt: writeErr ? null : now,
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
