@@ -11,8 +11,18 @@ import { loadReview } from "@/lib/review-data";
  *
  * WIRED. `src/lib/review-data.ts` reads the signed-in reader's own claims and
  * their own outcome rows and gives back the reader's most recent resolution.
- * Nothing on this screen is invented for a signed-in reader in any
- * environment.
+ * In production no reader can be shown the sample: the gate fails closed on a
+ * production build, so the loader branch is taken whatever the session turns
+ * out to be.
+ *
+ * ONE CAVEAT, and it is off production. `getSupabaseWithUser` gives back
+ * `user: null` for an auth ERROR as well as for a signed-out visitor
+ * (`src/lib/supabase-server.ts:28`). On dev and preview, where the sample is
+ * allowed, a signed-in reader hitting a transient `getUser()` failure would
+ * fall into the sample branch rather than see their own record. Production is
+ * unaffected because the gate is false there and the redirect fires instead.
+ * Recorded rather than fixed here: `supabase-server.ts` is shared by every
+ * authenticated surface in the app and is not a screen unit's to change.
  *
  * WHAT IS REAL TODAY, and it is worth being exact, because the screen's whole
  * subject is only half present in the database:
