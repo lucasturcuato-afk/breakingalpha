@@ -20,6 +20,16 @@ export interface LedgerClaim {
   id: string;
   eyebrow: string;
   claim: string;
+  /**
+   * The call's own `resolve_on`, ISO date, or null when it has none.
+   *
+   * Not rendered. The commit sheet needs the RAW date to preselect the call's
+   * own span through `adoptWindowForCall`, and `window` above is already
+   * formatted prose ("reviewed Nov 4") that cannot be parsed back. A call with
+   * no resolve_on falls to the shared default rather than to a span it is not,
+   * which is the defect #535 fixed.
+   */
+  resolveOn?: string | null;
   reasoning?: string;
   window?: string;
   windowRelative?: string;
@@ -114,6 +124,16 @@ export interface LedgerData {
    * on Watch.
    */
   briefProgress: { decided: number | "failed"; total: number; status: string } | null;
+  /**
+   * The reader's session date, ISO. `today.date` above is a formatted long
+   * date for the rule and cannot be parsed back into one.
+   *
+   * REQUIRED, because every loader has it: the window arithmetic behind the
+   * commit sheet is anchored on it, and a client that read a clock instead
+   * could disagree with the server about which day it is. That is exactly the
+   * defect `displayLoggedDate` contains on the read side.
+   */
+  sessionIso: string;
   today: LedgerDay;
   past: LedgerDay[];
   /** Entries beyond the ones rendered. Null when there are none. */
@@ -157,6 +177,7 @@ export const LEDGER_FIXTURE: LedgerData = {
     ],
   },
   briefProgress: { decided: 1, total: 5, status: "five calls, one decided" },
+  sessionIso: "2026-08-06",
   today: {
     date: "Thursday, August 6",
     claims: [
@@ -168,6 +189,7 @@ export const LEDGER_FIXTURE: LedgerData = {
           "Q2 put Cash App inflows per active at a new high while merchant GPV growth stayed in the low teens. Lending attach is doing most of the work and the desk reads the gap as widening before it closes.",
         window: "reviewed Nov 4",
         windowRelative: "in about a quarter",
+        resolveOn: "2026-11-04",
         variant: "open",
       },
       {

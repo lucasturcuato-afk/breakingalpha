@@ -381,6 +381,9 @@ export async function loadLedger(
                 : `${desk.total} ${desk.total === 1 ? "call" : "calls"}`,
           }
         : null,
+    // The session date, unformatted. `today.date` beside it is the long form
+    // the date rule draws, and nothing downstream can parse that back.
+    sessionIso: today,
     today: todayDay,
     past: personal.past,
     entriesBefore: personal.entriesBefore,
@@ -476,6 +479,10 @@ async function loadDeskCalls(
       reasoning: undefined,
       window: resolveOn ? `reviewed ${shortDay(resolveOn)}` : undefined,
       windowRelative: resolveOn ? relativeWindow(today, resolveOn) : undefined,
+      // Raw, unformatted, and never rendered. The commit sheet preselects the
+      // call's own span from it; the two fields above are prose and cannot be
+      // read back into a date.
+      resolveOn: resolveOn ?? null,
       variant: "open",
     };
   });

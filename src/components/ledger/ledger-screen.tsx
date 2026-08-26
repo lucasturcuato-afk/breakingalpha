@@ -8,6 +8,7 @@ import { MobileTickerStrip } from "./mobile-ticker-strip";
 import { LedgerClaimCard } from "./ledger-claim-card";
 import { LedgerEntryRow } from "./ledger-entry-row";
 import { LedgerDateRule } from "./ledger-date-rule";
+import { useCommitSheet } from "@/components/commit/commit-sheet-provider";
 import { type LedgerData } from "./fixture";
 import styles from "./ledger.module.css";
 
@@ -54,6 +55,8 @@ export function LedgerScreen({
   wrapPublishedAt?: string | null;
 }) {
   const router = useRouter();
+  /* Null outside a `CommitSheetProvider`. See the wiring on the claim cards. */
+  const commit = useCommitSheet();
   const [pulseOpen, setPulseOpen] = useState(false);
   const [bannerShown, setBannerShown] = useState(true);
 
@@ -177,7 +180,24 @@ export function LedgerScreen({
                 delayMs={60 + i * 60}
                 /* No onOpen. There is no claim detail route to send anyone to,
                    and a card that opens nothing must not be a button. */
-                onTrack={c.variant === "open" ? () => router.push("/radar/calls") : undefined}
+                /* The commit sheet, which is a GLOBAL OVERLAY rather than a
+                   child of this screen: `CommitSheetProvider` mounts it and
+                   Claim opens the same one later through the same hook. Null
+                   when no provider is above this screen, and the card then
+                   draws no action rather than an action that goes nowhere.
+                   Before this unit the handler pushed to /radar/calls, which
+                   is the desktop list and not a commit. */
+                onTrack={
+                  c.variant === "open" && commit
+                    ? () =>
+                        commit.open({
+                          callId: c.id,
+                          claim: c.claim,
+                          resolveOn: c.resolveOn ?? null,
+                          sessionIso: data.sessionIso,
+                        })
+                    : undefined
+                }
               />
             ))}
           </>
