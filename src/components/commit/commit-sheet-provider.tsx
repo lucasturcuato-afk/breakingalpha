@@ -113,7 +113,13 @@ export function CommitSheetProvider({ children, initialTarget }: CommitSheetProv
       <span ref={attach} style={{ display: "none" }} />
       {host !== null && target !== null
         ? createPortal(
+            /* Keyed on the call, so a second target gets a FRESH sheet rather
+               than the first one's note and the first one's window. The scrim
+               makes a second `open` unreachable by pointer today, which is
+               precisely why this would be a quiet bug rather than a loud one
+               the first time a surface opens the sheet some other way. */
             <CommitSheet
+              key={target.callId}
               target={target}
               onDismiss={() => setTarget(null)}
               onCommitted={onCommitted}

@@ -40,3 +40,18 @@ export interface CommitTarget {
    */
   sessionIso: string;
 }
+
+/**
+ * Ceiling on a stored note, in characters.
+ *
+ * A ceiling, not a floor. The floor is the twelve-character gate and it lives
+ * in the client; see the adopt route's header for why.
+ *
+ * It sits in THIS module, which is pure and imports nothing, because both
+ * sides need it and neither may import the other: the route is server code
+ * that must not reach the browser bundle, and the sheet is a client component
+ * the route must not pull in. Two copies of the number would let the field
+ * accept more than the column stores, and the reader would lose the tail of
+ * their own sentence with nothing saying so.
+ */
+export const COMMIT_NOTE_MAX = 2000;

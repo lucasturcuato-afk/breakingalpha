@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseWithUser } from "@/lib/supabase-server";
 import { todayPt } from "@/lib/session-date";
+import { COMMIT_NOTE_MAX } from "@/components/commit/commit-target";
 import {
   DEFAULT_ADOPT_HORIZON,
   MAX_WINDOW_DAYS,
@@ -46,12 +47,6 @@ export const dynamic = "force-dynamic";
  * path below, where a row already exists with no note on it and the note lands
  * afterwards, and that is exactly the case the separate column exists for.
  */
-
-/**
- * A ceiling, not a floor. The floor is the client's. This only stops a single
- * request writing an unbounded blob into a column every ledger read selects.
- */
-export const COMMIT_NOTE_MAX = 2000;
 
 /**
  * The note as it will be stored, or null when there is nothing to store.

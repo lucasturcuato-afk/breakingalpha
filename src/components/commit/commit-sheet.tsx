@@ -11,7 +11,7 @@ import {
   HORIZON_DAYS,
   type AdoptWindow,
 } from "@/lib/call-horizons";
-import type { CommitTarget } from "./commit-target";
+import { COMMIT_NOTE_MAX, type CommitTarget } from "./commit-target";
 import styles from "./commit.module.css";
 
 /**
@@ -344,7 +344,7 @@ export function CommitSheet({ target, onDismiss, onCommitted }: CommitSheetProps
             ref={noteRef}
             value={note}
             onChange={(e) => setNote(e.target.value)}
-            maxLength={2000}
+            maxLength={COMMIT_NOTE_MAX}
             aria-label="Your reasoning"
             aria-describedby={hintId}
             /* The design writes a worked example into this field, an invented
