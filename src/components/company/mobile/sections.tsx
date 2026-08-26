@@ -16,7 +16,7 @@ import {
   insiderEmptyCopy,
 } from "@/components/company/tabs/empty-state-copy";
 
-import type { CompanyIntelData, ToneDirection } from "./fixture";
+import type { CompanyIntelData, ToneDirection } from "./types";
 import { Chip, EmptyWell, RuledRow, SectionNote, SectionRule } from "./parts";
 
 /**

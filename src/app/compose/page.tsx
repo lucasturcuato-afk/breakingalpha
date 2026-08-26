@@ -1,6 +1,17 @@
 import Link from "next/link";
 import { AppShell } from "@/components/shell";
-import { ComposeScreen, COMPOSE_STAGES, type ComposeStage } from "@/components/compose";
+import {
+  ComposeScreen,
+  COMPOSE_FIXTURE_ENABLED,
+  COMPOSE_STAGES,
+  type ComposeStage,
+} from "@/components/compose";
+/* Imported by path, never through the barrel. The barrel is reachable from the
+   client graph through `compose-screen`, so pulling the sample draft, note and
+   proposals through it would put them back in the browser bundle. This page is
+   a server component, so from here they stay on the server and the screen only
+   ever receives the resolved seed. */
+import { seedFor } from "@/components/compose/fixture";
 
 /**
  * Compose, "Write your own call".
@@ -29,7 +40,9 @@ export default async function ComposePage({
   const raw = Array.isArray(params.stage) ? params.stage[0] : params.stage;
 
   /*
-    The fixture stages are gated, and the gate fails closed.
+    The fixture stages are gated, and the gate fails closed. It now lives in
+    `@/components/compose/fixture-gate` rather than inline here, because it is
+    read in two places: once to choose the stage and once inside the screen.
 
     `empty` carries no invented content: two blank fields and a locked control,
     which is what a real composer opens on. Every other stage carries a made-up
@@ -39,14 +52,17 @@ export default async function ComposePage({
     lands. /ledger ships its fixture ungated because that route serves nobody
     real yet; this one is reachable by anyone signed in.
   */
-  const fixtureStagesAllowed =
-    process.env.NODE_ENV !== "production" ||
-    process.env.NEXT_PUBLIC_VERCEL_ENV === "preview";
-
   const stage =
-    fixtureStagesAllowed && COMPOSE_STAGES.includes(raw as ComposeStage)
+    COMPOSE_FIXTURE_ENABLED && COMPOSE_STAGES.includes(raw as ComposeStage)
       ? (raw as ComposeStage)
       : "empty";
+
+  /* Built HERE, on the server, and passed down as data. `ComposeScreen` does
+     not import `./fixture`, so none of the sample copy is emitted into a
+     client chunk on any build. The screen re-checks the same gate before it
+     opens on whatever it was handed, so this line being wrong would not be
+     enough on its own. */
+  const seed = COMPOSE_FIXTURE_ENABLED ? seedFor(stage) : null;
 
   return (
     <AppShell pageTitle="Write your own call" mobileFullBleed>
@@ -71,7 +87,7 @@ export default async function ComposePage({
             stage's content: /compose?stage=gradeable then ?stage=empty drew the
             gradeable draft and its READ AS card under the empty state. A key
             remounts instead, which a full page load already did. */}
-        <ComposeScreen key={stage} stage={stage} />
+        <ComposeScreen key={stage} stage={stage} seed={seed} />
       </div>
 
       {/* Above the breakpoint this route has no layout of its own. The desktop

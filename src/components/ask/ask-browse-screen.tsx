@@ -12,13 +12,15 @@ import {
 } from "./ask-parts";
 import { AskComposer } from "./ask-composer";
 import styles from "./ask.module.css";
-import {
-  ASK_BROWSE_FIXTURE,
-  ASK_DIRECTORY,
-  ASK_FIXTURE_ENABLED,
-  type AskBrowseData,
-  type DirectoryId,
-} from "./fixture";
+/* `./fixture` is NOT imported here and must never be. The gate stops the
+   render and not the download, so a value import from that module would be a
+   download of the invented lookups whether or not they can paint. This screen
+   carries no "use client" today, which is too thin a thing to rely on. The
+   directory and the shape live in `./ask-data` and are invented nothing; the
+   fixture arrives as the `data` prop, resolved on the server by
+   `src/app/ask/page.tsx`. */
+import { ASK_FIXTURE_ENABLED } from "./fixture-gate";
+import { ASK_DIRECTORY, type AskBrowseData, type DirectoryId } from "./ask-data";
 import type { ReactNode } from "react";
 
 /**

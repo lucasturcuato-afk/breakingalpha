@@ -35,7 +35,20 @@ import {
   filterAndClassifyArticles,
 } from "@/lib/company-intel";
 import { fetchCompanyArticles } from "@/app/api/companies/[id]/articles/route";
-import { CompanyIntelScreen, type CompanyStage } from "@/components/company/mobile";
+import {
+  CompanyIntelScreen,
+  type CompanyIntelData,
+  type CompanyStage,
+} from "@/components/company/mobile";
+/* Imported by path, never through the barrel. The barrel is reachable from the
+   client graph through `company-intel-screen`, so pulling the invented company
+   through it would put it back in the browser bundle. This page is a server
+   component, so from here the fixture stays on the server and reaches the
+   screen as data. */
+import {
+  COMPANY_INTEL_EMPTY,
+  COMPANY_INTEL_FIXTURE,
+} from "@/components/company/mobile/fixture";
 import {
   mobileFixtureAuthBypass,
   mobileFixtureScreensEnabled,
@@ -59,6 +72,36 @@ const STAGES: CompanyStage[] = ["ready", "loading", "error", "empty"];
 function readStage(raw: string | string[] | undefined): CompanyStage {
   const value = Array.isArray(raw) ? raw[0] : raw;
   return STAGES.includes(value as CompanyStage) ? (value as CompanyStage) : "ready";
+}
+
+/**
+ * Resolve the gate HERE, on the server, and hand the screen the result.
+ *
+ * `CompanyIntelScreen` takes `data` as a required, nullable prop and never
+ * imports the fixture itself, so the invented company is emitted into no
+ * client chunk on any build. The gate is still the thing that decides whether
+ * it is drawn; this only makes the gate decide whether it is DOWNLOADED too.
+ * `enabled` is always `mobileFixtureScreensEnabled()`, never a local guess.
+ *
+ * `if (!enabled) return null` IS UNREACHABLE ON THIS ROUTE TODAY, and it is
+ * belt-and-braces rather than a live path. Both call sites already sit inside
+ * a `mobileFixture ?` branch, and with the gate shut this page renders the
+ * desk tree instead of the mobile screen at all, so nothing ever calls this
+ * with `enabled` false. The gate above it is what does the work.
+ *
+ * It stays for two reasons and neither is "it might fire". First, it makes the
+ * gate visible AT the call site, which is what stops a third call site being
+ * added later without one. Second, it is what keeps `data` honestly typed
+ * `| null`, and that type is the thing that turns a forgotten prop into a
+ * build failure instead of an invented company.
+ *
+ * The consequence to be honest about: the screen's own null branch, which
+ * draws the loader, therefore never executes in production on this route and
+ * nothing exercises it. Do not read it as tested behaviour.
+ */
+function companyFixture(enabled: boolean, stage: CompanyStage): CompanyIntelData | null {
+  if (!enabled) return null;
+  return stage === "empty" ? COMPANY_INTEL_EMPTY : COMPANY_INTEL_FIXTURE;
 }
 
 /**
@@ -158,7 +201,7 @@ export default async function CompanyDetailPage({
                 public filer, so the sourced empty copy this picks is the
                 has-CIK branch. The signed-in path below reads the real
                 resolution instead. */}
-            <CompanyIntelScreen stage={stage} hasCik />
+            <CompanyIntelScreen stage={stage} data={companyFixture(mobileFixture, stage)} hasCik />
           </div>
           <div className="hidden md:block" style={{ padding: "48px" }}>
             <p style={{ margin: 0, font: "500 17px/1.4 'Playfair Display', serif", color: "var(--c-ink)" }}>
@@ -380,7 +423,11 @@ export default async function CompanyDetailPage({
               breakpoint. */}
           <div className="md:hidden" style={{ backgroundColor: "var(--c-bg)", minHeight: "100%" }}>
             <FixtureNotice />
-            <CompanyIntelScreen stage={stage} hasCik={filingsResult.cik != null} />
+            <CompanyIntelScreen
+              stage={stage}
+              data={companyFixture(mobileFixture, stage)}
+              hasCik={filingsResult.cik != null}
+            />
           </div>
           <div className="hidden md:block">{desk}</div>
         </>

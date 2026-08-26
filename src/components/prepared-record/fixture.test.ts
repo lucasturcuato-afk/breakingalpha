@@ -1,14 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import {
-  RECORD_FIXTURE,
-  RECORD_EMPTY_FIXTURE,
-  RECORD_UNRESOLVED_FIXTURE,
-  countsByState,
-  groupByMonth,
-  longDate,
-} from "./fixture.ts";
+import { RECORD_FIXTURE, RECORD_EMPTY_FIXTURE, RECORD_UNRESOLVED_FIXTURE } from "./fixture.ts";
+import { countsByState, groupByMonth, longDate } from "./record-data.ts";
 
 /**
  * The Prepared record's honesty rules, asserted rather than reviewed.

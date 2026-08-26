@@ -6,15 +6,22 @@ import { OUTCOME_STATES } from "@/components/ledger";
 import { BackChevron } from "./back-chevron";
 import { RecordEntryRow } from "./record-entry-row";
 import { RecordMonthRule } from "./record-month-rule";
+/* `./fixture` is NOT imported here and must never be. This is a client
+   component, so a value import from that module is a download of every string
+   in it: the gate stops the render and not the download, and importing
+   `countsByState` from there alone shipped forty-one invented claims into
+   `.next/static`. The shape, the helpers and the no-record constant live in
+   `./record-data`, and the gate lives in `./fixture-gate`. Both are
+   content-free. The sample entries arrive as the `data` prop, resolved on the
+   server by `src/app/record/page.tsx`. */
+import { RECORD_FIXTURE_ENABLED } from "./fixture-gate";
 import {
-  RECORD_FIXTURE,
-  RECORD_FIXTURE_ENABLED,
   RECORD_UNAVAILABLE,
   countsByState,
   groupByMonth,
   longDate,
   type RecordData,
-} from "./fixture";
+} from "./record-data";
 import styles from "./record.module.css";
 
 /**

@@ -1,6 +1,11 @@
 import { AppShell } from "@/components/shell";
 import { AskAnswerScreen, AskBrowseScreen, type AskStage } from "@/components/ask";
-import { ASK_ANSWER_FIXTURE, ASK_BROWSE_FIXTURE, ASK_FIXTURE_ENABLED } from "@/components/ask/fixture";
+import { ASK_FIXTURE_ENABLED } from "@/components/ask/fixture-gate";
+/* Imported by path, never through the barrel. The barrel sits above the client
+   composer, so pulling the invented answer through it would put it in the
+   browser bundle. This page is a server component, so from here it stays on
+   the server unless the gate is open. */
+import { ASK_ANSWER_FIXTURE, ASK_BROWSE_FIXTURE } from "@/components/ask/fixture";
 
 /**
  * Ask. Both halves of the Ask pole's entry layer on one route.
