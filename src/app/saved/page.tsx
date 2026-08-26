@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { Bookmark, Briefcase, ArrowLeft, Download, X } from "lucide-react";
 import { useSavedDeals, type EnrichedDeal } from "@/hooks/useSavedDeals";
 import { normalizeSector } from "@/lib/deal-utils";
+import { MobileSavedScreen } from "@/components/saved/mobile-saved-screen";
 
 type SortKey = "saved_at" | "company" | "value";
 
@@ -60,7 +61,8 @@ function exportCSV(deals: EnrichedDeal[]) {
 }
 
 export default function SavedDealsPage() {
-  const { enrichedSavedDeals, toggleSave, isLoading } = useSavedDeals();
+  const { enrichedSavedDeals, toggleSave, isLoading, error } = useSavedDeals();
+  const [exported, setExported] = useState(false);
 
   // Local display list for fade-out animation — seeded once on load
   const [displayDeals, setDisplayDeals] = useState<EnrichedDeal[]>([]);
@@ -96,8 +98,38 @@ export default function SavedDealsPage() {
 
   const hasSaved = displayDeals.length > 0;
 
+  function handleExport() {
+    exportCSV(sorted);
+    setExported(true);
+    setTimeout(() => setExported(false), 2000);
+  }
+
   return (
-    <AppShell pageTitle="Saved Deals">
+    /* `mobileFullBleed` is the whole fix. The shell used to sit inside a
+       `hidden md:block`, which took the MOBILE TAB BAR down with it: below md
+       the entire shell was display:none, so the screen rendered with no
+       navigation at all. The flag gates only the desk chrome, the mood bar,
+       topbar and footer, and leaves the tab bar mounted. Gating stays in a
+       CLASS on the two layout wrappers below; an inline display would beat a
+       responsive class at every breakpoint. */
+    <AppShell pageTitle="Saved Deals" mobileFullBleed>
+      {/* Phone width. One state, two layouts: the mobile screen reads the same
+          hook, the same sort key and the same list the desktop table does. */}
+      <div className="md:hidden">
+        <MobileSavedScreen
+          deals={sorted}
+          isLoading={isLoading}
+          error={error}
+          sortKey={sortKey}
+          onSort={setSortKey}
+          onUnsave={handleUnsave}
+          onExport={handleExport}
+          exported={exported}
+          stageOf={getDealStage}
+        />
+      </div>
+
+      <div className="hidden md:block">
       <div className="max-w-3xl mx-auto px-6 py-8 dark:bg-[#161616] min-h-full">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
@@ -115,8 +147,14 @@ export default function SavedDealsPage() {
                 Saved Deals
               </span>
             </div>
+            {/* On a failed read `sorted.length` is 0, and printing "0 saved
+                deals" states a figure about the reader's own record that the app
+                just failed to read. The mobile screen says "Count unavailable"
+                for exactly this; this half said zero. */}
             <p className="font-sans text-[12px] text-text-muted">
-              {sorted.length} saved deal{sorted.length !== 1 ? "s" : ""}
+              {error && !isLoading
+                ? "Count unavailable"
+                : `${sorted.length} saved deal${sorted.length !== 1 ? "s" : ""}`}
             </p>
           </div>
           {hasSaved && (
@@ -162,8 +200,30 @@ export default function SavedDealsPage() {
           </div>
         )}
 
+        {/* Failed read. The desktop twin of a state the mobile screen already
+            had, in the same file.
+
+            `error` was destructured here and handed to MobileSavedScreen, and
+            this half ignored it, so a request that died rendered "No saved deals
+            yet" over a Go to Deal Flow button. That is the same trust failure
+            the mobile error state exists to prevent, on the wider surface. The
+            copy is the mobile screen's, written the way it is for the same
+            reason: it reports the failed request and explicitly declines to
+            describe what is behind it. */}
+        {!isLoading && error && (
+          <div className="text-center py-16" role="alert">
+            <p className="font-display text-[16px] font-semibold text-text-primary mb-1">
+              Your saved deals did not load
+            </p>
+            <p className="font-sans text-[13px] text-text-muted max-w-[46ch] mx-auto">
+              The request did not complete, so there is nothing to show here. This is not a reading
+              of what you have saved. Open the screen again in a moment.
+            </p>
+          </div>
+        )}
+
         {/* Empty state */}
-        {!isLoading && !hasSaved && (
+        {!isLoading && !error && !hasSaved && (
           <div className="text-center py-16">
             <Bookmark size={32} className="text-border-base mx-auto mb-3" />
             <p className="font-display text-[16px] font-semibold text-text-primary mb-1">No saved deals yet</p>
@@ -265,6 +325,7 @@ export default function SavedDealsPage() {
             })}
           </div>
         )}
+      </div>
       </div>
     </AppShell>
   );

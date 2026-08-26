@@ -243,6 +243,23 @@ Notes that will otherwise cost you a cycle:
 - `--width` works in `audit` mode only. `parity` is hardcoded to 390x844
   (`screen-audit.mjs:309,326`). The 1440 evidence comes from `audit`.
 - `design-lint --since` exits 2 on a dirty tree. Commit first.
+- **`npm run lint`'s warning count is not what `grep -c warning` says, and a
+  scratch directory can move it.** Two separate traps, both of which have cost
+  this batch a round each.
+
+  Count with the report's own shape, `grep -cE "^\s+[0-9]+:[0-9]+\s+warning"`,
+  not `grep -c warning`. The summary block contains the word twice more, so the
+  naive grep reads 83 where the real figure is 81. Three people reconciling
+  81 / 82 / 83 were all reading artefacts of their own greps.
+
+  And flat config's default ignores are only `node_modules` and `.git`.
+  **Dot-directories are NOT ignored**, which is why `eslint.config.mjs` has to
+  name `.claude/**` and `.session-artifacts/**` by hand. Any other untracked
+  scratch dir left in the worktree root is linted as first-class source, its
+  findings land in the total, and the run still **exits 0**. Count from a clean
+  root, or the gate silently changes its number without ever failing. Same
+  shape as the `--since` bare-run bug PR #647 fixed: a gate that is quietly
+  wrong is worse than one that breaks.
 - Your route is reachable unauthenticated in local dev only, via
   `MOBILE_REDESIGN_DEV_PATHS` in `src/proxy.ts`. Do not edit that file; the
   list already covers steps 3 to 12.

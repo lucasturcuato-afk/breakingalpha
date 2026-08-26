@@ -2,32 +2,33 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { createBrowserClient } from "@supabase/ssr";
+import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/shell";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { Save, Check, Briefcase, TrendingUp, GraduationCap, Building2, Shield, Zap, Scale, BarChart3 } from "lucide-react";
+import { Save, Check, Briefcase, TrendingUp, GraduationCap, Building2, Shield, Scale, BarChart3 } from "lucide-react";
 import { useUserProfile } from "@/hooks/useUserProfile";
 import { useLiveMood } from "@/hooks/useLiveMood";
+import { useTheme } from "@/components/providers/theme-provider";
+import { USER_ROLES } from "@/lib/user-roles";
+import { MobileSettingsScreen } from "@/components/settings/mobile-settings-screen";
 import type { ReactNode } from "react";
 
-/* ── Role options (matching user_profiles.role enum) ── */
-interface RoleOption {
-  id: string;
-  label: string;
-  description: string;
-  icon: ReactNode;
-}
-
-const roles: RoleOption[] = [
-  { id: "student_analyst", label: "Student Analyst", description: "Building investment knowledge and analytical skills", icon: <GraduationCap size={20} /> },
-  { id: "buy_side", label: "Buy-Side Analyst", description: "Investment fund research and portfolio analysis", icon: <TrendingUp size={20} /> },
-  { id: "sell_side", label: "Sell-Side Analyst", description: "Equity research and coverage for clients", icon: <BarChart3 size={20} /> },
-  { id: "private_equity", label: "Private Equity", description: "Deal evaluation, due diligence, and portfolio ops", icon: <Briefcase size={20} /> },
-  { id: "ria", label: "RIA / Advisor", description: "Managing client portfolios and allocations", icon: <Shield size={20} /> },
-  { id: "family_office", label: "Family Office", description: "Multi-asset investment management", icon: <Building2 size={20} /> },
-  { id: "other", label: "Other", description: "Finance professional with custom needs", icon: <Scale size={20} /> },
-];
+/* ── Role options ──
+ * Labels and descriptions now come from `@/lib/user-roles`, the one table this
+ * page, `PreferencesForm.tsx` and every mobile surface read. Rulings 5 and 6
+ * live in that file. The icons stay here, because they are this layout's own
+ * and no other consumer draws them. */
+const ROLE_ICON: Record<string, ReactNode> = {
+  student_analyst: <GraduationCap size={20} />,
+  buy_side: <TrendingUp size={20} />,
+  sell_side: <BarChart3 size={20} />,
+  private_equity: <Briefcase size={20} />,
+  ria: <Shield size={20} />,
+  family_office: <Building2 size={20} />,
+  other: <Scale size={20} />,
+};
 
 /* ── Sector chips ── */
 const SECTORS = [
@@ -37,19 +38,11 @@ const SECTORS = [
   "Geopolitics & Macro",
 ];
 
-/* ── Risk appetite options ── */
-interface RiskOption {
-  id: string;
-  label: string;
-  description: string;
-  icon: ReactNode;
-}
-
-const riskOptions: RiskOption[] = [
-  { id: "defensive", label: "Defensive", description: "Prioritize downside protection and macro risks", icon: <Shield size={18} /> },
-  { id: "balanced", label: "Balanced", description: "Even weighting of opportunity and risk signals", icon: <Scale size={18} /> },
-  { id: "aggressive", label: "Aggressive", description: "Lead with high-conviction asymmetric opportunities", icon: <Zap size={18} /> },
-];
+/* ── Risk appetite ──
+ * Ruling 7a: the control is not ported. The ruling is UI only, so the value is
+ * still loaded below and still sent on save. Dropping the key, or sending
+ * null, would let a screen that never showed the control silently clear a
+ * value the user set elsewhere. */
 
 function getSupabase() {
   return createBrowserClient(
@@ -61,6 +54,8 @@ function getSupabase() {
 export default function ProfileSettingsPage() {
   const { mood, moodHeadline, moodDetails } = useLiveMood();
   const { refetch: refetchGlobalProfile } = useUserProfile();
+  const { theme, toggleTheme } = useTheme();
+  const router = useRouter();
   const [firstName, setFirstName] = useState("");
   const [firmOrSchool, setFirmOrSchool] = useState("");
   const [role, setRole] = useState<string | null>(null);
@@ -159,15 +154,61 @@ export default function ProfileSettingsPage() {
     }
   }
 
+  async function handleSignOut() {
+    try {
+      await getSupabase().auth.signOut();
+    } finally {
+      router.push("/auth");
+    }
+  }
+
   return (
-    <AppShell pageTitle="Profile Settings" mood={mood} moodHeadline={moodHeadline} moodDetails={moodDetails}>
+    /* `mobileFullBleed` is the whole fix. The shell used to sit inside a
+       `hidden md:block`, which took the MOBILE TAB BAR down with it: below md
+       the entire shell was display:none, so the screen rendered with no
+       navigation at all. The flag gates only the desk chrome, the mood bar,
+       topbar and footer, and leaves the tab bar mounted. Gating stays in a
+       CLASS on the two layout wrappers below; an inline display would beat a
+       responsive class at every breakpoint. */
+    <AppShell pageTitle="Profile Settings" mood={mood} moodHeadline={moodHeadline} moodDetails={moodDetails} mobileFullBleed>
+      {/* Phone width. The mobile screen is a second layout over the SAME state,
+          not a second page, so the two cannot disagree about what is saved. */}
+      <div className="md:hidden">
+        <MobileSettingsScreen
+          loading={loading}
+          error={error}
+          saving={saving}
+          saved={saved}
+          firstName={firstName}
+          firmOrSchool={firmOrSchool}
+          role={role}
+          sectors={sectors}
+          sectorOptions={SECTORS}
+          watchlistInput={watchlistInput}
+          onFirstName={(v) => { setFirstName(v); setSaved(false); }}
+          onFirmOrSchool={(v) => { setFirmOrSchool(v); setSaved(false); }}
+          onRole={(v) => { setRole(v); setSaved(false); }}
+          onToggleSector={toggleSector}
+          onWatchlistInput={(v) => { setWatchlistInput(v); setSaved(false); }}
+          onSave={handleSave}
+          theme={theme}
+          onToggleTheme={toggleTheme}
+          onSignOut={handleSignOut}
+          learnedEventCount={null}
+          savedDealCount={null}
+        />
+      </div>
+
+      <div className="hidden md:block">
       <div className="p-6 max-w-[640px]">
         {/* Header */}
         <h1 className="font-display text-[24px] font-extrabold text-espresso mb-1">
           Your Preferences
         </h1>
         <p className="font-sans text-[13px] text-text-secondary mb-8">
-          Changes save instantly and personalize your entire Signalera experience.
+          {/* Same correction as the mobile screen. Nothing here saves until the
+              Save changes button below is pressed. */}
+          Saved changes personalize your entire Signalera experience.
         </p>
 
         {loading ? (
@@ -205,7 +246,7 @@ export default function ProfileSettingsPage() {
                 This shapes how briefs and memos are framed for you.
               </p>
               <div className="grid grid-cols-2 gap-2.5">
-                {roles.map((r) => (
+                {USER_ROLES.map((r) => (
                   <button
                     key={r.id}
                     type="button"
@@ -219,7 +260,7 @@ export default function ProfileSettingsPage() {
                         : "border-border-base bg-white hover:border-border-hover [&_svg]:text-text-faint",
                     )}
                   >
-                    {r.icon}
+                    {ROLE_ICON[r.id]}
                     <div>
                       <h4 className="font-sans text-[13px] font-bold text-text-primary">{r.label}</h4>
                       <p className="font-sans text-[11px] text-text-muted mt-0.5">{r.description}</p>
@@ -264,38 +305,9 @@ export default function ProfileSettingsPage() {
               )}
             </div>
 
-            <Divider />
-
-            {/* Risk Appetite */}
-            <div>
-              <h3 className="font-sans text-[13px] font-bold text-text-primary mb-1">Risk Appetite</h3>
-              <p className="font-sans text-[11px] text-text-muted mb-3">
-                Controls how risk vs. opportunity signals are weighted.
-              </p>
-              <div className="grid grid-cols-3 gap-2.5">
-                {riskOptions.map((r) => (
-                  <button
-                    key={r.id}
-                    type="button"
-                    onClick={() => { setRiskAppetite(r.id); setSaved(false); }}
-                    className={cn(
-                      "flex flex-col items-center gap-2 p-4 rounded-xl border text-center",
-                      "transition-all duration-[var(--duration-base)] ease-[var(--ease-out)]",
-                      "cursor-pointer",
-                      riskAppetite === r.id
-                        ? "border-gold bg-gold-muted [&_svg]:text-gold"
-                        : "border-border-base bg-white hover:border-border-hover [&_svg]:text-text-faint",
-                    )}
-                  >
-                    {r.icon}
-                    <div>
-                      <h4 className="font-sans text-[12px] font-bold text-text-primary">{r.label}</h4>
-                      <p className="font-sans text-[10px] text-text-muted mt-0.5">{r.description}</p>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
+            {/* Risk Appetite: removed by ruling 7a. It read as individualized
+                suitability framing, which the product brief forbids. The stored
+                value is untouched and still round-trips through handleSave. */}
 
             <Divider />
 
@@ -344,6 +356,7 @@ export default function ProfileSettingsPage() {
           </div>
         </div>
       )}
+      </div>
     </AppShell>
   );
 }

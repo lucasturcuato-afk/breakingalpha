@@ -1,6 +1,7 @@
 "use client";
 
 import type { CSSProperties, ReactNode } from "react";
+import { FONT_DISPLAY, FONT_MONO, FONT_SANS } from "./fonts";
 import styles from "./mobile.module.css";
 
 /* ══════════════════════════════════════════════════════════════════════
@@ -13,9 +14,10 @@ import styles from "./mobile.module.css";
 
 export const EASE = "cubic-bezier(0.16,1,0.3,1)";
 
-export const FONT_DISPLAY = "var(--font-playfair-display), serif";
-export const FONT_SANS = "var(--font-inter), sans-serif";
-export const FONT_MONO = "var(--font-jetbrains-mono), monospace";
+/* The families live in ./fonts so a server component can read them too.
+ * Re-exported here because every existing mobile screen imports them from
+ * this module. */
+export { FONT_DISPLAY, FONT_SANS, FONT_MONO } from "./fonts";
 
 /** Stagger helper for the reveal class. `--d` is the animation delay. */
 export function delay(ms: number): CSSProperties {

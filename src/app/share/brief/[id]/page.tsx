@@ -5,6 +5,7 @@ import type { Metadata } from "next";
 import { TickerStrip } from "@/components/brief/ticker-strip";
 import { Wordmark } from "@/components/ui/wordmark";
 import { stripHtml } from "@/lib/strip-html";
+import { MobileShareScreen } from "@/components/share/mobile-share-screen";
 
 /**
  * Public read-only brief view.
@@ -134,17 +135,47 @@ export default async function PublicBriefPage({ params }: Props) {
   const kind = briefing.briefing_type === "evening" ? "Evening Wrap" : "Morning Brief";
 
   return (
+    <>
+      {/* Phone width. Same row, same guards, one layout per breakpoint.
+          Gating lives in classes: an inline display beats a class everywhere. */}
+      <div className="md:hidden">
+        <MobileShareScreen
+          kind={kind}
+          dateLine={formatDate(briefing.created_at)}
+          headline={briefing.headline}
+          marketTone={briefing.market_tone}
+          summary={briefing.summary}
+          deals={topDeals.map((d) => ({
+            company: d.company,
+            value: d.value,
+            deal_type: d.deal_type,
+            one_liner: d.one_liner ? stripHtml(d.one_liner) : undefined,
+          }))}
+          sections={sectionEntries.map(([key, content]) => ({
+            key,
+            title: sectionTitle(key),
+            body: stripHtml(content),
+          }))}
+          sectors={sectorEntries.map(([sector, analysis]) => ({
+            key: sector,
+            title: sector,
+            body: stripHtml(analysis),
+          }))}
+        />
+      </div>
+
+      <div className="hidden md:block">
     <div className="min-h-screen bg-parchment">
       {/* Header */}
       <header className="border-b border-border-base px-6 py-4 flex items-center justify-between bg-cream dark:bg-elevated">
-        <Link href="/" className="inline-flex items-center">
+        <Link href="/" className="inline-flex items-center min-h-[44px]">
           <Wordmark size="md" />
         </Link>
         <Link
           href="/auth"
-          className="inline-flex items-center px-4 py-2 rounded-lg bg-gold text-cream font-sans text-[12px] font-semibold hover:bg-gold-dark transition-colors"
+          className="inline-flex items-center justify-center min-h-[44px] px-4 py-2 rounded-lg bg-gold text-[var(--c-ongold)] font-sans text-[12px] font-semibold hover:bg-gold-dark transition-colors"
         >
-          Sign up — Free
+          Sign up, free
         </Link>
       </header>
 
@@ -169,7 +200,7 @@ export default async function PublicBriefPage({ params }: Props) {
           <p
             className="font-sans mb-3"
             style={{
-              color: "var(--gold)",
+              color: "var(--c-goldink)",
               fontSize: "10px",
               fontWeight: 700,
               letterSpacing: "0.1em",
@@ -204,7 +235,7 @@ export default async function PublicBriefPage({ params }: Props) {
                 >
                   <div className="flex items-center justify-between mb-1.5">
                     <h4 className="font-sans text-[14px] font-semibold text-espresso">
-                      {deal.company || "—"}
+                      {deal.company || "Company not named"}
                     </h4>
                     <span className="font-data text-[11px] font-semibold text-gold flex-shrink-0 ml-2">
                       {deal.value || "Undisclosed"}
@@ -278,15 +309,36 @@ export default async function PublicBriefPage({ params }: Props) {
       {/* CTA footer */}
       <footer className="border-t border-border-base px-6 py-8 text-center bg-cream dark:bg-elevated">
         <p className="font-sans text-[13px] text-text-secondary mb-3">
-          Want briefings like this every morning?
+          {/* Matches the mobile twin in mobile-share-screen.tsx.
+
+              The evidence is the DATA, not a schedule in this repo. Of the
+              newest 60 `briefings` rows, the 30 whose `briefing_type` is
+              `morning` fall Monday to Friday only. The qualifier matters, and
+              an earlier draft of this comment omitted it: 6 of those 60 DO
+              carry a Saturday date, and every one is an EVENING run whose
+              Friday PT session lands Saturday in UTC. This line promises a
+              morning cadence, so the morning rows are the ones that bear on
+              it, but "60 rows are weekdays only" was false as written.
+              The pipeline is
+              triggered by an EXTERNAL scheduler (see brief-heartbeat.yml's
+              header), so nothing checked in here can prove the cadence. The
+              nearest local signal is the heartbeat's own `0 17 * * 1-5` at
+              brief-heartbeat.yml:32, which watches weekdays because that is
+              when a brief is expected. That is corroboration, not proof.
+
+              A recruiting line on a public, unauthenticated page should not
+              promise a cadence the sender does not keep. */}
+          Want briefings like this every weekday morning?
         </p>
         <Link
           href="/auth"
-          className="inline-block px-5 py-2.5 rounded-xl bg-gold text-cream font-sans text-[13px] font-semibold hover:bg-gold-dark transition-colors"
+          className="inline-flex items-center justify-center min-h-[44px] px-5 py-2.5 rounded-xl bg-gold text-[var(--c-ongold)] font-sans text-[13px] font-semibold hover:bg-gold-dark transition-colors"
         >
-          Try Signalera — Free
+          Try Signalera, free
         </Link>
       </footer>
     </div>
+      </div>
+    </>
   );
 }
