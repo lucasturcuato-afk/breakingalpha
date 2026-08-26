@@ -108,10 +108,27 @@ const POLES: Pole[] = [
     ],
   },
   {
-    /* href stays on /radar/watchlist until the Watch screen exists. Pointing
-       it at /watch now would aim a pole at a 404, which is the defect this
-       file shipped once already against /ledger. The unit that builds /watch
-       moves the href; the ownership is already here. */
+    /* The href STAYS on /radar/watchlist, and /watch existing does not change
+       that. This comment was written to move the moment the screen existed,
+       and PR #653 moved it. It is moved back here, deliberately.
+
+       /radar/watchlist reads the reader's real watchlist and paints their real
+       articles. /watch has no loader at all: in production it renders its
+       unwired state and shows nothing. Aiming the pole at /watch would send
+       every reader on a phone off a screen that has their data and onto one
+       that says it has none. A pole pointing at a 404 is the defect this file
+       shipped once against /ledger; pointing one at a working route's unwired
+       replacement is the same defect with a 200 behind it.
+
+       `owns` already lists /watch, so the pole lights when a reader reaches it
+       by any other route. Move the href when /watch reads a loader, not when
+       /watch merely answers.
+
+       One consequence, stated rather than discovered later: standing ON /watch
+       the pole renders lit and still navigates to /radar/watchlist, so tapping
+       the pole you are already on moves you. A lit pole is normally a no-op.
+       That is the honest cost of pointing at the screen with the data instead
+       of the screen with the design, and it goes away when the href moves. */
     label: "Watch",
     href: "/radar/watchlist",
     icon: IconWatch,
