@@ -111,7 +111,17 @@ export default async function LedgerPage({
           swap the sidebar for the tab bar. Gating lives in classes, never in an
           inline style: an inline display beats the class at every breakpoint,
           which is the defect that shipped the tab bar to desktop once already. */}
-        <div className="md:hidden">
+        {/* `h-full` is load-bearing, not cosmetic. `main#main-content` gives
+          this subtree a definite 785px content box at 390x844, and
+          `PageTransition`'s own wrapper passes it through, but this gate div
+          shrink-wrapped its child and the chain died here. That made
+          `LedgerScreen`'s own `minHeight: 100%` INERT, which is what let the
+          write band float in the middle of a short screen instead of resting
+          on the tab bar. Measured before the fix on a forced-empty record:
+          this div 391.9px tall inside a 785px parent. Do not remove it
+          without re-measuring the empty record; see the band's comment in
+          `ledger-screen.tsx`. */}
+        <div className="md:hidden h-full">
           <LedgerScreen stage={stage} data={data} wrapPublishedAt={wrapOverride} />
         </div>
 
