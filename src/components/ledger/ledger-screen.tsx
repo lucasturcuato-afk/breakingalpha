@@ -236,19 +236,26 @@ export function LedgerScreen({
           </div>
         ) : null}
 
-        <TailAction
-          label="Write your own call"
-          href="/radar/calls"
-          weight={600}
-          borderToken="var(--c-ink)"
-          marginTop="18px"
-        />
+        {/* The write action that used to sit here is now the sticky band at
+            the bottom of this column. Keeping both shipped two links with the
+            same accessible name and the same href visible in a single
+            viewport, measured at y 594.9-646.9 and y 734-785 on a production
+            build at 390x844. That is a duplicate control, not acceptable
+            redundancy, and it contradicts the CONTROLS note at the top of this
+            file.
+
+            This row is NOT promoted to the --c-ink treatment to fill the gap.
+            The band is the primary now, and two primaries is the defect the
+            deletion above removes, so the weight, the border token and the
+            fill all stay as they were. Only the gap changes: 10 was the space
+            below the row that left, and 18 is TailAction's own first-row
+            value, which is what this row now is. */}
         <TailAction
           label="The desk grades itself too"
           href="/desk-record"
           weight={500}
           borderToken="var(--c-border)"
-          marginTop="10px"
+          marginTop="18px"
           fillToken="var(--c-surface)"
         />
         {/* Clears the fixed tab bar, not just the home indicator. Measured on a
@@ -262,6 +269,122 @@ export function LedgerScreen({
               "calc(24px + 1px + var(--mobile-tabbar-row) + env(safe-area-inset-bottom))",
           }}
         />
+
+        {/* THE WRITE BAND. A permanent 52px shelf carrying the one write
+            action on this screen, last in the DOM because it is last on the
+            screen. It replaces the first tail action, which sat at the end of
+            a record that grows without bound: on a populated 7026px ledger the
+            write control was 8.7 screenfuls down and effectively unreachable.
+            52px is cheaper than a scroll that keeps growing.
+
+            IT IS A FUNCTION OF THE SCREEN EXISTING, NOT OF ANY DATUM. It takes
+            no props, reads nothing, and has no loading, empty or error
+            variant. Its only condition is structural: it does NOT render in
+            the `data === null` early return above, because that branch draws a
+            root, a ticker strip and one lifecycle block, with no masthead, no
+            body column and no spacer, so there is no structure to hang it on.
+            It renders in every other state including loading, error, none,
+            stale, and the empty record, which is the state where it matters
+            most: the ledger is empty precisely because nothing has been
+            written to it yet.
+
+            A PLAIN `div`, NOT a `nav` and NOT a `footer`. A landmark wrapped
+            around a single link is noise in the landmark list.
+
+            NO env(safe-area-inset-bottom) HERE, DELIBERATELY. The inset is
+            already applied twice below this element: once on the tab bar
+            itself (mobile-tab-bar.tsx:177) and once on the scroll container's
+            padding (app-shell.tsx:178). `main#main-content` is
+            `overflow-y: auto` carrying that padding, so a sticky `bottom: 0`
+            resolves against a content box that is ALREADY inset, and applying
+            the env a third time would float the band above the bar by the
+            inset. Measured on a production build at 390x844: band top 733.0,
+            band bottom 785.0, tab bar top 785.0. Zero gap and zero overlap, at
+            scrollTop 0, at mid scroll and at maximum scroll.
+
+            NO MOTION, AT ALL. No animation, no transition, no entrance class,
+            and it is not added to `.rise` or `.enter`. "Permanent" means
+            present at first paint, at scrollTop 0, at maximum scroll and after
+            a client-side navigation, and sticky is already all four. There is
+            nothing to reduce, so the prefers-reduced-motion block in
+            ledger.module.css is untouched and this band is trivially correct
+            under it.
+
+            THE CLEARANCE SPACER ABOVE IS UNCHANGED. Four variants were
+            measured: the existing calc already yields exactly a 24.1px gap
+            whether the pinned chrome below it is the tab bar alone or the band
+            plus the tab bar, because the band is in flow at the bottom of this
+            same column. Adding 52px to it opens a 76px hole; removing it
+            covers the last row by 34.9px.
+
+            DEVIATION FROM THE DESIGN, RECORDED. The design draws no
+            bottom-pinned band on the Ledger. The entire [data-parity="ledger"]
+            subtree, 218 elements, was measured in BOTH themes and carries zero
+            elements with position sticky or fixed; the only positioned
+            elements are the ticker strip's absolute edge fades. This band is a
+            product ruling about reach, not a transcription, and the parity
+            check reports it as a mismatch for that reason. */}
+        <div
+          style={{
+            position: "sticky",
+            bottom: 0,
+            zIndex: 1,
+            height: "52px",
+            /* Escapes BOTH horizontal paddings, the root's `0 20px` and this
+               column's `0 20px`, so the band and its top rule span the full
+               width rather than floating inside a 40px inset. */
+            margin: `0 calc(-2 * ${PAD})`,
+            borderTop: "1px solid var(--c-border)",
+            backgroundColor: "var(--c-bg)",
+          }}
+        >
+          <Link
+            /* /radar/calls IS THE WIRED WRITE PATH. It POSTs to
+               /api/radar/claims/author (radar/calls/page.tsx:974) and to
+               /api/radar/claims (:999), and its author control renders
+               unconditionally (:567).
+
+               HARD GATE: DO NOT REPOINT THIS AT /compose. That screen's
+               WRITE_PATH_WIRED is `false` (compose-screen.tsx:61), its primary
+               control is `disabled={!unlocked || !WRITE_PATH_WIRED}` (:608)
+               and the whole file makes zero fetch calls. If this href is ever
+               moved to /compose while that flag is false, THE BAND MUST NOT
+               SHIP. A permanent, unavoidable control leading to a disabled
+               primary button is strictly worse than a tail row that does,
+               because the reader cannot scroll past it. */
+            href="/radar/calls"
+            className={`${styles.bare} ${styles.focusable}`}
+            style={{
+              /* 51px tall by 390px wide as rendered, natively above the 44px
+                 tap floor, so it gets NO content-box padding plus negative
+                 margin. That pattern is for controls whose visual box is under
+                 44px; here it would push the hit box out past the band's own
+                 edges and over the content behind it. */
+              height: "100%",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "12px",
+              padding: `0 ${PAD}`,
+              /* Type, weight and chevron size are TailAction's own, so the
+                 band reads as that control promoted rather than as a new
+                 object. The face MUST resolve through `--font-inter`: see the
+                 FACES note at the top of this file for what spelling the
+                 literal costs. */
+              font: "600 13px/1.4 var(--font-inter), sans-serif",
+              color: "var(--c-ink)",
+            }}
+          >
+            {/* NO BORDER, NO RADIUS AND NO FILL on the control, and this is the
+                one place the band diverges from TailAction's pill shape. At
+                52px there is no room for band padding plus a bordered pill,
+                and a control border would double against the band's own top
+                rule. Forced by the 52px ruling, not a style preference. The
+                chevron keeps its default var(--c-muted) stroke. */}
+            <span style={{ minWidth: 0, flex: 1 }}>Write your own call</span>
+            <Chevron direction="right" size={15} />
+          </Link>
+        </div>
       </div>
     </div>
   );

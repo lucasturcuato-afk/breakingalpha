@@ -98,6 +98,27 @@
   text-decoration: none;
 }
 
+/* The focus ring for the write band's link.
+ *
+ * This file carried no `:focus-visible` rule at all and `.bare` sets no
+ * outline, so a keyboard reader landing on the band would have had nothing
+ * drawn for them. Copied from compose.module.css:57-64 with ONE change: the
+ * offset is negative. Compose's +2px pushes the ring outside the control, and
+ * the band's control is flush with the band's top rule and with its bottom
+ * edge, so a +2 ring clips against the tab bar sitting directly below it. -2
+ * draws the ring inside the control, where there is room for it.
+ *
+ * This is a class rather than part of the band's inline style object because
+ * focus state cannot be expressed inline. */
+.focusable {
+  outline: none;
+}
+
+.focusable:focus-visible {
+  outline: 2px solid var(--c-gold);
+  outline-offset: -2px;
+}
+
 /* The ticker track. The keyframe moves it by half its own width, which is why
  * the strip renders its cell list twice: at -50% the second copy sits exactly
  * where the first began, so the loop has no seam. */
