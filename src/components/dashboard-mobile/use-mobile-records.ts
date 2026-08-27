@@ -29,14 +29,17 @@
  * to ask `matchMedia` once and never again, so a page opened on a desktop and
  * then narrowed below `md` never ran these two reads at all. Both record
  * sections were silently absent for the life of that page. It is a real
- * viewport now, read through `useSyncExternalStore`, so narrowing starts the
- * reads and the sections arrive.
+ * viewport now, read through `useMobileViewport`, so narrowing starts the
+ * reads and the sections arrive. That store used to be a private copy in this
+ * file; it moved to `use-mobile-viewport.ts` when the page's own mount gates
+ * needed the same subscription, so there is one breakpoint answer on the
+ * route rather than three that can drift apart.
  *
  * That subscription is also what lets the state machine be complete without a
  * `setState` in an effect body. See `MobileRecords.status`.
  */
 
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useState } from "react";
 import { createBrowserClient } from "@supabase/ssr";
 import {
   resolveClaimOutcome,
@@ -46,9 +49,7 @@ import { buildYourRecord, type UserClaimLike } from "@/lib/your-record";
 import { fetchDeskRecord } from "@/lib/desk-record-query";
 import { todayPt } from "@/lib/session-date";
 import type { Resolution } from "@/lib/desk-record";
-
-/** Below `md`, where `md:hidden` still applies. */
-const MOBILE_QUERY = "(max-width: 767px)";
+import { useMobileViewport } from "./use-mobile-viewport";
 
 /**
  * A read that has not answered inside this is treated as answered with
@@ -147,35 +148,6 @@ export function countGradedInLastDay(
   return n;
 }
 
-/**
- * The breakpoint as an external store.
- *
- * `useSyncExternalStore` rather than an effect and a `setState`, for two
- * reasons and not only the lint rule. It gives the correct value on the FIRST
- * client render instead of one render later, and it hands React the
- * server snapshot explicitly, so hydration has one answer rather than two.
- */
-function subscribeToBreakpoint(onChange: () => void): () => void {
-  if (typeof window === "undefined") return () => {};
-  const mql = window.matchMedia(MOBILE_QUERY);
-  mql.addEventListener("change", onChange);
-  return () => mql.removeEventListener("change", onChange);
-}
-
-function isMobileSnapshot(): boolean {
-  return window.matchMedia(MOBILE_QUERY).matches;
-}
-
-/**
- * There is no viewport on the server, and guessing one would make the markup
- * disagree with the first client render. False means "not reading", which is
- * the safe answer either way: it renders no record section rather than an
- * invented one.
- */
-function isMobileServerSnapshot(): boolean {
-  return false;
-}
-
 function getSupabase() {
   return createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -184,11 +156,7 @@ function getSupabase() {
 }
 
 export function useMobileRecords(): MobileRecords {
-  const isMobile = useSyncExternalStore(
-    subscribeToBreakpoint,
-    isMobileSnapshot,
-    isMobileServerSnapshot,
-  );
+  const isMobile = useMobileViewport();
   const [state, setState] = useState<MobileRecords>(PENDING);
 
   useEffect(() => {

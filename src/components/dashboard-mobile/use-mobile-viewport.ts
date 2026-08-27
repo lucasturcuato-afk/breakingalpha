@@ -1,27 +1,85 @@
 "use client";
 
 /**
- * Two things the mobile Dashboard needs that must cost a desktop load nothing.
+ * The breakpoint, and the two clocks the mobile Dashboard needs that must cost
+ * a desktop load nothing.
  *
- * The mobile screen is composed beside the desktop layout rather than
- * replacing it, so above the `md` breakpoint its whole subtree is mounted and
- * merely `display:none`. Any timer or interval it sets up there is work done
- * for a tree nobody can see, and a state update in it re-renders the desktop
- * page. So both hooks below ask `matchMedia` first and set no timer above the
- * breakpoint.
+ * `md:hidden` and `hidden md:block` decide what is VISIBLE. They do not decide
+ * what is MOUNTED: `display:none` still mounts, still runs effects and still
+ * fetches. Every timer, interval and round-trip a subtree starts on the wrong
+ * side of the breakpoint is work done for a tree nobody can see, and a state
+ * update in it re-renders the page. So the two clocks below ask `matchMedia`
+ * first and set no timer above the breakpoint, and the two hooks below them
+ * decide the MOUNT for callers that need the stronger guarantee.
  *
- * The query is Tailwind's `md` minus a pixel, which is exactly where
- * `md:hidden` stops applying, and is the same string `use-mobile-records.ts`
- * uses for the same reason.
+ * The queries are Tailwind's `md` and `md` minus a pixel, which is exactly
+ * where `md:hidden` and `hidden md:block` change hands.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 
 export const MOBILE_MEDIA_QUERY = "(max-width: 767px)";
+export const DESKTOP_MEDIA_QUERY = "(min-width: 768px)";
 
 function isMobileViewport(): boolean {
   if (typeof window === "undefined") return false;
   return window.matchMedia(MOBILE_MEDIA_QUERY).matches;
+}
+
+/**
+ * The breakpoint as an external store, in the shape `use-mobile-records.ts`
+ * already proved out: `useSyncExternalStore` rather than an effect and a
+ * `setState`, so the FIRST client render already carries the real viewport
+ * instead of one render later, and so React is handed the server snapshot
+ * explicitly.
+ */
+function subscriber(query: string) {
+  return function subscribe(onChange: () => void): () => void {
+    if (typeof window === "undefined") return () => {};
+    const mql = window.matchMedia(query);
+    mql.addEventListener("change", onChange);
+    return () => mql.removeEventListener("change", onChange);
+  };
+}
+
+const subscribeMobile = subscriber(MOBILE_MEDIA_QUERY);
+const subscribeDesktop = subscriber(DESKTOP_MEDIA_QUERY);
+
+function mobileSnapshot(): boolean {
+  return window.matchMedia(MOBILE_MEDIA_QUERY).matches;
+}
+
+function desktopSnapshot(): boolean {
+  return window.matchMedia(DESKTOP_MEDIA_QUERY).matches;
+}
+
+/**
+ * BOTH SERVER SNAPSHOTS ARE FALSE, AND THAT IS THE WHOLE MECHANISM.
+ *
+ * There is no viewport on the server. React renders the server snapshot on the
+ * server AND again for the hydration render on the client, then re-renders
+ * with the real one. So false means "not this side of the breakpoint, do not
+ * mount", on both passes, for both hooks, and there is no markup for hydration
+ * to disagree about.
+ *
+ * It has to be false for the DESKTOP hook specifically. React runs child
+ * effects before parent effects, so anything present in the hydration render
+ * has already fired its fetches by the time a store re-render could unmount
+ * it. A subtree that must not fetch on a phone must therefore be absent from
+ * the hydration render, which means absent from the server render too.
+ */
+function absentOnServer(): boolean {
+  return false;
+}
+
+/** True below `md`, where `md:hidden` still applies. False until hydration. */
+export function useMobileViewport(): boolean {
+  return useSyncExternalStore(subscribeMobile, mobileSnapshot, absentOnServer);
+}
+
+/** True at `md` and above, where `hidden md:block` applies. False until hydration. */
+export function useDesktopViewport(): boolean {
+  return useSyncExternalStore(subscribeDesktop, desktopSnapshot, absentOnServer);
 }
 
 const MINUTE_MS = 60_000;

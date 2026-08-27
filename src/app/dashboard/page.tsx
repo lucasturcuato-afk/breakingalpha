@@ -756,8 +756,20 @@ function DashboardPageInner() {
   const mobileReady =
     dashRevealed && (mobileReadsAnswered || (mobileBudgetSpent && mobileSomethingAnswered));
 
+  /* BUILT EVERY RENDER, FROM WHATEVER HAS ANSWERED.
+   *
+   * It used to return null until `mobileReady`, and null takes the screen's
+   * early exit, so the briefing tree did not exist until the last read landed
+   * and its entrance could not start before that. Measured on the previous
+   * commit, Slow 4G: the first `dashRise` rung fired at 5662ms.
+   *
+   * Nothing about WHAT IS LEGIBLE changes with this. Every field below is
+   * already independently nullable and every unanswered read is already drawn
+   * as an absence rather than as a zero, and `MobileRevealGate` keeps the
+   * whole subtree at `visibility: hidden` until `mobileReady` anyway. What
+   * changes is that the tree, and therefore the ladder, EXISTS while the
+   * skeleton is still up. See `mobile-reveal-gate.tsx`. */
   const mobileData = useMemo(() => {
-    if (!mobileReady) return null;
     return buildDashboardData({
       now: new Date(mobileMinute * 60_000),
       firstName: profile?.first_name ?? null,
@@ -786,7 +798,6 @@ function DashboardPageInner() {
       gradedInLastDay: mobileRecords.gradedInLastDay,
     });
   }, [
-    mobileReady,
     mobileMinute,
     profile,
     countsRead,
@@ -849,7 +860,7 @@ function DashboardPageInner() {
           the tab bar to desktop once already. */}
       <div className="md:hidden">
         <Suspense fallback={<DashboardScreen stage="loading" data={null} />}>
-          <MobileDashboardRoute data={mobileData} stage={mobileStage} />
+          <MobileDashboardRoute data={mobileData} stage={mobileStage} revealed={mobileReady} />
         </Suspense>
       </div>
 
