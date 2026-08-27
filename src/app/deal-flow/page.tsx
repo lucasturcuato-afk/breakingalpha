@@ -779,7 +779,7 @@ function DealFlowContent() {
                 type="button"
                 onClick={handleAddDeal}
                 className={cn(
-                  "px-4 py-2 rounded-lg font-data text-[11px] font-bold uppercase cursor-pointer",
+                  "px-4 py-2 rounded-lg font-data text-[11px] font-semibold uppercase cursor-pointer",
                   "bg-gold text-cream hover:bg-gold-dark transition-colors",
                 )}
               >
@@ -788,7 +788,7 @@ function DealFlowContent() {
               <button
                 type="button"
                 onClick={() => setShowForm(false)}
-                className="px-4 py-2 rounded-lg font-data text-[11px] font-bold uppercase cursor-pointer border border-border-base text-text-muted hover:text-text-primary transition-colors"
+                className="px-4 py-2 rounded-lg font-data text-[11px] font-semibold uppercase cursor-pointer border border-border-base text-text-muted hover:text-text-primary transition-colors"
               >
                 Cancel
               </button>
@@ -806,7 +806,7 @@ function DealFlowContent() {
               { label: "With Valuation", value: deals.filter((d) => d.valuation || d.value).length },
             ].map((stat) => (
               <div key={stat.label} className="bg-white border border-border-base rounded-xl p-3.5">
-                <div className="font-data text-[24px] font-bold text-espresso mb-0.5">
+                <div className="font-data text-[24px] font-semibold text-espresso mb-0.5">
                   {stat.value}
                 </div>
                 <div className="font-sans text-[9px] text-text-muted">

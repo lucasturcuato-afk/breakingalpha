@@ -54,7 +54,7 @@ function TrackButton({ ticker, company }: { ticker: string; company: string }) {
 
   if (state === "tracked") {
     return (
-      <span className="mt-auto inline-flex items-center gap-1 font-data text-[11px] font-medium text-signal-up">
+      <span className="mt-auto inline-flex items-center gap-1 font-data text-[11px] font-semibold text-signal-up">
         <Check size={11} /> Tracking
       </span>
     );
@@ -65,7 +65,7 @@ function TrackButton({ ticker, company }: { ticker: string; company: string }) {
       type="button"
       onClick={track}
       disabled={state === "saving"}
-      className="mt-auto inline-flex items-center gap-1 font-data text-[11px] font-medium text-gold-dark hover:text-gold transition-colors cursor-pointer disabled:opacity-60 self-start"
+      className="mt-auto inline-flex items-center gap-1 font-data text-[11px] font-semibold text-gold-dark hover:text-gold transition-colors cursor-pointer disabled:opacity-60 self-start"
     >
       {state === "saving" && <Loader2 size={10} className="animate-spin" />}
       {state === "error" ? "Retry" : "+ Track"}

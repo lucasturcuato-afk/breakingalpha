@@ -910,7 +910,7 @@ export default function MorningBriefPage() {
             ) : (
               <span
                 className="font-data"
-                style={{ fontSize: 12, fontWeight: 700, color: x.c || "var(--espresso)", fontVariantNumeric: "tabular-nums" }}
+                style={{ fontSize: 12, fontWeight: 600, color: x.c || "var(--espresso)", fontVariantNumeric: "tabular-nums" }}
               >
                 {x.v}
               </span>
@@ -1453,7 +1453,7 @@ export default function MorningBriefPage() {
                           className="font-data"
                           style={{
                             fontSize: 12,
-                            fontWeight: 700,
+                            fontWeight: 600,
                             color: "var(--gold-dark)",
                             whiteSpace: "nowrap",
                           }}

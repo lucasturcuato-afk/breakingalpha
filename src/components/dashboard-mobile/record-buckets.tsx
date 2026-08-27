@@ -141,7 +141,7 @@ export function RecordBuckets({ variant, byResolution, awaiting = 0, total }: Re
             style={{
               display: "block",
               marginTop: "5px",
-              font: `500 ${personal ? 16 : 17}px/1 ${FONT_MONO}`,
+              font: `600 ${personal ? 16 : 17}px/1 ${FONT_MONO}`,
               color: personal ? PERSONAL_INK[cell.key] : "var(--c-ink)",
             }}
           >

@@ -147,7 +147,7 @@ export function WatchlistWidget() {
               )}
             >
               <div className="flex-1 min-w-0">
-                <span className="font-data text-[12px] font-bold text-text-primary">
+                <span className="font-data text-[12px] font-semibold text-text-primary">
                   {item.ticker}
                 </span>
                 {item.name !== item.ticker && (

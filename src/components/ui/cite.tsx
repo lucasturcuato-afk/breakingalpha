@@ -21,7 +21,7 @@ export function Cite({ n, onClick, sourceExists = true, color = "var(--gold)", c
       data-cite-index={n}
       className={cn(
         "inline-flex items-center justify-center align-baseline mx-0.5 px-1 rounded",
-        "font-data text-[10px] font-bold leading-none border transition-colors",
+        "font-data text-[10px] font-semibold leading-none border transition-colors",
         sourceExists
           ? "cursor-pointer hover:opacity-80"
           : "border-border-base bg-parchment-mid text-text-faint cursor-not-allowed line-through",

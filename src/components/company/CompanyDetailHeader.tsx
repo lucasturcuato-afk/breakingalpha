@@ -144,7 +144,7 @@ export function CompanyDetailHeader({ detail, titleAs: Title = "h1" }: Props) {
                 data-testid="company-header-ticker"
                 className="font-data"
                 style={{
-                  fontSize: 11, fontWeight: 700, color: "var(--text-muted)",
+                  fontSize: 11, fontWeight: 600, color: "var(--text-muted)",
                   padding: "2px 7px", borderRadius: 3,
                   background: "var(--cream)", border: "1px solid var(--border-base)",
                 }}

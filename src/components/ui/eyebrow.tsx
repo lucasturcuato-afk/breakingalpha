@@ -32,7 +32,7 @@ export function Eyebrow({
     <Component
       className={cn(
         isMono
-          ? "font-mono text-[9.5px] uppercase font-bold m-0"
+          ? "font-mono text-[9.5px] uppercase font-semibold m-0"
           : "font-sans text-[10px] uppercase font-bold m-0",
         className,
       )}

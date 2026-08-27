@@ -1158,7 +1158,7 @@ export default function EveningWrapPage() {
             </span>
             <span
               className="font-data"
-              style={{ fontSize: 12, fontWeight: 700, color: x.c || "var(--espresso)", fontVariantNumeric: "tabular-nums" }}
+              style={{ fontSize: 12, fontWeight: 600, color: x.c || "var(--espresso)", fontVariantNumeric: "tabular-nums" }}
             >
               {x.v}
             </span>
@@ -1403,7 +1403,7 @@ export default function EveningWrapPage() {
                         </p>
                         <p
                           className="font-data"
-                          style={{ fontSize: 14, fontWeight: 700, color: DC_CREAM, margin: "0 0 4px", fontVariantNumeric: "tabular-nums" }}
+                          style={{ fontSize: 14, fontWeight: 600, color: DC_CREAM, margin: "0 0 4px", fontVariantNumeric: "tabular-nums" }}
                         >
                           {displayPrice}
                         </p>

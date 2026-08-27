@@ -474,7 +474,7 @@ function StatsBar({ data }: { data: EveningWrapData }) {
           <span style={{ font: `700 10px/1 ${FONT_SANS}`, color: "var(--c-muted)" }}>{s.label}</span>
           <span
             style={{
-              font: `700 12px/1 ${FONT_MONO}`,
+              font: `600 12px/1 ${FONT_MONO}`,
               color:
                 s.tone === "calm"
                   ? "var(--c-greenink)"
@@ -755,7 +755,7 @@ function MoverRow({ mover, last }: { mover: EveningMover; last: boolean }) {
           down the list. Two lines when a quote resolved, one when only the
           symbol did, none when the story named no symbol at all. A dash in the
           move slot would read as a measured flat session. */}
-      <span aria-hidden={!mover.symbol} style={{ flex: "none", width: "46px", font: `500 10.5px/1.5 ${FONT_MONO}`, letterSpacing: "0.045em", color: "var(--c-muted)" }}>
+      <span aria-hidden={!mover.symbol} style={{ flex: "none", width: "46px", font: `600 10.5px/1.5 ${FONT_MONO}`, letterSpacing: "0.045em", color: "var(--c-muted)" }}>
         {mover.symbol}
         {mover.symbol && mover.move ? (
           <>

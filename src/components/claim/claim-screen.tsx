@@ -253,7 +253,7 @@ function SettlementRow({ label, value }: { label: string; value: string }) {
       <span style={{ font: "400 12.5px/1 var(--font-inter), sans-serif", color: "var(--c-secondary)" }}>{label}</span>
       <span
         style={{
-          font: "500 12px/1 var(--font-jetbrains-mono), monospace",
+          font: "600 12px/1 var(--font-jetbrains-mono), monospace",
           color: "var(--c-ink)",
           textAlign: "right",
         }}

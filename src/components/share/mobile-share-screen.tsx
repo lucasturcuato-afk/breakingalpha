@@ -240,7 +240,7 @@ export function MobileShareScreen({
                         padding: "2px 6px",
                         borderRadius: "4px",
                         backgroundColor: "var(--c-well)",
-                        font: `700 10px/1 ${FONT_MONO}`,
+                        font: `600 10px/1 ${FONT_MONO}`,
                         letterSpacing: "0.07em",
                         color: "var(--c-goldink)",
                         textTransform: "uppercase",

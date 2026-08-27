@@ -105,7 +105,7 @@ export function SectionRule({ label }: { label: string }) {
         style={{
           fontFamily: FONT_MONO,
           fontSize: 10,
-          fontWeight: 500,
+          fontWeight: 600,
           lineHeight: 1,
           letterSpacing: "0.16em",
           color: "var(--c-goldink)",

@@ -80,7 +80,7 @@ export function EyebrowRule({ children, marginTop = "24px" }: { children: ReactN
       <h2
         style={{
           margin: 0,
-          font: `700 10px/1 ${FONT_MONO}`,
+          font: `600 10px/1 ${FONT_MONO}`,
           letterSpacing: "0.07em",
           color: "var(--c-muted)",
           textTransform: "uppercase",

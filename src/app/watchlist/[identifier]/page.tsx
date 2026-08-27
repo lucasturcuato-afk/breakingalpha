@@ -732,7 +732,7 @@ Constraints:
             quote ? (quote.pct >= 0 ? "border-l-signal-up" : "border-l-signal-dn") : "border-l-border-base"
           )}>
             <div className="flex items-center gap-3 mb-1">
-              <h1 className="font-data text-[28px] font-extrabold text-espresso">{decoded}</h1>
+              <h1 className="font-data text-[28px] font-semibold text-espresso">{decoded}</h1>
               <span className="font-sans text-[10px] text-text-muted bg-parchment-mid border border-border-base px-2 py-0.5 rounded-md capitalize">{typeLabel}</span>
             </div>
             {(storedDisplayName ?? LEGACY_TICKER_NAMES[decoded.toUpperCase()]) && (
@@ -742,7 +742,7 @@ Constraints:
             )}
             {quote ? (
               <div className="flex items-center gap-3">
-                <span className="font-data text-[24px] font-bold text-espresso">${quote.price}</span>
+                <span className="font-data text-[24px] font-semibold text-espresso">${quote.price}</span>
                 <span className={cn("font-data text-[16px] font-semibold", quote.pct >= 0 ? "text-signal-up" : "text-signal-dn")}>
                   {quote.pct >= 0 ? "+" : ""}{quote.pct}%
                 </span>

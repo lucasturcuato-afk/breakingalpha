@@ -242,7 +242,7 @@ export default async function PublicBriefPage({ params }: Props) {
                     </span>
                   </div>
                   {deal.deal_type && (
-                    <span className="inline-block font-data text-[9px] uppercase tracking-wide font-bold text-gold bg-gold-muted px-1.5 py-0.5 rounded mb-1.5">
+                    <span className="inline-block font-data text-[9px] uppercase tracking-wide font-semibold text-gold bg-gold-muted px-1.5 py-0.5 rounded mb-1.5">
                       {deal.deal_type}
                     </span>
                   )}
