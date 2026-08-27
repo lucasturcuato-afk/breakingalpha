@@ -244,12 +244,12 @@ export function LedgerScreen({
             redundancy, and it contradicts the CONTROLS note at the top of this
             file.
 
-            This row is NOT promoted to the --c-ink treatment to fill the gap.
-            The band is the primary now, and two primaries is the defect the
-            deletion above removes, so the weight, the border token and the
-            fill all stay as they were. Only the gap changes: 10 was the space
-            below the row that left, and 18 is TailAction's own first-row
-            value, which is what this row now is. */}
+            This row is NOT promoted to the --c-ink treatment to fill the
+            gap left behind. The band is the primary now, and two primaries is
+            the defect that removing the old row fixes, so the weight, the
+            border token and the fill all stay exactly as they were. Only the
+            gap changes: 10 was the space below the row that left, and 18 is
+            TailAction's own first-row value, which is what this row now is. */}
         <TailAction
           label="The desk grades itself too"
           href="/desk-record"
@@ -293,7 +293,7 @@ export function LedgerScreen({
 
             NO env(safe-area-inset-bottom) HERE, DELIBERATELY. The inset is
             already applied twice below this element: once on the tab bar
-            itself (mobile-tab-bar.tsx:177) and once on the scroll container's
+            itself (mobile-tab-bar.tsx:178) and once on the scroll container's
             padding (app-shell.tsx:178). `main#main-content` is
             `overflow-y: auto` carrying that padding, so a sticky `bottom: 0`
             resolves against a content box that is ALREADY inset, and applying
@@ -322,8 +322,17 @@ export function LedgerScreen({
             subtree, 218 elements, was measured in BOTH themes and carries zero
             elements with position sticky or fixed; the only positioned
             elements are the ticker strip's absolute edge fades. This band is a
-            product ruling about reach, not a transcription, and the parity
-            check reports it as a mismatch for that reason. */}
+            product ruling about reach, not a transcription.
+
+            THE PARITY CHECK DOES NOT CATCH THIS, and that is worth knowing
+            before anyone reads a clean run as agreement. `screen-audit parity
+            ledger` pairs elements by their text, and the design's own tail
+            action carries this exact label, so the band matches that
+            counterpart and inherits its property comparison rather than being
+            reported as an element with no design counterpart. The run is
+            96 mismatches before this change and 96 after, the only difference
+            being the DOM order of the two tail labels. The deviation is real
+            and is recorded here because the tool cannot record it. */}
         <div
           style={{
             position: "sticky",
