@@ -68,7 +68,13 @@ function firstUntracked(page: Page) {
  * place before any test body runs and therefore before any `page.goto`.
  */
 const test = base.extend<{ page: Page }>({
-  page: async ({ page }, use) => {
+  /* The second parameter is Playwright's fixture callback. It is conventionally
+     spelled `use`, and that spelling makes react-hooks/rules-of-hooks read it
+     as React's `use` hook called outside a component: a real lint error, from a
+     rule that matches the bare name and cannot know there is no React in this
+     file. The parameter is positional, so the name is ours to choose. Renaming
+     it is a smaller thing than carrying a suppression comment forever. */
+  page: async ({ page }, runTest) => {
     await page.route(ADOPT, (route: Route) =>
       route.fulfill({
         status: 503,
@@ -78,7 +84,7 @@ const test = base.extend<{ page: Page }>({
         }),
       }),
     );
-    await use(page);
+    await runTest(page);
   },
 });
 

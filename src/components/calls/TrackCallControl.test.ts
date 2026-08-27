@@ -21,6 +21,7 @@ import {
   TRACK_NOTE_PROMPT,
   TRACK_TRUST_LINE,
   buildLedgerLine,
+  noteLandedOnRow,
   noteMeetsGate,
   type TrackedClaimLike,
 } from "./TrackCallControl";
@@ -296,5 +297,61 @@ test("the field carries no heading: twelve of them would be wallpaper", () => {
   // This is the same finding TRACK_TRUST_LINE records for itself.
   for (const s of [TRACK_NOTE_PROMPT, TRACK_NOTE_HINT, TRACK_NOTE_HINT_READY]) {
     assert.equal(s.includes("Why do you think so?"), false, s);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Clearing the draft. The narrow question, and the reason it is narrow.
+//
+// /api/radar/claims/adopt answers `noteWritten` on two branches with two
+// meanings. On the insert path it is read back off the row the request just
+// created. On the already-adopted path it is Boolean(existing.commit_note),
+// true whenever an OLD note is on the row, and the route only writes an
+// incoming note to an existing row when that row has none. So a reader who
+// writes a sentence against a stale card whose call is already adopted WITH a
+// note has their text discarded by the route and gets a 200 with
+// noteWritten: true. Clearing on that flag deletes their only copy.
+// ---------------------------------------------------------------------------
+
+test("a fresh insert that carries the note clears the draft", () => {
+  assert.equal(
+    noteLandedOnRow({ alreadyAdopted: false, noteWritten: true }),
+    true,
+  );
+  // alreadyAdopted is simply absent on the insert path.
+  assert.equal(noteLandedOnRow({ noteWritten: true }), true);
+});
+
+test("DATA LOSS GUARD: an already-adopted row never clears the draft", () => {
+  // The row already had a note. The route discarded the reader's text and
+  // still answered noteWritten: true. The draft MUST survive this.
+  assert.equal(
+    noteLandedOnRow({ alreadyAdopted: true, noteWritten: true }),
+    false,
+    "a sentence the route discarded must not be deleted from the field",
+  );
+  // The row had no note and the route wrote this one. Genuinely written, but
+  // indistinguishable from the case above in the response, so it is also
+  // treated as unproven. A stale draft is the acceptable side of that trade.
+  assert.equal(noteLandedOnRow({ alreadyAdopted: true, noteWritten: false }), false);
+});
+
+test("an unacknowledged or silent 200 never clears the draft", () => {
+  for (const shape of [
+    {},
+    { id: "x" },
+    { noteWritten: false },
+    { alreadyAdopted: true },
+    { noteWritten: "true" },
+    { noteWritten: 1 },
+    { alreadyAdopted: "true", noteWritten: true },
+  ]) {
+    if (shape.alreadyAdopted === "true") {
+      // A non-boolean true is not alreadyAdopted, but noteWritten is a real
+      // boolean here, so this one legitimately clears. Documented, not silent.
+      assert.equal(noteLandedOnRow(shape), true, JSON.stringify(shape));
+      continue;
+    }
+    assert.equal(noteLandedOnRow(shape), false, JSON.stringify(shape));
   }
 });

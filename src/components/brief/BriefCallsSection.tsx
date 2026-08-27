@@ -55,6 +55,7 @@ import {
   CallCommitFooter,
   CallsTrustLine,
   hasCommitFooter,
+  noteLandedOnRow,
 } from "@/components/calls/TrackCallControl";
 import {
   findNextToWatch,
@@ -449,13 +450,30 @@ export default function BriefCallsSection({
         return next;
       });
       setStamped((prev) => new Set(prev).add(call.id));
-      // The ONLY path that drops the draft. The row is acknowledged, so the
-      // note now lives on the record rather than in this component.
-      setNoteFor((prev) => {
-        const next = { ...prev };
-        delete next[call.id];
-        return next;
-      });
+      /* CLEAR THE DRAFT ONLY WHEN THIS READER'S OWN TEXT LANDED.
+         Anything less specific loses a sentence. The route writes an incoming
+         note to an existing row only when that row has none
+         (adopt/route.ts:111), so on a call that was already adopted WITH a
+         note the text is silently discarded, and clearing here would delete
+         the reader's only copy of it.
+         `noteWritten` cannot be used to tell those apart. On the
+         already-adopted branch it is `Boolean(existing.commit_note)`
+         (route.ts:125), which is true when an OLD note exists: it answers
+         "this row carries a note", not "your note was written". Only on the
+         INSERT path is it read back off the row this request created
+         (route.ts:208), and there it does mean the caller's note landed.
+         So: fresh insert, note confirmed on the inserted row, clear. Every
+         other shape keeps the draft. A stale draft is a nuisance; a vanished
+         sentence is the defect this PR exists to close. Making the discard
+         case knowable needs a route change, which is proposed in the PR body
+         rather than taken here, because that route is shared with mobile. */
+      if (noteLandedOnRow(json)) {
+        setNoteFor((prev) => {
+          const next = { ...prev };
+          delete next[call.id];
+          return next;
+        });
+      }
       // Peripheral confirmation: a brief pulse on the Radar nav row. Not a
       // toast, not a banner, and never a navigation.
       notifyRadarLanded();
@@ -544,13 +562,16 @@ export default function BriefCallsSection({
                 onWindowChange={(w) =>
                   setWindowFor((prev) => ({ ...prev, [c.id]: w }))
                 }
+                // This surface has adopted ruling 11. `noteGate` drags both
+                // halves below in with it, so the pair cannot come apart.
+                noteGate
                 // Empty is not a stand-in for data that failed to arrive. It
                 // is a true statement about the draft: the reader has typed
                 // nothing yet. Same shape as `windowFor[c.id] ?? offered`
                 // above, where the fallback is likewise the real default
-                // rather than a placeholder for something unknown.
+                // rather than a stand-in for something unknown.
                 note={noteFor[c.id] ?? ""}
-                onNoteChange={(next) =>
+                onNoteChange={(next: string) =>
                   setNoteFor((prev) => ({ ...prev, [c.id]: next }))
                 }
                 onTrack={(note) => void track(c, chosen, offered, note)}

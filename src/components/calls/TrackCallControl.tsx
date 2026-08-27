@@ -85,6 +85,39 @@ export function noteMeetsGate(note: string): boolean {
   return note.trim().length >= COMMIT_NOTE_MIN;
 }
 
+/**
+ * Whether an adopt response proves THIS caller's note reached the row.
+ *
+ * The only question a surface may clear its draft on, and it is narrower than
+ * it looks. `/api/radar/claims/adopt` answers `noteWritten` on two different
+ * branches with two different meanings:
+ *
+ *   INSERT (route.ts:208)  read back off the row this request just created, so
+ *                          true means the caller's own note is on it.
+ *   ALREADY ADOPTED (:125) `Boolean(existing.commit_note)`, which is true when
+ *                          an OLD note is on the row. The route writes an
+ *                          incoming note to an existing row ONLY when that row
+ *                          has none (:111), so on a call already adopted with
+ *                          a note the caller's text is silently discarded and
+ *                          this flag is true anyway. It answers "this row
+ *                          carries a note", not "your note was written".
+ *
+ * So the already-adopted branch can never prove it, and this returns false for
+ * every shape of it. A stale draft is a nuisance. A sentence deleted because a
+ * flag was read as answering a question it does not answer is the failure this
+ * whole control exists to prevent.
+ *
+ * Making the discard case knowable needs a route change (a distinct flag on
+ * the :122 branch). That is proposed in PR #694's body rather than taken
+ * there, because the route is shared with the mobile commit sheet.
+ */
+export function noteLandedOnRow(res: {
+  alreadyAdopted?: unknown;
+  noteWritten?: unknown;
+}): boolean {
+  return res.alreadyAdopted !== true && res.noteWritten === true;
+}
+
 /* ── The note copy, all four strings reused verbatim from the commit sheet ──
  *
  * Zero new strings. The sheet is the surface where this requirement was
@@ -118,6 +151,52 @@ export const TRACK_NOTE_GATED_LABEL = "Write your reasoning first";
 
 /** The field's accessible name. It has no visible label by design. */
 export const TRACK_NOTE_ARIA_LABEL = "Your reasoning";
+
+/**
+ * The note pair, as a discriminated union, so the broken shape cannot be
+ * written down.
+ *
+ * An earlier version derived the gate from `typeof onNoteChange === "function"`
+ * and that was wrong: a caller who passed `note` and forgot `onNoteChange` got
+ * an ungated footer with a dead read-only field and NO type error. Presence is
+ * not a contract. `noteGate: true` is, and it drags both halves in with it.
+ *
+ * The second member is the fenced /radar/calls page: it passes neither half
+ * and keeps today's ungated footer. `never` on both keys means it cannot pass
+ * one by accident either.
+ *
+ * WHY THE PAIR IS OPTIONAL AT ALL, since ruling 11 says every surface gates.
+ * RULED DEVIATION, not drift. Required props would not compile against
+ * src/app/radar/calls/page.tsx, which is under the /radar sprint fence and may
+ * not be edited on this branch, and a required prop defaulted to "" would
+ * leave that page's Track button permanently disabled, which is a live
+ * regression rather than a deferral. The exact wiring diff is in the PR body
+ * marked NOT APPLIED. When it lands, collapse this union to a plain required
+ * pair and delete this paragraph.
+ */
+export type CallCommitNoteProps =
+  | {
+      /** This surface has adopted ruling 11. Both halves below are required. */
+      noteGate: true;
+      /**
+       * The reader's note in progress. It lives in the CALLER's state keyed by
+       * call id, never in this footer.
+       *
+       * That placement is the whole failure contract. A footer that owned its
+       * own note would lose it the moment a failed adopt re-rendered the card,
+       * and the sentence a reader wrote is the one thing on this control that
+       * cannot be reconstructed. README: "A call that silently fails to save is
+       * the worst possible bug in this product." Kept above, a 500 leaves the
+       * sentence on screen and the retry costs a click.
+       */
+      note: string;
+      onNoteChange: (note: string) => void;
+    }
+  | {
+      noteGate?: false;
+      note?: never;
+      onNoteChange?: never;
+    };
 
 /** What the control needs to know about an existing claim. Server-shaped. */
 export interface TrackedClaimLike {
@@ -244,6 +323,7 @@ export function CallCommitFooter({
   busy,
   window,
   onWindowChange,
+  noteGate = false,
   note,
   onNoteChange,
   onTrack,
@@ -264,36 +344,6 @@ export function CallCommitFooter({
    */
   window: AdoptWindow;
   onWindowChange: (w: AdoptWindow) => void;
-  /**
-   * The reader's note in progress, and its setter. The note lives in the
-   * CALLER's state keyed by call id, never in this footer.
-   *
-   * That placement is the whole failure contract. A footer that owned its own
-   * note would lose it the moment a failed adopt re-rendered the card, and the
-   * sentence a reader wrote is the one thing on this control that cannot be
-   * reconstructed. README: "A call that silently fails to save is the worst
-   * possible bug in this product." Held above, a 500 leaves the sentence on
-   * screen and the retry costs a click.
-   *
-   * OPTIONAL IN THE TYPE, AND THAT IS RECORDED DEBT, NOT A DESIGN.
-   *
-   * Ruling 11 makes the note part of what adopting a call MEANS, so this pair
-   * is required on every surface that has adopted it: the morning brief and
-   * the evening wrap, both through BriefCallsSection. It is `?` for exactly
-   * one reason: src/app/radar/calls/page.tsx is the third surface and it is
-   * under the /radar sprint fence, so this branch may not wire it. Required
-   * props there would not compile, and a required prop defaulted to "" would
-   * disable that page's Track button outright, which is a live regression
-   * rather than a deferral.
-   *
-   * So an unwired caller keeps today's ungated footer, unchanged, and the
-   * exact diff that wires it is in this PR's body marked NOT APPLIED. When
-   * that lands, delete both `?` and this paragraph. Until then
-   * e2e/commit-note-gate.spec.ts keeps the /radar/calls case as a declared
-   * expected-failure, so the day it starts passing the suite says so.
-   */
-  note?: string;
-  onNoteChange?: (note: string) => void;
   /** The note as typed. The caller trims it; the column stores it trimmed. */
   onTrack: (note: string) => void;
   justStamped?: boolean;
@@ -315,7 +365,7 @@ export function CallCommitFooter({
    * clock here, so a server render cannot disagree with the client.
    */
   today?: string | null;
-}) {
+} & CallCommitNoteProps) {
   if (tracked) {
     return (
       <div data-testid="track-state-tracked">
@@ -369,7 +419,8 @@ export function CallCommitFooter({
     <UntrackedFooter
       window={window}
       onWindowChange={onWindowChange}
-      note={note}
+      gated={noteGate === true}
+      note={note ?? ""}
       onNoteChange={onNoteChange}
       onTrack={onTrack}
       busy={busy}
@@ -393,6 +444,7 @@ export function CallCommitFooter({
 function UntrackedFooter({
   window,
   onWindowChange,
+  gated,
   note,
   onNoteChange,
   onTrack,
@@ -402,7 +454,9 @@ function UntrackedFooter({
 }: {
   window: AdoptWindow;
   onWindowChange: (w: AdoptWindow) => void;
-  note?: string;
+  /** Explicit, never inferred from whether a handler happens to be present. */
+  gated: boolean;
+  note: string;
   onNoteChange?: (note: string) => void;
   onTrack: (note: string) => void;
   busy: boolean;
@@ -414,15 +468,10 @@ function UntrackedFooter({
   // The call's own window first when it is off-bucket, then the three named
   // alternatives. No date picker.
   const options = adoptWindowOptions(window);
-  /* A caller that supplies the setter has adopted ruling 11 and is gated. The
-     only caller that does not is the fenced /radar/calls page; see the note
-     props on CallCommitFooter for why that carve-out exists and when it goes.
-     Keyed on the SETTER, not on the text: a reader who has typed nothing has
-     an empty note, which is a wired surface with an unmet gate, not an
-     unwired one. */
-  const gated = typeof onNoteChange === "function";
-  const draft = note ?? "";
-  const noteReady = gated ? noteMeetsGate(draft) : true;
+  /* `gated` arrives as a boolean from CallCommitNoteProps. An ungated caller
+     is the fenced /radar/calls page and keeps today's footer unchanged; see
+     that type for why the carve-out exists and when it goes. */
+  const noteReady = gated ? noteMeetsGate(note) : true;
 
   return (
     <div data-testid="track-state-untracked">
@@ -451,16 +500,20 @@ function UntrackedFooter({
         >
           <textarea
             data-testid="track-note-field"
-            value={draft}
+            value={note}
             onChange={(e) => onNoteChange?.(e.target.value)}
-            disabled={busy}
+            /* readOnly, NOT disabled. A hung request would otherwise lock the
+               reader out of the one thing on this card that cannot be
+               reconstructed, which is the exact failure this control exists to
+               prevent. Read-only still allows select and copy. */
+            readOnly={busy}
             maxLength={COMMIT_NOTE_MAX}
             aria-label={TRACK_NOTE_ARIA_LABEL}
             aria-describedby={hintId}
             placeholder={TRACK_NOTE_PROMPT}
             rows={3}
             style={{ minHeight: "72px", resize: "none" }}
-            className="w-full rounded-none border-0 bg-transparent p-0 font-sans text-[15px] leading-[1.6] text-text-primary placeholder:text-text-faint disabled:opacity-50"
+            className="w-full rounded-none border-0 bg-transparent p-0 font-sans text-[15px] leading-[1.6] text-text-primary placeholder:text-text-faint read-only:opacity-60"
           />
         </div>
         <p
@@ -519,7 +572,7 @@ function UntrackedFooter({
         <button
           type="button"
           disabled={busy || !noteReady}
-          onClick={() => onTrack(draft)}
+          onClick={() => onTrack(note)}
           aria-describedby={trustLineId}
           data-testid="track-call-button"
           className="rounded-md border border-border-default bg-transparent px-3 py-1.5 font-sans text-[11px] font-semibold text-text-primary transition-colors duration-[var(--duration-fast)] ease-[var(--ease-out)] hover:border-gold hover:text-espresso disabled:cursor-default disabled:opacity-50"
