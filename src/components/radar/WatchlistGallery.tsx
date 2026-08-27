@@ -54,6 +54,21 @@ export interface GalleryArticle {
 
 export type GalleryFilter = "all" | "public" | "private" | "industries";
 
+/**
+ * Whether the article reads behind this gallery have landed.
+ *
+ * "Quiet is a real answer" is an ASSERTION about the world, and the gallery
+ * may only make it once every entry has actually been read. While reads are
+ * in flight it is a claim about nothing; when one faulted it is false. The
+ * page computes this over every tracked entry and passes it in. Required,
+ * with no default, because a default is exactly how a full-width panel came
+ * to assert quiet over twenty-six reads that had not finished.
+ */
+export type GalleryReadiness =
+  | { status: "pending" }
+  | { status: "ready" }
+  | { status: "failed" };
+
 const SERIF = "var(--font-playfair-display), serif";
 const DAY_MS = 86400_000;
 
@@ -128,13 +143,17 @@ export function WatchlistGallery({
   entries,
   prices,
   articlesByIdentifier,
+  readiness,
   filter,
   onFilterChange,
   onFocus,
 }: {
   entries: GalleryEntry[];
   prices: Record<string, GalleryPrice>;
+  /** Seeded by the page for EVERY tracked identifier, so a lookup here never
+   *  needs a fallback and a missing key never stands in for "no news". */
   articlesByIdentifier: Record<string, GalleryArticle[]>;
+  readiness: GalleryReadiness;
   filter: GalleryFilter;
   onFilterChange: (f: GalleryFilter) => void;
   onFocus: (identifier: string) => void;
@@ -152,7 +171,7 @@ export function WatchlistGallery({
   const withNews = filtered
     .map((e) => ({
       entry: e,
-      articles: (articlesByIdentifier[e.identifier] ?? []).filter((a) => isRecent(a, 2)),
+      articles: articlesByIdentifier[e.identifier].filter((a) => isRecent(a, 2)),
     }))
     .filter((x) => x.articles.length > 0)
     .sort((a, b) => b.articles.length - a.articles.length);
@@ -284,6 +303,23 @@ export function WatchlistGallery({
             </div>
           )}
         </>
+      ) : readiness.status === "pending" ? (
+        /* Reads still in flight. Nothing is known yet, so nothing is claimed. */
+        <div className="rounded-xl border border-border-subtle bg-elevated px-5 py-5">
+          <div aria-hidden className="space-y-2">
+            <div className="skeleton-shimmer h-[12px] w-[180px] rounded-[4px]" />
+            <div className="skeleton-shimmer h-[12px] w-[260px] rounded-[4px]" />
+          </div>
+        </div>
+      ) : readiness.status === "failed" ? (
+        <div className="rounded-xl border border-border-subtle bg-elevated px-5 py-5">
+          <p className="font-sans text-[13px] font-semibold text-text-primary">
+            Coverage unavailable
+          </p>
+          <p className="mt-1 font-sans text-[13px] text-text-muted">
+            The read did not complete.
+          </p>
+        </div>
       ) : (
         <div className="rounded-xl border border-border-subtle bg-elevated px-5 py-5">
           <p className="font-sans text-[13px] text-text-muted">
@@ -294,8 +330,17 @@ export function WatchlistGallery({
         </div>
       )}
 
+      {/* Naming an entity as quiet is an assertion about it, so it waits for
+          every read. A pending rail says so; a faulted one says so. */}
+      {hero && readiness.status === "pending" && (
+        <div aria-hidden className="skeleton-shimmer mt-3 h-[12px] w-[220px] rounded-[4px]" />
+      )}
+      {hero && readiness.status === "failed" && (
+        <p className="mt-3 font-sans text-[12px] text-text-muted">Coverage unavailable</p>
+      )}
+
       {/* No-news-today collapse: names only, honest and quiet. */}
-      {hero && quiet.length > 0 && (
+      {hero && readiness.status === "ready" && quiet.length > 0 && (
         <p className="mt-3 font-sans text-[12px] text-text-faint">
           No news today:{" "}
           {quiet.slice(0, 12).map((e, i) => (

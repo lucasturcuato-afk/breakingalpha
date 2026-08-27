@@ -15,10 +15,49 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+/**
+ * What a chip knows about its own count. Four answers, and "absent" is not
+ * one of them. A chip that draws no numeral has to say which of the three
+ * silent reasons applies rather than leave the reader to guess.
+ *
+ *   none     the All chip, which counts nothing by design
+ *   pending  the read has not finished, so a fixed-width pill, no numeral
+ *   ready    the numeral, INCLUDING 0. The only state allowed to draw a zero
+ *   failed   the read faulted, so no numeral and one rail-level marker
+ */
+export type ChipCount =
+  | { kind: "none" }
+  | { kind: "pending" }
+  | { kind: "ready"; value: number }
+  | { kind: "failed" };
+
 export interface GroupChip {
   id: string;
   label: string;
-  count?: number;
+  /**
+   * Required. A chip never infers its count from a missing value.
+   *
+   * The bare `number` form is shorthand for { kind: "ready", value: n } and is
+   * permitted ONLY for callers that already have their data materialized,
+   * where a count cannot be manufactured out of a read that never landed. It
+   * exists for exactly two of them:
+   *
+   *   src/app/radar/following/page.tsx   count: g.entries.length
+   *   src/app/radar/calls/page.tsx       count: g.calls.length
+   *
+   * Both map over arrays that exist whenever their group object exists, so a
+   * bare number from either is honest.
+   *
+   * Any caller computing its count with ?? or || MUST use the explicit form.
+   * That was the actual defect: `articlesByIdentifier[id] ?? []` turned a read
+   * still in flight into the numeral 0, so on /radar/watchlist a fault and a
+   * real zero rendered identically, 26 chips deep.
+   */
+  count: ChipCount | number;
+}
+
+function normalizeCount(count: ChipCount | number): ChipCount {
+  return typeof count === "number" ? { kind: "ready", value: count } : count;
 }
 
 export function GroupJumpNav({
@@ -36,6 +75,9 @@ export function GroupJumpNav({
   bleed?: boolean;
 }) {
   if (groups.length < 2) return null;
+  /* One marker for the whole rail, not one glyph per chip. Twenty-six
+   * failure glyphs would be twenty-six times the noise for one fact. */
+  const anyFailed = groups.some((g) => normalizeCount(g.count).kind === "failed");
   return (
     <nav
       aria-label={ariaLabel}
@@ -47,6 +89,7 @@ export function GroupJumpNav({
       <div className="no-scrollbar flex items-center gap-1 overflow-x-auto py-2">
         {groups.map((g) => {
           const active = g.id === activeId;
+          const count = normalizeCount(g.count);
           return (
             <button
               key={g.id}
@@ -61,9 +104,17 @@ export function GroupJumpNav({
               }
             >
               {g.label}
-              {typeof g.count === "number" && (
+              {count.kind === "pending" && (
+                /* Fixed width on purpose. Twenty-six chips all gaining a
+                 * numeral at once would otherwise reflow the whole rail. */
+                <span
+                  aria-hidden
+                  className="skeleton-shimmer ml-1.5 inline-block h-[10px] w-[14px] rounded-[4px] align-middle"
+                />
+              )}
+              {count.kind === "ready" && (
                 <span className="ml-1.5 font-normal normal-case tracking-normal text-text-faint">
-                  {g.count}
+                  {count.value}
                 </span>
               )}
               <span
@@ -78,6 +129,12 @@ export function GroupJumpNav({
           );
         })}
       </div>
+      {/* Below the rail, not trailing inside it. The chip row scrolls
+          horizontally, so a marker appended after chip 27 sits off-screen and
+          a disclosure the reader cannot see is not a disclosure. */}
+      {anyFailed && (
+        <p className="pb-1.5 font-sans text-[11px] text-text-muted">Counts unavailable</p>
+      )}
     </nav>
   );
 }

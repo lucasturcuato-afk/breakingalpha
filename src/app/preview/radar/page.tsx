@@ -44,6 +44,11 @@ const GALLERY_ARTICLES = {
   Technology: [
     { id: "a4", title: "Chip export rules tighten for a second time this year", source: "Bloomberg", published_at: new Date().toISOString(), relevance_score: 8 },
   ],
+  /* Quiet on purpose: these two demonstrate the no-news collapse. Seeded
+     explicitly, because the gallery reads this map for every entry and an
+     absent key is not the same claim as an empty one. */
+  XOM: [],
+  KO: [],
 };
 
 const CLAIM_CALL = {
@@ -204,6 +209,7 @@ export default function RadarPreviewPage() {
             entries={GALLERY_ENTRIES}
             prices={GALLERY_PRICES}
             articlesByIdentifier={GALLERY_ARTICLES}
+            readiness={{ status: "ready" }}
             filter={filter}
             onFilterChange={setFilter}
             onFocus={() => {}}
