@@ -13,17 +13,35 @@ import "./globals.css";
 // variable names (--font-playfair-display / --font-inter /
 // --font-jetbrains-mono) onto these new families, so existing component
 // references inherit the swap with zero per-file churn.
+/*
+  No `weight` array on the two variable families, deliberately.
+
+  Fraunces and Space Grotesk are variable fonts. Naming discrete weights
+  makes next/font emit one @font-face descriptor per weight, every one
+  pointing at the SAME file, which forbids the browser from using the
+  wght axis those bytes already carry. Verified in the built output:
+  Fraunces emitted 6 descriptors across only 3 distinct files, 400 and
+  500 both resolving to 03bda585a99c6450. Space Grotesk the same.
+
+  Omitting `weight` selects the variable form, and with no `axes`
+  argument next/font requests wght ONLY, so Fraunces's SOFT, WONK and
+  opsz axes are not pulled in. Measured against the Google CSS API the
+  payload is byte-identical: 400;500 and 100..900 both return the same
+  3 files at 81,776 B. This costs nothing.
+
+  IBM Plex Mono below keeps its array because it has no variable form.
+  Its 10 descriptors resolve to 10 genuinely distinct files, and
+  omitting `weight` would throw.
+*/
 const fraunces = Fraunces({
   variable: "--font-fraunces",
   subsets: ["latin"],
-  weight: ["400", "500"],
   display: "swap",
 });
 
 const spaceGrotesk = Space_Grotesk({
   variable: "--font-space-grotesk",
   subsets: ["latin"],
-  weight: ["400", "500"],
   display: "swap",
 });
 
