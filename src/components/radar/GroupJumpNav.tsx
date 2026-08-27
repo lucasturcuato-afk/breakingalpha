@@ -104,17 +104,31 @@ export function GroupJumpNav({
               }
             >
               {g.label}
-              {count.kind === "pending" && (
-                /* Fixed width on purpose. Twenty-six chips all gaining a
-                 * numeral at once would otherwise reflow the whole rail. */
-                <span
-                  aria-hidden
-                  className="skeleton-shimmer ml-1.5 inline-block h-[10px] w-[14px] rounded-[4px] align-middle"
-                />
-              )}
-              {count.kind === "ready" && (
-                <span className="ml-1.5 font-normal normal-case tracking-normal text-text-faint">
-                  {count.value}
+              {count.kind !== "none" && (
+                /* ONE slot, fixed width, containing whichever of the three
+                 * things applies. The slot is the thing that must not change size, not
+                 * the skeleton inside it: a fixed-width skeleton replaced by a
+                 * free-width numeral still reflows the rail, and measurably
+                 * worse than no slot at all.
+                 *
+                 * 14px is measured, not guessed. In this component's own
+                 * typography the numeral forms run from "1" at 4.61px to "20"
+                 * at 13.69px, and 20 is the ceiling because every read that
+                 * feeds a count goes through dedupeAndSort, which ends in
+                 * slice(0, 20). Lift that cap and this width has to be
+                 * re-measured: "100" is 18.7px.
+                 *
+                 * A failed read gets an EMPTY slot rather than no slot, so a
+                 * chip that faults does not shift the rail either. */
+                <span className="ml-1.5 inline-block w-[14px] text-center font-normal normal-case tracking-normal text-text-faint">
+                  {count.kind === "pending" ? (
+                    <span
+                      aria-hidden
+                      className="skeleton-shimmer inline-block h-[10px] w-[10px] rounded-[4px] align-middle"
+                    />
+                  ) : count.kind === "ready" ? (
+                    count.value
+                  ) : null}
                 </span>
               )}
               <span

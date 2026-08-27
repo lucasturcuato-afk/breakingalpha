@@ -432,17 +432,29 @@ function chipCountFor(read: ArticleRead): ChipCount {
  * was a chip on the rail, and that one was usually false.
  */
 function CountBadge({ count }: { count: ChipCount }) {
-  if (count.kind === "none" || count.kind === "failed") return null;
+  if (count.kind === "none") return null;
+  /* Same box in every state, so the row's price and chevron never shift.
+   *
+   * 31x22 is measured. The pill renders 20.05px wide for a single digit and
+   * 30.63px for "20+", its widest form, at a natural height of 22px, while the
+   * skeleton that used to stand in for it was 24x16. So resolving a count both
+   * narrowed and grew the badge and shifted everything beside it. Fixing the
+   * skeleton alone would not have helped: the pill has to be pinned too, or it
+   * still changes width between "3" and "20+". */
   if (count.kind === "pending") {
     return (
       <span
         aria-hidden
-        className="skeleton-shimmer inline-block h-[16px] w-[24px] rounded-md"
+        className="skeleton-shimmer inline-block h-[22px] w-[31px] rounded-md"
       />
     );
   }
+  // A failed read keeps the box open rather than collapsing the row.
+  if (count.kind === "failed") {
+    return <span aria-hidden className="inline-block h-[22px] w-[31px]" />;
+  }
   return (
-    <span className="font-sans text-[10px] text-text-faint bg-parchment-mid border border-border-base px-1.5 py-0.5 rounded-md">
+    <span className="inline-block w-[31px] text-center font-sans text-[10px] text-text-faint bg-parchment-mid border border-border-base py-0.5 rounded-md">
       {count.value >= 20 ? "20+" : count.value}
     </span>
   );
