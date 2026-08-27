@@ -245,7 +245,7 @@ export function LedgerScreen({
         />
         <TailAction
           label="The desk grades itself too"
-          href="/radar/desk-record"
+          href="/desk-record"
           weight={500}
           borderToken="var(--c-border)"
           marginTop="10px"

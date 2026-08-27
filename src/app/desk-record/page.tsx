@@ -31,10 +31,10 @@ import { mobileFixtureScreensEnabled } from "@/lib/mobile-fixture-gate";
  * batch-3 Q5). It carries its own back control to the Ledger, which is what the
  * prototype draws: `showNav` lists only dash, ledger, watch and ask.
  *
- * NOTHING LINKS HERE YET. The intended entry point is the Ledger's second tail
- * action, "The desk grades itself too", but `TailAction` in `ledger-screen.tsx`
- * takes no href and no handler, so it is an inert button today. Until that is
- * wired, this route is reachable only by typing it.
+ * The entry point is the Ledger's second tail action, "The desk grades itself
+ * too", at `ledger-screen.tsx:246`. `TailAction` gained an href in PR #680 and
+ * that href was repointed here from `/radar/desk-record`, so this route is
+ * reachable from the mobile home in one tap. It remains the only inbound link.
  *
  * Server component, so the read happens on the server and `@supabase/supabase-js`
  * stays out of this route's client bundle. It also lets the lifecycle switch be
