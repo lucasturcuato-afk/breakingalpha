@@ -102,7 +102,7 @@ export function noteMeetsGate(note: string): boolean {
  *                          this flag is true anyway. It answers "this row
  *                          carries a note", not "your note was written".
  *
- * So the already-adopted branch can never prove it, and this returns false for
+ * So the already-adopted branch can never prove it, and this answers false to
  * every shape of it. A stale draft is a nuisance. A sentence deleted because a
  * flag was read as answering a question it does not answer is the failure this
  * whole control exists to prevent.
