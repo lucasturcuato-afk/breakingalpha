@@ -1,5 +1,6 @@
 import { ClaimAnatomy, OUTCOME_TOKENS, type OutcomeState } from "@/components/ledger";
 import styles from "./record.module.css";
+import { FONT_DISPLAY, FONT_MONO, FONT_SANS } from "@/components/mobile/fonts";
 
 /**
  * One entry on the Prepared record.
@@ -63,7 +64,7 @@ export function RecordEntryRow({ date, state, claim, note, outcome, onOpen }: Re
         <div style={{ display: "flex", alignItems: "center", gap: "9px" }}>
           <span
             style={{
-              font: "500 10px/1 'JetBrains Mono', monospace",
+              font: `500 10px/1 ${FONT_MONO}`,
               letterSpacing: "0.07em",
               color: "var(--c-muted)",
             }}
@@ -90,7 +91,7 @@ export function RecordEntryRow({ date, state, claim, note, outcome, onOpen }: Re
           />
           <span
             style={{
-              font: "600 10.5px/1 Inter, sans-serif",
+              font: `600 10.5px/1 ${FONT_SANS}`,
               color: OUTCOME_TOKENS[state].text,
               transition: "none",
             }}
@@ -105,7 +106,7 @@ export function RecordEntryRow({ date, state, claim, note, outcome, onOpen }: Re
           <p
             style={{
               margin: 0,
-              font: "400 italic 13px/1.55 'Playfair Display', serif",
+              font: `400 italic 13px/1.55 ${FONT_DISPLAY}`,
               color: "var(--c-body)",
               textWrap: "pretty",
             }}
@@ -116,7 +117,7 @@ export function RecordEntryRow({ date, state, claim, note, outcome, onOpen }: Re
             <p
               style={{
                 margin: 0,
-                font: "400 11.5px/1.5 Inter, sans-serif",
+                font: `400 11.5px/1.5 ${FONT_SANS}`,
                 color: "var(--c-secondary)",
               }}
             >

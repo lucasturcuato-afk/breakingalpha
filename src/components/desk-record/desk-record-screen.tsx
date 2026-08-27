@@ -12,6 +12,7 @@ import type { DeskRecordData } from "./fixture";
    has the reduced-motion guard, so this screen consumes it rather than
    copying the keyframes into a second file that could drift. */
 import styles from "@/components/ledger/ledger.module.css";
+import { FONT_DISPLAY, FONT_MONO, FONT_SANS } from "@/components/mobile/fonts";
 
 /**
  * Desk record, mobile. The desk's own graded calls, distinct from the user's
@@ -128,7 +129,7 @@ export function DeskRecordScreen({
             <p
               style={{
                 margin: 0,
-                font: "400 12.5px/1.6 Inter, sans-serif",
+                font: `400 12.5px/1.6 ${FONT_SANS}`,
                 color: "var(--c-body)",
                 textWrap: "pretty",
               }}
@@ -163,7 +164,7 @@ export function DeskRecordScreen({
           <p
             style={{
               margin: "10px 0 0",
-              font: "400 11.5px/1.55 Inter, sans-serif",
+              font: `400 11.5px/1.55 ${FONT_SANS}`,
               color: "var(--c-muted)",
               textWrap: "pretty",
             }}
@@ -180,7 +181,7 @@ export function DeskRecordScreen({
               <p
                 style={{
                   margin: "11px 0 0",
-                  font: "400 13.5px/1.65 Inter, sans-serif",
+                  font: `400 13.5px/1.65 ${FONT_SANS}`,
                   color: "var(--c-body)",
                   textWrap: "pretty",
                 }}
@@ -208,7 +209,7 @@ export function DeskRecordScreen({
             <p
               style={{
                 margin: "11px 0 0",
-                font: "400 11.5px/1.55 Inter, sans-serif",
+                font: `400 11.5px/1.55 ${FONT_SANS}`,
                 color: "var(--c-muted)",
                 textWrap: "pretty",
               }}
@@ -259,7 +260,7 @@ export function DeskRecordScreen({
             <p
               style={{
                 margin: "12px 0 0",
-                font: "400 11.5px/1.55 Inter, sans-serif",
+                font: `400 11.5px/1.55 ${FONT_SANS}`,
                 color: "var(--c-muted)",
                 textWrap: "pretty",
               }}
@@ -304,7 +305,7 @@ function DeskChrome({ children }: { children: React.ReactNode }) {
         <h1
           style={{
             margin: 0,
-            font: "700 24px/1.15 'Playfair Display', serif",
+            font: `700 24px/1.15 ${FONT_DISPLAY}`,
             letterSpacing: "-0.02em",
             color: "var(--c-ink)",
           }}
@@ -314,7 +315,7 @@ function DeskChrome({ children }: { children: React.ReactNode }) {
         <p
           style={{
             margin: "9px 0 0",
-            font: "400 13px/1.6 Inter, sans-serif",
+            font: `400 13px/1.6 ${FONT_SANS}`,
             color: "var(--c-body)",
             textWrap: "pretty",
           }}
@@ -372,7 +373,7 @@ function BackToLedger() {
           display: "flex",
           alignItems: "center",
           gap: "6px",
-          font: "500 13px/1 Inter, sans-serif",
+          font: `500 13px/1 ${FONT_SANS}`,
           color: "var(--c-secondary)",
           textDecoration: "none",
         }}
@@ -420,7 +421,7 @@ function CountStrip({ data }: { data: DeskRecordData }) {
         <div key={bucket} style={{ flex: 1 }}>
           <div
             style={{
-              font: "400 10px/1 'JetBrains Mono', monospace",
+              font: `400 10px/1 ${FONT_MONO}`,
               letterSpacing: "0.07em",
               color: "var(--c-muted)",
             }}
@@ -430,7 +431,7 @@ function CountStrip({ data }: { data: DeskRecordData }) {
           <div
             style={{
               marginTop: "7px",
-              font: "500 17px/1 'JetBrains Mono', monospace",
+              font: `500 17px/1 ${FONT_MONO}`,
               color: "var(--c-ink)",
             }}
           >
@@ -448,7 +449,7 @@ function SectionRule({ label }: { label: string }) {
     <div style={{ marginTop: "20px", display: "flex", alignItems: "center", gap: "11px" }}>
       <span
         style={{
-          font: "400 italic 12.5px/1 'Playfair Display', serif",
+          font: `400 italic 12.5px/1 ${FONT_DISPLAY}`,
           color: "var(--c-secondary)",
         }}
       >
@@ -509,13 +510,13 @@ function DeskSkeleton() {
 function DeskError() {
   return (
     <div style={{ paddingTop: "18px" }} role="alert">
-      <p style={{ margin: 0, font: "500 17px/1.4 'Playfair Display', serif", color: "var(--c-ink)" }}>
+      <p style={{ margin: 0, font: `500 17px/1.4 ${FONT_DISPLAY}`, color: "var(--c-ink)" }}>
         {DESK_RECORD_COPY.errorTitle}
       </p>
       <p
         style={{
           margin: "10px 0 0",
-          font: "400 13px/1.6 Inter, sans-serif",
+          font: `400 13px/1.6 ${FONT_SANS}`,
           color: "var(--c-secondary)",
           maxWidth: "32ch",
         }}
@@ -529,13 +530,13 @@ function DeskError() {
 function DeskEmpty() {
   return (
     <div style={{ paddingTop: "18px" }}>
-      <p style={{ margin: 0, font: "500 17px/1.4 'Playfair Display', serif", color: "var(--c-ink)" }}>
+      <p style={{ margin: 0, font: `500 17px/1.4 ${FONT_DISPLAY}`, color: "var(--c-ink)" }}>
         {DESK_RECORD_COPY.emptyTitle}
       </p>
       <p
         style={{
           margin: "10px 0 0",
-          font: "400 13px/1.6 Inter, sans-serif",
+          font: `400 13px/1.6 ${FONT_SANS}`,
           color: "var(--c-secondary)",
           maxWidth: "32ch",
         }}
@@ -570,10 +571,10 @@ function DeskStaleNotice({ lastGradedOn }: { lastGradedOn: string }) {
         padding: "13px 14px",
       }}
     >
-      <div style={{ font: "600 12px/1 Inter, sans-serif", color: "var(--c-ink)" }}>
+      <div style={{ font: `600 12px/1 ${FONT_SANS}`, color: "var(--c-ink)" }}>
         This record is not current.
       </div>
-      <div style={{ marginTop: "4px", font: "400 11.5px/1.5 Inter, sans-serif", color: "var(--c-body)" }}>
+      <div style={{ marginTop: "4px", font: `400 11.5px/1.5 ${FONT_SANS}`, color: "var(--c-body)" }}>
         The grader last completed a run on {lastGradedOn}. Calls that closed after it are not
         on the record yet, and nothing below has been estimated in their place.
       </div>

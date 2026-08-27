@@ -7,6 +7,7 @@ import {
   type WatchStage,
 } from "@/components/watch";
 import { mobileFixtureScreensEnabled } from "@/lib/mobile-fixture-gate";
+import { FONT_DISPLAY, FONT_SANS } from "@/components/mobile/fonts";
 
 /**
  * Watch. One route rendering all three tiers, because the mobile design merges
@@ -97,10 +98,10 @@ export default async function WatchPage({
       {/* Above the breakpoint this route has no layout of its own. The desktop
           equivalents already exist under Radar and are not being rebuilt here. */}
       <div className="hidden md:block" style={{ padding: "48px", backgroundColor: "var(--c-bg)" }}>
-        <p style={{ margin: 0, font: "500 17px/1.4 'Playfair Display', serif", color: "var(--c-ink)" }}>
+        <p style={{ margin: 0, font: `500 17px/1.4 ${FONT_DISPLAY}`, color: "var(--c-ink)" }}>
           Watch is a mobile surface.
         </p>
-        <p style={{ margin: "10px 0 0", font: "400 13px/1.6 Inter, sans-serif", color: "var(--c-secondary)" }}>
+        <p style={{ margin: "10px 0 0", font: `400 13px/1.6 ${FONT_SANS}`, color: "var(--c-secondary)" }}>
           On a wider screen the desk splits it across your tracked views, your watchlist and what you follow.
         </p>
       </div>

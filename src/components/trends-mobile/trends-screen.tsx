@@ -21,6 +21,7 @@ import {
 import { FIXTURE_ALLOWED } from "./fixture-gate";
 import { TrendSignalCard } from "./trend-signal-card";
 import styles from "./trends.module.css";
+import { FONT_DISPLAY, FONT_SANS } from "@/components/mobile/fonts";
 
 /**
  * Mobile Trends. The theme list.
@@ -219,7 +220,7 @@ export function TrendsScreen({ preview = null }: { preview?: TrendsPreview | nul
             display: "flex",
             alignItems: "center",
             gap: "6px",
-            font: "500 13px/1 Inter, sans-serif",
+            font: `500 13px/1 ${FONT_SANS}`,
             color: "var(--c-secondary)",
           }}
         >
@@ -243,7 +244,7 @@ export function TrendsScreen({ preview = null }: { preview?: TrendsPreview | nul
         <h1
           style={{
             margin: 0,
-            font: "700 24px/1.14 'Playfair Display', serif",
+            font: `700 24px/1.14 ${FONT_DISPLAY}`,
             letterSpacing: "-0.02em",
             color: "var(--c-ink)",
           }}
@@ -257,7 +258,7 @@ export function TrendsScreen({ preview = null }: { preview?: TrendsPreview | nul
         <p
           style={{
             margin: "7px 0 0",
-            font: "400 12.5px/1.5 Inter, sans-serif",
+            font: `400 12.5px/1.5 ${FONT_SANS}`,
             color: "var(--c-secondary)",
           }}
         >
@@ -404,7 +405,7 @@ function LensChip({
         whiteSpace: "nowrap",
         cursor: disabled ? "default" : "pointer",
         border: `1px solid ${active ? "var(--c-ink)" : "var(--c-border)"}`,
-        font: `${active ? 600 : 500} 12px/1 Inter, sans-serif`,
+        font: `${active ? 600 : 500} 12px/1 ${FONT_SANS}`,
         color: active ? "var(--c-ink)" : "var(--c-secondary)",
         backgroundColor: active ? "var(--c-surface)" : "transparent",
         opacity: disabled ? 0.5 : 1,
@@ -461,7 +462,7 @@ function StaleNotice({ newestLabel }: { newestLabel: string }) {
         border: "1px solid var(--c-border)",
         borderRadius: "9px",
         backgroundColor: "var(--c-well)",
-        font: "400 12px/1.5 Inter, sans-serif",
+        font: `400 12px/1.5 ${FONT_SANS}`,
         color: "var(--c-secondary)",
       }}
     >
@@ -476,7 +477,7 @@ function Notice({ title, body }: { title: string; body: string }) {
       <p
         style={{
           margin: 0,
-          font: "700 15px/1.35 'Playfair Display', serif",
+          font: `700 15px/1.35 ${FONT_DISPLAY}`,
           color: "var(--c-ink)",
         }}
       >
@@ -486,7 +487,7 @@ function Notice({ title, body }: { title: string; body: string }) {
         style={{
           margin: "7px auto 0",
           maxWidth: "280px",
-          font: "400 12px/1.5 Inter, sans-serif",
+          font: `400 12px/1.5 ${FONT_SANS}`,
           color: "var(--c-secondary)",
         }}
       >

@@ -23,6 +23,7 @@ import {
   type RecordData,
 } from "./record-data";
 import styles from "./record.module.css";
+import { FONT_DISPLAY, FONT_MONO, FONT_SANS } from "@/components/mobile/fonts";
 
 /**
  * The Prepared record. The artifact: complete, uncurated, exportable, every
@@ -215,7 +216,7 @@ function BackBar() {
           display: "flex",
           alignItems: "center",
           gap: "6px",
-          font: "500 13px/1 Inter, sans-serif",
+          font: `500 13px/1 ${FONT_SANS}`,
           color: "var(--c-secondary)",
           textDecoration: "none",
         }}
@@ -234,7 +235,7 @@ function Masthead({ data, summarize }: { data: RecordData; summarize: boolean })
 
   return (
     <div style={{ paddingBottom: "16px", borderBottom: "2px solid var(--c-ink)" }}>
-      <div style={{ font: "400 11px/1 'JetBrains Mono', monospace", color: "var(--c-muted)" }}>
+      <div style={{ font: `400 11px/1 ${FONT_MONO}`, color: "var(--c-muted)" }}>
         PREPARED RECORD
       </div>
       {/* The name is the signature on the artifact, so an absent one is left
@@ -244,7 +245,7 @@ function Masthead({ data, summarize }: { data: RecordData; summarize: boolean })
         <h1
           style={{
             margin: "11px 0 0",
-            font: "700 25px/1.15 'Playfair Display', serif",
+            font: `700 25px/1.15 ${FONT_DISPLAY}`,
             letterSpacing: "-0.02em",
             color: "var(--c-ink)",
           }}
@@ -261,7 +262,7 @@ function Masthead({ data, summarize }: { data: RecordData; summarize: boolean })
         <p
           style={{
             margin: "8px 0 0",
-            font: "400 12.5px/1.55 Inter, sans-serif",
+            font: `400 12.5px/1.55 ${FONT_SANS}`,
             color: "var(--c-secondary)",
           }}
         >
@@ -287,7 +288,7 @@ function CountStrip({ counts }: { counts: Record<(typeof OUTCOME_STATES)[number]
         <div key={state} style={{ flex: 1 }}>
           <div
             style={{
-              font: "400 10px/1 'JetBrains Mono', monospace",
+              font: `400 10px/1 ${FONT_MONO}`,
               letterSpacing: "0.07em",
               color: "var(--c-muted)",
             }}
@@ -297,7 +298,7 @@ function CountStrip({ counts }: { counts: Record<(typeof OUTCOME_STATES)[number]
           <div
             style={{
               marginTop: "7px",
-              font: "500 17px/1 'JetBrains Mono', monospace",
+              font: `500 17px/1 ${FONT_MONO}`,
               color: "var(--c-ink)",
             }}
           >
@@ -405,7 +406,7 @@ function ExportBar({ count }: { count: number }) {
                 backgroundColor: "var(--c-gold)",
               }}
             />
-            <span style={{ font: "500 12px/1.4 Inter, sans-serif", color: "var(--c-body)" }}>
+            <span style={{ font: `500 12px/1.4 ${FONT_SANS}`, color: "var(--c-body)" }}>
               {notice}
             </span>
           </div>
@@ -428,7 +429,7 @@ function ExportBar({ count }: { count: number }) {
             borderRadius: "9px",
             border: `1px solid ${copied ? "var(--c-gold)" : "var(--c-border)"}`,
             backgroundColor: copied ? "var(--c-well)" : "transparent",
-            font: `${copied ? 600 : 500} 13px/1 Inter, sans-serif`,
+            font: `${copied ? 600 : 500} 13px/1 ${FONT_SANS}`,
             color: copied ? "var(--c-ink)" : "var(--c-secondary)",
           }}
         >
@@ -448,7 +449,7 @@ function ExportBar({ count }: { count: number }) {
             borderRadius: "9px",
             border: "1px solid var(--c-ink)",
             backgroundColor: "var(--c-inverse)",
-            font: "600 13px/1 Inter, sans-serif",
+            font: `600 13px/1 ${FONT_SANS}`,
             color: "var(--c-oninv)",
           }}
         >
@@ -500,14 +501,14 @@ function RecordSkeleton() {
 function RecordError({ retryable = true }: { retryable?: boolean }) {
   return (
     <div style={{ paddingTop: "18px" }} role="alert">
-      <p style={{ margin: 0, font: "500 17px/1.4 'Playfair Display', serif", color: "var(--c-ink)" }}>
+      <p style={{ margin: 0, font: `500 17px/1.4 ${FONT_DISPLAY}`, color: "var(--c-ink)" }}>
         We could not load your record.
       </p>
       <p
         style={{
           margin: "10px 0 0",
           maxWidth: "32ch",
-          font: "400 13px/1.6 Inter, sans-serif",
+          font: `400 13px/1.6 ${FONT_SANS}`,
           color: "var(--c-secondary)",
         }}
       >
@@ -527,7 +528,7 @@ function RecordError({ retryable = true }: { retryable?: boolean }) {
             padding: "0 17px",
             border: "1px solid var(--c-ink)",
             borderRadius: "9px",
-            font: "600 13px/1 Inter, sans-serif",
+            font: `600 13px/1 ${FONT_SANS}`,
             color: "var(--c-ink)",
           }}
         >
@@ -557,14 +558,14 @@ function RecordError({ retryable = true }: { retryable?: boolean }) {
 function RecordUnavailable() {
   return (
     <div style={{ paddingTop: "18px" }} role="status">
-      <p style={{ margin: 0, font: "500 17px/1.4 'Playfair Display', serif", color: "var(--c-ink)" }}>
+      <p style={{ margin: 0, font: `500 17px/1.4 ${FONT_DISPLAY}`, color: "var(--c-ink)" }}>
         The prepared record is not wired to a source yet.
       </p>
       <p
         style={{
           margin: "10px 0 0",
           maxWidth: "34ch",
-          font: "400 13px/1.6 Inter, sans-serif",
+          font: `400 13px/1.6 ${FONT_SANS}`,
           color: "var(--c-secondary)",
           textWrap: "pretty",
         }}
@@ -580,14 +581,14 @@ function RecordUnavailable() {
 function NoCalls() {
   return (
     <div style={{ paddingTop: "18px" }}>
-      <p style={{ margin: 0, font: "500 17px/1.4 'Playfair Display', serif", color: "var(--c-ink)" }}>
+      <p style={{ margin: 0, font: `500 17px/1.4 ${FONT_DISPLAY}`, color: "var(--c-ink)" }}>
         You have not made a call yet.
       </p>
       <p
         style={{
           margin: "10px 0 0",
           maxWidth: "34ch",
-          font: "400 13px/1.6 Inter, sans-serif",
+          font: `400 13px/1.6 ${FONT_SANS}`,
           color: "var(--c-secondary)",
         }}
       >
@@ -604,7 +605,7 @@ function NoCalls() {
           padding: "0 17px",
           border: "1px solid var(--c-ink)",
           borderRadius: "9px",
-          font: "600 13px/1 Inter, sans-serif",
+          font: `600 13px/1 ${FONT_SANS}`,
           color: "var(--c-ink)",
           textDecoration: "none",
         }}
@@ -623,14 +624,14 @@ function NoCalls() {
 function NoneResolved() {
   return (
     <div style={{ paddingTop: "18px" }}>
-      <p style={{ margin: 0, font: "500 17px/1.4 'Playfair Display', serif", color: "var(--c-ink)" }}>
+      <p style={{ margin: 0, font: `500 17px/1.4 ${FONT_DISPLAY}`, color: "var(--c-ink)" }}>
         None of your calls has resolved yet.
       </p>
       <p
         style={{
           margin: "10px 0 0",
           maxWidth: "36ch",
-          font: "400 13px/1.6 Inter, sans-serif",
+          font: `400 13px/1.6 ${FONT_SANS}`,
           color: "var(--c-secondary)",
         }}
       >
@@ -658,10 +659,10 @@ function StaleNotice({ data }: { data: RecordData }) {
         padding: "13px 14px",
       }}
     >
-      <div style={{ font: "600 12px/1 Inter, sans-serif", color: "var(--c-ink)" }}>
+      <div style={{ font: `600 12px/1 ${FONT_SANS}`, color: "var(--c-ink)" }}>
         Prepared {data.preparedAt}.
       </div>
-      <div style={{ marginTop: "4px", font: "400 11.5px/1.5 Inter, sans-serif", color: "var(--c-body)" }}>
+      <div style={{ marginTop: "4px", font: `400 11.5px/1.5 ${FONT_SANS}`, color: "var(--c-body)" }}>
         {data.settledSincePrepared === 1
           ? "1 entry has settled"
           : `${data.settledSincePrepared} entries have settled`}{" "}

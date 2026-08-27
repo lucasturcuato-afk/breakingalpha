@@ -8,6 +8,7 @@ import {
   type EntryStage,
 } from "@/components/entry";
 import { OUTCOME_STATES, type OutcomeState } from "@/components/ledger";
+import { FONT_DISPLAY, FONT_SANS } from "@/components/mobile/fonts";
 
 /**
  * One entry on the record, opened from a Ledger row.
@@ -67,10 +68,10 @@ export default async function EntryPage({
       {/* Above the breakpoint this route has no layout of its own. The desk
           reads a settled call inside the record rather than on its own screen. */}
       <div className="hidden md:block" style={{ padding: "48px", backgroundColor: "var(--c-bg)" }}>
-        <p style={{ margin: 0, font: "500 17px/1.4 'Playfair Display', serif", color: "var(--c-ink)" }}>
+        <p style={{ margin: 0, font: `500 17px/1.4 ${FONT_DISPLAY}`, color: "var(--c-ink)" }}>
           An entry is a mobile surface.
         </p>
-        <p style={{ margin: "10px 0 0", font: "400 13px/1.6 Inter, sans-serif", color: "var(--c-secondary)" }}>
+        <p style={{ margin: "10px 0 0", font: `400 13px/1.6 ${FONT_SANS}`, color: "var(--c-secondary)" }}>
           On a wider screen the desk reads settled calls inside your record.
         </p>
       </div>

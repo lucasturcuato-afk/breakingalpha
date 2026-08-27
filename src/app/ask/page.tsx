@@ -6,6 +6,7 @@ import { ASK_FIXTURE_ENABLED } from "@/components/ask/fixture-gate";
    browser bundle. This page is a server component, so from here it stays on
    the server unless the gate is open. */
 import { ASK_ANSWER_FIXTURE, ASK_BROWSE_FIXTURE } from "@/components/ask/fixture";
+import { FONT_DISPLAY, FONT_SANS } from "@/components/mobile/fonts";
 
 /**
  * Ask. Both halves of the Ask pole's entry layer on one route.
@@ -62,10 +63,10 @@ export default async function AskPage({
           already has the research assistant and the company directory, and
           neither is being rebuilt here. */}
       <div className="hidden md:block" style={{ padding: "48px", backgroundColor: "var(--c-bg)" }}>
-        <p style={{ margin: 0, font: "500 17px/1.4 'Playfair Display', serif", color: "var(--c-ink)" }}>
+        <p style={{ margin: 0, font: `500 17px/1.4 ${FONT_DISPLAY}`, color: "var(--c-ink)" }}>
           Ask is a mobile surface.
         </p>
-        <p style={{ margin: "10px 0 0", font: "400 13px/1.6 Inter, sans-serif", color: "var(--c-secondary)" }}>
+        <p style={{ margin: "10px 0 0", font: `400 13px/1.6 ${FONT_SANS}`, color: "var(--c-secondary)" }}>
           On a wider screen the desk splits it across the research assistant and the company directory.
         </p>
       </div>

@@ -12,6 +12,7 @@ import {
    a server component, so from here they stay on the server and the screen only
    ever receives the resolved seed. */
 import { seedFor } from "@/components/compose/fixture";
+import { FONT_DISPLAY, FONT_SANS } from "@/components/mobile/fonts";
 
 /**
  * Compose, "Write your own call".
@@ -93,10 +94,10 @@ export default async function ComposePage({
       {/* Above the breakpoint this route has no layout of its own. The desktop
           composer already exists and is not being rebuilt here. */}
       <div className="hidden md:block" style={{ padding: "48px", backgroundColor: "var(--c-bg)" }}>
-        <p style={{ margin: 0, font: "500 17px/1.4 'Playfair Display', serif", color: "var(--c-ink)" }}>
+        <p style={{ margin: 0, font: `500 17px/1.4 ${FONT_DISPLAY}`, color: "var(--c-ink)" }}>
           Writing your own call is a mobile surface.
         </p>
-        <p style={{ margin: "10px 0 0", font: "400 13px/1.6 Inter, sans-serif", color: "var(--c-secondary)" }}>
+        <p style={{ margin: "10px 0 0", font: `400 13px/1.6 ${FONT_SANS}`, color: "var(--c-secondary)" }}>
           On a wider screen the composer sits inside your calls.
         </p>
         {/* A standalone control, not an inline anchor. An anchor inside a
@@ -109,7 +110,7 @@ export default async function ComposePage({
             minHeight: "44px",
             display: "inline-flex",
             alignItems: "center",
-            font: "500 13px/1.6 Inter, sans-serif",
+            font: `500 13px/1.6 ${FONT_SANS}`,
             color: "var(--c-goldink)",
           }}
         >

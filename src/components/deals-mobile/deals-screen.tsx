@@ -12,6 +12,7 @@ import {
 } from "./deal-stage";
 import type { MobileDeal } from "./types";
 import styles from "./deals.module.css";
+import { FONT_DISPLAY, FONT_SANS } from "@/components/mobile/fonts";
 
 /**
  * Deal Flow, mobile. The whole deal universe, lensed by stage.
@@ -140,7 +141,7 @@ export function DealsScreen({
             display: "flex",
             alignItems: "center",
             gap: "6px",
-            font: "500 13px/1 Inter, sans-serif",
+            font: `500 13px/1 ${FONT_SANS}`,
             color: "var(--c-secondary)",
             cursor: "pointer",
           }}
@@ -165,7 +166,7 @@ export function DealsScreen({
         <h1
           style={{
             margin: 0,
-            font: "700 24px/1.14 'Playfair Display', serif",
+            font: `700 24px/1.14 ${FONT_DISPLAY}`,
             letterSpacing: "-0.02em",
             color: "var(--c-ink)",
           }}
@@ -175,7 +176,7 @@ export function DealsScreen({
         <p
           style={{
             margin: "7px 0 0",
-            font: "400 12.5px/1.5 Inter, sans-serif",
+            font: `400 12.5px/1.5 ${FONT_SANS}`,
             color: "var(--c-secondary)",
           }}
         >
@@ -200,7 +201,7 @@ export function DealsScreen({
             borderRadius: "12px",
             border: "1px solid var(--c-border)",
             backgroundColor: "var(--c-well)",
-            font: "400 12px/1.5 Inter, sans-serif",
+            font: `400 12px/1.5 ${FONT_SANS}`,
             color: "var(--c-secondary)",
           }}
         >
@@ -330,7 +331,7 @@ function DealsError({ onRetry }: { onRetry?: () => void }) {
     >
       {/* No headline. The masthead line above already says the table did not
           answer, and saying it twice reads as two separate failures. */}
-      <p style={{ margin: 0, font: "400 12.5px/1.5 Inter, sans-serif", color: "var(--c-body)" }}>
+      <p style={{ margin: 0, font: `400 12.5px/1.5 ${FONT_SANS}`, color: "var(--c-body)" }}>
         This is a failed read, not an empty result. Nothing is being hidden.
       </p>
       {onRetry ? (
@@ -348,7 +349,7 @@ function DealsError({ onRetry }: { onRetry?: () => void }) {
             padding: "0 14px",
             border: "1px solid var(--c-ink)",
             borderRadius: "9px",
-            font: "600 12.5px/1 Inter, sans-serif",
+            font: `600 12.5px/1 ${FONT_SANS}`,
             color: "var(--c-ink)",
             backgroundColor: "transparent",
           }}
@@ -379,13 +380,13 @@ function DealsNotice({ title, detail }: { title: string; detail: string }) {
       <p
         style={{
           margin: 0,
-          font: "500 15.5px/1.4 'Playfair Display', serif",
+          font: `500 15.5px/1.4 ${FONT_DISPLAY}`,
           color: "var(--c-ink)",
         }}
       >
         {title}
       </p>
-      <p style={{ margin: 0, font: "400 12.5px/1.5 Inter, sans-serif", color: "var(--c-body)" }}>
+      <p style={{ margin: 0, font: `400 12.5px/1.5 ${FONT_SANS}`, color: "var(--c-body)" }}>
         {detail}
       </p>
     </div>

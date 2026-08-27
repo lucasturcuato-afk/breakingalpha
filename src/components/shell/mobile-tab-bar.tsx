@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
+import { FONT_SANS } from "@/components/mobile/fonts";
 
 /**
  * Mobile tab bar. Four poles, replacing the six-slot bar in mobile-bottom-nav.
@@ -203,7 +204,7 @@ export function MobileTabBar() {
             </span>
             <span
               style={{
-                font: `${active ? 600 : 500} 10.5px/1 Inter, sans-serif`,
+                font: `${active ? 600 : 500} 10.5px/1 ${FONT_SANS}`,
               }}
             >
               {pole.label}

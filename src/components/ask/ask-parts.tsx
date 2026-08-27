@@ -6,6 +6,7 @@ import type { CSSProperties, ReactNode } from "react";
    Ledger into the /ask client graph for the sake of one 14px chevron.
    `chevron.tsx` carries no "use client" and imports nothing. */
 import { Chevron } from "@/components/ledger/chevron";
+import { FONT_DISPLAY, FONT_MONO, FONT_SANS } from "@/components/mobile/fonts";
 
 /**
  * The pieces both Ask screens are built from.
@@ -74,7 +75,7 @@ export function AskSectionRule({ label, style }: { label: string; style?: CSSPro
     <div style={{ display: "flex", alignItems: "center", gap: "11px", ...style }}>
       <span
         style={{
-          font: "400 italic 12.5px/1 'Playfair Display', serif",
+          font: `400 italic 12.5px/1 ${FONT_DISPLAY}`,
           color: "var(--c-secondary)",
         }}
       >
@@ -131,11 +132,11 @@ export function AskDirectoryRow({
       {icon}
       <div style={{ minWidth: 0, flex: 1 }}>
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: "10px" }}>
-          <span style={{ font: "600 15px/1.3 Inter, sans-serif", color: "var(--c-ink)" }}>{label}</span>
+          <span style={{ font: `600 15px/1.3 ${FONT_SANS}`, color: "var(--c-ink)" }}>{label}</span>
           {counter ? (
             <span
               style={{
-                font: "400 10.5px/1 'JetBrains Mono', monospace",
+                font: `400 10.5px/1 ${FONT_MONO}`,
                 letterSpacing: "0.045em",
                 color: "var(--c-muted)",
               }}
@@ -148,7 +149,7 @@ export function AskDirectoryRow({
           <p
             style={{
               margin: "5px 0 0",
-              font: "400 12.5px/1.5 Inter, sans-serif",
+              font: `400 12.5px/1.5 ${FONT_SANS}`,
               color: "var(--c-secondary)",
             }}
           >
@@ -189,7 +190,7 @@ export function AskLookupRow({ href, ticker, name, entries, first = false, last 
       <span
         style={{
           flex: "none",
-          font: "500 11px/1 'JetBrains Mono', monospace",
+          font: `500 11px/1 ${FONT_MONO}`,
           color: "var(--c-muted)",
           width: "44px",
         }}
@@ -197,11 +198,11 @@ export function AskLookupRow({ href, ticker, name, entries, first = false, last 
         {ticker}
       </span>
       <div style={{ minWidth: 0, flex: 1 }}>
-        <div style={{ font: "500 14px/1.3 Inter, sans-serif", color: "var(--c-ink)" }}>{name}</div>
+        <div style={{ font: `500 14px/1.3 ${FONT_SANS}`, color: "var(--c-ink)" }}>{name}</div>
         <div
           style={{
             marginTop: "3px",
-            font: "400 10.5px/1 Inter, sans-serif",
+            font: `400 10.5px/1 ${FONT_SANS}`,
             color: "var(--c-muted)",
           }}
         >
@@ -232,7 +233,7 @@ export function AskNotice({ children, style }: { children: ReactNode; style?: CS
         border: "1px solid var(--c-border)",
         borderRadius: "12px",
         backgroundColor: "var(--c-well)",
-        font: "400 11.5px/1.5 Inter, sans-serif",
+        font: `400 11.5px/1.5 ${FONT_SANS}`,
         color: "var(--c-secondary)",
         textWrap: "pretty",
         ...style,

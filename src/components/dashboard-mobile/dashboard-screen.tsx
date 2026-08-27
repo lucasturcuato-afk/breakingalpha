@@ -10,7 +10,7 @@ import { DESK_RECORD_COPY } from "@/lib/desk-record";
 import ledger from "@/components/ledger/ledger.module.css";
 import styles from "./dashboard.module.css";
 import { RecordBuckets } from "./record-buckets";
-import { MONO, SANS, SERIF } from "./fonts";
+import { FONT_DISPLAY, FONT_MONO, FONT_SANS } from "@/components/mobile/fonts";
 import type { DashboardData, DashMarketCell, DashStage, DashStory } from "./fixture";
 
 /**
@@ -148,11 +148,11 @@ export function DashboardScreen({
           assume one of the exits above is optional. */}
       <div className={styles.dots} style={{ padding: `0 ${PAD} 26px` }}>
         <div className={styles.rise} style={{ display: "flex", alignItems: "center", gap: "11px" }}>
-          <span style={{ font: `400 italic 13px/1 ${SERIF}`, color: "var(--c-secondary)" }}>
+          <span style={{ font: `400 italic 13px/1 ${FONT_DISPLAY}`, color: "var(--c-secondary)" }}>
             {d.date}
           </span>
           <span aria-hidden="true" style={{ flex: 1, height: "1px", backgroundColor: "var(--c-border)" }} />
-          <span style={{ font: `400 10.5px/1 ${MONO}`, letterSpacing: "0.07em", color: "var(--c-muted)" }}>
+          <span style={{ font: `400 10.5px/1 ${FONT_MONO}`, letterSpacing: "0.07em", color: "var(--c-muted)" }}>
             {d.clock}
           </span>
         </div>
@@ -164,7 +164,7 @@ export function DashboardScreen({
           style={{
             animationDelay: `${D.greeting}ms`,
             margin: "16px 0 0",
-            font: `400 italic 15px/1.3 ${SERIF}`,
+            font: `400 italic 15px/1.3 ${FONT_DISPLAY}`,
             color: "var(--c-goldink)",
           }}
         >
@@ -175,7 +175,7 @@ export function DashboardScreen({
           style={{
             animationDelay: `${D.greeting}ms`,
             margin: "8px 0 0",
-            font: `500 30px/1 ${SERIF}`,
+            font: `500 30px/1 ${FONT_DISPLAY}`,
             letterSpacing: "-0.025em",
             color: "var(--c-ink)",
           }}
@@ -192,7 +192,7 @@ export function DashboardScreen({
             style={{
               animationDelay: `${D.context}ms`,
               margin: "10px 0 0",
-              font: `400 italic 15px/1.5 ${SERIF}`,
+              font: `400 italic 15px/1.5 ${FONT_DISPLAY}`,
               color: "var(--c-secondary)",
               textWrap: "pretty",
             }}
@@ -233,7 +233,7 @@ export function DashboardScreen({
           }}
         >
           <span style={{ minWidth: 0 }}>
-            <span style={{ display: "block", font: `600 13px/1.3 ${SANS}`, color: "var(--c-ink)" }}>
+            <span style={{ display: "block", font: `600 13px/1.3 ${FONT_SANS}`, color: "var(--c-ink)" }}>
               {d.brief.title}
             </span>
             {/* No line at all when no brief headline has been read. The
@@ -244,7 +244,7 @@ export function DashboardScreen({
                 style={{
                   display: "block",
                   marginTop: "4px",
-                  font: `400 11.5px/1.4 ${SANS}`,
+                  font: `400 11.5px/1.4 ${FONT_SANS}`,
                   color: "var(--c-muted)",
                 }}
               >
@@ -285,7 +285,7 @@ export function DashboardScreen({
                 <p
                   style={{
                     margin: "12px 0 0",
-                    font: `400 italic 11px/1.5 ${SERIF}`,
+                    font: `400 italic 11px/1.5 ${FONT_DISPLAY}`,
                     color: "var(--c-muted)",
                     textWrap: "pretty",
                   }}
@@ -368,7 +368,7 @@ export function DashboardScreen({
         <p
           style={{
             margin: "24px 0 0",
-            font: `400 11px/1.6 ${SANS}`,
+            font: `400 11px/1.6 ${FONT_SANS}`,
             color: "var(--c-muted)",
             textWrap: "pretty",
           }}
@@ -439,7 +439,7 @@ function ScreenHead({ initials }: { initials: string | null }) {
         padding: `2px ${PAD} 12px`,
       }}
     >
-      <span style={{ display: "inline-flex", font: `700 19px/1 ${SERIF}`, letterSpacing: "-0.02em" }}>
+      <span style={{ display: "inline-flex", font: `700 19px/1 ${FONT_DISPLAY}`, letterSpacing: "-0.02em" }}>
         <span style={{ color: "var(--c-ink)" }}>Signal</span>
         {/* The design clips a three-stop gold gradient to this word. Solid
             --c-goldink here: no token expresses those stops, gold as type at
@@ -498,7 +498,7 @@ function ScreenHead({ initials }: { initials: string | null }) {
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              font: `600 11.5px/1 ${SANS}`,
+              font: `600 11.5px/1 ${FONT_SANS}`,
               color: "var(--c-secondary)",
             }}
           >
@@ -564,7 +564,7 @@ function SectionRule({ label, delayMs }: { label: string; delayMs: number }) {
         gap: "11px",
       }}
     >
-      <span style={{ font: `400 italic 12.5px/1 ${SERIF}`, color: "var(--c-secondary)" }}>
+      <span style={{ font: `400 italic 12.5px/1 ${FONT_DISPLAY}`, color: "var(--c-secondary)" }}>
         {label}
       </span>
       <span aria-hidden="true" style={{ flex: 1, height: "1px", backgroundColor: "var(--c-border)" }} />
@@ -577,7 +577,7 @@ function Explainer({ text }: { text: string }) {
     <p
       style={{
         margin: "10px 0 0",
-        font: `400 11.5px/1.5 ${SANS}`,
+        font: `400 11.5px/1.5 ${FONT_SANS}`,
         color: "var(--c-muted)",
         textWrap: "pretty",
       }}
@@ -608,7 +608,7 @@ function MarketBand({
           justifyContent: "space-between",
         }}
       >
-        <span style={{ font: `400 10px/1 ${MONO}`, letterSpacing: "0.07em", color: "var(--c-muted)" }}>
+        <span style={{ font: `400 10px/1 ${FONT_MONO}`, letterSpacing: "0.07em", color: "var(--c-muted)" }}>
           MARKET
         </span>
         <button
@@ -620,7 +620,7 @@ function MarketBand({
             display: "flex",
             alignItems: "center",
             padding: "0 4px",
-            font: `500 11.5px/1 ${SANS}`,
+            font: `500 11.5px/1 ${FONT_SANS}`,
             color: "var(--c-secondary)",
           }}
         >
@@ -645,7 +645,7 @@ function MarketBand({
         <p
           style={{
             margin: "10px 0 0",
-            font: `400 11px/1.5 ${SANS}`,
+            font: `400 11px/1.5 ${FONT_SANS}`,
             color: "var(--c-muted)",
             textWrap: "pretty",
           }}
@@ -680,7 +680,7 @@ function MarketCell({
       <p
         style={{
           margin: "0 0 6px",
-          font: `400 10px/1 ${MONO}`,
+          font: `400 10px/1 ${FONT_MONO}`,
           letterSpacing: "0.01em",
           color: "var(--c-muted)",
         }}
@@ -700,22 +700,22 @@ function MarketCell({
           gap: "5px",
         }}
       >
-        <span style={{ font: `600 22px/1 ${MONO}`, color: "var(--c-ink)" }}>{cell.value}</span>
+        <span style={{ font: `600 22px/1 ${FONT_MONO}`, color: "var(--c-ink)" }}>{cell.value}</span>
         {cell.counts ? (
-          <span style={{ font: `400 12px/1 ${MONO}` }}>
+          <span style={{ font: `400 12px/1 ${FONT_MONO}` }}>
             <span style={{ color: "var(--c-greenink)" }}>{cell.counts.up}</span>{" "}
             <span style={{ color: "var(--c-redink)" }}>{cell.counts.down}</span>
           </span>
         ) : cell.delta ? (
           <span
             style={{
-              font: `600 12px/1 ${MONO}`,
+              font: `600 12px/1 ${FONT_MONO}`,
               color: cell.tone === "up" ? "var(--c-greenink)" : "var(--c-redink)",
             }}
           >
             {cell.delta}
             {cell.note ? (
-              <span style={{ font: `400 12px/1 ${MONO}`, color: "var(--c-muted)" }}> · {cell.note}</span>
+              <span style={{ font: `400 12px/1 ${FONT_MONO}`, color: "var(--c-muted)" }}> · {cell.note}</span>
             ) : null}
           </span>
         ) : cell.note ? (
@@ -725,7 +725,7 @@ function MarketCell({
              would have authored an absence marker for a cell whose loader
              never set one, which is the same shape as a fixture default. A
              cell with neither a delta nor a note now draws its value alone. */
-          <span style={{ font: `400 12px/1 ${MONO}`, color: "var(--c-muted)" }}>
+          <span style={{ font: `400 12px/1 ${FONT_MONO}`, color: "var(--c-muted)" }}>
             · {cell.note}
           </span>
         ) : null}
@@ -804,7 +804,7 @@ function WaitingCard({ eyebrow, line }: { eyebrow: string; line: string }) {
         <span
           style={{
             display: "block",
-            font: `400 10px/1 ${MONO}`,
+            font: `400 10px/1 ${FONT_MONO}`,
             letterSpacing: "0.07em",
             color: "var(--c-oninv-gold)",
           }}
@@ -815,7 +815,7 @@ function WaitingCard({ eyebrow, line }: { eyebrow: string; line: string }) {
           style={{
             display: "block",
             marginTop: "7px",
-            font: `500 15px/1.35 ${SERIF}`,
+            font: `500 15px/1.35 ${FONT_DISPLAY}`,
             color: "var(--c-oninv-strong)",
           }}
         >
@@ -855,7 +855,7 @@ function TailLink({ label, href }: { label: string; href?: string }) {
     minHeight: "44px",
     display: "flex",
     alignItems: "center",
-    font: `600 12px/1 ${SANS}`,
+    font: `600 12px/1 ${FONT_SANS}`,
     color: "var(--c-goldink)",
     textDecoration: "none",
   } as const;
@@ -886,7 +886,7 @@ function StoryLens({ label, on, onClick }: { label: string; on: boolean; onClick
         alignItems: "center",
         padding: "0 13px",
         borderRadius: "6px",
-        font: `${on ? 600 : 500} 12px/1 ${SANS}`,
+        font: `${on ? 600 : 500} 12px/1 ${FONT_SANS}`,
         border: `1px solid ${on ? "var(--c-ink)" : "var(--c-border)"}`,
         color: on ? "var(--c-ink)" : "var(--c-secondary)",
         backgroundColor: on ? "var(--c-surface)" : "transparent",
@@ -938,7 +938,7 @@ function StoryRow({ story, last }: { story: DashStory; last: boolean }) {
           flex: "none",
           width: "22px",
           textAlign: "right",
-          font: `800 22px/1 ${SERIF}`,
+          font: `800 22px/1 ${FONT_DISPLAY}`,
           color: "var(--c-number)",
         }}
       >
@@ -961,7 +961,7 @@ function StoryRow({ story, last }: { story: DashStory; last: boolean }) {
             <span
               style={{
                 flex: "none",
-                font: `600 10px/1.4 ${SANS}`,
+                font: `600 10px/1.4 ${FONT_SANS}`,
                 padding: "2px 6px",
                 borderRadius: "4px",
                 backgroundColor: "var(--c-surface)",
@@ -971,13 +971,13 @@ function StoryRow({ story, last }: { story: DashStory; last: boolean }) {
               {story.sector}
             </span>
           ) : null}
-          <span style={{ font: `400 10px/1 ${SANS}`, color: "var(--c-muted)" }}>
+          <span style={{ font: `400 10px/1 ${FONT_SANS}`, color: "var(--c-muted)" }}>
             {story.source}
           </span>
           <span
             style={{
               marginLeft: "auto",
-              font: `400 10px/1 ${SANS}`,
+              font: `400 10px/1 ${FONT_SANS}`,
               color: "var(--c-muted)",
             }}
           >
@@ -987,7 +987,7 @@ function StoryRow({ story, last }: { story: DashStory; last: boolean }) {
         <span
           style={{
             display: "block",
-            font: `700 14px/1.34 ${SERIF}`,
+            font: `700 14px/1.34 ${FONT_DISPLAY}`,
             color: "var(--c-ink)",
             textWrap: "pretty",
           }}
@@ -1005,11 +1005,11 @@ function StoryRow({ story, last }: { story: DashStory; last: boolean }) {
 function Absence({ title, body }: { title: string; body: string }) {
   return (
     <div style={{ marginTop: "12px" }}>
-      <p style={{ margin: 0, font: `500 15px/1.35 ${SERIF}`, color: "var(--c-ink)" }}>{title}</p>
+      <p style={{ margin: 0, font: `500 15px/1.35 ${FONT_DISPLAY}`, color: "var(--c-ink)" }}>{title}</p>
       <p
         style={{
           margin: "6px 0 0",
-          font: `400 11.5px/1.5 ${SANS}`,
+          font: `400 11.5px/1.5 ${FONT_SANS}`,
           color: "var(--c-muted)",
           maxWidth: "34ch",
           textWrap: "pretty",
@@ -1032,10 +1032,10 @@ function StaleNotice({ text }: { text: string }) {
         padding: "13px 14px",
       }}
     >
-      <div style={{ font: `600 12px/1 ${SANS}`, color: "var(--c-ink)" }}>
+      <div style={{ font: `600 12px/1 ${FONT_SANS}`, color: "var(--c-ink)" }}>
         You are reading yesterday&rsquo;s briefing.
       </div>
-      <div style={{ marginTop: "4px", font: `400 11.5px/1.5 ${SANS}`, color: "var(--c-body)" }}>
+      <div style={{ marginTop: "4px", font: `400 11.5px/1.5 ${FONT_SANS}`, color: "var(--c-body)" }}>
         {text}
       </div>
     </div>
@@ -1096,7 +1096,7 @@ function DashSkeleton() {
       <p
         style={{
           margin: "20px 0 0",
-          font: `400 11px/1.5 ${MONO}`,
+          font: `400 11px/1.5 ${FONT_MONO}`,
           letterSpacing: "0.07em",
           color: "var(--c-muted)",
           textAlign: "center",
@@ -1127,13 +1127,13 @@ function DashSkeleton() {
 function StoriesFailed() {
   return (
     <div style={{ marginTop: "12px" }} role="alert">
-      <p style={{ margin: 0, font: `500 15px/1.35 ${SERIF}`, color: "var(--c-ink)" }}>
+      <p style={{ margin: 0, font: `500 15px/1.35 ${FONT_DISPLAY}`, color: "var(--c-ink)" }}>
         We could not load your top stories.
       </p>
       <p
         style={{
           margin: "6px 0 0",
-          font: `400 11.5px/1.5 ${SANS}`,
+          font: `400 11.5px/1.5 ${FONT_SANS}`,
           color: "var(--c-muted)",
           maxWidth: "34ch",
           textWrap: "pretty",
@@ -1153,7 +1153,7 @@ function StoriesFailed() {
           padding: "0 17px",
           border: "1px solid var(--c-ink)",
           borderRadius: "9px",
-          font: `600 13px/1 ${SANS}`,
+          font: `600 13px/1 ${FONT_SANS}`,
           color: "var(--c-ink)",
         }}
       >
@@ -1176,13 +1176,13 @@ function StoriesFailed() {
 function DashError() {
   return (
     <div style={{ padding: `18px ${PAD} 26px` }} role="alert">
-      <p style={{ margin: 0, font: `500 17px/1.4 ${SERIF}`, color: "var(--c-ink)" }}>
+      <p style={{ margin: 0, font: `500 17px/1.4 ${FONT_DISPLAY}`, color: "var(--c-ink)" }}>
         We could not load your briefing.
       </p>
       <p
         style={{
           margin: "10px 0 0",
-          font: `400 13px/1.6 ${SANS}`,
+          font: `400 13px/1.6 ${FONT_SANS}`,
           color: "var(--c-secondary)",
           maxWidth: "34ch",
           textWrap: "pretty",
@@ -1202,7 +1202,7 @@ function DashError() {
           padding: "0 17px",
           border: "1px solid var(--c-ink)",
           borderRadius: "9px",
-          font: `600 13px/1 ${SANS}`,
+          font: `600 13px/1 ${FONT_SANS}`,
           color: "var(--c-ink)",
         }}
       >

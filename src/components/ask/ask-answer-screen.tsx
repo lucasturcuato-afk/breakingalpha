@@ -15,6 +15,7 @@ import {
   type AskAnswerData,
 } from "./ask-data";
 import type { AskStage } from "./ask-browse-screen";
+import { FONT_DISPLAY, FONT_MONO, FONT_SANS } from "@/components/mobile/fonts";
 
 /**
  * Ask, answer.
@@ -94,7 +95,7 @@ export function AskAnswerScreen({
             display: "flex",
             alignItems: "center",
             gap: "6px",
-            font: "500 13px/1 Inter, sans-serif",
+            font: `500 13px/1 ${FONT_SANS}`,
             color: "var(--c-secondary)",
             textDecoration: "none",
           }}
@@ -123,7 +124,7 @@ export function AskAnswerScreen({
               borderRadius: "14px",
               backgroundColor: "var(--c-well)",
               border: "1px solid var(--c-border)",
-              font: "400 13.5px/1.55 Inter, sans-serif",
+              font: `400 13.5px/1.55 ${FONT_SANS}`,
               color: "var(--c-ink)",
             }}
           >
@@ -168,7 +169,7 @@ export function AskAnswerScreen({
                     key={i}
                     style={{
                       margin: 0,
-                      font: "700 16px/1.3 'Playfair Display', serif",
+                      font: `700 16px/1.3 ${FONT_DISPLAY}`,
                       color: "var(--c-ink)",
                     }}
                   >
@@ -199,7 +200,7 @@ function AnswerParagraph({ text }: { text: string }) {
     <p
       style={{
         margin: 0,
-        font: "400 13.5px/1.65 Inter, sans-serif",
+        font: `400 13.5px/1.65 ${FONT_SANS}`,
         color: "var(--c-body)",
         textWrap: "pretty",
       }}
@@ -226,7 +227,7 @@ function RecordCitation({ record }: { record: AnswerRecordCitation }) {
     >
       <div
         style={{
-          font: "400 10px/1 'JetBrains Mono', monospace",
+          font: `400 10px/1 ${FONT_MONO}`,
           letterSpacing: "0.07em",
           color: "var(--c-muted)",
         }}
@@ -236,7 +237,7 @@ function RecordCitation({ record }: { record: AnswerRecordCitation }) {
       <p
         style={{
           margin: "8px 0 0",
-          font: "400 italic 13.5px/1.55 'Playfair Display', serif",
+          font: `400 italic 13.5px/1.55 ${FONT_DISPLAY}`,
           color: "var(--c-ink)",
         }}
       >
@@ -245,7 +246,7 @@ function RecordCitation({ record }: { record: AnswerRecordCitation }) {
       <p
         style={{
           margin: "8px 0 0",
-          font: "400 11.5px/1.5 Inter, sans-serif",
+          font: `400 11.5px/1.5 ${FONT_SANS}`,
           color: "var(--c-secondary)",
         }}
       >

@@ -26,6 +26,7 @@ import {
   type SearchFixture,
 } from "./search-data";
 import styles from "./search.module.css";
+import { FONT_DISPLAY, FONT_SANS } from "@/components/mobile/fonts";
 
 /**
  * Search. A jump list to the destinations that exist, then entity results.
@@ -263,13 +264,13 @@ function NoResults() {
       role="status"
       style={{ padding: "44px 8px 0", textAlign: "center" }}
     >
-      <p style={{ margin: 0, font: "500 16px/1.45 'Playfair Display', serif", color: "var(--c-ink)" }}>
+      <p style={{ margin: 0, font: `500 16px/1.45 ${FONT_DISPLAY}`, color: "var(--c-ink)" }}>
         No results found
       </p>
       <p
         style={{
           margin: "10px 0 0",
-          font: "400 13px/1.6 Inter, sans-serif",
+          font: `400 13px/1.6 ${FONT_SANS}`,
           color: "var(--c-muted)",
           textWrap: "pretty",
         }}
@@ -298,13 +299,13 @@ function Unwired() {
   return (
     <>
       <div className={styles.groupIn} style={{ paddingTop: "18px" }} role="status">
-        <p style={{ margin: 0, font: "500 16px/1.45 'Playfair Display', serif", color: "var(--c-ink)" }}>
+        <p style={{ margin: 0, font: `500 16px/1.45 ${FONT_DISPLAY}`, color: "var(--c-ink)" }}>
           Entity search is not wired yet.
         </p>
         <p
           style={{
             margin: "10px 0 0",
-            font: "400 13px/1.6 Inter, sans-serif",
+            font: `400 13px/1.6 ${FONT_SANS}`,
             color: "var(--c-secondary)",
             textWrap: "pretty",
           }}
@@ -356,13 +357,13 @@ function SearchError() {
   return (
     <>
       <div style={{ paddingTop: "18px" }} role="alert">
-        <p style={{ margin: 0, font: "500 16px/1.45 'Playfair Display', serif", color: "var(--c-ink)" }}>
+        <p style={{ margin: 0, font: `500 16px/1.45 ${FONT_DISPLAY}`, color: "var(--c-ink)" }}>
           We could not run that search.
         </p>
         <p
           style={{
             margin: "10px 0 0",
-            font: "400 13px/1.6 Inter, sans-serif",
+            font: `400 13px/1.6 ${FONT_SANS}`,
             color: "var(--c-secondary)",
             maxWidth: "34ch",
             textWrap: "pretty",

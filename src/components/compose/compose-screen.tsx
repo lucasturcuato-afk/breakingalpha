@@ -31,6 +31,7 @@ import {
   type Direction,
 } from "./compose-data";
 import styles from "./compose.module.css";
+import { FONT_DISPLAY, FONT_MONO, FONT_SANS } from "@/components/mobile/fonts";
 
 /**
  * Compose. "Write your own call": the free-text composer promoted from a
@@ -61,13 +62,10 @@ import styles from "./compose.module.css";
 const WRITE_PATH_WIRED = false;
 
 const PAD = "var(--v3-pad)";
-const MONO = "'JetBrains Mono', monospace";
-const SANS = "Inter, sans-serif";
-const SERIF = "'Playfair Display', serif";
 
 const EYEBROW = {
   marginTop: "20px",
-  font: `400 10px/1 ${MONO}`,
+  font: `400 10px/1 ${FONT_MONO}`,
   letterSpacing: "0.07em",
   color: "var(--c-muted)",
   display: "block",
@@ -201,7 +199,7 @@ export function ComposeScreen({
             display: "flex",
             alignItems: "center",
             gap: "6px",
-            font: `500 13px/1 ${SANS}`,
+            font: `500 13px/1 ${FONT_SANS}`,
             color: "var(--c-secondary)",
             textDecoration: "none",
           }}
@@ -226,7 +224,7 @@ export function ComposeScreen({
         <h1
           style={{
             margin: 0,
-            font: `700 24px/1.15 ${SERIF}`,
+            font: `700 24px/1.15 ${FONT_DISPLAY}`,
             letterSpacing: "-0.02em",
             color: "var(--c-ink)",
           }}
@@ -236,7 +234,7 @@ export function ComposeScreen({
         <p
           style={{
             margin: "9px 0 0",
-            font: `400 13px/1.6 ${SANS}`,
+            font: `400 13px/1.6 ${FONT_SANS}`,
             color: "var(--c-body)",
             textWrap: "pretty",
           }}
@@ -278,7 +276,7 @@ export function ComposeScreen({
             placeholder="In your own words, e.g. NVDA gives back the ramp hype by earnings"
             style={{
               minHeight: "78px",
-              font: `500 16px/1.45 ${SERIF}`,
+              font: `500 16px/1.45 ${FONT_DISPLAY}`,
               color: "var(--c-ink)",
             }}
           />
@@ -294,13 +292,13 @@ export function ComposeScreen({
         >
           <span
             aria-live="polite"
-            style={{ font: `400 11px/1.4 ${SANS}`, color: "var(--c-muted)" }}
+            style={{ font: `400 11px/1.4 ${FONT_SANS}`, color: "var(--c-muted)" }}
           >
             {hint}
           </span>
           <span
             style={{
-              font: `400 10.5px/1 ${MONO}`,
+              font: `400 10.5px/1 ${FONT_MONO}`,
               letterSpacing: "0.045em",
               color: "var(--c-muted)",
             }}
@@ -317,7 +315,7 @@ export function ComposeScreen({
             className={styles.enter}
             style={{
               margin: "16px 0 0",
-              font: `400 12.5px/1.55 ${SANS}`,
+              font: `400 12.5px/1.55 ${FONT_SANS}`,
               color: "var(--c-redink)",
               textWrap: "pretty",
             }}
@@ -330,7 +328,7 @@ export function ComposeScreen({
           <div className={styles.enter} style={CARD}>
             <div
               style={{
-                font: `400 10px/1 ${MONO}`,
+                font: `400 10px/1 ${FONT_MONO}`,
                 letterSpacing: "0.07em",
                 color: "var(--c-muted)",
               }}
@@ -340,7 +338,7 @@ export function ComposeScreen({
             <p
               style={{
                 margin: "10px 0 0",
-                font: `400 13.5px/1.65 ${SANS}`,
+                font: `400 13.5px/1.65 ${FONT_SANS}`,
                 color: "var(--c-body)",
                 textWrap: "pretty",
               }}
@@ -355,7 +353,7 @@ export function ComposeScreen({
                 <p
                   style={{
                     margin: "11px 0 0",
-                    font: `400 12px/1.55 ${SANS}`,
+                    font: `400 12px/1.55 ${FONT_SANS}`,
                     color: "var(--c-muted)",
                     textWrap: "pretty",
                   }}
@@ -403,7 +401,7 @@ export function ComposeScreen({
                     borderRadius: "9px",
                     border: "1px solid var(--c-gold)",
                     backgroundColor: "var(--c-well)",
-                    font: `600 12.5px/1.3 ${SANS}`,
+                    font: `600 12.5px/1.3 ${FONT_SANS}`,
                     color: "var(--c-goldink)",
                     cursor: "pointer",
                     textWrap: "pretty",
@@ -421,7 +419,7 @@ export function ComposeScreen({
             <div className={styles.enter} style={CARD}>
               <div
                 style={{
-                  font: `400 10px/1 ${MONO}`,
+                  font: `400 10px/1 ${FONT_MONO}`,
                   letterSpacing: "0.07em",
                   color: "var(--c-muted)",
                 }}
@@ -437,22 +435,22 @@ export function ComposeScreen({
                   flexWrap: "wrap",
                 }}
               >
-                <span style={{ font: `500 13px/1 ${MONO}`, color: "var(--c-ink)" }}>
+                <span style={{ font: `500 13px/1 ${FONT_MONO}`, color: "var(--c-ink)" }}>
                   {proposal.target_symbol}
                 </span>
                 <Dot />
-                <span style={{ font: `600 12.5px/1 ${SANS}`, color: "var(--c-ink)" }}>
+                <span style={{ font: `600 12.5px/1 ${FONT_SANS}`, color: "var(--c-ink)" }}>
                   {DIRECTION_LABEL[direction]}
                 </span>
                 <Dot />
-                <span style={{ font: `400 12px/1 ${SANS}`, color: "var(--c-body)" }}>
+                <span style={{ font: `400 12px/1 ${FONT_SANS}`, color: "var(--c-body)" }}>
                   {HORIZON_PHRASE[horizon]}
                 </span>
               </div>
               <p
                 style={{
                   margin: "11px 0 0",
-                  font: `400 12px/1.55 ${SANS}`,
+                  font: `400 12px/1.55 ${FONT_SANS}`,
                   color: "var(--c-body)",
                   textWrap: "pretty",
                 }}
@@ -502,7 +500,7 @@ export function ComposeScreen({
             <p
               style={{
                 margin: "10px 0 0",
-                font: `400 11.5px/1.55 ${SANS}`,
+                font: `400 11.5px/1.55 ${FONT_SANS}`,
                 color: "var(--c-muted)",
                 textWrap: "pretty",
               }}
@@ -547,7 +545,7 @@ export function ComposeScreen({
             placeholder="The reasoning a reader of your record will judge."
             style={{
               minHeight: "64px",
-              font: `400 italic 14.5px/1.6 ${SERIF}`,
+              font: `400 italic 14.5px/1.6 ${FONT_DISPLAY}`,
               color: "var(--c-ink)",
             }}
           />
@@ -555,7 +553,7 @@ export function ComposeScreen({
         <p
           style={{
             margin: "14px 0 0",
-            font: `400 11.5px/1.55 ${SANS}`,
+            font: `400 11.5px/1.55 ${FONT_SANS}`,
             color: "var(--c-muted)",
             textWrap: "pretty",
           }}
@@ -619,7 +617,7 @@ export function ComposeScreen({
             alignItems: "center",
             justifyContent: "center",
             borderRadius: "9px",
-            font: `600 14.5px/1 ${SANS}`,
+            font: `600 14.5px/1 ${FONT_SANS}`,
             cursor: unlocked ? "pointer" : "default",
             border: committed
               ? "1px solid var(--c-gold)"
@@ -656,7 +654,7 @@ export function ComposeScreen({
             style={{
               margin: "9px 0 0",
               textAlign: "center",
-              font: `400 11px/1.4 ${SANS}`,
+              font: `400 11px/1.4 ${FONT_SANS}`,
               color: "var(--c-muted)",
               textWrap: "pretty",
             }}
@@ -671,7 +669,7 @@ export function ComposeScreen({
 
 function Dot() {
   return (
-    <span aria-hidden="true" style={{ font: `400 12px/1 ${SANS}`, color: "var(--c-secondary)" }}>
+    <span aria-hidden="true" style={{ font: `400 12px/1 ${FONT_SANS}`, color: "var(--c-secondary)" }}>
       &middot;
     </span>
   );
@@ -736,7 +734,7 @@ function Chip({
         whiteSpace: "nowrap",
         cursor: disabled ? "default" : "pointer",
         border: `1px solid ${on ? "var(--c-ink)" : "var(--c-border)"}`,
-        font: `${on ? 600 : 500} 12px/1 ${SANS}`,
+        font: `${on ? 600 : 500} 12px/1 ${FONT_SANS}`,
         color: on ? "var(--c-ink)" : "var(--c-secondary)",
         backgroundColor: on ? "var(--c-surface)" : "transparent",
       }}

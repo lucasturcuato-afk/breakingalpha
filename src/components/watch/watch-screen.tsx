@@ -16,6 +16,7 @@ import type {
   WatchlistItem,
 } from "./fixture";
 import styles from "./watch.module.css";
+import { FONT_DISPLAY, FONT_MONO, FONT_SANS } from "@/components/mobile/fonts";
 
 /**
  * Watch. Tracked views, watchlist and following as three visually distinct
@@ -230,7 +231,7 @@ export function WatchScreen({
         <p
           style={{
             margin: "8px 0 0",
-            font: "400 11.5px/1.5 Inter, sans-serif",
+            font: `400 11.5px/1.5 ${FONT_SANS}`,
             color: "var(--c-muted)",
           }}
         >
@@ -293,7 +294,7 @@ export function WatchScreen({
         <p
           style={{
             margin: "8px 0 0",
-            font: "400 11.5px/1.5 Inter, sans-serif",
+            font: `400 11.5px/1.5 ${FONT_SANS}`,
             color: "var(--c-muted)",
           }}
         >
@@ -362,7 +363,7 @@ function WatchMasthead() {
       <h1
         style={{
           margin: 0,
-          font: "700 26px/1.14 'Playfair Display', serif",
+          font: `700 26px/1.14 ${FONT_DISPLAY}`,
           letterSpacing: "-0.02em",
           color: "var(--c-ink)",
         }}
@@ -372,7 +373,7 @@ function WatchMasthead() {
       <p
         style={{
           margin: "8px 0 0",
-          font: "400 12.5px/1.5 Inter, sans-serif",
+          font: `400 12.5px/1.5 ${FONT_SANS}`,
           color: "var(--c-secondary)",
         }}
       >
@@ -413,7 +414,7 @@ function TrackedViewCard({ view, first }: { view: TrackedView; first: boolean })
         <p
           style={{
             margin: 0,
-            font: "400 italic 16px/1.62 'Playfair Display', serif",
+            font: `400 italic 16px/1.62 ${FONT_DISPLAY}`,
             color: "var(--c-ink)",
             textWrap: "pretty",
           }}
@@ -423,7 +424,7 @@ function TrackedViewCard({ view, first }: { view: TrackedView; first: boolean })
         <p
           style={{
             margin: "10px 0 0",
-            font: "500 12.5px/1.5 Inter, sans-serif",
+            font: `500 12.5px/1.5 ${FONT_SANS}`,
             color: "var(--c-body)",
           }}
         >
@@ -432,7 +433,7 @@ function TrackedViewCard({ view, first }: { view: TrackedView; first: boolean })
         <p
           style={{
             margin: "6px 0 0",
-            font: "400 10px/1 'JetBrains Mono', monospace",
+            font: `400 10px/1 ${FONT_MONO}`,
             letterSpacing: "0.07em",
             color: "var(--c-muted)",
           }}
@@ -470,7 +471,7 @@ function LensChip({
         borderRadius: "6px",
         whiteSpace: "nowrap",
         border: active ? "1px solid var(--c-ink)" : "1px solid var(--c-border)",
-        font: active ? "600 12px/1 Inter, sans-serif" : "500 12px/1 Inter, sans-serif",
+        font: active ? `600 12px/1 ${FONT_SANS}` : `500 12px/1 ${FONT_SANS}`,
         color: active ? "var(--c-ink)" : "var(--c-secondary)",
         backgroundColor: active ? "var(--c-surface)" : "transparent",
       }}
@@ -519,7 +520,7 @@ function WatchlistHero({ item }: { item: WatchlistItem }) {
             padding: "0 7px",
             borderRadius: "6px",
             backgroundColor: "var(--c-green-surface)",
-            font: "700 13px/1 'JetBrains Mono', monospace",
+            font: `700 13px/1 ${FONT_MONO}`,
             color: "var(--c-oninv)",
           }}
         >
@@ -527,13 +528,13 @@ function WatchlistHero({ item }: { item: WatchlistItem }) {
         </span>
         <div style={{ minWidth: 0, flex: 1 }}>
           <div style={{ display: "flex", alignItems: "baseline", gap: "8px", flexWrap: "wrap" }}>
-            <span style={{ font: "600 11px/1 Inter, sans-serif", color: "var(--c-oninv-body)" }}>
+            <span style={{ font: `600 11px/1 ${FONT_SANS}`, color: "var(--c-oninv-body)" }}>
               {item.qualifier}
             </span>
             {item.move ? (
               <span
                 style={{
-                  font: "400 11px/1 'JetBrains Mono', monospace",
+                  font: `400 11px/1 ${FONT_MONO}`,
                   /* On pinned espresso the on-espresso literal is the token,
                      not the ink token: tokens.reference.css states that rule
                      outright and measures the ink tokens at 2.86 to 3.76:1
@@ -554,7 +555,7 @@ function WatchlistHero({ item }: { item: WatchlistItem }) {
           <p
             style={{
               margin: "8px 0 0",
-              font: "600 17px/1.32 'Playfair Display', serif",
+              font: `600 17px/1.32 ${FONT_DISPLAY}`,
               color: "var(--c-oninv-strong)",
               textWrap: "pretty",
             }}
@@ -564,7 +565,7 @@ function WatchlistHero({ item }: { item: WatchlistItem }) {
           <p
             style={{
               margin: "7px 0 0",
-              font: "400 11.5px/1.4 Inter, sans-serif",
+              font: `400 11.5px/1.4 ${FONT_SANS}`,
               color: "var(--c-oninv-dim)",
             }}
           >
@@ -599,12 +600,12 @@ function WatchlistCard({ item }: { item: WatchlistItem }) {
             their qualifier as one plain line rather than a row of one. */}
         {item.move ? (
           <div style={{ display: "flex", alignItems: "baseline", gap: "8px", flexWrap: "wrap" }}>
-            <span style={{ font: "600 11px/1 Inter, sans-serif", color: "var(--c-secondary)" }}>
+            <span style={{ font: `600 11px/1 ${FONT_SANS}`, color: "var(--c-secondary)" }}>
               {item.qualifier}
             </span>
             <span
               style={{
-                font: "400 11px/1 'JetBrains Mono', monospace",
+                font: `400 11px/1 ${FONT_MONO}`,
                 color:
                   item.moveDirection === "down" ? "var(--c-redink)" : "var(--c-greenink)",
               }}
@@ -613,14 +614,14 @@ function WatchlistCard({ item }: { item: WatchlistItem }) {
             </span>
           </div>
         ) : (
-          <div style={{ font: "600 11px/1 Inter, sans-serif", color: "var(--c-secondary)" }}>
+          <div style={{ font: `600 11px/1 ${FONT_SANS}`, color: "var(--c-secondary)" }}>
             {item.qualifier}
           </div>
         )}
         <p
           style={{
             margin: "6px 0 0",
-            font: "600 14px/1.35 'Playfair Display', serif",
+            font: `600 14px/1.35 ${FONT_DISPLAY}`,
             color: "var(--c-ink)",
             textWrap: "pretty",
           }}
@@ -630,7 +631,7 @@ function WatchlistCard({ item }: { item: WatchlistItem }) {
         <p
           style={{
             margin: "6px 0 0",
-            font: "400 11px/1.4 Inter, sans-serif",
+            font: `400 11px/1.4 ${FONT_SANS}`,
             color: "var(--c-muted)",
           }}
         >
@@ -673,7 +674,7 @@ function Badge({ item }: { item: WatchlistItem }) {
           padding: "0 7px",
           borderRadius: "6px",
           backgroundColor: "var(--c-green-surface)",
-          font: "700 13px/1 'JetBrains Mono', monospace",
+          font: `700 13px/1 ${FONT_MONO}`,
           color: "var(--c-oninv)",
         }}
       >
@@ -689,7 +690,7 @@ function Badge({ item }: { item: WatchlistItem }) {
           height: "36px",
           display: "inline-flex",
           alignItems: "center",
-          font: "600 15px/1 'Playfair Display', serif",
+          font: `600 15px/1 ${FONT_DISPLAY}`,
           color: "var(--c-ink)",
         }}
       >
@@ -707,7 +708,7 @@ function Badge({ item }: { item: WatchlistItem }) {
         padding: "0 9px",
         borderRadius: "6px",
         backgroundColor: "var(--c-gold)",
-        font: "600 10.5px/1 Inter, sans-serif",
+        font: `600 10.5px/1 ${FONT_SANS}`,
         letterSpacing: "0.06em",
         color: "var(--c-ongold)",
       }}
@@ -733,7 +734,7 @@ function QuietLine({ names, shown }: { names: string[]; shown: number }) {
     <p
       style={{
         margin: "12px 0 0",
-        font: "400 11.5px/1.6 Inter, sans-serif",
+        font: `400 11.5px/1.6 ${FONT_SANS}`,
         color: "var(--c-muted)",
         textWrap: "pretty",
       }}
@@ -760,7 +761,7 @@ function ThemeCluster({ cluster, first }: { cluster: FollowCluster; first: boole
           margin: 0,
           paddingBottom: "6px",
           borderBottom: "1px solid var(--c-border)",
-          font: "600 11px/1.3 Inter, sans-serif",
+          font: `600 11px/1.3 ${FONT_SANS}`,
           letterSpacing: "0.12em",
           color: "var(--c-secondary)",
         }}
@@ -786,7 +787,7 @@ function ThemeCluster({ cluster, first }: { cluster: FollowCluster; first: boole
           <p
             style={{
               margin: 0,
-              font: "500 13.5px/1.4 Inter, sans-serif",
+              font: `500 13.5px/1.4 ${FONT_SANS}`,
               color: "var(--c-ink)",
               textWrap: "pretty",
             }}
@@ -796,7 +797,7 @@ function ThemeCluster({ cluster, first }: { cluster: FollowCluster; first: boole
           <p
             style={{
               margin: 0,
-              font: "400 10px/1 'JetBrains Mono', monospace",
+              font: `400 10px/1 ${FONT_MONO}`,
               letterSpacing: "0.07em",
               color: "var(--c-muted)",
             }}
@@ -833,7 +834,7 @@ function FollowingTail({ quiet, couldNotCheck }: { quiet: number; couldNotCheck:
         <p
           style={{
             margin: "14px 0 0",
-            font: "400 11.5px/1.55 Inter, sans-serif",
+            font: `400 11.5px/1.55 ${FONT_SANS}`,
             color: "var(--c-muted)",
             textWrap: "pretty",
           }}
