@@ -1,4 +1,18 @@
-# Batch 3 build brief: Watch, Thesis Tracker, Thesis detail
+# Batch 3 build brief: Watch
+
+> **SCOPE CORRECTION, 2026-08-26 (DECISIONS.md ruling 14).** This brief originally
+> covered three screens. **Thesis Tracker and Thesis detail are CUT from mobile
+> scope** and their sections below are superseded. Do not build from them.
+>
+> `/radar/theses` is a four-line redirect shim answering
+> `redirect('/radar/calls?views=open')`. `RadarTabs.tsx` carries four tabs and
+> Theses is not among them. Three files call it retired in their own comments:
+> `radar/calls/page.tsx:250`, `search-data.ts:35`, `TrackedViews.tsx:17`.
+> `/radar/track-record/[thesis_id]` still renders but is orphaned, reachable only
+> from the command palette and `TrackedViews.tsx:402`. There is nothing to port.
+>
+> **The Watch section below stands**, with one change: the pole is renamed
+> **Radar** per ruling 17. The screen's three tiers are unaffected.
 
 Recon only. No implementation code below. Every repo path named here was opened with Read.
 Nine of nine paths github.md maps to this batch exist. Zero missing.

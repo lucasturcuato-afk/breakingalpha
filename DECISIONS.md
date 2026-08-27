@@ -44,6 +44,37 @@ ruling names no step, the work sits off the mobile build path entirely.
 | 8 | SIGNAL scores. **Stay.** Not a compliance issue. It is a relevance score, not an accuracy figure. Relevance ranking is editorial judgment, not a claim about accuracy, so it does not fall under the compliance rule. | **Lands on step 2, the Ledger card**, not the nav shell. The Ledger is the anatomy every other card reuses, so the design needs a slot for the badge before that card is written. Also touches steps 5, 9 and 10. | No production change. The design carries the deviation, not the code. |
 | 9 | cross-source palette. **Retoken.** One file, no shared surface. | Off the build path, same route as ruling 1. | Queued, own PR. |
 | 10 | Stats band, the VIX label. **Deviate from the design.** One anatomy across all four cells: Inter 700 in `--c-muted`. The design draws three labels in Inter 700 and the fourth in `"JetBrains Mono"` 400 at `--c-oninv-dim`, which is two anatomies in one band of equivalent cells, the thing the README's own responsive rule forbids. It also fails contrast on its own terms: `--c-oninv-dim` `#a2937a` on `--c-bg` `#fffdf9` measures **2.96:1** at a 10px label, against a 4.5 floor. The built `--c-muted` `#786a52` measures **5.19:1**. | Step 2 surface (Ledger). | **Shipped in #622.** Not to be reverted. The design carries the deviation, not the code. |
+| 14 | Thesis Tracker and Thesis detail. **CUT from mobile scope.** Tracker's desktop surface is a four-line redirect shim: `/radar/theses` answers `redirect('/radar/calls?views=open')`, `RadarTabs` carries four tabs and Theses is not among them, and three files call it retired in their own comments (`radar/calls/page.tsx:250`, `search-data.ts:35`, `TrackedViews.tsx:17`). There is nothing to port. Detail (`/radar/track-record/[thesis_id]`) still renders but is orphaned: reachable only from the command palette and one link at `TrackedViews.tsx:402`, and absent from RadarTabs. | Step 8. | **Cut.** Missing-screen count corrects from 6 to 5. |
+| 15 | Memo. **STAYS in scope, as a port.** Not retired: `MemoModal.tsx` is mounted at 21 sites across 17 files, the most widely mounted component in the product, and it has no mobile surface at all. | Step 9. | **In scope, unbuilt.** The largest live desktop surface with zero mobile presence. |
+| 16 | Signal, Story and Deal detail. **Reclassified: NEW SCREENS, not ports.** None has a desktop source. `src/app/signal` and `src/app/story` do not exist; `/deal-flow` exists with no `[id]` route. Calling them 'missing' overstated readiness: there is nothing to port from, so each is new work. | Step 10. | **Reclassified.** |
+| 17 | Pole names: **Watch becomes Radar, Today becomes Dashboard.** One decision about desktop-to-mobile continuity, ruled 2026-08-26. Both mobile labels diverged from the desktop names users already know, and in both cases the mobile label also collides with something. **Watch** is already a market-state word at `mood-bar.tsx:38` (`badgeLabel`), names an action rather than a place, and labels a surface that does not exist yet; Radar is the desktop word. **Today** is the prototype's word, but `pageTitle` at `dashboard/page.tsx:824` and the command palette both already say Dashboard, so a reader taps Today and lands on a page headed Dashboard. The prototype says Today 9 times and Dashboard 3, the latter in a jump-list context, so the design itself uses both names for one screen. | Nav shell. | **Ruled.** `badgeLabel` in `mood-bar.tsx` is NOT touched: Watch remains a market state. |
+
+### Ruling 17: what the Radar name does and does not promise
+
+Radar's live tabs are Following, Watchlist, Calls and Desk record. **Calls and Desk record stay under the Ledger pole**
+and are not moving.
+
+So the pole named Radar delivers two of Radar's four tabs. That is accepted
+deliberately: **the name is navigational continuity with desktop, not a promise
+of five tabs.** A reader who knows Radar from desktop should find the pole; a
+reader who expects their calls under it will find them one pole over, under
+Ledger, which is where a record belongs.
+
+Recorded because the objection is real and someone will raise it again: the name
+under-describes what sits behind it, and that was weighed against the cost of a
+third name for the same idea.
+
+### Ruling 14 to 16: the test that produced them
+
+Each screen still nominally in scope was checked against one question: **does the
+desktop surface it would port from still exist, or was it superseded?**
+
+That test cut two screens, kept one that looked like a cut candidate, and
+reclassified three from "missing" to "new work". The reclassification matters
+more than it sounds: an inventory that lists Signal, Story and Deal detail as
+missing implies a port is waiting to be done, when in fact no source exists and
+each is a screen to be designed and built from the prototype alone.
+
 
 ## Open items
 
