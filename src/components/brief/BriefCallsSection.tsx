@@ -163,6 +163,11 @@ export default function BriefCallsSection({
   // all, because offering a button that can only 401 is worse than omitting it.
   const [tracked, setTracked] = useState<Map<string, TrackedClaim> | null>(null);
   const [windowFor, setWindowFor] = useState<Record<string, AdoptWindow>>({});
+  /** The reader's note in progress, per call. It lives HERE and not in the
+   *  footer so a failed adopt cannot take the sentence down with it: revert()
+   *  below clears the optimistic row and the stamp, and deliberately leaves
+   *  this record alone. Only an acknowledged write deletes an entry. */
+  const [noteFor, setNoteFor] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [trackError, setTrackError] = useState<Record<string, string>>({});
   /** Calls committed in THIS session. Drives the one-time stamp only; it is
@@ -351,6 +356,7 @@ export default function BriefCallsSection({
     call: BriefCall,
     window: AdoptWindow,
     offeredWindow: AdoptWindow,
+    note: string,
   ) => {
     setBusy(call.id);
     // Read provenance at the TAP, not after the round trip: every elapsed-time
@@ -390,6 +396,10 @@ export default function BriefCallsSection({
       return next;
     });
 
+    /* Reverting removes the optimistic row and the stamp. It does NOT touch
+       noteFor: the sentence the reader wrote is the one thing here that cannot
+       be reconstructed, and a failed write is exactly when they need it still
+       on screen to retry from. Only the acknowledged path below clears it. */
     const revert = (message: string) => {
       setTracked((prev) => {
         if (!prev) return prev;
@@ -413,7 +423,14 @@ export default function BriefCallsSection({
         // adoptWindowRequest sends window_days for an off-bucket span, which
         // the route already accepts (resolveAdoptWindow's explicitDays). No
         // API change was needed for variable horizons.
-        body: JSON.stringify({ call_id: call.id, ...adoptWindowRequest(window) }),
+        body: JSON.stringify({
+          call_id: call.id,
+          // Trimmed, because that is the form the column checks and the route
+          // stores. The gate the button holds counts the trimmed length too,
+          // so the two cannot disagree about what was written.
+          commit_note: note.trim(),
+          ...adoptWindowRequest(window),
+        }),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -432,6 +449,13 @@ export default function BriefCallsSection({
         return next;
       });
       setStamped((prev) => new Set(prev).add(call.id));
+      // The ONLY path that drops the draft. The row is acknowledged, so the
+      // note now lives on the record rather than in this component.
+      setNoteFor((prev) => {
+        const next = { ...prev };
+        delete next[call.id];
+        return next;
+      });
       // Peripheral confirmation: a brief pulse on the Radar nav row. Not a
       // toast, not a banner, and never a navigation.
       notifyRadarLanded();
@@ -447,6 +471,10 @@ export default function BriefCallsSection({
           // The real span, so a 13-day commitment is not filed as a week.
           window_days: adoptWindowRequest(window).window_days ?? null,
           window_kind: window.kind,
+          // The gate, observable in production without reading the table. A
+          // run of these below COMMIT_NOTE_MIN means a surface is writing
+          // rows the gate never held.
+          note_length: note.trim().length,
           already_tracked: json.alreadyAdopted === true,
           gradeable: json.gradeable ?? null,
           resolution_window_end: json.resolution_window_end ?? null,
@@ -516,7 +544,16 @@ export default function BriefCallsSection({
                 onWindowChange={(w) =>
                   setWindowFor((prev) => ({ ...prev, [c.id]: w }))
                 }
-                onTrack={() => void track(c, chosen, offered)}
+                // Empty is not a stand-in for data that failed to arrive. It
+                // is a true statement about the draft: the reader has typed
+                // nothing yet. Same shape as `windowFor[c.id] ?? offered`
+                // above, where the fallback is likewise the real default
+                // rather than a placeholder for something unknown.
+                note={noteFor[c.id] ?? ""}
+                onNoteChange={(next) =>
+                  setNoteFor((prev) => ({ ...prev, [c.id]: next }))
+                }
+                onTrack={(note) => void track(c, chosen, offered, note)}
                 justStamped={justStamped}
                 gradeable={isPriceableClaimType(c.claim_type)}
                 trustLineId={TRUST_LINE_ID}
