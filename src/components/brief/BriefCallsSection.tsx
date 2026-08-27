@@ -167,7 +167,8 @@ export default function BriefCallsSection({
   /** The reader's note in progress, per call. It lives HERE and not in the
    *  footer so a failed adopt cannot take the sentence down with it: revert()
    *  below clears the optimistic row and the stamp, and deliberately leaves
-   *  this record alone. Only an acknowledged write deletes an entry. */
+   *  this record alone. Only a write that CONFIRMS this note reached the row
+   *  deletes an entry; see noteLandedOnRow at the success path. */
   const [noteFor, setNoteFor] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [trackError, setTrackError] = useState<Record<string, string>>({});
@@ -400,7 +401,8 @@ export default function BriefCallsSection({
     /* Reverting removes the optimistic row and the stamp. It does NOT touch
        noteFor: the sentence the reader wrote is the one thing here that cannot
        be reconstructed, and a failed write is exactly when they need it still
-       on screen to retry from. Only the acknowledged path below clears it. */
+       on screen to retry from. Only a CONFIRMED insert below clears it, which
+       is narrower than success; see noteLandedOnRow for why. */
     const revert = (message: string) => {
       setTracked((prev) => {
         if (!prev) return prev;
