@@ -9,6 +9,7 @@ import {
   buildDashboardData,
   useArrivalBudget,
   useMobileMinute,
+  useDesktopViewport,
   useMobileRecords,
   MOBILE_READ_BUDGET_MS,
   type DashQuote,
@@ -19,6 +20,7 @@ import { DashTile } from "@/components/dashboard/dash-tile";
 import {
   DashboardReadyProvider,
   DashboardRevealGate,
+  DashboardStandby,
   useDashboardReady,
   useDashboardSource,
 } from "@/components/dashboard/dashboard-ready";
@@ -735,6 +737,11 @@ function DashboardPageInner() {
    * below the md breakpoint, so a desktop load fires nothing extra.
    */
   const { isReady: dashRevealed } = useDashboardReady();
+  /* The desk's MOUNT, not its visibility. False on the server, false for the
+     hydration render and false forever below `md`, which is what keeps a phone
+     from running five widget loaders and eleven prefetches for a tree it
+     cannot show. See the comment on the subtree itself. */
+  const deskMounted = useDesktopViewport();
   const mobileRecords = useMobileRecords();
   /* The clock, re-read once a minute below md. It used to be read once, inside
      the memo below, so a phone left open on the briefing showed a frozen time
@@ -839,25 +846,38 @@ function DashboardPageInner() {
       mobileFullBleed
     >
       {/* Today, below md. The mobile drawing of this route, composed beside
-          the desktop layout rather than replacing it: every loader, widget and
-          reveal gate below is untouched.
+          the desktop layout rather than replacing it: every loader and widget
+          below is where it was.
 
-          Untouched is not unmounted, and the distinction is worth stating
-          rather than glossing. `hidden md:block` is `display:none`, so on a
-          phone the desk's four loaders still run, its market-indices fetch
-          still goes out, and its widgets still render into a hidden subtree
-          that nothing reads. That is the cost of composing instead of
-          rewriting, and it is deliberate for this unit: unmounting the desk
-          below md means branching a 942-line page on a breakpoint, which is
-          the rewrite this was meant to avoid. Worth revisiting once the
-          mobile screen has a loader of its own, which is now the case: the
-          phone reads `mobileData` below, built from this page's own state.
-          Unmounting the desk below md is the next step and it is not this
-          unit's.
+          UNTOUCHED IS NOT UNMOUNTED, AND IT USED TO BE BOTH. `hidden md:block`
+          is `display:none`, which hides a subtree and still mounts it, still
+          runs its effects and still lets it fetch. So on a phone the desk's
+          five widget loaders ran, its market-indices fetch went out a second
+          and third time, and eleven RSC prefetches for /radar/watchlist and
+          /settings/profile went with them, all to fill a tree nobody on that
+          viewport can see. Measured on one cold phone load at 88d9770f:
+          /api/related-articles 1991ms, /api/system-intelligence 646ms, plus
+          watchlist-feed, watchlist/pinned, radar/following-feed,
+          company/resolve, watchlist-quotes and stock-chart. Not one of them
+          feeds a pixel of the screen above.
 
-          Gating lives in a CLASS, never in an inline style. An inline display
-          beats the class at every breakpoint, which is the defect that shipped
-          the tab bar to desktop once already. */}
+          They are gone because the desk's MOUNT is now the breakpoint's
+          decision rather than a class's. `useDesktopViewport` is a real
+          subscription whose SERVER snapshot is false, which is the whole
+          mechanism: React renders that snapshot on the server and again for
+          the hydration render, so the desk is absent from both, and a phone
+          never commits it even once. A class could not have done this and
+          neither could an effect, because React runs child effects before
+          parent effects: anything present in the hydration render has already
+          fired its fetches before a state change could unmount it.
+
+          `DashboardStandby` keeps the desktop's place until then, so a
+          desktop reader still gets the reveal gate's skeleton straight out of
+          the server render rather than an empty column until hydration.
+
+          VISIBILITY still lives in a CLASS, never in an inline style. An
+          inline display beats the class at every breakpoint, which is the
+          defect that shipped the tab bar to desktop once already. */}
       <div className="md:hidden">
         <Suspense fallback={<DashboardScreen stage="loading" data={null} />}>
           <MobileDashboardRoute data={mobileData} stage={mobileStage} revealed={mobileReady} />
@@ -865,6 +885,7 @@ function DashboardPageInner() {
       </div>
 
       <div className="hidden md:block">
+      {deskMounted ? (
       <DashboardRevealGate>
       <div className="dash-contentwrap dash-dots max-w-[1440px] mx-auto px-6 md:px-12 py-6 md:py-8 pb-16">
         <CursorGlow />
@@ -1140,6 +1161,9 @@ function DashboardPageInner() {
 
       </div>
       </DashboardRevealGate>
+      ) : (
+      <DashboardStandby />
+      )}
       </div>
     </AppShell>
   );

@@ -28,11 +28,22 @@
  * underneath also means the reveal is a visibility change, not a remount, so
  * there is no layout shift.
  *
- * REGISTRATION IS SEALED IN THIS PROVIDER'S MOUNT EFFECT. React runs child
- * effects before parent effects, so by the time the effect below fires, every
- * source that rendered in the first commit has already registered. Nothing
- * registered afterwards is waited on, which is what stops a late-mounting
- * conditional widget from re-opening the gate.
+ * REGISTRATION IS SEALED IN THIS PROVIDER'S MOUNT EFFECT, ONE COMMIT LATE, AND
+ * THE DELAY IS LOAD-BEARING. React runs child effects before parent effects, so
+ * by the time the effect below fires, every source that rendered in that commit
+ * has already registered. Nothing registered afterwards is waited on, which is
+ * what stops a late-mounting conditional widget from re-opening the gate.
+ *
+ * The commit it fires in is the one AFTER hydration, not the hydration commit
+ * itself, because the widgets no longer all render in the hydration commit. The
+ * page mounts its desktop subtree from a `useSyncExternalStore` breakpoint whose
+ * server snapshot is false, so on a phone the desk never mounts at all and on a
+ * desktop it mounts on the render after hydration. Sealing in the hydration
+ * commit would have caught only the two PAGE-LEVEL sources and declared "all
+ * settled" the moment those two answered, revealing the desk over five widgets
+ * still loading. `sealAllowed` is false for the hydration render and true from
+ * the next one, and because it lives in this provider (the ancestor of every
+ * source) its effect is the last to run in whichever commit mounts them.
  */
 
 import {
@@ -42,6 +53,7 @@ import {
   useEffect,
   useRef,
   useState,
+  useSyncExternalStore,
   type ReactNode,
 } from "react";
 
@@ -88,7 +100,25 @@ interface DashboardReadyValue {
 
 const DashboardReadyContext = createContext<DashboardReadyValue | null>(null);
 
+/**
+ * False for the server render and for the hydration render, true from the
+ * render after it. Nothing subscribes because nothing changes twice: the value
+ * flips once, when React swaps the server snapshot for the client one.
+ */
+function noSubscription(): () => void {
+  return () => {};
+}
+
+function hydratedSnapshot(): boolean {
+  return true;
+}
+
+function serverSnapshot(): boolean {
+  return false;
+}
+
 export function DashboardReadyProvider({ children }: { children: ReactNode }) {
+  const sealAllowed = useSyncExternalStore(noSubscription, hydratedSnapshot, serverSnapshot);
   const registered = useRef<Set<string>>(new Set());
   const settledIds = useRef<Set<string>>(new Set());
   const sealed = useRef(false);
@@ -138,6 +168,8 @@ export function DashboardReadyProvider({ children }: { children: ReactNode }) {
   );
 
   useEffect(() => {
+    /* The hydration commit is not the whole tree. See the header. */
+    if (!sealAllowed) return;
     // Child effects have already run, so registration is complete.
     sealed.current = true;
 
@@ -158,10 +190,11 @@ export function DashboardReadyProvider({ children }: { children: ReactNode }) {
 
     const timer = setTimeout(() => reveal("timeout"), DASHBOARD_REVEAL_TIMEOUT_MS);
     return () => clearTimeout(timer);
-    // Intentionally once: `evaluate` and `reveal` are stable, and re-running
-    // this would restart the hard timeout.
+    // Intentionally once past the seal: `evaluate` and `reveal` are stable, and
+    // `sealAllowed` goes false to true exactly once and never back, so this
+    // runs its body on one commit only and the hard timeout is never restarted.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [sealAllowed]);
 
   return (
     <DashboardReadyContext.Provider value={{ register, settle, isReady, reason }}>
@@ -270,6 +303,25 @@ function DashboardSkeleton() {
         <SkeletonBar className="h-48" />
       </div>
       <span className="sr-only">Loading your dashboard…</span>
+    </div>
+  );
+}
+
+/**
+ * The skeleton on its own, for the render before the breakpoint is known.
+ *
+ * The page mounts its desktop subtree from a client-side media query, so the
+ * server and the hydration render have no desk to draw. Without this a desktop
+ * reader would get an empty content area until hydration finished, where before
+ * they got the reveal gate's skeleton straight out of the server render. It is
+ * the same skeleton, given a box to be absolute inside; on a phone this sits
+ * inside `hidden md:block`, so it is `display:none` and costs no animation, no
+ * effect and no round-trip.
+ */
+export function DashboardStandby() {
+  return (
+    <div className="relative min-h-[100dvh]">
+      <DashboardSkeleton />
     </div>
   );
 }
