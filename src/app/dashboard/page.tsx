@@ -541,13 +541,20 @@ function DashboardPageInner() {
     }
   }
 
+  /* The symbols the band needs, as a STRING, and that is the dependency.
+     `userMarketCards` is a fresh array whenever the profile object's identity
+     changes, so the effect below ran four times per cold load and sent four
+     identical /api/market-indices requests over one Slow 4G pipe. Measured on
+     a cold phone load at 88d9770f: 4. The list decides this fetch; the array's
+     identity does not. */
+  const marketSymbolKey = userMarketCards.filter((s) => s !== "SIGNALS").join(",");
+
   // Fetch market card data for user's chosen symbols
   useEffect(() => {
     async function loadMarketCards() {
-      const marketSymbols = userMarketCards.filter((s) => s !== "SIGNALS");
-      if (marketSymbols.length === 0) return;
+      if (marketSymbolKey.length === 0) return;
       try {
-        const res = await fetch(`/api/market-indices?symbols=${marketSymbols.join(",")}`);
+        const res = await fetch(`/api/market-indices?symbols=${marketSymbolKey}`);
         if (!res.ok) return;
         const data = await res.json();
         setMarketCards(data.cards ?? {});
@@ -561,7 +568,7 @@ function DashboardPageInner() {
        reader reorders their cards: the first answer is what the screen was
        waiting on. Nothing on the desktop side reads it. */
     void loadMarketCards().finally(() => setQuotesRead(true));
-  }, [userMarketCards]);
+  }, [marketSymbolKey]);
 
   // Dashboard reveal gate — page-level market cards. Settles once the effect
   // above has run to completion, including its early returns (no symbols, a
@@ -692,8 +699,13 @@ function DashboardPageInner() {
    *
    * Below md the phone draws its own screen beside the desktop layout, and
    * until now it drew a fixture. It reads the SAME state the widgets above
-   * read; not one loader on this page is rewired, moved or re-run to feed it,
-   * and the desktop tree below is byte-identical to what it was.
+   * read: no loader on this page was rewired or moved to feed it, and every
+   * widget in the desktop tree below is the component it always was.
+   *
+   * TWO THINGS ABOUT THAT TREE HAVE SINCE CHANGED, both below and both stated
+   * where they happen: it is MOUNTED on a breakpoint rather than merely hidden
+   * on one, and the market-indices effect keys off the symbol string rather
+   * than the array's identity so it runs once instead of four times.
    *
    * READINESS IS PER READ, NOT ONE FLAG, AND THAT IS THE WHOLE POINT.
    *
