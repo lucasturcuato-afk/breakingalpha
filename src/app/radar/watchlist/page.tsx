@@ -177,6 +177,28 @@ type ArticleRead =
 type ArticleReads = Record<string, ArticleRead>;
 
 const FAILED_READ: ArticleRead = { status: "failed" };
+
+/**
+ * Every read must be able to REACH a terminal state.
+ *
+ * fetchCachedArticles was bounded at 4000ms, but the two PostgREST queries and
+ * the Finnhub fallback had no client-side bound at all, so a hung connection
+ * left that entry pending forever. Because the feed count is pending while ANY
+ * read is outstanding, one stuck read pinned the header as a skeleton over a
+ * populated article list, permanently. Measured before this bound: at
+ * t=25426ms, 25 chips carried numerals and 22 articles were on screen while
+ * the count line was still a 42px skeleton with no number and no failure
+ * string.
+ *
+ * That is the mirror image of the defect this branch is about. Rendering an
+ * ANSWERABLE state as unanswered forever is the same kind of lie as rendering
+ * an unanswered one as a zero, so the fix belongs at the cause: a read that
+ * cannot finish is a read that failed, and the UI already says so honestly.
+ * 8000ms sits above the 4000ms cache read and the 6000ms fallbacks, so it only
+ * fires when a query is genuinely stuck.
+ */
+const DB_READ_TIMEOUT_MS = 8000;
+const FALLBACK_TIMEOUT_MS = 6000;
 const ready = (articles: MatchedArticle[]): ArticleRead => ({ status: "ready", articles });
 
 function stripHtml(raw: string | null | undefined): string {
@@ -303,11 +325,13 @@ async function fetchArticlesForEntry(entry: WatchlistEntry): Promise<ArticleRead
     if (dbSectors && dbSectors.length > 0) {
       sectorQuery = getSupabase().from("articles").select(baseSelect)
         .in("sector", dbSectors)
-        .order("ingested_at", { ascending: false }).limit(30);
+        .order("ingested_at", { ascending: false }).limit(30)
+        .abortSignal(AbortSignal.timeout(DB_READ_TIMEOUT_MS));
     } else {
       sectorQuery = getSupabase().from("articles").select(baseSelect)
         .ilike("sector", `%${canonicalVertical}%`)
-        .order("ingested_at", { ascending: false }).limit(30);
+        .order("ingested_at", { ascending: false }).limit(30)
+        .abortSignal(AbortSignal.timeout(DB_READ_TIMEOUT_MS));
     }
 
     const { data, error } = await sectorQuery;
@@ -346,7 +370,8 @@ async function fetchArticlesForEntry(entry: WatchlistEntry): Promise<ArticleRead
     .select(baseSelect)
     .or(orFilter)
     .order("ingested_at", { ascending: false })
-    .limit(30);
+    .limit(30)
+    .abortSignal(AbortSignal.timeout(DB_READ_TIMEOUT_MS));
 
   if (error) return FAILED_READ;
 
@@ -366,7 +391,10 @@ async function fetchArticlesForEntry(entry: WatchlistEntry): Promise<ArticleRead
 
   if (result.length === 0 && entry.type === "ticker") {
     try {
-      const res = await fetch(`/api/finnhub-news?symbol=${encodeURIComponent(entry.identifier)}`);
+      const res = await fetch(
+        `/api/finnhub-news?symbol=${encodeURIComponent(entry.identifier)}`,
+        { signal: AbortSignal.timeout(FALLBACK_TIMEOUT_MS) },
+      );
       if (res.ok) {
         const json = await res.json();
         if (Array.isArray(json.articles) && json.articles.length > 0) {
@@ -384,7 +412,10 @@ async function fetchArticlesForEntry(entry: WatchlistEntry): Promise<ArticleRead
   if (entry.type === "company" && result.length < 3) {
     try {
       const searchName = entry.display_name || entry.identifier;
-      const gdeltRes = await fetch(`/api/news-search?q=${encodeURIComponent(searchName)}`, { signal: AbortSignal.timeout(6000) });
+      const gdeltRes = await fetch(
+        `/api/news-search?q=${encodeURIComponent(searchName)}`,
+        { signal: AbortSignal.timeout(FALLBACK_TIMEOUT_MS) },
+      );
       if (gdeltRes.ok) {
         const gdeltJson = await gdeltRes.json();
         if (Array.isArray(gdeltJson.articles) && gdeltJson.articles.length > 0) {
@@ -841,6 +872,14 @@ export default function WatchlistPage() {
    * result renders the count it has, with the rail's own "Counts unavailable"
    * marker carrying the disclosure, since claiming "Articles unavailable"
    * above a list of visible articles would be its own falsehood.
+   *
+   * "Pending while any read is outstanding" was a deliberate choice and it
+   * stays. The alternative considered was a count-so-far with a disclosure,
+   * which was rejected: it invents a fourth header state and new copy to
+   * describe a symptom, when the real problem was that "outstanding" had no
+   * upper bound. Every read path is now bounded (see DB_READ_TIMEOUT_MS), so
+   * this resolves to a number or to "Articles unavailable" and can no longer
+   * sit as a skeleton forever.
    */
   const feedStatus: ArticleRead["status"] = useMemo(() => {
     /* The LIST read gates everything below it. Without these two the header
