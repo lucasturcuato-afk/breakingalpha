@@ -18,6 +18,7 @@ import {
 
 import type { CompanyIntelData, ToneDirection } from "./types";
 import { Chip, EmptyWell, RuledRow, SectionNote, SectionRule } from "./parts";
+import { FONT_DISPLAY, FONT_MONO, FONT_SANS } from "@/components/mobile/fonts";
 
 /**
  * Ink for a tone reading. ink tokens are text, base tokens are fills, and this
@@ -46,7 +47,7 @@ export const TONE_INK: Record<ToneDirection, string> = {
  * claims something the data cannot support.
  */
 
-const MONO_META = "400 10px/1 'JetBrains Mono', monospace";
+const MONO_META = `400 10px/1 ${FONT_MONO}`;
 const LABEL_MONO = {
   font: MONO_META,
   letterSpacing: "0.07em",
@@ -70,7 +71,7 @@ export function PrimerSection({ data }: { data: CompanyIntelData }) {
         <p
           style={{
             margin: 0,
-            font: "400 11.5px/1.5 Inter, sans-serif",
+            font: `400 11.5px/1.5 ${FONT_SANS}`,
             color: "var(--c-muted)",
             textWrap: "pretty",
           }}
@@ -102,12 +103,12 @@ export function PrimerSection({ data }: { data: CompanyIntelData }) {
               gap: "12px",
             }}
           >
-            <span style={{ font: "400 11.5px/1 Inter, sans-serif", color: "var(--c-secondary)" }}>
+            <span style={{ font: `400 11.5px/1 ${FONT_SANS}`, color: "var(--c-secondary)" }}>
               {row.label}
             </span>
             <span
               style={{
-                font: "500 12px/1.3 Inter, sans-serif",
+                font: `500 12px/1.3 ${FONT_SANS}`,
                 color: "var(--c-ink)",
                 textAlign: "right",
               }}
@@ -128,7 +129,7 @@ export function PrimerSection({ data }: { data: CompanyIntelData }) {
           <p
             style={{
               margin: "10px 0 0",
-              font: "400 14px/1.65 Inter, sans-serif",
+              font: `400 14px/1.65 ${FONT_SANS}`,
               color: "var(--c-body)",
               textWrap: "pretty",
             }}
@@ -160,8 +161,8 @@ export function PrimerSection({ data }: { data: CompanyIntelData }) {
                   marginTop: "6px",
                   font:
                     figure.scale === "figure"
-                      ? "700 17px/1 'Playfair Display', serif"
-                      : "500 13px/1 'JetBrains Mono', monospace",
+                      ? `700 17px/1 ${FONT_DISPLAY}`
+                      : `500 13px/1 ${FONT_MONO}`,
                   color: "var(--c-ink)",
                 }}
               >
@@ -186,7 +187,7 @@ export function PrimerSection({ data }: { data: CompanyIntelData }) {
             <p
               style={{
                 margin: 0,
-                font: "400 13.5px/1.6 Inter, sans-serif",
+                font: `400 13.5px/1.6 ${FONT_SANS}`,
                 color: "var(--c-body)",
                 textWrap: "pretty",
               }}
@@ -219,7 +220,7 @@ export function ToneSection({ data }: { data: CompanyIntelData }) {
       <>
         <div
           style={{
-            font: "700 21px/1.1 'Playfair Display', serif",
+            font: `700 21px/1.1 ${FONT_DISPLAY}`,
             letterSpacing: "-0.01em",
             color: "var(--c-secondary)",
           }}
@@ -229,7 +230,7 @@ export function ToneSection({ data }: { data: CompanyIntelData }) {
         <p
           style={{
             margin: "8px 0 0",
-            font: "400 11.5px/1.5 Inter, sans-serif",
+            font: `400 11.5px/1.5 ${FONT_SANS}`,
             color: "var(--c-secondary)",
           }}
         >
@@ -245,7 +246,7 @@ export function ToneSection({ data }: { data: CompanyIntelData }) {
       <div style={{ display: "flex", alignItems: "baseline", gap: "10px", flexWrap: "wrap" }}>
         <span
           style={{
-            font: "700 21px/1.1 'Playfair Display', serif",
+            font: `700 21px/1.1 ${FONT_DISPLAY}`,
             letterSpacing: "-0.01em",
             color: TONE_INK[tone.levelTone],
           }}
@@ -254,7 +255,7 @@ export function ToneSection({ data }: { data: CompanyIntelData }) {
         </span>
         <span
           style={{
-            font: "600 12.5px/1 'Playfair Display', serif",
+            font: `600 12.5px/1 ${FONT_DISPLAY}`,
             color: TONE_INK[tone.levelTone],
           }}
         >
@@ -265,7 +266,7 @@ export function ToneSection({ data }: { data: CompanyIntelData }) {
       <p
         style={{
           margin: "8px 0 0",
-          font: "400 11.5px/1.5 Inter, sans-serif",
+          font: `400 11.5px/1.5 ${FONT_SANS}`,
           color: "var(--c-secondary)",
         }}
       >
@@ -275,7 +276,7 @@ export function ToneSection({ data }: { data: CompanyIntelData }) {
       <p
         style={{
           margin: "12px 0 0",
-          font: "400 11.5px/1.55 Inter, sans-serif",
+          font: `400 11.5px/1.55 ${FONT_SANS}`,
           color: "var(--c-muted)",
           textWrap: "pretty",
         }}
@@ -305,7 +306,7 @@ export function ToneSection({ data }: { data: CompanyIntelData }) {
               }}
             />
             <div style={{ minWidth: 0, flex: 1 }}>
-              <p style={{ margin: 0, font: "400 13px/1.55 Inter, sans-serif", color: "var(--c-body)" }}>
+              <p style={{ margin: 0, font: `400 13px/1.55 ${FONT_SANS}`, color: "var(--c-body)" }}>
                 {row.reading}
               </p>
               <p style={{ margin: "5px 0 0", ...LABEL_MONO }}>{row.meta}</p>
@@ -415,7 +416,7 @@ export function FilingsSection({
                   border: "1px solid var(--c-border)",
                   borderRadius: "4px",
                   backgroundColor: "var(--c-surface)",
-                  font: "600 10.5px/1.4 Inter, sans-serif",
+                  font: `600 10.5px/1.4 ${FONT_SANS}`,
                   color: "var(--c-ink)",
                 }}
               >
@@ -429,7 +430,7 @@ export function FilingsSection({
                   margin: 0,
                   minWidth: 0,
                   flex: 1,
-                  font: "400 13px/1.55 Inter, sans-serif",
+                  font: `400 13px/1.55 ${FONT_SANS}`,
                   color: "var(--c-body)",
                 }}
               >
@@ -444,7 +445,7 @@ export function FilingsSection({
                   margin: 0,
                   minWidth: 0,
                   flex: 1,
-                  font: "400 italic 13px/1.55 Inter, sans-serif",
+                  font: `400 italic 13px/1.55 ${FONT_SANS}`,
                   color: "var(--c-muted)",
                 }}
               >
@@ -463,7 +464,7 @@ export function FilingsSection({
 /* ------------------------------------------------------------------ */
 
 const GRID = "1.35fr 1fr 1fr";
-const HEAD_FONT = "600 10px/1 Inter, sans-serif";
+const HEAD_FONT = `600 10px/1 ${FONT_SANS}`;
 
 /**
  * The missing-cell mark, an EN dash. Named rather than inlined so the one place
@@ -610,8 +611,8 @@ export function FinancialsSection({
                       style={{
                         padding: row.derived ? "10px 12px 10px 22px" : "10px 12px",
                         font: row.derived
-                          ? "400 12px/1.3 Inter, sans-serif"
-                          : "400 12.5px/1.3 Inter, sans-serif",
+                          ? `400 12px/1.3 ${FONT_SANS}`
+                          : `400 12.5px/1.3 ${FONT_SANS}`,
                         color: row.derived ? "var(--c-secondary)" : "var(--c-ink)",
                       }}
                     >
@@ -623,7 +624,7 @@ export function FinancialsSection({
                         style={{
                           padding: i === 0 ? "10px 8px" : "10px 12px 10px 8px",
                           textAlign: "right",
-                          font: "400 12px/1.3 'JetBrains Mono', monospace",
+                          font: `400 12px/1.3 ${FONT_MONO}`,
                           color: row.derived ? "var(--c-secondary)" : "var(--c-body)",
                         }}
                       >
@@ -712,12 +713,12 @@ export function InsiderSection({
                   gap: "10px",
                 }}
               >
-                <span style={{ font: "600 13px/1.3 Inter, sans-serif", color: "var(--c-ink)" }}>
+                <span style={{ font: `600 13px/1.3 ${FONT_SANS}`, color: "var(--c-ink)" }}>
                   {row.name}
                 </span>
                 <span style={LABEL_MONO}>{row.date}</span>
               </div>
-              <div style={{ font: "400 11px/1.4 Inter, sans-serif", color: "var(--c-secondary)" }}>
+              <div style={{ font: `400 11px/1.4 ${FONT_SANS}`, color: "var(--c-secondary)" }}>
                 {row.role}
               </div>
               <div
@@ -781,7 +782,7 @@ function GroupHead({
       <div
         style={{
           marginTop: marginTop ? `${marginTop}px` : undefined,
-          font: "600 11px/1.3 Inter, sans-serif",
+          font: `600 11px/1.3 ${FONT_SANS}`,
           color: "var(--c-ink)",
         }}
       >
@@ -790,7 +791,7 @@ function GroupHead({
       <p
         style={{
           margin: "5px 0 0",
-          font: "400 11px/1.5 Inter, sans-serif",
+          font: `400 11px/1.5 ${FONT_SANS}`,
           color: "var(--c-muted)",
           textWrap: "pretty",
         }}
@@ -825,7 +826,7 @@ function CompactRows({
             style={{
               flex: "none",
               width: "60px",
-              font: "400 10px/1.4 'JetBrains Mono', monospace",
+              font: `400 10px/1.4 ${FONT_MONO}`,
               letterSpacing: "0.07em",
               color: "var(--c-muted)",
             }}
@@ -835,13 +836,13 @@ function CompactRows({
             {row.code}
           </span>
           <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ font: "500 12.5px/1.3 Inter, sans-serif", color: "var(--c-ink)" }}>
+            <div style={{ font: `500 12.5px/1.3 ${FONT_SANS}`, color: "var(--c-ink)" }}>
               {row.name}
             </div>
             <div
               style={{
                 marginTop: "3px",
-                font: "400 11px/1.4 Inter, sans-serif",
+                font: `400 11px/1.4 ${FONT_SANS}`,
                 color: "var(--c-secondary)",
               }}
             >
@@ -861,7 +862,7 @@ function Fact({ label, value, mono }: { label: string; value: string; mono: bool
       <div
         style={{
           marginTop: "5px",
-          font: mono ? "500 12px/1 'JetBrains Mono', monospace" : "500 12px/1 Inter, sans-serif",
+          font: mono ? `500 12px/1 ${FONT_MONO}` : `500 12px/1 ${FONT_SANS}`,
           color: "var(--c-ink)",
         }}
       >
