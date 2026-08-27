@@ -44,7 +44,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { createBrowserClient } from "@supabase/ssr";
-import { MemoModal } from "@/components/memo/MemoModal";
+import { MemoModal } from "@/components/memo/MemoModalLazy";
 import { withCompanyLine } from "@/lib/memo-company-line";
 import { WatchlistAddInput, type AddType } from "@/components/watchlist/WatchlistAddInput";
 import { buildArticleOrFilter } from "@/lib/watchlist-utils";

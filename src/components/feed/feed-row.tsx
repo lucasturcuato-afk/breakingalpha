@@ -9,7 +9,7 @@ import { memo, useMemo, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { SentimentPill, sentimentToTone } from "@/components/ui/sentiment-pill";
 import { Sparkles, Plus, MessageSquare, ExternalLink, Bookmark, BookmarkCheck } from "lucide-react";
-import { MemoModal } from "@/components/memo/MemoModal";
+import { MemoModal } from "@/components/memo/MemoModalLazy";
 import { CompletenessBadge, SignalScore, SourceCredibilityBadge } from "@/lib/article-signal";
 import type { StoryData } from "@/components/dashboard";
 
