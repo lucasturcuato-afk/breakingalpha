@@ -486,6 +486,9 @@ export default function WatchlistPage() {
   const [prices, setPrices] = useState<Record<string, WatchlistPrice>>({});
   const [articleReads, setArticleReads] = useState<ArticleReads>({});
   const [loading, setLoading] = useState(true);
+  /** The LIST read itself faulted. Outranks "nothing tracked yet", which is a
+   *  statement about the reader's account and would be false here. */
+  const [listFailed, setListFailed] = useState(false);
   const [addType, setAddType] = useState<AddType>("ticker");
   const [addError, setAddError] = useState("");
   const [selectedIdentifier, setSelectedIdentifier] = useState<string | null>(null);
@@ -522,10 +525,14 @@ export default function WatchlistPage() {
     for (const e of entries) seeded[e.identifier] = { status: "pending" };
     setWatchlist(entries);
     setArticleReads(seeded);
+    setListFailed(false);
     setLoading(false);
     // A selection that is no longer tracked has no read to look up.
     setSelectedIdentifier((sel) =>
       sel !== null && entries.some((e) => e.identifier === sel) ? sel : null,
+    );
+    setMemoEntry((m) =>
+      m !== null && entries.some((e) => e.identifier === m.identifier) ? m : null,
     );
   }, []);
 
@@ -554,6 +561,7 @@ export default function WatchlistPage() {
       const res = await fetch("/api/watchlist");
       if (!res.ok) {
         console.error("Watchlist fetch failed:", res.status);
+        setListFailed(true);
         return;
       }
       const { entries } = await res.json();
@@ -570,24 +578,41 @@ export default function WatchlistPage() {
         (e: WatchlistEntry) => e.type === "sector" && STALE_TO_CANONICAL[e.identifier.toUpperCase()]
       );
       if (staleSectors.length > 0) {
+        /* A migration write that fails must not take the list down with it.
+         * Before: an unhandled rejection here fell through to the catch below,
+         * which swallowed it while the finally still ran setLoading(false), so
+         * the whole watchlist rendered "Nothing tracked yet". Any sector in
+         * STALE_TO_CANONICAL was enough to trigger it. Each write now swallows
+         * its own failure, so the re-read below still runs and still tells the
+         * truth about what is actually stored. */
         await Promise.all(
           staleSectors.map(async (e: WatchlistEntry) => {
             const canonical = STALE_TO_CANONICAL[e.identifier.toUpperCase()];
-            await fetch("/api/watchlist", {
-              method: "DELETE",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ id: e.id }),
-            });
-            await fetch("/api/watchlist", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ identifier: canonical, type: "sector" }),
-            });
+            try {
+              await fetch("/api/watchlist", {
+                method: "DELETE",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ id: e.id }),
+              });
+              await fetch("/api/watchlist", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ identifier: canonical, type: "sector" }),
+              });
+            } catch (err) {
+              console.error("Stale sector migration failed:", e.identifier, err);
+            }
           })
         );
         // Re-fetch after migration
         const res2 = await fetch("/api/watchlist");
-        if (!res2.ok) return;
+        if (!res2.ok) {
+          console.error("Watchlist re-read after migration failed:", res2.status);
+          /* The pre-migration snapshot is known stale here, since rows were
+           * just deleted, so there is nothing honest left to render. */
+          setListFailed(true);
+          return;
+        }
         const { entries: entries2 } = await res2.json();
         const seen2 = new Set<string>();
         const migratedEntries = (entries2 || []).filter((e: WatchlistEntry) => {
@@ -626,6 +651,7 @@ export default function WatchlistPage() {
       fetchPrices(sortedEntries);
     } catch (e) {
       console.error("Failed to refresh watchlist:", e);
+      setListFailed(true);
     } finally {
       setLoading(false);
     }
@@ -773,6 +799,13 @@ export default function WatchlistPage() {
     : null;
 
   /**
+   * The tracked count is not known until the LIST read lands, and 0 is not a
+   * stand-in for "not yet". Omit the numeral rather than invent one.
+   */
+  const listCountLabel = (noun: string) =>
+    loading || listFailed ? noun : `${noun} (${watchlist.length})`;
+
+  /**
    * Articles from READY reads only, seeded for every tracked identifier so
    * consumers never need a fallback. A pending or failed entry contributes an
    * empty list here and says so through its own read state elsewhere; it is
@@ -798,13 +831,19 @@ export default function WatchlistPage() {
    * above a list of visible articles would be its own falsehood.
    */
   const feedStatus: ArticleRead["status"] = useMemo(() => {
+    /* The LIST read gates everything below it. Without these two the header
+       rendered "0 articles" on a failed list read and during the loading
+       window, because an empty watchlist trivially satisfies "every read
+       landed". Same false zero, one level up. */
+    if (listFailed) return "failed";
+    if (loading) return "pending";
     if (selectedIdentifier) return articleReads[selectedIdentifier].status;
     const reads = watchlist.map((e) => articleReads[e.identifier]);
     if (reads.length === 0) return "ready";
     if (reads.some((r) => r.status === "pending")) return "pending";
     if (reads.every((r) => r.status === "failed")) return "failed";
     return "ready";
-  }, [selectedIdentifier, watchlist, articleReads]);
+  }, [listFailed, loading, selectedIdentifier, watchlist, articleReads]);
 
   /** The gallery asserts quiet, so any failure outranks any pending. */
   const galleryReadiness: GalleryReadiness = useMemo(() => {
@@ -1114,13 +1153,22 @@ export default function WatchlistPage() {
           {/* Tracking list */}
           <div>
             <p className="font-sans text-[10px] text-text-muted mb-2.5">
-              Tracking ({watchlist.length})
+              {listCountLabel("Tracking")}
             </p>
 
             {loading ? (
               <div className="space-y-2">
                 {[1, 2, 3].map((i) => <Skeleton key={i} className="h-12 rounded-xl" />)}
               </div>
+            ) : listFailed ? (
+              /* Outranks the empty branch below. "Nothing tracked yet" is a
+                 statement about the reader's account, and the account is not
+                 what failed. */
+              <EmptyState
+                icon={<Star size={32} />}
+                title="Watchlist unavailable"
+                description="The list could not be read."
+              />
             ) : watchlist.length === 0 ? (
               <EmptyState
                 icon={<Star size={32} />}
@@ -1362,6 +1410,15 @@ export default function WatchlistPage() {
               /* Read state is checked FIRST. A read that has not finished, or
                  that faulted, is never an empty answer, and every branch below
                  this point is an answer. */
+              if (loading) {
+                /* The LIST read has not landed. "Your feed is empty" below is
+                   an answer, and there is no answer yet. */
+                return <FeedReadSkeleton />;
+              }
+              if (listFailed) {
+                // The left column already names this. One statement, not two.
+                return null;
+              }
               if (feedStatus === "pending") {
                 return <FeedReadSkeleton />;
               }
@@ -1531,7 +1588,7 @@ export default function WatchlistPage() {
             }}
           >
             <Star size={14} />
-            Watchlist ({watchlist.length})
+            {listCountLabel("Watchlist")}
           </button>
         </div>
       )}
@@ -1557,7 +1614,7 @@ export default function WatchlistPage() {
         }}>
           <div style={{ padding: '12px 16px 8px', borderBottom: '1px solid var(--border-base)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
             <span style={{ fontFamily: 'Inter, sans-serif', fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>
-              Watchlist ({watchlist.length})
+              {listCountLabel("Watchlist")}
             </span>
             <button
               type="button"
@@ -1582,6 +1639,12 @@ export default function WatchlistPage() {
                 <div className="space-y-2">
                   {[1, 2, 3].map((i) => <Skeleton key={i} className="h-12 rounded-xl" />)}
                 </div>
+              ) : listFailed ? (
+                <EmptyState
+                  icon={<Star size={32} />}
+                  title="Watchlist unavailable"
+                  description="The list could not be read."
+                />
               ) : watchlist.length === 0 ? (
                 <EmptyState
                   icon={<Star size={32} />}
