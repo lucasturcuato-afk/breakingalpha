@@ -104,7 +104,7 @@ async function waitForUntracked(page: Page, path: string) {
    SPEC 1. The gate, on every surface that offers a commitment.
    ──────────────────────────────────────────────────────────────────────── */
 
-/** The surfaces that hold the gate on this branch. */
+/** The surfaces that carry the gate on this branch. */
 const GATED_SURFACES = [
   { path: "/morning-brief", name: "morning brief" },
   { path: "/evening-wrap", name: "evening wrap" },
