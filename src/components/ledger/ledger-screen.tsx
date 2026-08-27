@@ -361,9 +361,9 @@ export function LedgerScreen({
           against a div, so the band lands in the "no design counterpart"
           list. That was already true of the tail row it replaced. An
           unmatched element has its properties compared against NOTHING, so
-          the band silently drops the design's `border-radius: 9px` and its
-          `1px solid var(--c-ink)` border even though radius is one of the
-          nine properties the tool diffs. The deviation is invisible because
+          the band silently drops the design's 9px corner radius and its
+          hairline --c-ink border even though radius is one of the nine
+          properties the tool diffs. The deviation is invisible because
           of a hole in the comparison, not because of a lenient pairing, and
           it is recorded here because the tool cannot record it. */}
       <div
