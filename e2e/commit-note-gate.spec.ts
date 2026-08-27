@@ -12,15 +12,17 @@
  * exercise the happy path has to say so by installing its own handler ON TOP,
  * which is a visible line in the test rather than a silent default.
  *
- * WHAT IS EXPECTED TO FAIL, AND WHY IT IS WRITTEN THAT WAY. Two things on this
- * branch are known-broken and are declared with `test.fail()`, which passes
- * while they are broken and turns RED the day they are fixed. That is the
- * point: the suite tells you when to delete the declaration.
+ * WHAT IS EXPECTED TO FAIL, AND WHY IT IS WRITTEN THAT WAY. One thing on this
+ * branch is known-broken and is declared with `test.fail()`, which passes
+ * while it is broken and turns RED the day it is fixed. That is the point: the
+ * suite tells you when to delete the declaration.
  *
- *   1. /radar/calls is ungated. src/app/radar/calls/page.tsx is under the
- *      /radar sprint fence, so this branch may not wire it. The exact diff is
- *      in the PR body marked NOT APPLIED.
- *   2. A 200 with no row id flips both desk surfaces to tracked. The sheet
+ * `test.fail()` is used ONLY where the test fails on an ASSERTION. Playwright
+ * does not absorb a TIMEOUT under an expected-failure, so a case that hangs on
+ * a missing element is written as an assertion about today's state instead.
+ * See the /radar/calls describe block below.
+ *
+ *   1. A 200 with no row id flips both desk surfaces to tracked. The sheet
  *      refuses it (commit-sheet.tsx:145-150, "A 200 with no row id is not an
  *      acknowledgement."). The desk does not. Same class of inconsistency this
  *      ruling is about, surfaced rather than quietly fixed inside it.
@@ -102,33 +104,17 @@ async function waitForUntracked(page: Page, path: string) {
    SPEC 1. The gate, on every surface that offers a commitment.
    ──────────────────────────────────────────────────────────────────────── */
 
-const SURFACES = [
-  {
-    path: "/morning-brief",
-    name: "morning brief",
-    /** Wired on this branch. */
-    gated: true,
-  },
-  {
-    path: "/evening-wrap",
-    name: "evening wrap",
-    gated: true,
-  },
-  {
-    path: "/radar/calls",
-    name: "radar calls",
-    /* NOT wired: the /radar sprint fence. The diff is in the PR body. Flip
-       this to true and delete the test.fail() below when it lands. */
-    gated: false,
-  },
+/** The surfaces that hold the gate on this branch. */
+const GATED_SURFACES = [
+  { path: "/morning-brief", name: "morning brief" },
+  { path: "/evening-wrap", name: "evening wrap" },
 ] as const;
 
-for (const surface of SURFACES) {
+for (const surface of GATED_SURFACES) {
   test.describe(`commit-note gate: ${surface.name}`, () => {
     test(`${surface.name}: the note field is offered above the commit control`, async ({
       page,
     }) => {
-      if (!surface.gated) test.fail(true, "ungated: /radar sprint fence, see PR body");
       await waitForUntracked(page, surface.path);
       const { field, hint, button } = firstUntracked(page);
 
@@ -149,7 +135,6 @@ for (const surface of SURFACES) {
     });
 
     test(`${surface.name}: eleven characters do not unlock the commit`, async ({ page }) => {
-      if (!surface.gated) test.fail(true, "ungated: /radar sprint fence, see PR body");
       await waitForUntracked(page, surface.path);
       const { field, button } = firstUntracked(page);
 
@@ -163,7 +148,6 @@ for (const surface of SURFACES) {
     });
 
     test(`${surface.name}: twelve characters unlock it`, async ({ page }) => {
-      if (!surface.gated) test.fail(true, "ungated: /radar sprint fence, see PR body");
       await waitForUntracked(page, surface.path);
       const { field, hint, button } = firstUntracked(page);
 
@@ -176,7 +160,6 @@ for (const surface of SURFACES) {
     test(`${surface.name}: padding is trimmed before counting, both ways`, async ({
       page,
     }) => {
-      if (!surface.gated) test.fail(true, "ungated: /radar sprint fence, see PR body");
       await waitForUntracked(page, surface.path);
       const { field, button } = firstUntracked(page);
 
@@ -193,6 +176,40 @@ for (const surface of SURFACES) {
     });
   });
 }
+
+/**
+ * The third surface, stated rather than skipped.
+ *
+ * src/app/radar/calls/page.tsx is under the /radar sprint fence, so this
+ * branch may not wire it and it keeps today's ungated footer. The exact diff
+ * is in PR #694's body marked NOT APPLIED.
+ *
+ * This is written as an assertion about TODAY, not as an expected-failure of
+ * the gate. Two reasons. It is deterministic and fast, where `test.fail()` on
+ * a field that does not exist makes every locator wait out the full test
+ * timeout, and Playwright does not absorb a TIMEOUT under an expected-failure
+ * the way it absorbs an assertion failure: those cases were reported as hard
+ * failures, which is worse than useless in a suite whose whole job is to
+ * distinguish deliberate reds from real ones.
+ *
+ * It still tells you the day the proposal lands: wiring the page makes the
+ * field appear and this test goes red, which is the signal to delete it and
+ * move /radar/calls into GATED_SURFACES above.
+ */
+test.describe("commit-note gate: radar calls", () => {
+  test("radar calls is still ungated, and that is the sprint fence", async ({ page }) => {
+    await waitForUntracked(page, "/radar/calls");
+    const { card, field, button } = firstUntracked(page);
+
+    await expect(card).toBeVisible();
+    // No field, so no gate. When this count becomes 1, wire the surface in.
+    await expect(field).toHaveCount(0);
+    // And the button is open with no reasoning written, which is the state
+    // ruling 11 exists to end.
+    await expect(button).toBeEnabled();
+    await expect(button).toHaveText("Track this call");
+  });
+});
 
 /* ────────────────────────────────────────────────────────────────────────
    SPEC 3. The deep link. WRITTEN TO GO RED.
