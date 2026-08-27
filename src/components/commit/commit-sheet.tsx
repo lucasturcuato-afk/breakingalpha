@@ -50,7 +50,7 @@ import styles from "./commit.module.css";
  */
 
 /* The note gate. Defined in ./commit-target, which is pure and imports
-   nothing, because desktop /radar/calls and both briefs now hold the same
+   nothing, because desktop /radar/calls and both briefs now ask the same
    line and must not pull this client component in to read it. Re-exported so
    index.ts and every existing importer keeps working against ONE literal. */
 export { COMMIT_NOTE_MIN };

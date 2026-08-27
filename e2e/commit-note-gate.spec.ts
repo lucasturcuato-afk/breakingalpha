@@ -199,7 +199,7 @@ for (const surface of SURFACES) {
    Mechanism: the scroll effect at page.tsx:266-272 depends on
    [adoptCallId, briefCalls], but the whole card tree is gated on
    `{loading ? null : (` at :526. The effect fires against a tree that has no
-   call-<id> node yet, getElementById returns null, and nothing ever re-runs
+   call-<id> node yet, getElementById gives back null, and nothing re-runs
    it. Fix is one line: add `loading` to the dependency array and early-return
    while it is true. That diff is in the PR body, NOT APPLIED (sprint fence).
 
@@ -237,7 +237,7 @@ test.describe("deep link from the brief email", () => {
    SPEC 4. A failed write leaves the sentence on screen.
 
    The note lives in the CALLER's state keyed by call id, never inside
-   UntrackedFooter, precisely so this holds. README: "A call that silently
+   UntrackedFooter, precisely so this survives. README: "A call that silently
    fails to save is the worst possible bug in this product." Losing the one
    sentence the reader wrote is most of the way there.
    ──────────────────────────────────────────────────────────────────────── */

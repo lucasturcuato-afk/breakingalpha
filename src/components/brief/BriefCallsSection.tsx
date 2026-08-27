@@ -426,7 +426,7 @@ export default function BriefCallsSection({
         body: JSON.stringify({
           call_id: call.id,
           // Trimmed, because that is the form the column checks and the route
-          // stores. The gate the button holds counts the trimmed length too,
+          // stores. The gate on the button counts the trimmed length too,
           // so the two cannot disagree about what was written.
           commit_note: note.trim(),
           ...adoptWindowRequest(window),

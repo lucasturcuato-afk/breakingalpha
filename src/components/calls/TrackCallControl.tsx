@@ -289,7 +289,7 @@ export function CallCommitFooter({
    * So an unwired caller keeps today's ungated footer, unchanged, and the
    * exact diff that wires it is in this PR's body marked NOT APPLIED. When
    * that lands, delete both `?` and this paragraph. Until then
-   * e2e/commit-note-gate.spec.ts holds the /radar/calls case as a declared
+   * e2e/commit-note-gate.spec.ts keeps the /radar/calls case as a declared
    * expected-failure, so the day it starts passing the suite says so.
    */
   note?: string;

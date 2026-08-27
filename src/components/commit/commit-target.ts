@@ -45,7 +45,7 @@ export interface CommitTarget {
  * Floor on a stored note, in characters, counted AFTER trimming.
  *
  * The note is part of what adopting a call means, not a phone enrichment, so
- * every surface that writes a row holds the same line: the commit sheet, the
+ * every surface that writes a row asks the same thing: the commit sheet, the
  * morning brief, the evening wrap, and desktop /radar/calls. Three surfaces
  * disagreeing about what a commitment requires is the defect ruling 11 closes,
  * and one literal in one pure module is what stops them drifting apart again.
@@ -72,7 +72,7 @@ export const COMMIT_NOTE_MIN = 12;
  * that must not reach the browser bundle, and the sheet is a client component
  * the route must not pull in. Two copies of either number would let a field
  * disagree with the column behind it: the reader would lose the tail of their
- * own sentence, or be handed a bar no other screen holds, with nothing saying
+ * own sentence, or be handed a bar no other screen sets, with nothing saying
  * so.
  */
 export const COMMIT_NOTE_MAX = 2000;
