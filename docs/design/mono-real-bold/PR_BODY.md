@@ -2,18 +2,20 @@
 
 ## The design consequence, first
 
-**149 mono elements get visibly lighter. 33 get marginally heavier. 1379 at w400 are pixel-identical.**
+**759 mono elements get visibly lighter. 122 get marginally heavier. Nothing else moves at all.**
 
 This is a **lightening**, not a tightening. That is the opposite of what "add a heavier weight" sounds like, and it is the whole point of the change.
 
 | moving | count | ink change | what a reader sees |
 |---|---:|---:|---|
-| 700 and 800 coming down to 600 | 66 | **minus ~20%** | clearly lighter |
-| already-600 declarations, **zero source edits** | 83 | **minus ~20%** | clearly lighter |
-| 500 going up to 600 | 33 | +14.4% | one honest weight step |
+| 700 and 800 coming down to 600 | 234 | **minus ~20%** | clearly lighter |
+| already declared 600, **zero source edits** | 525 | **minus ~20%** | clearly lighter |
+| 500 going up to 600 | 122 | +14.4% | one honest weight step |
 | w400 | 1379 | 0% | byte-identical, verified |
 
-The 83 in row two are the trap. **"Already 600" did not mean "untouched."** Those 83 rendered as the same faux bold as everything else, because 600 had no real face to resolve to. The moment 600 becomes real, they lighten by the same ~20% with no line of source changing.
+Row two is the trap. **"Already 600" did not mean "untouched."** Those 525 elements rendered as the same faux bold as everything else, because 600 had no real face to resolve to. The moment 600 becomes real they lighten by the same ~20%, with no line of source changing.
+
+Counts are elements, from an independent matched-pair sweep of 34 routes in both themes (35,653 matched pairs). In declaration terms the change is 49 edited declarations plus 41 already-600 declarations that shift with no edit.
 
 ## Why the bold mono was wrong
 
@@ -21,11 +23,25 @@ IBM Plex Mono loaded only 400 and 500. CSS font matching therefore resolved **60
 
 Measured in the DOM against the running production build, signed in, isolated integer-aligned captures at DPR 3, md5 of the captured pixels:
 
+The direct test is `font-synthesis-weight: none`. A **synthesised** face collapses onto the real face it matched; a **genuine** face does not move. Same string, 17px, isolated, DPR 3:
+
 ```
-BEFORE   w600  md5=8cd68773933d0ecf1cc947a464c7756a
-         w700  md5=8cd68773933d0ecf1cc947a464c7756a
-         w800  md5=8cd68773933d0ecf1cc947a464c7756a   <- byte for byte identical, 10px / 12px / 17px
+origin/main, font-synthesis-weight: none, 17px
+  w400  df6b1b42  ink 1033270
+  w500  10408341  ink 1326356
+  w600  10408341  ink 1326356   <- collapsed onto w500
+  w700  10408341  ink 1326356   <- collapsed onto w500
+  w800  10408341  ink 1326356   <- collapsed onto w500
+
+this branch, font-synthesis-weight: none, 17px
+  w400  df6b1b42  ink 1033270
+  w500  df6b1b42  ink 1033270   (no 500 face; matches down to the real 400)
+  w600  f50728f9  ink 1518352   <- does not move. real face.
+  w700  f50728f9  ink 1518352
+  w800  f50728f9  ink 1518352
 ```
+
+That reads synthesis directly rather than inferring it from a render changing. With synthesis left on, the three heavy weights on `origin/main` are byte-identical to each other at 10px, 12px and 17px.
 
 That synthesised face is **+44.6% ink over the 500 face** (I measure +44.4% / +43.8% / +42.3% at 10 / 12 / 17px). A genuine 700 is only +28.8%. **The synthetic bold was heavier than a real bold.**
 
@@ -74,7 +90,7 @@ If you would rather bold mono stayed closer to what ships today:
 +  weight: ["400", "700"],
 ```
 
-Cost is 10,128 B versus 600's 10,120 B, an **8 byte** difference. On a common baseline of the 500 face: today's synthetic bold is **+44.6%** ink, a real 700 is **+28.8%**, a real 600 is **+14.4%**. Both real options are lighter than what ships now; 700 is the closer of the two. That is the entire trade. 600 was the ruling and 600 is what is built here.
+Cost is 10,128 B versus 600's 10,120 B, an **8 byte** difference. On a common baseline of the 500 face: today's synthetic bold is **+44.6%** ink (measured), a real 700 is **+28.8%** (**inferred, not measured**: neither build emits a 700 face, so nobody has rendered one), a real 600 is **+14.4%** (measured). Both real options are lighter than what ships now; 700 is the closer of the two. That is the entire trade. 600 was the ruling and 600 is what is built here.
 
 ## No reflow
 
@@ -159,7 +175,17 @@ landing.module.css:345           main=font-size: 9.5px  branch=font-size: 9.5px
 eyebrow.tsx:35                   main=text-[9.5px]      branch=text-[9.5px]
 ```
 
-The 10 `all-caps` entries are warnings on pre-existing `uppercase` classes, same attribution effect.
+### The 10 `all-caps` warnings are a linter defect, not a judgement call
+
+Not mine to fix, logged here because this PR turned up the ground for it. The rule at `scripts/design-lint.mjs:395` is:
+
+```js
+if (UPPERCASE.test(raw) && !/mono|ledger|eyebrow/i.test(raw)) {
+  add('WARN', file, n, 'all-caps', 'capitals survive only in the monospace ledger line');
+}
+```
+
+All ten flagged lines carry `font-data`, which **is** the mono class: `globals.css:146` defines `.font-data { font-family: var(--font-plex-mono), monospace }`. So all ten already satisfy the rule's own stated intent, and the exemption regex simply does not recognise `font-data` as meaning mono. All ten were uppercase on `main`, unchanged by this PR. Worth its own issue against the linter.
 
 ## Handoff to X4: JetBrains Mono is not loaded
 
@@ -174,7 +200,7 @@ The 10 `all-caps` entries are warnings on pre-existing `uppercase` classes, same
 | gate | result |
 |---|---|
 | `tsc --noEmit` | **0 errors** |
-| `eslint` | **0 errors** (78 pre-existing warnings) |
+| `eslint` | **0 errors**, pre-existing warnings only, unchanged count on both refs (I measure 78, an independent run measured 81; zero new either way) |
 | `next build` | **success** |
 | `design:lint --since origin/main` | 5 errors, all proven line-attribution on unchanged sizes (above) |
 
@@ -187,12 +213,12 @@ Mono element sweep over 34 shipped routes, before and after with the identical s
 | IBM Plex Mono w400 | 363 | 404 |
 | IBM Plex Mono w500 | 21 | **0** |
 | IBM Plex Mono w600 | 70 | **190** |
-| IBM Plex Mono w700 | 51 | **1** |
+| IBM Plex Mono w700 | 51 | **2** |
 | IBM Plex Mono w800 | 15 | **0** |
 | JetBrains Mono w400 (system mono) | 721 | 721 |
 | JetBrains Mono w500 (system mono) | 190 | 190 |
 
-500, 700 and 800 are gone from the rendered mono surface; the single surviving w700 is a fenced declaration. The JetBrains counts of **721 / 190 reproduce recon's baseline exactly** in both runs, and w700 = 51 and w800 = 15 reproduce recon's before-state exactly, which cross-validates the harness.
+500, 700 and 800 are gone from the rendered mono surface. The two surviving w700 sites are both fenced: `radar/calls/page.tsx:813` and a 13px `font-bold` fence on `/preview/radar`. The JetBrains counts of **721 / 190 reproduce recon's baseline exactly** in both runs, and w700 = 51 and w800 = 15 reproduce recon's before-state exactly, which cross-validates the harness.
 
 Caveat, stated rather than hidden: per-route counts drift run to run because several routes render async data and the sweep settles on a fixed timer, so my absolute IBM Plex Mono totals are lower than recon's 1561 (route coverage, not a behaviour difference). Every load-bearing claim in this PR rests on the deterministic evidence instead: `document.fonts`, the md5 captures, the emitted byte totals, and the static token diff.
 
