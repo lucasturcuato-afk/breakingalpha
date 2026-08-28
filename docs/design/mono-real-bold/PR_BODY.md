@@ -224,7 +224,10 @@ Caveat, stated rather than hidden: per-route counts drift run to run because sev
 
 ## Screenshots
 
-`docs/design/mono-real-bold/`, 390x844, both themes, before and after for dashboard, morning-brief and ledger, plus:
+`docs/design/mono-real-bold/`, three comparison sheets plus the ten isolated `ticker-*` weight captures:
 
 - `comparison-17px.png` the weight ladder, before and after, with the faux bold called out
-- `comparison-morning-brief.png` the ticker strip and brief stat row at 2.4x, where the lightening is legible
+- `comparison-morning-brief.png` the Morning Brief ticker strip and brief stat row at 2.4x, light theme, where the lightening is legible
+- `comparison-dashboard-market-band.png` the dashboard MARKET band before and after, light and dark, at native capture pixels, where the same lightening lands on the largest mono in the app
+
+**Twelve full-page 390x844 plates were removed from this directory in a later commit on this branch.** They were captured signed in and carried account data on a public repository: the greeting and avatar, a personal record row, and the personalization chip row. Four of them were also mislabelled, rendering the Morning Brief reader rather than a ledger. The three sheets above carry the same claim on the same surfaces and carry no account data. See `docs/design/mono-real-bold/README.md` for what came out, what it published, and why the blobs are being left reachable in history by an explicit decision.
