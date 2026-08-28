@@ -55,6 +55,7 @@ import {
   CallCommitFooter,
   CallsTrustLine,
   hasCommitFooter,
+  noteLandedOnRow,
 } from "@/components/calls/TrackCallControl";
 import {
   findNextToWatch,
@@ -163,6 +164,12 @@ export default function BriefCallsSection({
   // all, because offering a button that can only 401 is worse than omitting it.
   const [tracked, setTracked] = useState<Map<string, TrackedClaim> | null>(null);
   const [windowFor, setWindowFor] = useState<Record<string, AdoptWindow>>({});
+  /** The reader's note in progress, per call. It lives HERE and not in the
+   *  footer so a failed adopt cannot take the sentence down with it: revert()
+   *  below clears the optimistic row and the stamp, and deliberately leaves
+   *  this record alone. Only a write that CONFIRMS this note reached the row
+   *  deletes an entry; see noteLandedOnRow at the success path. */
+  const [noteFor, setNoteFor] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [trackError, setTrackError] = useState<Record<string, string>>({});
   /** Calls committed in THIS session. Drives the one-time stamp only; it is
@@ -351,6 +358,7 @@ export default function BriefCallsSection({
     call: BriefCall,
     window: AdoptWindow,
     offeredWindow: AdoptWindow,
+    note: string,
   ) => {
     setBusy(call.id);
     // Read provenance at the TAP, not after the round trip: every elapsed-time
@@ -390,6 +398,11 @@ export default function BriefCallsSection({
       return next;
     });
 
+    /* Reverting removes the optimistic row and the stamp. It does NOT touch
+       noteFor: the sentence the reader wrote is the one thing here that cannot
+       be reconstructed, and a failed write is exactly when they need it still
+       on screen to retry from. Only a CONFIRMED insert below clears it, which
+       is narrower than success; see noteLandedOnRow for why. */
     const revert = (message: string) => {
       setTracked((prev) => {
         if (!prev) return prev;
@@ -413,7 +426,14 @@ export default function BriefCallsSection({
         // adoptWindowRequest sends window_days for an off-bucket span, which
         // the route already accepts (resolveAdoptWindow's explicitDays). No
         // API change was needed for variable horizons.
-        body: JSON.stringify({ call_id: call.id, ...adoptWindowRequest(window) }),
+        body: JSON.stringify({
+          call_id: call.id,
+          // Trimmed, because that is the form the column checks and the route
+          // stores. The gate on the button counts the trimmed length too,
+          // so the two cannot disagree about what was written.
+          commit_note: note.trim(),
+          ...adoptWindowRequest(window),
+        }),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -432,6 +452,30 @@ export default function BriefCallsSection({
         return next;
       });
       setStamped((prev) => new Set(prev).add(call.id));
+      /* CLEAR THE DRAFT ONLY WHEN THIS READER'S OWN TEXT LANDED.
+         Anything less specific loses a sentence. The route writes an incoming
+         note to an existing row only when that row has none
+         (adopt/route.ts:111), so on a call that was already adopted WITH a
+         note the text is silently discarded, and clearing here would delete
+         the reader's only copy of it.
+         `noteWritten` cannot be used to tell those apart. On the
+         already-adopted branch it is `Boolean(existing.commit_note)`
+         (route.ts:125), which is true when an OLD note exists: it answers
+         "this row carries a note", not "your note was written". Only on the
+         INSERT path is it read back off the row this request created
+         (route.ts:208), and there it does mean the caller's note landed.
+         So: fresh insert, note confirmed on the inserted row, clear. Every
+         other shape keeps the draft. A stale draft is a nuisance; a vanished
+         sentence is the defect this PR exists to close. Making the discard
+         case knowable needs a route change, which is proposed in the PR body
+         rather than taken here, because that route is shared with mobile. */
+      if (noteLandedOnRow(json)) {
+        setNoteFor((prev) => {
+          const next = { ...prev };
+          delete next[call.id];
+          return next;
+        });
+      }
       // Peripheral confirmation: a brief pulse on the Radar nav row. Not a
       // toast, not a banner, and never a navigation.
       notifyRadarLanded();
@@ -447,6 +491,10 @@ export default function BriefCallsSection({
           // The real span, so a 13-day commitment is not filed as a week.
           window_days: adoptWindowRequest(window).window_days ?? null,
           window_kind: window.kind,
+          // The gate, observable in production without reading the table. A
+          // run of these below COMMIT_NOTE_MIN means a surface is writing
+          // rows the gate never held.
+          note_length: note.trim().length,
           already_tracked: json.alreadyAdopted === true,
           gradeable: json.gradeable ?? null,
           resolution_window_end: json.resolution_window_end ?? null,
@@ -516,7 +564,19 @@ export default function BriefCallsSection({
                 onWindowChange={(w) =>
                   setWindowFor((prev) => ({ ...prev, [c.id]: w }))
                 }
-                onTrack={() => void track(c, chosen, offered)}
+                // This surface has adopted ruling 11. `noteGate` drags both
+                // halves below in with it, so the pair cannot come apart.
+                noteGate
+                // Empty is not a stand-in for data that failed to arrive. It
+                // is a true statement about the draft: the reader has typed
+                // nothing yet. Same shape as `windowFor[c.id] ?? offered`
+                // above, where the fallback is likewise the real default
+                // rather than a stand-in for something unknown.
+                note={noteFor[c.id] ?? ""}
+                onNoteChange={(next: string) =>
+                  setNoteFor((prev) => ({ ...prev, [c.id]: next }))
+                }
+                onTrack={(note) => void track(c, chosen, offered, note)}
                 justStamped={justStamped}
                 gradeable={isPriceableClaimType(c.claim_type)}
                 trustLineId={TRUST_LINE_ID}

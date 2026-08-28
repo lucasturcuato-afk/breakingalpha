@@ -11,7 +11,7 @@ import {
   HORIZON_DAYS,
   type AdoptWindow,
 } from "@/lib/call-horizons";
-import { COMMIT_NOTE_MAX, type CommitTarget } from "./commit-target";
+import { COMMIT_NOTE_MAX, COMMIT_NOTE_MIN, type CommitTarget } from "./commit-target";
 import styles from "./commit.module.css";
 
 /**
@@ -49,8 +49,11 @@ import styles from "./commit.module.css";
  * which is the defect measured across 96 of the Ledger's 152 elements.
  */
 
-/** The note gate. CLIENT-SIDE, deliberately: see the adopt route's header. */
-export const COMMIT_NOTE_MIN = 12;
+/* The note gate. Defined in ./commit-target, which is pure and imports
+   nothing, because desktop /radar/calls and both briefs now ask the same
+   line and must not pull this client component in to read it. Re-exported so
+   index.ts and every existing importer keeps working against ONE literal. */
+export { COMMIT_NOTE_MIN };
 
 /** Length of the press, in ms. Matches `v3fill` and `commit.module.css`. */
 export const COMMIT_PRESS_MS = 700;
