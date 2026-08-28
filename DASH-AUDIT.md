@@ -1,7 +1,14 @@
 # /internal Dashboard Audit
 
-Status: IN PROGRESS. Written incrementally. A section reading PENDING was not
-complete at the time of the last commit.
+Status: COMPLETE. Every card on /internal has a section, all eleven Phase 1
+items have a root cause or a BLOCKED note with its verbatim error, and every
+invariant is reported PASS or FAIL.
+
+One thing could not be established from this environment and is recorded as
+BLOCKED rather than assumed: the deployed SQL text of the views. No catalog
+route exists (see CONNECTION for the verbatim errors), so view parity was
+proven behaviorally at the projection and metric layer, and the `dim_users`
+exclusion list is reported as consistent-with rather than proven-identical.
 
 Rules in force: read only against prod, every retained claim carries its raw
 query output, aggregates only, no per-user identifiers.
