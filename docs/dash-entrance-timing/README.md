@@ -29,7 +29,6 @@ all 10 rungs and all 4 bars end.
 | --- | --- | --- | --- |
 | TTFB | 245ms | 221ms | -24ms |
 | FCP | 1188ms | 1160ms | -28ms |
-| TTI | 5565ms | 3253ms | -2312ms |
 | time-to-content | 5570ms | 4341ms | -1229ms |
 | below-md-only signal | 5570ms | 4341ms | -1229ms |
 | dashRise first rung | 5584ms | 4429ms | -1155ms |
@@ -37,6 +36,15 @@ all 10 rungs and all 4 bars end.
 | total transferred | 701.5 KB | 639.8 KB | -61.7 KB |
 | requests | 106 | 85 | -21 |
 | long-task total | 387ms | 333ms | -54ms |
+
+**TTI is deliberately absent from that table.** It read 3,253ms after the
+change, which precedes the same table's own 4,341ms time-to-content. A page
+cannot be interactive a second before it has anything on it. TTI here is a
+quiet-window metric, so deleting late work moves it without the screen
+arriving sooner, and an independent tester confirmed the shape: last long
+task sits around 3.0 to 3.2 seconds on every build measured, before content
+on both sides. The honest headline numbers are time-to-content and the
+ladder start, both of which are in the table.
 
 Warm, same runs:
 
