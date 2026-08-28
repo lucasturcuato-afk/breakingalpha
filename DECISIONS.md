@@ -107,6 +107,17 @@ branches, invalidates every open review, and defends against an audience that
 does not exist here. The blobs stay reachable through history and through
 the GitHub file views, by decision rather than by omission.
 
+**Two surfaces carry the residue, not one.** The blobs are the obvious one. The
+second is COMMIT MESSAGES: two removal commits reprinted the values in their
+bodies before the categorical correction was applied, and a commit body renders
+on the commit page and is exactly as crawlable as the README was. It is
+arguably more findable than the image ever was, because it is text. Those
+messages cannot be amended without the force push this ruling forbids, so they
+stay under the same reasoning as the blobs. The surface is named here because
+the first draft of this ruling did not, and a residual exposure nobody has
+written down is the shape this whole incident keeps taking.
+
+
 **Why the rule failed three times.** It was a rule that ran AFTER the capture:
 someone had to remember it, at review time, on an image that already existed.
 Three times nobody did. The two plates in all 39 that carried nothing were not
