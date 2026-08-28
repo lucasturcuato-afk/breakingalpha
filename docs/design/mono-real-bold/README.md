@@ -20,15 +20,20 @@ after-morning-brief-light.png  before-morning-brief-light.png
 Verified by opening each of the twelve individually rather than matching
 filenames.
 
-- **The four dashboard plates** carried the greeting "Good morning, Noah.", the
-  "N" avatar in the header, a resolved-overnight card reading "2 of your calls
-  were checked.", and the personal record row SUPPORTED 1 / CHALLENGED 1 /
-  NO CLEAN READ 0 / AWAITING 1.
-- **The eight brief and ledger plates** carried the "Personalized for:" chip row
-  (Consumer and Retail, Technology, Industrials and Manufacturing, plus a
-  `balanced` tone chip on four of them), the "N" avatar on the dark pair, and a
-  quote strip reading NVDA 209.66 / CEG 279.52, which is plausibly
-  watchlist-driven.
+- **The four dashboard plates** carried a greeting naming the reader, the account
+  avatar initial in the header, a resolved-overnight card counting the reader's
+  own calls checked overnight, and the personal grading tally.
+- **The eight brief and ledger plates** carried the followed-sector chip row,
+  including a tone preference on four of them, the account avatar initial on the
+  dark pair, and a quote strip carrying two non-index tickers with prices, which
+  is plausibly watchlist-driven.
+
+**The categories above are named. The values deliberately are not.** Removing
+the images and then reprinting their contents precisely would not reduce the
+exposure, it would convert it from an image into permanent indexed text, which
+is more durable than a PNG rather than less. A search engine cannot read a
+screenshot; it can read this file. Naming the class tells a later reader
+everything they need to judge the incident. Naming the values only re-runs it.
 
 ## What they did NOT publish
 
