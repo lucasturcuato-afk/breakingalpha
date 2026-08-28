@@ -75,10 +75,18 @@ Removed:
 - `dashboard-mobile-mid-ladder.png`
 - `dashboard-mobile-reduced-motion.png`
 
-All four rendered the greeting "Good morning, Noah.", the account avatar
-letter, the personal record block reading SUPPORTED 0 / CHALLENGED 0 / NO
-CLEAN READ 0 / AWAITING 3 under the heading "your record", the desk's 996
-signal counts and the brief teaser headline.
+All four rendered, between them: a greeting naming the reader, the account
+avatar initial, the personal grading tally in full under its own heading, the
+desk-wide signal counts and the brief teaser headline.
+
+**The categories are named here and the values deliberately are not.** Pulling
+an image and then transcribing what it showed does not reduce the exposure. It
+converts a screenshot into indexed, searchable text, which outlives the PNG and
+is easier to find than the PNG ever was. What a future reader needs in order to
+judge this incident is the class of data that was published and the surfaces it
+was on, and the categorical form carries all of that. The values themselves add
+nothing to the judgement and would re-run the disclosure. Every measurement
+below is of the fix rather than of the account, so those stay.
 
 **The blobs stay reachable in history, by decision rather than by omission.**
 The repository has three people in it, the account is the owner's own, and no
@@ -111,7 +119,7 @@ device px at dSF 3:
 | market band | 13 |
 | brief card | 27 |
 
-The `your record` heading rule is at zero opacity in that frame while the
+The record section's heading rule is at zero opacity in that frame while the
 paragraph under it has already settled. The only two rungs inside the safe
 crop region are the MARKET head and the band, 5 device px apart, which is 1.7
 CSS px. That is not legible in a still, and a still cannot show displacement
