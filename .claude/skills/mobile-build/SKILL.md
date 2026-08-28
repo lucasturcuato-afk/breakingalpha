@@ -457,7 +457,80 @@ Aggregation is a separate job from review, and it has to be someone's job or it
 is nobody's. The rollup is cheap: it is a read of thirteen PR bodies. It is the
 only step in this process that looks at the batch rather than at a screen.
 
+## Writing plates: use `scripts/plate.mjs`, and crop by default
+
+**Do not write a screenshot with your own Playwright call. Use the script.**
+
+```
+node scripts/plate.mjs \
+  --url http://localhost:PORT/ledger \
+  --selector '[data-parity="ledger"] footer' \
+  --out docs/your-dir/footer-390-light.png \
+  --width 390 --theme light
+```
+
+`--selector` is **required**. A full page needs `--full-page` and a written
+`--justify`, and it still has to pass the guard.
+
+### The script refuses to write a frame carrying account data
+
+It reads the page before it photographs it and exits 1, writing nothing, if the
+frame contains a greeting naming the reader, the grading tally, a count of the
+reader's own resolved calls, personalization chips, an email address or a
+plus-addressed handle, or an account initial in an avatar.
+
+Every detector's specimen is a **verbatim string from a plate that actually
+shipped**, so its self test, which runs on every invocation, is the question
+*would this have caught the incident it was written for*. Do not add a detector
+without a specimen, and do not weaken one to get a capture through.
+
+If it refuses, in order of preference:
+
+1. **Crop tighter.** The region that is evidence usually is not the region that
+   carries the account.
+2. **Capture a state with no account in it.** Signed out, a forced empty read,
+   or a synthetic payload whose identifiers are obviously not real. Say so in
+   the PR body.
+3. **Drop the plate and put the measured numbers in the PR body.** An honest
+   sentence beats an image that had to be doctored.
+
+**Never blur, mask, redact or paint over account data.** That is doctoring
+evidence, and it is worse than having no plate.
+
+### Why a crop is the default, and it is not only about safety
+
+The evidence argument is the stronger one. Of 39 plates audited on 2026-08-27,
+the two that carried nothing were not captured carefully. They were
+**structurally incapable of leaking**: a skeleton whose avatar pill has no
+letter in it, and a typography specimen sheet whose only string is fabricated.
+
+And crops proved *more*, not less. PR #696 replaced a full page render with six
+crops, and the blank headroom above a pinned band turned out to be the proof
+that the band pins. The full page plate it replaced could not show that, because
+it had been captured in the one state where the bug looked correct. PR #702
+shipped eight footer crops that prove its entire gate and carry nothing.
+
+**Cropping forces you to decide what the plate is evidence OF.** That is why it
+produces better plates, and the safety is a consequence rather than the point.
+
+### Why this is a script and not a rule you remember
+
+The rule against publishing signed-in renders existed for all three incidents.
+It failed all three times for the same reason: **it ran after the capture**.
+Someone had to remember it at review time, looking at an image that already
+existed. Three times nobody did.
+
+There was also nothing to put it inside. Before this script, `screen-audit.mjs`
+wrote no images and the only `page.screenshot` in the tree was one e2e spec, so
+every unit reinvented its own capture in a scratchpad file and threw it away.
+A rule cannot live in a script that does not exist.
+
 ## Verifying plates: enumerate and open, never match a filename
+
+**This is now the BACKSTOP, not the primary defence.** The capture refuses to
+write a carrying frame in the first place, so this catches what the guard could
+not see: plates captured before the guard existed, images added by hand, and
+anything the detectors do not model yet.
 
 **Before a branch merges, list every image blob reachable from it and open each
 one. Do not decide what a plate contains from what it is called.**

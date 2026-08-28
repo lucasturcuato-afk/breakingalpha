@@ -1,0 +1,306 @@
+#!/usr/bin/env node
+/*
+ * plate.mjs
+ *
+ * The only sanctioned way to write a screenshot into docs/ in this repository.
+ *
+ * WHY THIS EXISTS
+ *
+ * On 2026-08-27 twenty four of thirty nine committed screenshots published
+ * account data to a public repository: a greeting with the reader's name, the
+ * personal grading tally, personalization chips, a nine ticker watchlist, and
+ * on two plates a live email address beside a role label. That was the THIRD
+ * such incident. See DECISIONS.md ruling 18 and the two PLATES-REMOVED.md
+ * files.
+ *
+ * The rule against it already existed all three times. It failed all three
+ * times for the same reason: it ran AFTER the capture. Someone had to remember
+ * it at review time, looking at an image that already existed, and three times
+ * nobody did.
+ *
+ * There was also nothing to put the rule inside. `screen-audit.mjs` writes no
+ * images, and the only `page.screenshot` in the tree was one e2e spec, so every
+ * unit reinvented its own capture in a scratchpad file and threw it away. A
+ * rule cannot live in a script that does not exist.
+ *
+ * So the rule now runs BEFORE the file exists. This script reads the page it is
+ * about to photograph, and REFUSES TO WRITE if the frame contains account data.
+ * A capture that cannot run is a broken build. A capture that quietly published
+ * a mailbox is what we had instead.
+ *
+ * THE OTHER HALF: CROPS ARE THE DEFAULT
+ *
+ * `--selector` is required. A full page capture needs `--full-page` AND a
+ * written `--justify`, and it still has to pass the guard.
+ *
+ * This is not only a safety rule, it is an evidence rule, and the evidence
+ * argument is the stronger one. Of thirty nine plates, the two that carried
+ * nothing were not captured carefully, they were structurally incapable of
+ * leaking: a skeleton whose avatar pill has no letter in it, and a typography
+ * specimen sheet whose only string is fabricated. Meanwhile PR #696 replaced a
+ * full page render with six crops and the crops proved MORE: the blank
+ * headroom above a pinned band is the proof the band pins, and the full page
+ * plate could not show that because it had been captured in the one state
+ * where the bug looked correct. PR #702 shipped eight footer crops that prove
+ * its entire gate and carry nothing.
+ *
+ * A crop is smaller, it is safer, and it is usually better evidence, because
+ * cropping forces you to decide what the plate is actually evidence OF.
+ *
+ * USAGE
+ *
+ *   node scripts/plate.mjs --url http://localhost:3000/ledger \
+ *     --selector '[data-parity="ledger"] footer' \
+ *     --out docs/ledger-parity/footer-390-light.png \
+ *     --width 390 --theme light
+ *
+ *   node scripts/plate.mjs --self-test
+ *
+ * EXIT CODES
+ *   0  wrote the file
+ *   1  refused: the frame carries account data, nothing was written
+ *   2  refused: bad invocation, or the self test failed
+ */
+
+import { chromium } from "playwright";
+import { writeFileSync, mkdirSync, existsSync } from "node:fs";
+import { dirname } from "node:path";
+
+/* ------------------------------------------------------------------ *
+ * THE DETECTORS
+ *
+ * Every `specimen` below is a VERBATIM string from a plate that actually
+ * shipped to the public repository on 2026-08-27. So the self test is not
+ * a synthetic exercise, it is the question "would this have caught the
+ * incident it was written for", asked on every single invocation.
+ *
+ * A detector that silently stops matching is worse than no detector,
+ * because it reads as a clean result. design-lint.mjs learned that the
+ * hard way and its self test is the model for this one.
+ * ------------------------------------------------------------------ */
+const DETECTORS = [
+  {
+    id: "greeting",
+    // "Good morning, Noah." on four dashboard plates in two PRs.
+    test: /\bGood (morning|afternoon|evening),\s+[A-Z][a-z]+/,
+    specimen: "Good morning, Noah.", // verbatim, #699 and #700 dashboards
+    says: "a greeting naming the reader",
+  },
+  {
+    id: "record-tally",
+    // The "your record" block. Found rendering 1/1/0/1 and 0/0/0/3.
+    // Two of the four labels together, so a lone word in prose is not a hit.
+    test: /(SUPPORTED|CHALLENGED|NO CLEAN READ|AWAITING)\b[\s\S]{0,400}?(SUPPORTED|CHALLENGED|NO CLEAN READ|AWAITING)\b/,
+    specimen: "your record SUPPORTED 1 CHALLENGED 1 NO CLEAN READ 0 AWAITING 1", // verbatim, #699
+    says: "the reader's own grading tally",
+  },
+  {
+    id: "calls-checked",
+    // "2 of your calls were checked." on the resolved-overnight card.
+    test: /\b\d+\s+of\s+your\s+calls?\s+(were|was)\s+checked/i,
+    specimen: "RESOLVED OVERNIGHT 2 of your calls were checked.", // verbatim, #699
+    says: "a count of the reader's own resolved calls",
+  },
+  {
+    id: "personalization",
+    // "Personalized for: Consumer & Retail, Technology, ..." plus the
+    // `balanced` tone chip. Eight plates carried this.
+    test: /Personalized\s+for\s*:/i,
+    specimen: "Personalized for: Consumer & Retail Technology Industrials & Manufacturing balanced", // verbatim, #699
+    says: "the reader's followed sectors",
+  },
+  {
+    id: "email",
+    // `noahhanning03+e2e` rendered in the desktop sidebar account card.
+    // The single worst item in the audit: a live deliverable mailbox.
+    // Deliberately also catches a bare local-part with a plus address,
+    // which is how it actually rendered, with the domain elided.
+    test: /[A-Za-z0-9._%-]+(\+[A-Za-z0-9._%-]+)(@[A-Za-z0-9.-]+\.[A-Za-z]{2,})?|[A-Za-z0-9._%-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/,
+    specimen: "noahhanning03+e2e Analyst", // verbatim, #698 desktop fault plates
+    says: "an email address or plus-addressed account handle",
+  },
+];
+
+/* The avatar is checked in the DOM rather than in text, because a single
+ * letter in a pill is not distinguishable from any other letter by regex.
+ *
+ * user-avatar.tsx:19-22 states that the brand "S" mark is ONLY ever a
+ * signed-out stand-in and must never substitute for an authenticated user,
+ * so an "S" is provably safe and anything else provably is not. That comment
+ * is load bearing for this check; if it ever stops being true this check has
+ * to change with it. */
+const AVATAR_PROBE = `(() => {
+  const out = [];
+  for (const el of document.querySelectorAll('[data-avatar], [class*="avatar" i]')) {
+    const t = (el.textContent || "").trim();
+    if (t.length === 1 && t !== "S") out.push(t);
+  }
+  return out;
+})()`;
+
+function selfTest() {
+  const failures = [];
+  for (const d of DETECTORS) {
+    if (!d.test.test(d.specimen)) {
+      failures.push(`${d.id}: specimen "${d.specimen}" did NOT trip its own detector`);
+    }
+  }
+  // A detector that matches everything is as useless as one that matches
+  // nothing. This string is deliberately innocuous product output of the
+  // kind a legitimate plate carries.
+  const innocuous =
+    "Watchlist feed  25 articles  Counts unavailable  Today Ledger Watch Ask  " +
+    "MARKET  S&P 500  VIX  10Y YIELD  Write your own call  " +
+    "resolves in about 2 weeks  A sentence is enough.";
+  for (const d of DETECTORS) {
+    if (d.test.test(innocuous)) {
+      failures.push(`${d.id}: fired on innocuous product output, it is too broad`);
+    }
+  }
+  if (failures.length) {
+    console.error("plate.mjs self test FAILED:");
+    for (const f of failures) console.error("  " + f);
+    process.exit(2);
+  }
+  console.log(`plate.mjs self test: ${DETECTORS.length} detectors, all trip their specimen, none fire on innocuous output.`);
+}
+
+function arg(name, fallback) {
+  const i = process.argv.indexOf(`--${name}`);
+  if (i === -1) return fallback;
+  const v = process.argv[i + 1];
+  return v && !v.startsWith("--") ? v : true;
+}
+
+async function main() {
+  if (process.argv.includes("--self-test")) return selfTest();
+
+  // The self test runs on EVERY invocation, before a browser is opened.
+  // A detector that has quietly stopped matching must not be discovered
+  // by an audit six weeks later.
+  selfTest();
+
+  const url = arg("url");
+  const out = arg("out");
+  const selector = arg("selector");
+  const fullPage = process.argv.includes("--full-page");
+  const justify = arg("justify");
+  const width = parseInt(arg("width", "390"), 10);
+  const height = parseInt(arg("height", "844"), 10);
+  const theme = arg("theme", "light");
+
+  if (!url || !out) {
+    console.error("plate.mjs: --url and --out are required.");
+    process.exit(2);
+  }
+  if (!selector && !fullPage) {
+    console.error(
+      "plate.mjs: --selector is required.\n" +
+      "  A crop is the default because it is safer AND usually better evidence:\n" +
+      "  cropping forces you to decide what the plate is evidence OF.\n" +
+      "  If you genuinely need the whole page, pass --full-page with --justify \"reason\"."
+    );
+    process.exit(2);
+  }
+  if (fullPage && (!justify || justify === true)) {
+    console.error(
+      "plate.mjs: --full-page requires --justify \"why a crop cannot prove this\".\n" +
+      "  The justification is written into the run log so a reviewer can weigh it."
+    );
+    process.exit(2);
+  }
+
+  const browser = await chromium.launch();
+  const ctx = await browser.newContext({
+    viewport: { width, height },
+    deviceScaleFactor: 3,
+    isMobile: width < 768,
+    hasTouch: width < 768,
+  });
+  const page = await ctx.newPage();
+  await page.goto(url, { waitUntil: "networkidle" });
+
+  // Theme is driven by localStorage plus the `dark` class on documentElement.
+  // prefers-color-scheme does nothing in this app, and emulateMedia silently
+  // captures light twice, which is how six plates labelled dark shipped light.
+  await page.evaluate((t) => {
+    localStorage.setItem("signalera_theme", t);
+    document.documentElement.classList.toggle("dark", t === "dark");
+  }, theme);
+  await page.waitForTimeout(400);
+
+  /* ---- THE GUARD, before anything is written ---- */
+  const pageText = await page.evaluate(() => document.body.innerText || "");
+  const cropText = selector
+    ? await page.evaluate(
+        (s) => (document.querySelector(s)?.innerText || ""),
+        selector
+      )
+    : pageText;
+
+  // The frame that will actually be written is what gets judged. A crop that
+  // excludes the account card is honest evidence, not a loophole, which is
+  // why this reads the crop rather than the page.
+  const subject = fullPage ? pageText : cropText;
+
+  const hits = DETECTORS.filter((d) => d.test.test(subject));
+  const avatars = await page.evaluate(AVATAR_PROBE);
+  const avatarHit = !fullPage && selector
+    ? await page.evaluate(
+        (s) => {
+          const root = document.querySelector(s);
+          if (!root) return [];
+          const out = [];
+          for (const el of root.querySelectorAll('[data-avatar], [class*="avatar" i]')) {
+            const t = (el.textContent || "").trim();
+            if (t.length === 1 && t !== "S") out.push(t);
+          }
+          return out;
+        },
+        selector
+      )
+    : avatars;
+
+  if (hits.length || avatarHit.length) {
+    console.error(`\nplate.mjs REFUSED to write ${out}\n`);
+    for (const h of hits) {
+      const m = subject.match(h.test);
+      console.error(`  [${h.id}] ${h.says}`);
+      console.error(`      found: ${JSON.stringify(String(m[0]).slice(0, 70))}`);
+    }
+    if (avatarHit.length) {
+      console.error(`  [avatar] an account initial is rendered: ${JSON.stringify(avatarHit)}`);
+      console.error(`      the brand "S" is the only glyph that is provably signed out`);
+    }
+    console.error(
+      "\n  Nothing was written. Three ways forward, in order of preference:\n" +
+      "    1. Crop tighter. The region that is evidence usually is not the region\n" +
+      "       that carries the account.\n" +
+      "    2. Capture a state that has no account in it: signed out, a forced\n" +
+      "       empty read, or a synthetic payload with identifiers that are\n" +
+      "       obviously not real. Say so in the PR body.\n" +
+      "    3. Drop the plate and put the measured numbers in the PR body. An\n" +
+      "       honest sentence beats an image that had to be doctored.\n" +
+      "\n  Do NOT blur, mask or paint over the data. That is doctoring evidence.\n"
+    );
+    await browser.close();
+    process.exit(1);
+  }
+
+  const target = selector && !fullPage ? page.locator(selector).first() : page;
+  const buf = await target.screenshot(fullPage ? { fullPage: true } : {});
+  mkdirSync(dirname(out), { recursive: true });
+  writeFileSync(out, buf);
+
+  const shape = fullPage ? `FULL PAGE (justified: ${justify})` : `crop ${selector}`;
+  console.log(`plate.mjs wrote ${out}`);
+  console.log(`  ${shape} at ${width}x${height}, theme ${theme}, ${buf.length} bytes`);
+  console.log(`  guard: ${DETECTORS.length} detectors clear, no account initial in frame`);
+
+  await browser.close();
+}
+
+main().catch((e) => {
+  console.error("plate.mjs failed:", e.message);
+  process.exit(2);
+});
