@@ -69,21 +69,29 @@ import { dirname } from "node:path";
 /* ------------------------------------------------------------------ *
  * THE DETECTORS
  *
- * Every `specimen` below is a VERBATIM string from a plate that actually
- * shipped to the public repository on 2026-08-27. So the self test is not
- * a synthetic exercise, it is the question "would this have caught the
- * incident it was written for", asked on every single invocation.
+ * Every detector below is derived from something actually found in the
+ * 2026-08-27 audit, and each `specimen` reproduces the SHAPE of what
+ * leaked. The self test asserts on every invocation that the detector
+ * still trips its own specimen, so a detector that quietly stops matching
+ * cannot hide behind a clean result.
  *
- * A detector that silently stops matching is worse than no detector,
- * because it reads as a clean result. design-lint.mjs learned that the
- * hard way and its self test is the model for this one.
+ * The specimens are deliberately SYNTHETIC rather than the literal strings
+ * that leaked. A file whose job is to detect published account data must
+ * not itself publish account data, and a real mailbox pasted here would
+ * live on main forever. The shape is what the detector matches on, so a
+ * synthetic value tests it exactly as well. This is not a small point: the
+ * first draft of this file used the real address as a specimen, which is
+ * the same defect it exists to prevent, one layer up.
+ *
+ * design-lint.mjs learned the self-test lesson the hard way and its self
+ * test is the model for this one.
  * ------------------------------------------------------------------ */
 const DETECTORS = [
   {
     id: "greeting",
-    // "Good morning, Noah." on four dashboard plates in two PRs.
+    // A greeting naming the reader. Four dashboard plates in two PRs.
     test: /\bGood (morning|afternoon|evening),\s+[A-Z][a-z]+/,
-    specimen: "Good morning, Noah.", // verbatim, #699 and #700 dashboards
+    specimen: "Good morning, Alex.", // shape of the 2026-08-27 dashboards
     says: "a greeting naming the reader",
   },
   {
@@ -91,14 +99,14 @@ const DETECTORS = [
     // The "your record" block. Found rendering 1/1/0/1 and 0/0/0/3.
     // Two of the four labels together, so a lone word in prose is not a hit.
     test: /(SUPPORTED|CHALLENGED|NO CLEAN READ|AWAITING)\b[\s\S]{0,400}?(SUPPORTED|CHALLENGED|NO CLEAN READ|AWAITING)\b/,
-    specimen: "your record SUPPORTED 1 CHALLENGED 1 NO CLEAN READ 0 AWAITING 1", // verbatim, #699
+    specimen: "your record SUPPORTED 9 CHALLENGED 9 NO CLEAN READ 9 AWAITING 9", // shape, not the real tally
     says: "the reader's own grading tally",
   },
   {
     id: "calls-checked",
     // "2 of your calls were checked." on the resolved-overnight card.
     test: /\b\d+\s+of\s+your\s+calls?\s+(were|was)\s+checked/i,
-    specimen: "RESOLVED OVERNIGHT 2 of your calls were checked.", // verbatim, #699
+    specimen: "RESOLVED OVERNIGHT 9 of your calls were checked.", // shape, not the real count
     says: "a count of the reader's own resolved calls",
   },
   {
@@ -106,17 +114,17 @@ const DETECTORS = [
     // "Personalized for: Consumer & Retail, Technology, ..." plus the
     // `balanced` tone chip. Eight plates carried this.
     test: /Personalized\s+for\s*:/i,
-    specimen: "Personalized for: Consumer & Retail Technology Industrials & Manufacturing balanced", // verbatim, #699
+    specimen: "Personalized for: Sector One Sector Two Sector Three tone", // shape, not the real sectors
     says: "the reader's followed sectors",
   },
   {
     id: "email",
-    // `noahhanning03+e2e` rendered in the desktop sidebar account card.
-    // The single worst item in the audit: a live deliverable mailbox.
+    // A plus-addressed account handle rendered in the desktop sidebar
+    // account card. The single worst item in the audit: a live mailbox.
     // Deliberately also catches a bare local-part with a plus address,
     // which is how it actually rendered, with the domain elided.
     test: /[A-Za-z0-9._%-]+(\+[A-Za-z0-9._%-]+)(@[A-Za-z0-9.-]+\.[A-Za-z]{2,})?|[A-Za-z0-9._%-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/,
-    specimen: "noahhanning03+e2e Analyst", // verbatim, #698 desktop fault plates
+    specimen: "someone+alias@example.com Analyst", // shape, NOT the real address
     says: "an email address or plus-addressed account handle",
   },
 ];
