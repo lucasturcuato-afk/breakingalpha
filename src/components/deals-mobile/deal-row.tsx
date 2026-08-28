@@ -4,6 +4,7 @@ import type { CSSProperties } from "react";
 import { STAGE_INK, STAGE_LABEL } from "./deal-stage";
 import type { MobileDeal } from "./types";
 import styles from "./deals.module.css";
+import { FONT_DISPLAY, FONT_MONO, FONT_SANS } from "@/components/mobile/fonts";
 
 /**
  * One deal, drawn the way the design draws it.
@@ -50,7 +51,7 @@ const claimStyle: CSSProperties = {
   margin: "-3px 0",
   padding: "3px 0",
   minHeight: "38px",
-  font: "500 15.5px/1.4 'Playfair Display', serif",
+  font: `500 15.5px/1.4 ${FONT_DISPLAY}`,
   color: "var(--c-ink)",
   textWrap: "pretty",
 };
@@ -69,7 +70,7 @@ const memoStyle: CSSProperties = {
   padding: "0 14px",
   border: "1px solid var(--c-ink)",
   borderRadius: "9px",
-  font: "600 12.5px/1 Inter, sans-serif",
+  font: `600 12.5px/1 ${FONT_SANS}`,
   color: "var(--c-ink)",
   backgroundColor: "transparent",
 };
@@ -119,13 +120,13 @@ export function DealRow({
           gap: "10px",
         }}
       >
-        <span style={{ font: "600 11px/1 Inter, sans-serif", color: STAGE_INK[deal.stage] }}>
+        <span style={{ font: `600 11px/1 ${FONT_SANS}`, color: STAGE_INK[deal.stage] }}>
           {STAGE_LABEL[deal.stage]}
         </span>
         {deal.figure ? (
           <span
             style={{
-              font: "500 11px/1 'JetBrains Mono', monospace",
+              font: `500 11px/1 ${FONT_MONO}`,
               color: "var(--c-ink)",
             }}
           >
@@ -147,7 +148,7 @@ export function DealRow({
       {/* Both lines are conditional. A `deal_flow` row can carry no thesis and
           no sector, and an empty paragraph would still take a 7px gap. */}
       {deal.rationale ? (
-        <p style={{ margin: 0, font: "400 12.5px/1.5 Inter, sans-serif", color: "var(--c-body)" }}>
+        <p style={{ margin: 0, font: `400 12.5px/1.5 ${FONT_SANS}`, color: "var(--c-body)" }}>
           {deal.rationale}
         </p>
       ) : null}
@@ -156,7 +157,7 @@ export function DealRow({
         <p
           style={{
             margin: 0,
-            font: "400 10px/1 'JetBrains Mono', monospace",
+            font: `400 10px/1 ${FONT_MONO}`,
             letterSpacing: "0.07em",
             color: "var(--c-muted)",
             /* Not in the design, which draws a slug short enough never to wrap.

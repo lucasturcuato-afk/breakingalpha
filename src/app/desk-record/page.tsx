@@ -5,6 +5,7 @@ import { DESK_FIXTURE, type DeskRecordData } from "@/components/desk-record/fixt
 import { deskRecordToScreenData } from "@/components/desk-record/from-record";
 import { fetchDeskRecord } from "@/lib/desk-record-query.ts";
 import { mobileFixtureScreensEnabled } from "@/lib/mobile-fixture-gate";
+import { FONT_DISPLAY, FONT_SANS } from "@/components/mobile/fonts";
 
 /**
  * Desk record, at its own top-level route.
@@ -136,10 +137,10 @@ export default async function DeskRecordMobilePage({
       {/* Above the breakpoint the desktop equivalent already exists at
           /radar/desk-record and is not being rebuilt here. */}
       <div className="hidden md:block" style={{ padding: "48px", backgroundColor: "var(--c-bg)" }}>
-        <p style={{ margin: 0, font: "500 17px/1.4 'Playfair Display', serif", color: "var(--c-ink)" }}>
+        <p style={{ margin: 0, font: `500 17px/1.4 ${FONT_DISPLAY}`, color: "var(--c-ink)" }}>
           The Desk record is a mobile surface.
         </p>
-        <p style={{ margin: "10px 0 0", font: "400 13px/1.6 Inter, sans-serif", color: "var(--c-secondary)" }}>
+        <p style={{ margin: "10px 0 0", font: `400 13px/1.6 ${FONT_SANS}`, color: "var(--c-secondary)" }}>
           On a wider screen the desk keeps its own graded record on Radar.
         </p>
       </div>

@@ -8,6 +8,7 @@ import { Chevron } from "@/components/ledger/chevron";
 import { ClaimAnatomy, OutcomeLead } from "@/components/ledger/claim-anatomy";
 import type { OutcomeState } from "@/components/ledger/claim-anatomy";
 import styles from "./search.module.css";
+import { FONT_MONO, FONT_SANS } from "@/components/mobile/fonts";
 
 /**
  * The pieces the Search screen is built from.
@@ -38,7 +39,7 @@ export function SearchEyebrow({ label, style }: { label: string; style?: React.C
   return (
     <div
       style={{
-        font: "400 10px/1 'JetBrains Mono', monospace",
+        font: `400 10px/1 ${FONT_MONO}`,
         letterSpacing: "0.07em",
         color: "var(--c-muted)",
         ...style,
@@ -143,7 +144,7 @@ export function SearchField({
                box the text occupies. The design's own input measures 16px
                tall, which is the one property parity reports as a mismatch. */
             alignSelf: "stretch",
-            font: "400 14px/1 Inter, sans-serif",
+            font: `400 14px/1 ${FONT_SANS}`,
             color: "var(--c-ink)",
           }}
         />
@@ -158,7 +159,7 @@ export function SearchField({
           display: "flex",
           alignItems: "center",
           padding: "0 4px",
-          font: "500 13px/1 Inter, sans-serif",
+          font: `500 13px/1 ${FONT_SANS}`,
           color: "var(--c-secondary)",
         }}
       >
@@ -242,7 +243,7 @@ export function SearchJumpRow({ label, href }: { label: string; href: string }) 
         style={{
           minWidth: 0,
           flex: 1,
-          font: "400 13.5px/1.35 Inter, sans-serif",
+          font: `400 13.5px/1.35 ${FONT_SANS}`,
           color: "var(--c-body)",
         }}
       >
@@ -295,7 +296,7 @@ function EntityRow({
           style={{
             flex: "none",
             width: "46px",
-            font: "500 11px/1 'JetBrains Mono', monospace",
+            font: `500 11px/1 ${FONT_MONO}`,
             letterSpacing: "0.045em",
             color: "var(--c-muted)",
           }}
@@ -304,11 +305,11 @@ function EntityRow({
         </span>
       ) : null}
       <div style={{ minWidth: 0, flex: 1 }}>
-        <div style={{ font: "500 14px/1.35 Inter, sans-serif", color: "var(--c-ink)" }}>{title}</div>
+        <div style={{ font: `500 14px/1.35 ${FONT_SANS}`, color: "var(--c-ink)" }}>{title}</div>
         <div
           style={{
             marginTop: "3px",
-            font: "400 11.5px/1.4 Inter, sans-serif",
+            font: `400 11.5px/1.4 ${FONT_SANS}`,
             color: "var(--c-muted)",
           }}
         >
@@ -412,7 +413,7 @@ export function SearchAskTheDesk({ query }: { query: string }) {
         textDecoration: "none",
       }}
     >
-      <span style={{ font: "400 13.5px/1.4 Inter, sans-serif", color: "var(--c-body)" }}>
+      <span style={{ font: `400 13.5px/1.4 ${FONT_SANS}`, color: "var(--c-body)" }}>
         Ask about <strong style={{ fontWeight: 600 }}>{query}</strong>
       </span>
       <svg

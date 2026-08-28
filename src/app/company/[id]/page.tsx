@@ -53,6 +53,7 @@ import {
   mobileFixtureAuthBypass,
   mobileFixtureScreensEnabled,
 } from "@/lib/mobile-fixture-gate";
+import { FONT_DISPLAY, FONT_SANS } from "@/components/mobile/fonts";
 
 /**
  * MOBILE REDESIGN, step 9, screen 15.
@@ -118,7 +119,7 @@ function FixtureNotice() {
         padding: "9px 20px",
         backgroundColor: "var(--c-amber-well)",
         borderBottom: "1px solid var(--c-amber-edge)",
-        font: "500 11px/1.4 Inter, sans-serif",
+        font: `500 11px/1.4 ${FONT_SANS}`,
         color: "var(--c-amberink)",
       }}
     >
@@ -204,10 +205,10 @@ export default async function CompanyDetailPage({
             <CompanyIntelScreen stage={stage} data={companyFixture(mobileFixture, stage)} hasCik />
           </div>
           <div className="hidden md:block" style={{ padding: "48px" }}>
-            <p style={{ margin: 0, font: "500 17px/1.4 'Playfair Display', serif", color: "var(--c-ink)" }}>
+            <p style={{ margin: 0, font: `500 17px/1.4 ${FONT_DISPLAY}`, color: "var(--c-ink)" }}>
               Sign in to read Company Intel.
             </p>
-            <p style={{ margin: "10px 0 0", font: "400 13px/1.6 Inter, sans-serif", color: "var(--c-secondary)" }}>
+            <p style={{ margin: "10px 0 0", font: `400 13px/1.6 ${FONT_SANS}`, color: "var(--c-secondary)" }}>
               The desktop surface renders this company&apos;s own filings, insider record and
               financials, so it is not drawn for a signed-out reader.
             </p>

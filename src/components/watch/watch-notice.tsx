@@ -1,4 +1,5 @@
 import styles from "./watch.module.css";
+import { FONT_SANS } from "@/components/mobile/fonts";
 
 /**
  * The notice block, used for every tier's empty, failed and stale state.
@@ -42,7 +43,7 @@ export function WatchNotice({
         <p
           style={{
             margin: 0,
-            font: "600 13px/1.6 Inter, sans-serif",
+            font: `600 13px/1.6 ${FONT_SANS}`,
             color: "var(--c-ink)",
           }}
         >
@@ -52,7 +53,7 @@ export function WatchNotice({
       <p
         style={{
           margin: heading ? "5px 0 0" : 0,
-          font: "400 13px/1.6 Inter, sans-serif",
+          font: `400 13px/1.6 ${FONT_SANS}`,
           color: "var(--c-body)",
           textWrap: "pretty",
         }}
@@ -74,7 +75,7 @@ export function WatchNotice({
             marginBottom: "-14px",
             display: "inline-flex",
             alignItems: "center",
-            font: "600 12.5px/1 Inter, sans-serif",
+            font: `600 12.5px/1 ${FONT_SANS}`,
             color: "var(--c-goldink)",
           }}
         >

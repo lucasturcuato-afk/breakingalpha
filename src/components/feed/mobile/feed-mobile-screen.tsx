@@ -12,6 +12,7 @@ import type {
   FeedStage,
   FeedStory,
 } from "./types";
+import { FONT_DISPLAY, FONT_MONO, FONT_SANS } from "@/components/mobile/fonts";
 
 /**
  * Live Feed, mobile.
@@ -111,9 +112,6 @@ const subscribeNever = () => () => {};
 const readSearch = () => window.location.search;
 const readNoSearch = () => "";
 
-const MONO = "'JetBrains Mono', monospace";
-const INTER = "Inter, sans-serif";
-const PLAYFAIR = "'Playfair Display', serif";
 
 export function FeedMobileScreen({
   data,
@@ -184,7 +182,7 @@ export function FeedMobileScreen({
         <h1
           style={{
             margin: 0,
-            font: `700 24px/1.14 ${PLAYFAIR}`,
+            font: `700 24px/1.14 ${FONT_DISPLAY}`,
             letterSpacing: "-0.02em",
             color: "var(--c-ink)",
           }}
@@ -194,7 +192,7 @@ export function FeedMobileScreen({
         <p
           style={{
             margin: "7px 0 0",
-            font: `400 12.5px/1.5 ${INTER}`,
+            font: `400 12.5px/1.5 ${FONT_SANS}`,
             color: "var(--c-secondary)",
           }}
         >
@@ -326,7 +324,7 @@ function Header({
           display: "flex",
           alignItems: "center",
           gap: "6px",
-          font: `500 13px/1 ${INTER}`,
+          font: `500 13px/1 ${FONT_SANS}`,
           color: "var(--c-secondary)",
           textDecoration: "none",
         }}
@@ -347,7 +345,7 @@ function Header({
       </Link>
       <span
         style={{
-          font: `400 10px/1 ${MONO}`,
+          font: `400 10px/1 ${FONT_MONO}`,
           letterSpacing: "0.07em",
           color: stale ? "var(--c-amberink)" : "var(--c-muted)",
         }}
@@ -390,7 +388,7 @@ function LensChip({
            the only thing that moves, and parity does not read it. */
         cursor: disabled ? "default" : "pointer",
         border: `1px solid ${active ? "var(--c-ink)" : "var(--c-border)"}`,
-        font: `${active ? 600 : 500} 12px/1 ${INTER}`,
+        font: `${active ? 600 : 500} 12px/1 ${FONT_SANS}`,
         color: active ? "var(--c-ink)" : "var(--c-secondary)",
         backgroundColor: active ? "var(--c-surface)" : "transparent",
       }}
@@ -437,10 +435,10 @@ function Bucket({
           margin: first ? "-15px 0 -15px" : "-6px 0 -18px",
         }}
       >
-        <span style={{ font: `600 10.5px/1 ${INTER}`, color: "var(--c-secondary)" }}>
+        <span style={{ font: `600 10.5px/1 ${FONT_SANS}`, color: "var(--c-secondary)" }}>
           {bucket.label}
         </span>
-        <span style={{ font: `400 10px/1 ${INTER}`, color: "var(--c-muted)" }}>
+        <span style={{ font: `400 10px/1 ${FONT_SANS}`, color: "var(--c-muted)" }}>
           {n} {n === 1 ? "article" : "articles"}
         </span>
         {newCount > 0 ? (
@@ -460,7 +458,7 @@ function Bucket({
                 backgroundColor: "var(--c-green)",
               }}
             />
-            <span style={{ font: `600 10px/1 ${INTER}`, color: "var(--c-greenink)" }}>
+            <span style={{ font: `600 10px/1 ${FONT_SANS}`, color: "var(--c-greenink)" }}>
               {newCount} new
             </span>
           </span>
@@ -511,7 +509,7 @@ function Row({
         <span style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
           <span
             style={{
-              font: `600 10.5px/1 ${INTER}`,
+              font: `600 10.5px/1 ${FONT_SANS}`,
               color: SENTIMENT_INK[story.sentiment],
             }}
           >
@@ -527,7 +525,7 @@ function Row({
                 border: `1px solid ${badge.edge}`,
                 borderRadius: "4px",
                 backgroundColor: badge.fill,
-                font: `600 10px/1 ${INTER}`,
+                font: `600 10px/1 ${FONT_SANS}`,
                 color: badge.ink,
               }}
             >
@@ -542,7 +540,7 @@ function Row({
         </span>
         <span
           style={{
-            font: `400 10px/1 ${MONO}`,
+            font: `400 10px/1 ${FONT_MONO}`,
             letterSpacing: "0.07em",
             color: "var(--c-muted)",
             whiteSpace: "nowrap",
@@ -564,7 +562,7 @@ function Row({
           margin: "-2px 0",
           padding: "2px 0",
           minHeight: "40px",
-          font: `700 14.5px/1.4 ${PLAYFAIR}`,
+          font: `700 14.5px/1.4 ${FONT_DISPLAY}`,
           color: "var(--c-ink)",
           textWrap: "pretty",
         }}
@@ -575,7 +573,7 @@ function Row({
       {story.summary ? (
         <p
           className={styles.clamp2}
-          style={{ margin: 0, font: `400 12px/1.5 ${INTER}`, color: "var(--c-body)" }}
+          style={{ margin: 0, font: `400 12px/1.5 ${FONT_SANS}`, color: "var(--c-body)" }}
         >
           {story.summary}
         </p>
@@ -598,7 +596,7 @@ function Row({
                 minHeight: "44px",
                 display: "inline-flex",
                 alignItems: "center",
-                font: `500 10px/1 ${MONO}`,
+                font: `500 10px/1 ${FONT_MONO}`,
                 letterSpacing: "0.07em",
                 color: "var(--c-secondary)",
                 textDecoration: "underline",
@@ -610,7 +608,7 @@ function Row({
           ) : (
             <span
               style={{
-                font: `500 10px/1 ${MONO}`,
+                font: `500 10px/1 ${FONT_MONO}`,
                 letterSpacing: "0.07em",
                 color: "var(--c-muted)",
               }}
@@ -640,7 +638,7 @@ function Row({
         {story.cluster ? (
           <span
             style={{
-              font: `500 10px/1 ${MONO}`,
+              font: `500 10px/1 ${FONT_MONO}`,
               letterSpacing: "0.07em",
               color: "var(--c-muted)",
             }}
@@ -662,7 +660,7 @@ function Row({
               border: "1px solid var(--c-border)",
               borderRadius: "4px",
               backgroundColor: "var(--c-surface)",
-              font: `600 10px/1 ${INTER}`,
+              font: `600 10px/1 ${FONT_SANS}`,
               letterSpacing: "0.02em",
               color: "var(--c-secondary)",
               cursor: "pointer",
@@ -684,7 +682,7 @@ function Row({
               marginLeft: "auto",
               display: "inline-flex",
               alignItems: "center",
-              font: `600 10.5px/1 ${INTER}`,
+              font: `600 10.5px/1 ${FONT_SANS}`,
               color: "var(--c-goldink)",
               textDecoration: "none",
             }}
@@ -695,7 +693,7 @@ function Row({
           <span
             style={{
               marginLeft: "auto",
-              font: `600 10.5px/1 ${INTER}`,
+              font: `600 10.5px/1 ${FONT_SANS}`,
               color: "var(--c-muted)",
             }}
           >
@@ -731,13 +729,13 @@ function Row({
               }}
             >
               <div style={{ minWidth: 0, flex: 1 }}>
-                <p style={{ margin: 0, font: `400 12px/1.45 ${INTER}`, color: "var(--c-ink)" }}>
+                <p style={{ margin: 0, font: `400 12px/1.45 ${FONT_SANS}`, color: "var(--c-ink)" }}>
                   {dup.title}
                 </p>
                 <p
                   style={{
                     margin: "3px 0 0",
-                    font: `400 10px/1 ${MONO}`,
+                    font: `400 10px/1 ${FONT_MONO}`,
                     color: "var(--c-muted)",
                   }}
                 >
@@ -758,7 +756,7 @@ function Row({
                     minHeight: "44px",
                     display: "inline-flex",
                     alignItems: "center",
-                    font: `600 10.5px/1 ${INTER}`,
+                    font: `600 10.5px/1 ${FONT_SANS}`,
                     color: "var(--c-goldink)",
                     textDecoration: "none",
                   }}
@@ -769,7 +767,7 @@ function Row({
                 <span
                   style={{
                     flex: "none",
-                    font: `600 10.5px/1 ${INTER}`,
+                    font: `600 10.5px/1 ${FONT_SANS}`,
                     color: "var(--c-muted)",
                   }}
                 >
@@ -805,7 +803,7 @@ function StaleNotice({ onRetry }: { onRetry?: () => void }) {
         backgroundColor: "var(--c-well)",
       }}
     >
-      <span style={{ font: `400 11px/1.4 ${INTER}`, color: "var(--c-secondary)" }}>
+      <span style={{ font: `400 11px/1.4 ${FONT_SANS}`, color: "var(--c-secondary)" }}>
         The feed has not refreshed in a few minutes. These stories may be behind.
       </span>
       {onRetry ? (
@@ -821,7 +819,7 @@ function StaleNotice({ onRetry }: { onRetry?: () => void }) {
             margin: "-16px 0",
             display: "inline-flex",
             alignItems: "center",
-            font: `500 11px/1 ${INTER}`,
+            font: `500 11px/1 ${FONT_SANS}`,
             color: "var(--c-secondary)",
             whiteSpace: "nowrap",
           }}
@@ -880,13 +878,13 @@ function Placard({
           <path d={path} />
         </svg>
       </div>
-      <div style={{ font: `600 13px/1.3 ${INTER}`, color: "var(--c-ink)" }}>{title}</div>
+      <div style={{ font: `600 13px/1.3 ${FONT_SANS}`, color: "var(--c-ink)" }}>{title}</div>
       <p
         style={{
           margin: 0,
           maxWidth: "220px",
           textAlign: "center",
-          font: `400 12px/1.5 ${INTER}`,
+          font: `400 12px/1.5 ${FONT_SANS}`,
           color: "var(--c-secondary)",
         }}
       >
@@ -924,7 +922,7 @@ function FeedError({ onRetry }: { onRetry?: () => void }) {
               borderRadius: "6px",
               border: "1px solid var(--c-ink)",
               backgroundColor: "var(--c-surface)",
-              font: `600 12px/1 ${INTER}`,
+              font: `600 12px/1 ${FONT_SANS}`,
               color: "var(--c-ink)",
               cursor: "pointer",
             }}
@@ -956,7 +954,7 @@ function GateTail({ onSignIn }: { onSignIn?: () => void }) {
         backgroundColor: "var(--c-well)",
       }}
     >
-      <span style={{ font: `400 12px/1.4 ${INTER}`, color: "var(--c-secondary)" }}>
+      <span style={{ font: `400 12px/1.4 ${FONT_SANS}`, color: "var(--c-secondary)" }}>
         You are seeing the first five stories.
       </span>
       {onSignIn ? (
@@ -972,7 +970,7 @@ function GateTail({ onSignIn }: { onSignIn?: () => void }) {
             margin: "-16px 0",
             display: "inline-flex",
             alignItems: "center",
-            font: `600 12px/1 ${INTER}`,
+            font: `600 12px/1 ${FONT_SANS}`,
             color: "var(--c-goldink)",
             whiteSpace: "nowrap",
           }}

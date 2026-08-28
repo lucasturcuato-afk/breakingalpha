@@ -1,6 +1,7 @@
 import { LEVEL_TONES } from "./trend-level-tone";
 import { strengthToLevel, timeAgo, trendTags, trendTitle, type TrendSignal } from "@/lib/trend-signals";
 import styles from "./trends.module.css";
+import { FONT_DISPLAY, FONT_MONO, FONT_SANS } from "@/components/mobile/fonts";
 
 /**
  * One clustered signal, as the prototype draws it at `:2140-2158`.
@@ -85,7 +86,7 @@ export function TrendSignalCard({
               border: `1px solid ${tone.border}`,
               borderRadius: "6px",
               backgroundColor: tone.fill,
-              font: "600 10px/1 Inter, sans-serif",
+              font: `600 10px/1 ${FONT_SANS}`,
               color: tone.ink,
             }}
           >
@@ -102,7 +103,7 @@ export function TrendSignalCard({
           {ago ? (
             <span
               style={{
-                font: "400 10px/1 'JetBrains Mono', monospace",
+                font: `400 10px/1 ${FONT_MONO}`,
                 letterSpacing: "0.07em",
                 color: "var(--c-muted)",
               }}
@@ -123,7 +124,7 @@ export function TrendSignalCard({
                   border: "1px solid var(--c-edge)",
                   borderRadius: "6px",
                   backgroundColor: "var(--c-well)",
-                  font: "600 10px/1 Inter, sans-serif",
+                  font: `600 10px/1 ${FONT_SANS}`,
                   letterSpacing: "0.02em",
                   color: "var(--c-secondary)",
                 }}
@@ -137,7 +138,7 @@ export function TrendSignalCard({
         <h4
           style={{
             margin: "11px 0 0",
-            font: "700 15px/1.35 'Playfair Display', serif",
+            font: `700 15px/1.35 ${FONT_DISPLAY}`,
             color: "var(--c-ink)",
             textWrap: "pretty",
           }}
@@ -150,7 +151,7 @@ export function TrendSignalCard({
             className={styles.clamp2}
             style={{
               margin: "8px 0 0",
-              font: "400 12px/1.5 Inter, sans-serif",
+              font: `400 12px/1.5 ${FONT_SANS}`,
               color: "var(--c-body)",
             }}
           >

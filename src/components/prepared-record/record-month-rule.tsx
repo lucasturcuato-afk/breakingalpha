@@ -16,6 +16,8 @@
  * rate and rates do not appear on this product.
  */
 
+import { FONT_DISPLAY, FONT_MONO } from "@/components/mobile/fonts";
+
 export interface RecordMonthRuleProps {
   /** e.g. "February 2027". */
   label: string;
@@ -28,7 +30,7 @@ export function RecordMonthRule({ label, count }: RecordMonthRuleProps) {
     <div style={{ display: "flex", alignItems: "center", gap: "10px", padding: "16px 0 8px" }}>
       <span
         style={{
-          font: "400 italic 12px/1 'Playfair Display', serif",
+          font: `400 italic 12px/1 ${FONT_DISPLAY}`,
           color: "var(--c-secondary)",
         }}
       >
@@ -37,7 +39,7 @@ export function RecordMonthRule({ label, count }: RecordMonthRuleProps) {
       <span style={{ flex: 1, height: "1px", backgroundColor: "var(--c-border)" }} />
       <span
         style={{
-          font: "400 10px/1 'JetBrains Mono', monospace",
+          font: `400 10px/1 ${FONT_MONO}`,
           letterSpacing: "0.07em",
           color: "var(--c-muted)",
         }}

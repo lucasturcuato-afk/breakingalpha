@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import styles from "./ask.module.css";
 import { CONTENT_BOX, PAD } from "./ask-parts";
+import { FONT_SANS } from "@/components/mobile/fonts";
 
 /**
  * The chip row and the composer, byte identical on both Ask screens in the
@@ -50,7 +51,7 @@ export function AskComposer({ prompts }: { prompts?: readonly [string, string] }
               border: "1px solid var(--c-border)",
               borderRadius: "9px",
               backgroundColor: "var(--c-surface)",
-              font: "400 11.5px/1 Inter, sans-serif",
+              font: `400 11.5px/1 ${FONT_SANS}`,
               color: "var(--c-secondary)",
               whiteSpace: "nowrap",
               textDecoration: "none",
@@ -106,7 +107,7 @@ export function AskComposer({ prompts }: { prompts?: readonly [string, string] }
             border: "1px solid var(--c-border)",
             borderRadius: "12px",
             backgroundColor: "var(--c-surface)",
-            font: "400 13px/1 Inter, sans-serif",
+            font: `400 13px/1 ${FONT_SANS}`,
             color: "var(--c-ink)",
           }}
         />

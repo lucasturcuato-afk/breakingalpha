@@ -1,7 +1,7 @@
 import { RESOLUTION_ORDER, DESK_RECORD_COPY, type Resolution } from "@/lib/desk-record";
 import { YOUR_RECORD_COPY } from "@/lib/your-record";
 import styles from "./dashboard.module.css";
-import { MONO } from "./fonts";
+import { FONT_MONO } from "@/components/mobile/fonts";
 
 /**
  * The four-bucket record grid, in its two drawings.
@@ -71,7 +71,7 @@ function BucketLabel({ text, dot }: { text: string; dot?: string }) {
       ) : null}
       <span
         style={{
-          font: `400 10px/1 ${MONO}`,
+          font: `400 10px/1 ${FONT_MONO}`,
           letterSpacing: "0.07em",
           color: "var(--c-muted)",
         }}
@@ -141,7 +141,7 @@ export function RecordBuckets({ variant, byResolution, awaiting = 0, total }: Re
             style={{
               display: "block",
               marginTop: "5px",
-              font: `500 ${personal ? 16 : 17}px/1 ${MONO}`,
+              font: `500 ${personal ? 16 : 17}px/1 ${FONT_MONO}`,
               color: personal ? PERSONAL_INK[cell.key] : "var(--c-ink)",
             }}
           >
@@ -149,7 +149,7 @@ export function RecordBuckets({ variant, byResolution, awaiting = 0, total }: Re
             {!personal ? (
               <span
                 style={{
-                  font: `400 10px/1 ${MONO}`,
+                  font: `400 10px/1 ${FONT_MONO}`,
                   color: "var(--c-muted)",
                   marginLeft: "4px",
                 }}

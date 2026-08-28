@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+import { FONT_DISPLAY, FONT_MONO } from "@/components/mobile/fonts";
 
 /**
  * The section rule. The layout spine of the Watch screen and of the two thesis
@@ -32,7 +33,7 @@ export function SectionRule({ label, count, marginTop = 0 }: SectionRuleProps) {
     <div style={{ marginTop, display: "flex", alignItems: "center", gap: "11px" }}>
       <span
         style={{
-          font: "400 italic 12.5px/1 'Playfair Display', serif",
+          font: `400 italic 12.5px/1 ${FONT_DISPLAY}`,
           color: "var(--c-secondary)",
         }}
       >
@@ -48,7 +49,7 @@ export function SectionRule({ label, count, marginTop = 0 }: SectionRuleProps) {
       {count ? (
         <span
           style={{
-            font: "400 10.5px/1 'JetBrains Mono', monospace",
+            font: `400 10.5px/1 ${FONT_MONO}`,
             letterSpacing: "0.045em",
             color: "var(--c-muted)",
           }}

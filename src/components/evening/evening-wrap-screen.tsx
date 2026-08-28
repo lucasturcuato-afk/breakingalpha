@@ -19,7 +19,7 @@ import { useIsMobileViewport } from "./use-mobile-viewport";
  * and `Inter` 44 times between them, none of which the app loads, so most of
  * its text rendered in a generic fallback. See `./fonts.ts`; the nodes that
  * still do are all inside `src/components/ledger`. */
-import { MONO, SANS, SERIF } from "./fonts";
+import { FONT_DISPLAY, FONT_MONO, FONT_SANS } from "@/components/mobile/fonts";
 import type {
   EveningMover,
   EveningReviewedCall,
@@ -132,7 +132,7 @@ export function EveningWrapScreen({
           <Masthead data={data} />
           <StatsBar data={data} />
           <DateRule data={data} />
-          <p style={{ margin: "9px 0 0", font: `400 12.5px/1.5 ${SANS}`, color: "var(--c-secondary)" }}>
+          <p style={{ margin: "9px 0 0", font: `400 12.5px/1.5 ${FONT_SANS}`, color: "var(--c-secondary)" }}>
             {data.tagline}
           </p>
 
@@ -141,7 +141,7 @@ export function EveningWrapScreen({
           <CloseHero data={data} />
 
           {data.close.lede ? (
-            <p style={{ margin: "18px 0 0", font: `400 17px/1.55 ${SERIF}`, color: "var(--c-ink)", textWrap: "pretty" }}>
+            <p style={{ margin: "18px 0 0", font: `400 17px/1.55 ${FONT_DISPLAY}`, color: "var(--c-ink)", textWrap: "pretty" }}>
               {data.close.lede}
             </p>
           ) : null}
@@ -150,14 +150,14 @@ export function EveningWrapScreen({
               and React drops one of them. The list is append-only and never
               reordered, so the index is the stable identity here. */}
           {data.close.body.slice(0, CLOSE_VISIBLE_PARAGRAPHS).map((b, i) => (
-            <p key={i} style={{ margin: `${i === 0 ? 12 : 11}px 0 0`, font: `400 var(--v3-body)/var(--v3-lead) ${SANS}`, color: "var(--c-body)", textWrap: "pretty" }}>
+            <p key={i} style={{ margin: `${i === 0 ? 12 : 11}px 0 0`, font: `400 var(--v3-body)/var(--v3-lead) ${FONT_SANS}`, color: "var(--c-body)", textWrap: "pretty" }}>
               {b}
             </p>
           ))}
           {closeOpen ? (
             <div className={motion.enter}>
               {data.close.body.slice(CLOSE_VISIBLE_PARAGRAPHS).map((b, i) => (
-                <p key={i} style={{ margin: "11px 0 0", font: `400 var(--v3-body)/var(--v3-lead) ${SANS}`, color: "var(--c-body)", textWrap: "pretty" }}>
+                <p key={i} style={{ margin: "11px 0 0", font: `400 var(--v3-body)/var(--v3-lead) ${FONT_SANS}`, color: "var(--c-body)", textWrap: "pretty" }}>
                   {b}
                 </p>
               ))}
@@ -177,7 +177,7 @@ export function EveningWrapScreen({
                 minHeight: "44px",
                 display: "flex",
                 alignItems: "center",
-                font: `600 12.5px/1 ${SANS}`,
+                font: `600 12.5px/1 ${FONT_SANS}`,
                 color: "var(--c-goldink)",
               }}
             >
@@ -202,7 +202,7 @@ export function EveningWrapScreen({
                     backgroundColor: "var(--c-surface)",
                   }}
                 >
-                  <p style={{ margin: 0, font: `400 12.5px/1.55 ${SANS}`, color: "var(--c-body)" }}>
+                  <p style={{ margin: 0, font: `400 12.5px/1.55 ${FONT_SANS}`, color: "var(--c-body)" }}>
                     {data.reviewedRest}
                   </p>
                 </div>
@@ -214,7 +214,7 @@ export function EveningWrapScreen({
             <>
               <SectionRule label={"today's top stories"} />
               {data.stories.lede ? (
-                <p style={{ margin: "11px 0 0", font: `400 var(--v3-body)/var(--v3-lead) ${SANS}`, color: "var(--c-body)", textWrap: "pretty" }}>
+                <p style={{ margin: "11px 0 0", font: `400 var(--v3-body)/var(--v3-lead) ${FONT_SANS}`, color: "var(--c-body)", textWrap: "pretty" }}>
                   {data.stories.lede}
                 </p>
               ) : null}
@@ -237,7 +237,7 @@ export function EveningWrapScreen({
           {data.nextEvent ? (
             <>
               <div style={{ marginTop: "22px", height: "1px", backgroundColor: "var(--c-border)" }} />
-              <p style={{ margin: "16px 0 0", font: `400 15px/1.6 ${SERIF}`, color: "var(--c-ink)", textWrap: "pretty" }}>
+              <p style={{ margin: "16px 0 0", font: `400 15px/1.6 ${FONT_DISPLAY}`, color: "var(--c-ink)", textWrap: "pretty" }}>
                 {data.nextEvent}
               </p>
             </>
@@ -322,7 +322,7 @@ function PersonalizationBanner({ data, onDismiss }: { data: EveningWrapData; onD
       }}
     >
       <div style={{ minWidth: 0, display: "flex", alignItems: "center", gap: "7px", flexWrap: "wrap" }}>
-        <span style={{ font: `400 11px/1 ${SANS}`, color: "var(--c-muted)", whiteSpace: "nowrap" }}>
+        <span style={{ font: `400 11px/1 ${FONT_SANS}`, color: "var(--c-muted)", whiteSpace: "nowrap" }}>
           Personalized for:
         </span>
         {data.sectors.map((s) => (
@@ -334,7 +334,7 @@ function PersonalizationBanner({ data, onDismiss }: { data: EveningWrapData; onD
               borderRadius: "4px",
               backgroundColor: "var(--c-well)",
               border: "1px solid var(--c-border)",
-              font: `600 10px/1.35 ${SANS}`,
+              font: `600 10px/1.35 ${FONT_SANS}`,
               color: "var(--c-secondary)",
             }}
           >
@@ -351,7 +351,7 @@ function PersonalizationBanner({ data, onDismiss }: { data: EveningWrapData; onD
             minHeight: "12px",
             padding: "16px 0",
             margin: "-16px 0",
-            font: `500 11px/1 ${SANS}`,
+            font: `500 11px/1 ${FONT_SANS}`,
             color: "var(--c-secondary)",
             whiteSpace: "nowrap",
             textDecoration: "none",
@@ -398,7 +398,7 @@ function Masthead({ data }: { data: EveningWrapData }) {
   return (
     <div style={{ margin: `0 calc(-1 * ${PAD})`, backgroundColor: "var(--c-inverse)", padding: `11px ${PAD} 12px` }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px" }}>
-        <span style={{ display: "inline-flex", font: `700 19px/1 ${SERIF}`, letterSpacing: "-0.01em", color: "var(--c-oninv)" }}>
+        <span style={{ display: "inline-flex", font: `700 19px/1 ${FONT_DISPLAY}`, letterSpacing: "-0.01em", color: "var(--c-oninv)" }}>
           Signal<span style={{ color: "var(--c-oninv-gold)" }}>era</span>
         </span>
         {/* The only in-surface exit this screen has. A real anchor, because on
@@ -409,7 +409,7 @@ function Masthead({ data }: { data: EveningWrapData }) {
             minHeight: "44px",
             display: "flex",
             alignItems: "center",
-            font: `500 12px/1 ${SANS}`,
+            font: `500 12px/1 ${FONT_SANS}`,
             color: ON_ESPRESSO.control,
             textDecoration: "none",
           }}
@@ -419,10 +419,10 @@ function Masthead({ data }: { data: EveningWrapData }) {
       </div>
       <div style={{ marginTop: "9px", display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: "12px" }}>
         <div style={{ minWidth: 0 }}>
-          <div style={{ font: `700 19px/1.1 ${SERIF}`, letterSpacing: "-0.01em", color: "var(--c-oninv)" }}>
+          <div style={{ font: `700 19px/1.1 ${FONT_DISPLAY}`, letterSpacing: "-0.01em", color: "var(--c-oninv)" }}>
             Evening Wrap
           </div>
-          <div style={{ marginTop: "4px", font: `400 italic 12.5px/1.3 ${SERIF}`, color: ON_ESPRESSO.tagline }}>
+          <div style={{ marginTop: "4px", font: `400 italic 12.5px/1.3 ${FONT_DISPLAY}`, color: ON_ESPRESSO.tagline }}>
             {data.tagline}
           </div>
         </div>
@@ -433,7 +433,7 @@ function Masthead({ data }: { data: EveningWrapData }) {
             color: ON_ESPRESSO.pill,
             padding: "4px 9px",
             borderRadius: "14px",
-            font: `600 10px/1 ${SANS}`,
+            font: `600 10px/1 ${FONT_SANS}`,
             whiteSpace: "nowrap",
           }}
         >
@@ -471,10 +471,10 @@ function StatsBar({ data }: { data: EveningWrapData }) {
     >
       {data.stats.map((s) => (
         <span key={s.label} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-          <span style={{ font: `700 10px/1 ${SANS}`, color: "var(--c-muted)" }}>{s.label}</span>
+          <span style={{ font: `700 10px/1 ${FONT_SANS}`, color: "var(--c-muted)" }}>{s.label}</span>
           <span
             style={{
-              font: `700 12px/1 ${MONO}`,
+              font: `700 12px/1 ${FONT_MONO}`,
               color:
                 s.tone === "calm"
                   ? "var(--c-greenink)"
@@ -487,7 +487,7 @@ function StatsBar({ data }: { data: EveningWrapData }) {
           </span>
         </span>
       ))}
-      <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "6px", font: `400 10px/1 ${MONO}`, letterSpacing: "0.07em", color: "var(--c-muted)" }}>
+      <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "6px", font: `400 10px/1 ${FONT_MONO}`, letterSpacing: "0.07em", color: "var(--c-muted)" }}>
         <span aria-hidden="true" style={{ width: "6px", height: "6px", borderRadius: "50%", backgroundColor: "var(--c-muted)" }} />
         CLOSED
       </span>
@@ -498,9 +498,9 @@ function StatsBar({ data }: { data: EveningWrapData }) {
 function DateRule({ data }: { data: EveningWrapData }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: "11px", padding: "2px 0 0" }}>
-      <span style={{ font: `400 italic 13px/1 ${SERIF}`, color: "var(--c-secondary)" }}>{data.dateline}</span>
+      <span style={{ font: `400 italic 13px/1 ${FONT_DISPLAY}`, color: "var(--c-secondary)" }}>{data.dateline}</span>
       <span aria-hidden="true" style={{ flex: 1, height: "1px", backgroundColor: "var(--c-border)" }} />
-      <span style={{ font: `400 10px/1 ${MONO}`, letterSpacing: "0.07em", color: "var(--c-muted)" }}>CLOSED</span>
+      <span style={{ font: `400 10px/1 ${FONT_MONO}`, letterSpacing: "0.07em", color: "var(--c-muted)" }}>CLOSED</span>
     </div>
   );
 }
@@ -534,12 +534,12 @@ function CloseHero({ data }: { data: EveningWrapData }) {
         }}
       />
       <div style={{ position: "relative", padding: "18px 16px 15px" }}>
-        <div style={{ font: `400 10px/1 ${MONO}`, letterSpacing: "0.07em", color: ON_ESPRESSO.dim }}>{c.stampedAt}</div>
+        <div style={{ font: `400 10px/1 ${FONT_MONO}`, letterSpacing: "0.07em", color: ON_ESPRESSO.dim }}>{c.stampedAt}</div>
         {/* No stamp without a grounded word. `reconcileCloseWord` gives back
             null on a tape it cannot describe, and the desk layout prints the
             bare sentence in that case. This does the same rather than stamping
             a word the tape did not support. */}
-        <p style={{ margin: "13px 0 0", font: `800 25px/1.24 ${SERIF}`, letterSpacing: "-0.025em", color: "var(--c-oninv)" }}>
+        <p style={{ margin: "13px 0 0", font: `800 25px/1.24 ${FONT_DISPLAY}`, letterSpacing: "-0.025em", color: "var(--c-oninv)" }}>
           {c.verdict ? (
             <>
               The market closed{" "}
@@ -575,7 +575,7 @@ function CloseHero({ data }: { data: EveningWrapData }) {
             backgroundColor: "rgba(255,253,249,0.05)",
             border: "1px solid rgba(212,168,75,0.2)",
             borderRadius: "9px",
-            font: `600 12px/1.4 ${SANS}`,
+            font: `600 12px/1.4 ${FONT_SANS}`,
             color: ON_ESPRESSO.dim,
           }}
         >
@@ -638,12 +638,12 @@ function ScorecardTile({
         borderBottom: row < lastRow ? "1px solid rgba(212,168,75,0.15)" : undefined,
       }}
     >
-      <div style={{ font: `400 10px/1 ${MONO}`, letterSpacing: "0.07em", color: ON_ESPRESSO.cellLabel }}>{cell.label}</div>
-      <div style={{ marginTop: "6px", font: `600 14px/1 ${MONO}`, color: "var(--c-oninv)" }}>{cell.value}</div>
+      <div style={{ font: `400 10px/1 ${FONT_MONO}`, letterSpacing: "0.07em", color: ON_ESPRESSO.cellLabel }}>{cell.label}</div>
+      <div style={{ marginTop: "6px", font: `600 14px/1 ${FONT_MONO}`, color: "var(--c-oninv)" }}>{cell.value}</div>
       <div
         style={{
           marginTop: "4px",
-          font: `600 10.5px/1 ${MONO}`,
+          font: `600 10.5px/1 ${FONT_MONO}`,
           /* A move that rounds to 0.00% at the two places this cell prints
              takes neither colour and draws no glyph. Green over `▲0.00%` is a
              side the figure does not carry. */
@@ -665,7 +665,7 @@ function ScorecardTile({
 function SectionRule({ label }: { label: string }) {
   return (
     <div style={{ marginTop: "22px", display: "flex", alignItems: "center", gap: "11px" }}>
-      <span style={{ font: `400 italic 12.5px/1 ${SERIF}`, color: "var(--c-secondary)" }}>{label}</span>
+      <span style={{ font: `400 italic 12.5px/1 ${FONT_DISPLAY}`, color: "var(--c-secondary)" }}>{label}</span>
       <span aria-hidden="true" style={{ flex: 1, height: "1px", backgroundColor: "var(--c-border)" }} />
     </div>
   );
@@ -722,8 +722,8 @@ function ReviewedCall({ call: r }: { call: EveningReviewedCall }) {
           scale="row"
           lead={
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px" }}>
-              <span style={{ font: `600 11px/1 ${SANS}`, color: "var(--c-amberink)" }}>{r.note}</span>
-              <span style={{ font: `400 10px/1 ${MONO}`, letterSpacing: "0.07em", color: "var(--c-muted)" }}>{r.id}</span>
+              <span style={{ font: `600 11px/1 ${FONT_SANS}`, color: "var(--c-amberink)" }}>{r.note}</span>
+              <span style={{ font: `400 10px/1 ${FONT_MONO}`, letterSpacing: "0.07em", color: "var(--c-muted)" }}>{r.id}</span>
             </div>
           }
           claim={r.claim}
@@ -732,7 +732,7 @@ function ReviewedCall({ call: r }: { call: EveningReviewedCall }) {
       </button>
       <p
         id="evening-reviewed-inert"
-        style={{ margin: 0, padding: "0 15px 12px", font: `400 11px/1.4 ${SANS}`, color: "var(--c-muted)", textWrap: "pretty" }}
+        style={{ margin: 0, padding: "0 15px 12px", font: `400 11px/1.4 ${FONT_SANS}`, color: "var(--c-muted)", textWrap: "pretty" }}
       >
         The review screen is not built yet, so this card does not open.
       </p>
@@ -755,7 +755,7 @@ function MoverRow({ mover, last }: { mover: EveningMover; last: boolean }) {
           down the list. Two lines when a quote resolved, one when only the
           symbol did, none when the story named no symbol at all. A dash in the
           move slot would read as a measured flat session. */}
-      <span aria-hidden={!mover.symbol} style={{ flex: "none", width: "46px", font: `500 10.5px/1.5 ${MONO}`, letterSpacing: "0.045em", color: "var(--c-muted)" }}>
+      <span aria-hidden={!mover.symbol} style={{ flex: "none", width: "46px", font: `500 10.5px/1.5 ${FONT_MONO}`, letterSpacing: "0.045em", color: "var(--c-muted)" }}>
         {mover.symbol}
         {mover.symbol && mover.move ? (
           <>
@@ -764,7 +764,7 @@ function MoverRow({ mover, last }: { mover: EveningMover; last: boolean }) {
           </>
         ) : null}
       </span>
-      <p style={{ margin: 0, minWidth: 0, flex: 1, font: `400 13px/1.5 ${SANS}`, color: "var(--c-body)" }}>
+      <p style={{ margin: 0, minWidth: 0, flex: 1, font: `400 13px/1.5 ${FONT_SANS}`, color: "var(--c-body)" }}>
         {mover.headline}
       </p>
     </div>
@@ -787,7 +787,7 @@ function WrapSkeleton() {
         <div className={motion.sk} style={{ height: "78px", borderRadius: "12px" }} />
         <div className={motion.sk} style={{ height: "78px", borderRadius: "12px" }} />
       </div>
-      <p style={{ margin: "22px 0 0", font: `400 11px/1 ${MONO}`, letterSpacing: "0.07em", color: "var(--c-muted)", textAlign: "center" }}>
+      <p style={{ margin: "22px 0 0", font: `400 11px/1 ${FONT_MONO}`, letterSpacing: "0.07em", color: "var(--c-muted)", textAlign: "center" }}>
         SYNTHESISING THE CLOSE
       </p>
     </div>
@@ -814,7 +814,7 @@ function WrapNone() {
           <path d="M20 14.5A8 8 0 0 1 9.5 4a7 7 0 1 0 10.5 10.5z" />
         </svg>
       </span>
-      <p style={{ margin: "18px 0 0", font: `700 20px/1.25 ${SERIF}`, color: "var(--c-ink)" }}>
+      <p style={{ margin: "18px 0 0", font: `700 20px/1.25 ${FONT_DISPLAY}`, color: "var(--c-ink)" }}>
         No evening wrap available
       </p>
       {/* Two removals, both the mobile-build rule from PR #661.
@@ -826,7 +826,7 @@ function WrapNone() {
           a time out of, so an interpolated 4:35 was invented precision. The
           field is gone from the contract entirely, and this branch now takes
           no payload at all, so there is nothing left to interpolate from. */}
-      <p style={{ margin: "10px 0 0", font: `400 13px/1.6 ${SANS}`, color: "var(--c-secondary)", maxWidth: "32ch", textWrap: "pretty" }}>
+      <p style={{ margin: "10px 0 0", font: `400 13px/1.6 ${FONT_SANS}`, color: "var(--c-secondary)", maxWidth: "32ch", textWrap: "pretty" }}>
         Nothing failed to load. The wrap publishes after the close.
       </p>
       {/* Disabled, not merely handler-less. TODO(PR #643 sibling units): the
@@ -843,13 +843,13 @@ function WrapNone() {
         disabled
         aria-describedby="evening-record-inert"
         className={motion.bare}
-        style={{ marginTop: "18px", minHeight: "46px", display: "inline-flex", alignItems: "center", padding: "0 18px", border: "1px solid var(--c-chrome-border)", borderRadius: "9px", font: `600 13px/1 ${SANS}`, color: "var(--c-secondary)", cursor: "default" }}
+        style={{ marginTop: "18px", minHeight: "46px", display: "inline-flex", alignItems: "center", padding: "0 18px", border: "1px solid var(--c-chrome-border)", borderRadius: "9px", font: `600 13px/1 ${FONT_SANS}`, color: "var(--c-secondary)", cursor: "default" }}
       >
         Open your record
       </button>
       <p
         id="evening-record-inert"
-        style={{ margin: "9px 0 0", font: `400 11px/1.4 ${SANS}`, color: "var(--c-muted)", maxWidth: "32ch", textWrap: "pretty" }}
+        style={{ margin: "9px 0 0", font: `400 11px/1.4 ${FONT_SANS}`, color: "var(--c-muted)", maxWidth: "32ch", textWrap: "pretty" }}
       >
         The record screen is not built yet, so this control does not open.
       </p>
@@ -873,7 +873,7 @@ function WrapNone() {
 function WrapError() {
   return (
     <div className={motion.enter} style={{ padding: `18px ${PAD} 26px` }} role="alert">
-      <p style={{ margin: 0, font: `500 17px/1.4 ${SERIF}`, color: "var(--c-ink)" }}>
+      <p style={{ margin: 0, font: `500 17px/1.4 ${FONT_DISPLAY}`, color: "var(--c-ink)" }}>
         We could not load the evening wrap.
       </p>
       {/* No sentence about the reader or their record. The earlier copy closed
@@ -883,7 +883,7 @@ function WrapError() {
           outranks matching the design. What survives is a claim about this
           screen only: the read failed, and it is not the same thing as an
           empty result. */}
-      <p style={{ margin: "10px 0 0", font: `400 13px/1.6 ${SANS}`, color: "var(--c-secondary)", maxWidth: "32ch", textWrap: "pretty" }}>
+      <p style={{ margin: "10px 0 0", font: `400 13px/1.6 ${FONT_SANS}`, color: "var(--c-secondary)", maxWidth: "32ch", textWrap: "pretty" }}>
         This is a failed read, not an empty result. Nothing is being hidden.
       </p>
       {/* A real retry, not a drawn one.
@@ -896,7 +896,7 @@ function WrapError() {
         type="button"
         onClick={() => window.location.reload()}
         className={motion.bare}
-        style={{ marginTop: "14px", minHeight: "44px", display: "inline-flex", alignItems: "center", padding: "0 17px", border: "1px solid var(--c-ink)", borderRadius: "9px", font: `600 13px/1 ${SANS}`, color: "var(--c-ink)" }}
+        style={{ marginTop: "14px", minHeight: "44px", display: "inline-flex", alignItems: "center", padding: "0 17px", border: "1px solid var(--c-ink)", borderRadius: "9px", font: `600 13px/1 ${FONT_SANS}`, color: "var(--c-ink)" }}
       >
         Try again
       </button>
@@ -918,14 +918,14 @@ function WrapError() {
 function StaleNotice({ data }: { data: EveningWrapData }) {
   return (
     <div style={{ marginTop: "14px", border: "1px solid var(--c-amber-edge)", backgroundColor: "var(--c-amber-well)", borderRadius: "12px", padding: "13px 14px" }}>
-      <div style={{ font: `600 12px/1 ${SANS}`, color: "var(--c-ink)" }}>
+      <div style={{ font: `600 12px/1 ${FONT_SANS}`, color: "var(--c-ink)" }}>
         You are reading an earlier session.
       </div>
       {/* "Your review dates are unaffected" is gone, same rule as the other
           two states: it is a sentence about the reader's own record, and this
           branch knows only which session the wrap in hand covers. What is left
           describes the tape on this screen and nothing else. */}
-      <div style={{ marginTop: "4px", font: `400 11.5px/1.5 ${SANS}`, color: "var(--c-body)" }}>
+      <div style={{ marginTop: "4px", font: `400 11.5px/1.5 ${FONT_SANS}`, color: "var(--c-body)" }}>
         {`This wrap covers ${data.coversSession}. The tape below is the close that was persisted then, not a live quote.`}
       </div>
     </div>

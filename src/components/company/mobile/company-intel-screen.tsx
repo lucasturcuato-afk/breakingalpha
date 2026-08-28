@@ -23,6 +23,7 @@ import {
   TONE_INK,
   ToneSection,
 } from "./sections";
+import { FONT_DISPLAY, FONT_MONO, FONT_SANS } from "@/components/mobile/fonts";
 
 /**
  * Company Intel, mobile. The prototype's `isCompany` screen.
@@ -171,7 +172,7 @@ export function CompanyIntelScreen({
             display: "flex",
             alignItems: "center",
             gap: "6px",
-            font: "500 13px/1 Inter, sans-serif",
+            font: `500 13px/1 ${FONT_SANS}`,
             color: "var(--c-secondary)",
           }}
         >
@@ -266,13 +267,13 @@ function Masthead({ data }: { data: CompanyIntelData }) {
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
         <span
           style={{
-            font: "500 12px/1 'JetBrains Mono', monospace",
+            font: `500 12px/1 ${FONT_MONO}`,
             color: "var(--c-muted)",
           }}
         >
           {data.ticker} · {data.exchange}
         </span>
-        <span style={{ font: "600 11px/1 Inter, sans-serif", color: "var(--c-secondary)" }}>
+        <span style={{ font: `600 11px/1 ${FONT_SANS}`, color: "var(--c-secondary)" }}>
           {data.sector}
         </span>
       </div>
@@ -280,7 +281,7 @@ function Masthead({ data }: { data: CompanyIntelData }) {
       <h1
         style={{
           margin: "11px 0 0",
-          font: "700 26px/1.14 'Playfair Display', serif",
+          font: `700 26px/1.14 ${FONT_DISPLAY}`,
           letterSpacing: "-0.02em",
           color: "var(--c-ink)",
         }}
@@ -291,7 +292,7 @@ function Masthead({ data }: { data: CompanyIntelData }) {
       <p
         style={{
           margin: "12px 0 0",
-          font: "500 17px/1 'JetBrains Mono', monospace",
+          font: `500 17px/1 ${FONT_MONO}`,
           color: "var(--c-ink)",
         }}
       >
@@ -362,13 +363,13 @@ function MemoControl({ corpus }: { corpus: string }) {
           cursor: "not-allowed",
         }}
       >
-        <span style={{ font: "600 14px/1 Inter, sans-serif", color: "var(--c-oninv)" }}>
+        <span style={{ font: `600 14px/1 ${FONT_SANS}`, color: "var(--c-oninv)" }}>
           Generate a company brief
         </span>
         <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
           <span
             style={{
-              font: "400 10px/1 'JetBrains Mono', monospace",
+              font: `400 10px/1 ${FONT_MONO}`,
               letterSpacing: "0.07em",
               color: "var(--c-oninv-dim)",
             }}
@@ -394,7 +395,7 @@ function MemoControl({ corpus }: { corpus: string }) {
         id="memo-pending-note"
         style={{
           margin: "8px 0 0",
-          font: "400 11px/1.5 Inter, sans-serif",
+          font: `400 11px/1.5 ${FONT_SANS}`,
           color: "var(--c-muted)",
           textWrap: "pretty",
         }}
@@ -423,7 +424,7 @@ function KpiGrid({ data }: { data: CompanyIntelData }) {
         <div key={cell.label} style={{ backgroundColor: "var(--c-surface)", padding: "11px 13px" }}>
           <div
             style={{
-              font: "400 10px/1 'JetBrains Mono', monospace",
+              font: `400 10px/1 ${FONT_MONO}`,
               letterSpacing: "0.07em",
               color: "var(--c-muted)",
             }}
@@ -434,8 +435,8 @@ function KpiGrid({ data }: { data: CompanyIntelData }) {
             style={{
               marginTop: "6px",
               font: cell.tone
-                ? "700 15px/1 'Playfair Display', serif"
-                : "700 17px/1 'Playfair Display', serif",
+                ? `700 15px/1 ${FONT_DISPLAY}`
+                : `700 17px/1 ${FONT_DISPLAY}`,
               /* Tinted off the reading, never pinned green. One table, shared
                  with the Price and tone section, so the KPI cell and the
                  section body can never disagree about what a reading looks
@@ -449,7 +450,7 @@ function KpiGrid({ data }: { data: CompanyIntelData }) {
             <div
               style={{
                 marginTop: "4px",
-                font: "400 10px/1 Inter, sans-serif",
+                font: `400 10px/1 ${FONT_SANS}`,
                 color: "var(--c-muted)",
               }}
             >
@@ -521,7 +522,7 @@ function YourEntries({ data }: { data: CompanyIntelData }) {
                 <p
                   style={{
                     margin: "8px 0 0",
-                    font: "400 italic 13px/1.55 'Playfair Display', serif",
+                    font: `400 italic 13px/1.55 ${FONT_DISPLAY}`,
                     color: "var(--c-body)",
                     textWrap: "pretty",
                   }}
@@ -556,14 +557,14 @@ function YourEntries({ data }: { data: CompanyIntelData }) {
                 borderRadius: "50%",
               }}
             />
-            <span style={{ font: "600 11px/1 Inter, sans-serif", color: "var(--c-secondary)" }}>
+            <span style={{ font: `600 11px/1 ${FONT_SANS}`, color: "var(--c-secondary)" }}>
               {data.following.since}
             </span>
           </div>
           <p
             style={{
               margin: "8px 0 0",
-              font: "400 12.5px/1.5 Inter, sans-serif",
+              font: `400 12.5px/1.5 ${FONT_SANS}`,
               color: "var(--c-body)",
             }}
           >
@@ -580,7 +581,7 @@ function EntriesRule() {
     <div style={{ marginTop: "24px", display: "flex", alignItems: "center", gap: "11px" }}>
       <span
         style={{
-          font: "400 italic 12.5px/1 'Playfair Display', serif",
+          font: `400 italic 12.5px/1 ${FONT_DISPLAY}`,
           color: "var(--c-secondary)",
         }}
       >
@@ -642,7 +643,7 @@ function CompanyError({ onRetry }: { onRetry: () => void }) {
     <div role="alert">
       <div
         style={{
-          font: "700 21px/1.1 'Playfair Display', serif",
+          font: `700 21px/1.1 ${FONT_DISPLAY}`,
           letterSpacing: "-0.01em",
           color: "var(--c-ink)",
         }}
@@ -652,7 +653,7 @@ function CompanyError({ onRetry }: { onRetry: () => void }) {
       <p
         style={{
           margin: "10px 0 0",
-          font: "400 13px/1.55 Inter, sans-serif",
+          font: `400 13px/1.55 ${FONT_SANS}`,
           color: "var(--c-body)",
           textWrap: "pretty",
         }}
@@ -672,7 +673,7 @@ function CompanyError({ onRetry }: { onRetry: () => void }) {
           padding: "0 17px",
           border: "1px solid var(--c-ink)",
           borderRadius: "9px",
-          font: "600 13px/1 Inter, sans-serif",
+          font: `600 13px/1 ${FONT_SANS}`,
           color: "var(--c-ink)",
         }}
       >

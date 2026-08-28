@@ -12,6 +12,7 @@ import {
   trendsFixture,
   trendsStaleFixture,
 } from "@/components/trends-mobile/fixture";
+import { FONT_DISPLAY, FONT_SANS } from "@/components/mobile/fonts";
 
 /**
  * Mobile Trends, step 10.
@@ -115,10 +116,10 @@ export default async function TrendsMobilePage({
       {/* Above the breakpoint the desk already has a Trends surface, with
           filters and a signal modal this screen does not rebuild. */}
       <div className="hidden md:block" style={{ padding: "48px", backgroundColor: "var(--c-bg)" }}>
-        <p style={{ margin: 0, font: "500 17px/1.4 'Playfair Display', serif", color: "var(--c-ink)" }}>
+        <p style={{ margin: 0, font: `500 17px/1.4 ${FONT_DISPLAY}`, color: "var(--c-ink)" }}>
           Trends is a mobile surface.
         </p>
-        <p style={{ margin: "10px 0 0", font: "400 13px/1.6 Inter, sans-serif", color: "var(--c-secondary)" }}>
+        <p style={{ margin: "10px 0 0", font: `400 13px/1.6 ${FONT_SANS}`, color: "var(--c-secondary)" }}>
           On a wider screen the desk draws the full list, with sector and activity filters.
         </p>
         <Link
@@ -128,7 +129,7 @@ export default async function TrendsMobilePage({
             alignItems: "center",
             minHeight: "44px",
             marginTop: "10px",
-            font: "500 13px/1 Inter, sans-serif",
+            font: `500 13px/1 ${FONT_SANS}`,
             color: "var(--c-goldink)",
           }}
         >

@@ -1,6 +1,7 @@
 "use client";
 
 import type { CSSProperties } from "react";
+import { FONT_SANS } from "@/components/mobile/fonts";
 
 /**
  * The filter chip row: one wrapping row of `label + count` chips driving a
@@ -51,7 +52,7 @@ function chipStyle(on: boolean): CSSProperties {
     whiteSpace: "nowrap",
     cursor: "pointer",
     border: `1px solid ${on ? "var(--c-ink)" : "var(--c-border)"}`,
-    font: `${on ? 600 : 500} 12px/1 Inter, sans-serif`,
+    font: `${on ? 600 : 500} 12px/1 ${FONT_SANS}`,
     color: on ? "var(--c-ink)" : "var(--c-secondary)",
     backgroundColor: on ? "var(--c-surface)" : "transparent",
   };

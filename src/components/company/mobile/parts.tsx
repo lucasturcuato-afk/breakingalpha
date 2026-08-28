@@ -1,6 +1,7 @@
 import type { CSSProperties, ReactNode } from "react";
 
 import styles from "./company-mobile.module.css";
+import { FONT_DISPLAY, FONT_SANS } from "@/components/mobile/fonts";
 
 /**
  * The small shapes the five Company Intel sections share. Each one is measured
@@ -18,7 +19,7 @@ export function SectionRule({ children, marginTop }: { children: string; marginT
     <div
       style={{
         marginTop: `${marginTop}px`,
-        font: "400 italic 12.5px/1 'Playfair Display', serif",
+        font: `400 italic 12.5px/1 ${FONT_DISPLAY}`,
         color: "var(--c-secondary)",
       }}
     >
@@ -98,8 +99,8 @@ export function Chip({
         whiteSpace: "nowrap",
         border: active ? "1px solid var(--c-ink)" : "1px solid var(--c-border)",
         font: active
-          ? `600 ${size}/1 Inter, sans-serif`
-          : `500 ${size}/1 Inter, sans-serif`,
+          ? `600 ${size}/1 ${FONT_SANS}`
+          : `500 ${size}/1 ${FONT_SANS}`,
         color: active ? "var(--c-ink)" : "var(--c-secondary)",
         backgroundColor: active ? "var(--c-surface)" : "transparent",
         opacity: disabled ? 0.4 : 1,
@@ -130,7 +131,7 @@ export function EmptyWell({ headline, note }: { headline: string; note?: string 
         padding: "34px 20px",
       }}
     >
-      <div style={{ font: "600 13px/1.3 Inter, sans-serif", color: "var(--c-ink)" }}>
+      <div style={{ font: `600 13px/1.3 ${FONT_SANS}`, color: "var(--c-ink)" }}>
         {headline}
       </div>
       {note ? (
@@ -139,7 +140,7 @@ export function EmptyWell({ headline, note }: { headline: string; note?: string 
             margin: 0,
             maxWidth: "260px",
             textAlign: "center",
-            font: "400 12px/1.5 Inter, sans-serif",
+            font: `400 12px/1.5 ${FONT_SANS}`,
             color: "var(--c-secondary)",
           }}
         >
@@ -156,7 +157,7 @@ export function SectionNote({ children, marginTop = 12 }: { children: ReactNode;
     <p
       style={{
         margin: `${marginTop}px 0 0`,
-        font: "400 11px/1.55 Inter, sans-serif",
+        font: `400 11px/1.55 ${FONT_SANS}`,
         color: "var(--c-muted)",
         textWrap: "pretty",
       }}

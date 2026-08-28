@@ -22,6 +22,7 @@ import styles from "./ask.module.css";
 import { ASK_FIXTURE_ENABLED } from "./fixture-gate";
 import { ASK_DIRECTORY, type AskBrowseData, type DirectoryId } from "./ask-data";
 import type { ReactNode } from "react";
+import { FONT_DISPLAY, FONT_SANS } from "@/components/mobile/fonts";
 
 /**
  * Ask, browse. The Ask pole's tab root and the directory the answer screen is
@@ -86,14 +87,14 @@ export function AskBrowseScreen({
         <h1
           style={{
             margin: 0,
-            font: "700 26px/1.14 'Playfair Display', serif",
+            font: `700 26px/1.14 ${FONT_DISPLAY}`,
             letterSpacing: "-0.02em",
             color: "var(--c-ink)",
           }}
         >
           Ask
         </h1>
-        <p style={{ margin: "8px 0 0", font: "400 12.5px/1.5 Inter, sans-serif", color: "var(--c-secondary)" }}>
+        <p style={{ margin: "8px 0 0", font: `400 12.5px/1.5 ${FONT_SANS}`, color: "var(--c-secondary)" }}>
           {INTRO}
         </p>
       </div>
@@ -147,7 +148,7 @@ export function AskBrowseScreen({
         <p
           style={{
             margin: "8px 0 0",
-            font: "400 11.5px/1.5 Inter, sans-serif",
+            font: `400 11.5px/1.5 ${FONT_SANS}`,
             color: "var(--c-muted)",
             textWrap: "pretty",
           }}

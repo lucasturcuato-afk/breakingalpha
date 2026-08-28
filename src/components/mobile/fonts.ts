@@ -13,6 +13,29 @@
    screen ships in a face nobody designed. Everything that needs a family
    reads one of these three constants.
 
+   NOT BECAUSE THE NAME IS HASHED. Two now-deleted copies of this module
+   (dashboard-mobile/fonts.ts, evening/fonts.ts) said next/font emits a
+   hashed family name and that a literal therefore cannot reach the face.
+   On this Next version it does not hash. The built CSS reads:
+
+     --font-fraunces:"Fraunces", "Fraunces Fallback"
+     --font-space-grotesk:"Space Grotesk", "Space Grotesk Fallback"
+     --font-plex-mono:"IBM Plex Mono", "IBM Plex Mono Fallback"
+
+   Unhashed, verbatim. The conclusion is unchanged, a bare `Inter` still
+   names a face no @font-face rule declares, but the stated reason was
+   wrong and it cost one measurement pass. Grep .next after a build if it
+   ever needs re-checking.
+
+   THE SHORTHAND TRAP. Most declarations on these screens use the CSS
+   `font:` shorthand, which carries weight, size, line-height and family in
+   one value. If the family part contains a var() that is not defined, the
+   whole declaration is invalid at computed-value time and is DROPPED:
+   size and weight reset with it, silently, to 14px/400. That is why the
+   family is always spelled through these constants and never hand-typed as
+   `var(--font-...)`. A typo in the constant name is a build error. A typo
+   inside a var() is a layout change nobody sees in review.
+
    `globals.css` also aliases the previous variable names
    (--font-playfair-display / --font-inter / --font-jetbrains-mono) onto
    the same three families for back compatibility. Those aliases still

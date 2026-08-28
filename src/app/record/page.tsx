@@ -10,6 +10,7 @@ import {
   RECORD_FIXTURE,
   RECORD_UNRESOLVED_FIXTURE,
 } from "@/components/prepared-record/fixture";
+import { FONT_DISPLAY, FONT_SANS } from "@/components/mobile/fonts";
 
 /**
  * The Prepared record, the user's own. Server component so it can read the
@@ -82,10 +83,10 @@ export default async function RecordPage({
       {/* Above the breakpoint this route has no layout of its own. The desk
           already renders a record surface and it is not being rebuilt here. */}
       <div className="hidden md:block" style={{ padding: "48px", backgroundColor: "var(--c-bg)" }}>
-        <p style={{ margin: 0, font: "500 17px/1.4 'Playfair Display', serif", color: "var(--c-ink)" }}>
+        <p style={{ margin: 0, font: `500 17px/1.4 ${FONT_DISPLAY}`, color: "var(--c-ink)" }}>
           The prepared record is a mobile surface.
         </p>
-        <p style={{ margin: "10px 0 0", font: "400 13px/1.6 Inter, sans-serif", color: "var(--c-secondary)" }}>
+        <p style={{ margin: "10px 0 0", font: `400 13px/1.6 ${FONT_SANS}`, color: "var(--c-secondary)" }}>
           On a wider screen your calls live under Radar, beside the desk&rsquo;s own record.
         </p>
       </div>

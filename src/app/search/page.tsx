@@ -5,6 +5,7 @@ import { SearchScreen, SEARCH_FIXTURE_ENABLED, type SearchStage } from "@/compon
    through it would put it back in the browser bundle. This page is a server
    component, so from here it stays on the server unless the gate is open. */
 import { SEARCH_FIXTURE } from "@/components/search/fixture";
+import { FONT_DISPLAY, FONT_SANS } from "@/components/mobile/fonts";
 
 /**
  * /search. A new route, and a mobile one.
@@ -94,10 +95,10 @@ export default async function SearchPage({
           link is also the only way off this surface: with no shell there is no
           sidebar and no nav here either. */}
       <div className="hidden md:block" style={{ padding: "48px", backgroundColor: "var(--c-bg)" }}>
-        <p style={{ margin: 0, font: "500 17px/1.4 'Playfair Display', serif", color: "var(--c-ink)" }}>
+        <p style={{ margin: 0, font: `500 17px/1.4 ${FONT_DISPLAY}`, color: "var(--c-ink)" }}>
           Search is a mobile surface.
         </p>
-        <p style={{ margin: "10px 0 0", font: "400 13px/1.6 Inter, sans-serif", color: "var(--c-secondary)" }}>
+        <p style={{ margin: "10px 0 0", font: `400 13px/1.6 ${FONT_SANS}`, color: "var(--c-secondary)" }}>
           On a wider screen the desk opens the command palette instead. It is not on this page:
           open one that carries the desk chrome, then press Command K, or Control K.
         </p>
@@ -113,7 +114,7 @@ export default async function SearchPage({
             minHeight: "44px",
             display: "inline-flex",
             alignItems: "center",
-            font: "600 13px/1 Inter, sans-serif",
+            font: `600 13px/1 ${FONT_SANS}`,
             color: "var(--c-goldink)",
           }}
         >
