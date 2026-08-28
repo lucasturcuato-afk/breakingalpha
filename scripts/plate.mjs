@@ -141,7 +141,15 @@ const AVATAR_PROBE = `(() => {
   const out = [];
   for (const el of document.querySelectorAll('[data-avatar], [class*="avatar" i]')) {
     const t = (el.textContent || "").trim();
-    if (t.length === 1 && t !== "S") out.push(t);
+    if (t.length === 1 && t !== "S") { out.push(t); continue; }
+    // An avatar with NO text is not automatically safe. A photo avatar is an
+    // <img>, and the account glyph is sometimes drawn as SVG, in which case
+    // textContent is empty and a text-only check waves it through. A unit hit
+    // exactly this on 2026-08-28: its own guard passed and the committed
+    // pixels still carried an account disc in the action bar.
+    if (!t && (el.querySelector("svg, img") || el.tagName === "IMG")) {
+      out.push("<non-text avatar glyph>");
+    }
   }
   return out;
 })()`;
@@ -261,7 +269,10 @@ async function main() {
           const out = [];
           for (const el of root.querySelectorAll('[data-avatar], [class*="avatar" i]')) {
             const t = (el.textContent || "").trim();
-            if (t.length === 1 && t !== "S") out.push(t);
+            if (t.length === 1 && t !== "S") { out.push(t); continue; }
+            if (!t && (el.querySelector("svg, img") || el.tagName === "IMG")) {
+              out.push("<non-text avatar glyph>");
+            }
           }
           return out;
         },
