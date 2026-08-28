@@ -48,7 +48,7 @@ ruling names no step, the work sits off the mobile build path entirely.
 | 15 | Memo. **STAYS in scope, as a port.** Not retired: `MemoModal.tsx` is mounted at 21 sites across 17 files, the most widely mounted component in the product, and it has no mobile surface at all. | Step 9. | **In scope, unbuilt.** The largest live desktop surface with zero mobile presence. |
 | 16 | Signal, Story and Deal detail. **Reclassified: NEW SCREENS, not ports.** None has a desktop source. `src/app/signal` and `src/app/story` do not exist; `/deal-flow` exists with no `[id]` route. Calling them 'missing' overstated readiness: there is nothing to port from, so each is new work. | Step 10. | **Reclassified.** |
 | 17 | Pole names: **Watch becomes Radar, Today becomes Dashboard.** One decision about desktop-to-mobile continuity, ruled 2026-08-26. Both mobile labels diverged from the desktop names users already know, and in both cases the mobile label also collides with something. **Watch** is already a market-state word at `mood-bar.tsx:38` (`badgeLabel`), names an action rather than a place, and labels a surface that does not exist yet; Radar is the desktop word. **Today** is the prototype's word, but `pageTitle` at `dashboard/page.tsx:824` and the command palette both already say Dashboard, so a reader taps Today and lands on a page headed Dashboard. The prototype says Today 9 times and Dashboard 3, the latter in a jump-list context, so the design itself uses both names for one screen. | Nav shell. | **Ruled.** `badgeLabel` in `mood-bar.tsx` is NOT touched: Watch remains a market state. |
-| 18 | Signed-in screenshots on a public repo. **Third instance. Remove the 24 carrying plates, keep the blobs in history.** Twenty four of 39 full-page plates committed on 2026-08-27 published account data: name and greeting, the grading tally, personalization chips including the `balanced` tone preference, a nine ticker watchlist plus a sector subscription, and a live email address with a role label. **Ruled 2026-08-28:** the plates come out and the Markdown is repaired, but history is NOT rewritten and nothing is force-pushed. The content is the owner's own account on a three-person repo, and no claim text and no review date appears in any of the 39, so blobs remaining reachable is an accepted cost rather than an oversight. | Off the build path. Affects three PR branches. | Removal commits on #698, #699 and #700. The rule moves INSIDE the capture, see below. |
+| 18 | Signed-in screenshots on a public repo. **Third instance. Remove the 24 carrying plates, keep the blobs in history.** Twenty four of 39 full-page plates committed on 2026-08-27 published account data: a greeting naming the reader, the personal grading tally, the followed-sector chip row including a tone preference, the full watchlist membership with a sector subscription, and a live plus-addressed mailbox beside a role label. The categories are named here; **the values deliberately are not.** **Ruled 2026-08-28:** the plates come out and the Markdown is repaired, but history is NOT rewritten and nothing is force-pushed. The content is the owner's own account on a three-person repo, and no claim text and no review date appears in any of the 39, so blobs remaining reachable is an accepted cost rather than an oversight. | Off the build path. Affects three PR branches. | Removal commits on #698, #699 and #700. The rule moves INSIDE the capture, see below. |
 
 ### Ruling 17: what the Radar name does and does not promise
 
@@ -72,17 +72,28 @@ Recorded rather than quietly cleaned up, because a scrub with no record is how
 the same thing happens a fourth time.
 
 **What was published, on a public repository, across three PR branches.**
-Twenty four full-page renders carried, between them: the greeting "Good morning,
-Noah." and the account avatar; the personal grading tally in two states,
-including "2 of your calls were checked"; the "Personalized for" chip row naming
-three followed sectors plus a `balanced` tone preference; the full watchlist
-membership across nine tickers with a Real Estate sector subscription and a 26
-item count; and, on two desktop plates, the sidebar account card rendering the
-address `noahhanning03+e2e` beside the role `Analyst`.
+Twenty four full-page renders carried, between them: a greeting naming the
+reader, and the account avatar initial; the personal grading tally in two
+different states, including a count of calls resolved overnight; the
+"Personalized for" chip row naming three followed sectors plus a tone
+preference; the full watchlist membership across nine tickers with a sector
+subscription and an item count; and, on two desktop plates, the sidebar account
+card rendering a plus-addressed mailbox beside a role label.
 
 That last one is a different category from the rest. It is not product output,
-it is a live deliverable mailbox, and it is the reason this ruling names the
+it is a live deliverable address, and it is the reason this ruling names the
 exposure instead of summarising it.
+
+**The categories above are named. The values are not, deliberately.** A record
+that reprints the tally, the tickers and the address would republish in
+permanent indexed text exactly what removing the images was for, and prose is
+more durable than a PNG, not less. Naming the class tells a future reader
+everything they need to judge the incident. Naming the values only re-runs it.
+
+This is not hypothetical. The first drafts of this entry, of the two removal
+READMEs, and of the capture script's own test specimens all reprinted the
+values, including the mailbox. All four were corrected. It is an easy mistake
+to make while trying to be thorough, which is why it is written down here.
 
 **What was NOT exposed, verified by three independent auditors opening all 39
 images individually rather than matching filenames.** No claim text and no
