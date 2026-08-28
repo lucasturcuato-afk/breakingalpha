@@ -2,6 +2,7 @@ import { NextResponse, after } from "next/server";
 import type { NextRequest } from "next/server";
 import { checkFixedWindow, clientKeyFromHeaders } from "@/lib/rate-limit";
 import { registerWaitlist } from "@/lib/waitlist-register";
+import { parseCohortFromBody } from "@/lib/cohort";
 
 // Client-callable entry point for the shared waitlist register. The email/
 // password paths (landing modal + /auth fallback) POST here after signUp and on
@@ -42,7 +43,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "too_many_requests" }, { status: 429 });
   }
 
-  let body: { email?: unknown; name?: unknown; source?: unknown };
+  let body: {
+    email?: unknown;
+    name?: unknown;
+    source?: unknown;
+    cohort_source?: unknown;
+    cohort_institution?: unknown;
+    cohort_batch?: unknown;
+  };
   try {
     body = await request.json();
   } catch {
@@ -57,6 +65,14 @@ export async function POST(request: NextRequest) {
   const name = typeof body.name === "string" ? body.name : null;
   const source = typeof body.source === "string" ? body.source : "waitlist_register";
 
+  // Cohort attribution. This endpoint is UNAUTHENTICATED and client-callable,
+  // so everything here is attacker-controlled: parseCohortFromBody validates the
+  // source against a closed enum and normalizes the two slugs, yielding null for
+  // anything it does not recognize. Free text is never stored. An invalid cohort
+  // is silently dropped rather than rejected, because a bad attribution tag must
+  // never cost someone their waitlist row.
+  const cohort = parseCohortFromBody(body);
+
   // Run the register (allowlist read + non-approved upsert, no email) after the
   // response so it never varies response timing by allowlist status. after()
   // keeps the serverless function alive until this completes, so the write still
@@ -64,7 +80,7 @@ export async function POST(request: NextRequest) {
   // caller: the body is a constant regardless of status.
   after(async () => {
     try {
-      await registerWaitlist({ email, name, source });
+      await registerWaitlist({ email, name, source, cohort });
     } catch (e) {
       console.error("[waitlist-register] post-response register failed:", e);
     }

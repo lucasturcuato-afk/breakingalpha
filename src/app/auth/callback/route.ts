@@ -6,6 +6,7 @@ import { checkFixedWindow, clientKeyFromHeaders } from '@/lib/rate-limit'
 import { registerWaitlist } from '@/lib/waitlist-register'
 import { sendWaitlistConfirmationEmail } from '@/lib/waitlist-email'
 import { POST_AUTH_DEFAULT, safeNext } from '@/lib/auth-redirect'
+import { parseCohortFromParams } from '@/lib/cohort'
 
 // Coarse per-IP throttle on the OAuth callback (the one server-side auth entry
 // point). Caps code-exchange attempts to slow credential-stuffing / replay
@@ -110,10 +111,17 @@ export async function GET(request: NextRequest) {
     // /waitlist rather than an error page.
     let alreadyNotified = false
     try {
+      // Cohort rides the provider round trip in the query string, the same way
+      // ?next= already does, because the account row is minted by Supabase in
+      // the browser and this callback is the only server-side moment we control.
+      // parseCohortFromParams validates against the closed enum and normalizes
+      // the slugs, so an unrecognized value becomes null rather than a new
+      // cohort. This is the path 99 of the 130 existing waitlist rows took.
       await registerWaitlist({
         email: userEmail,
         name: userName,
         source: 'oauth_callback',
+        cohort: parseCohortFromParams(searchParams),
       })
       const send = await sendWaitlistConfirmationEmail(userEmail)
       alreadyNotified = send.alreadyNotified

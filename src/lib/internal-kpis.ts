@@ -114,6 +114,106 @@ export async function fetchKpiSummary(segment: Segment): Promise<KpiSummary> {
   };
 }
 
+/**
+ * A signup cohort available to filter by, straight off dim_users.
+ * See backend/migrations/UNAPPLIED-2026-08-28-signup-cohort-capture.sql.
+ */
+export interface CohortOption {
+  cohort_key: string;
+  cohort_source: string | null;
+  cohort_institution: string | null;
+  cohort_batch: string | null;
+  member_count: number;
+}
+
+/** PostgREST reports an unknown table/view rather than throwing a PG error. */
+function isMissingRelation(err: { code?: string; message?: string } | null): boolean {
+  if (!err) return false;
+  return (
+    err.code === "PGRST205" ||
+    err.code === "42P01" ||
+    /could not find the table|does not exist/i.test(err.message ?? "")
+  );
+}
+
+/**
+ * Cohorts present in the data, or NULL when the cohort migration has not been
+ * applied yet.
+ *
+ * NULL and [] mean different things and callers must not conflate them. NULL is
+ * "the schema does not have this yet, show the filter as unavailable". [] is
+ * "the schema is there and nobody has a cohort", which is a real, reportable
+ * state. Returning [] for an unapplied migration would make the filter look
+ * functional while measuring nothing.
+ */
+export async function fetchCohortOptions(): Promise<CohortOption[] | null> {
+  const supabase = serviceClient();
+  const { data, error } = await supabase
+    .from("internal_kpi_cohort_members")
+    .select("*")
+    .order("member_count", { ascending: false });
+  if (error) {
+    if (isMissingRelation(error)) return null;
+    throw new Error(`internal_kpi_cohort_members query failed: ${error.message}`);
+  }
+  return (data as Record<string, unknown>[]).map((r) => ({
+    cohort_key: String(r.cohort_key),
+    cohort_source: r.cohort_source === null ? null : String(r.cohort_source),
+    cohort_institution:
+      r.cohort_institution === null ? null : String(r.cohort_institution),
+    cohort_batch: r.cohort_batch === null ? null : String(r.cohort_batch),
+    member_count: num(r.member_count),
+  }));
+}
+
+/**
+ * The same summary metrics, scoped to one cohort.
+ *
+ * This reads a SEPARATE view whose metric expressions are copied verbatim from
+ * internal_kpi_summary. No card definition changes; only the grouping key does.
+ * waitlist_count and distinct_companies_researched are absent by design: both
+ * are global and not attributable to a cohort, so they surface as null and the
+ * page renders "n/a", exactly as it already does on the USC and non-USC rows.
+ */
+export async function fetchKpiSummaryForCohort(
+  cohortKey: string,
+): Promise<KpiSummary | null> {
+  const supabase = serviceClient();
+  const { data, error } = await supabase
+    .from("internal_kpi_summary_by_cohort")
+    .select("*")
+    .eq("cohort_key", cohortKey)
+    .maybeSingle();
+  if (error) {
+    if (isMissingRelation(error)) return null;
+    throw new Error(`internal_kpi_summary_by_cohort query failed: ${error.message}`);
+  }
+  if (!data) return null;
+  const r = data as Record<string, unknown>;
+  return {
+    segment_domain: String(r.cohort_key),
+    total_users: num(r.total_users),
+    weekly_actives: num(r.weekly_actives),
+    active_30d: num(r.active_30d),
+    logged_in_7d: num(r.logged_in_7d),
+    logged_in_30d: num(r.logged_in_30d),
+    new_users_7d: num(r.new_users_7d),
+    new_users_30d: num(r.new_users_30d),
+    brief_open_users_7d: num(r.brief_open_users_7d),
+    brief_opens_7d: num(r.brief_opens_7d),
+    memos_all_time: num(r.memos_all_time),
+    memos_7d: num(r.memos_7d),
+    memos_30d: num(r.memos_30d),
+    users_with_watchlist: num(r.users_with_watchlist),
+    waps_pct: numOrNull(r.waps_pct),
+    watchlist_pct: numOrNull(r.watchlist_pct),
+    brief_opens_per_active: numOrNull(r.brief_opens_per_active),
+    retention_4w_pct: numOrNull(r.retention_4w_pct),
+    waitlist_count: null,
+    distinct_companies_researched: null,
+  };
+}
+
 export async function fetchRetentionCohorts(segment: Segment): Promise<RetentionCohort[]> {
   const supabase = serviceClient();
   const { data, error } = await supabase

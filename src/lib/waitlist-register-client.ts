@@ -16,15 +16,32 @@
  * the proxy gate also enforces).
  */
 
+import { isEmptyCohort, type Cohort } from "@/lib/cohort";
+
 export async function postWaitlistRegister(
   email: string,
   source: string,
+  cohort?: Cohort,
 ): Promise<boolean> {
   try {
+    // Cohort fields are omitted entirely when nothing was captured, so a
+    // cohort-less signup sends exactly the body it sends today. The server
+    // re-validates against the closed enum regardless: this endpoint is
+    // unauthenticated, so nothing arriving here is trusted.
+    const body =
+      cohort && !isEmptyCohort(cohort)
+        ? {
+            email,
+            source,
+            cohort_source: cohort.source,
+            cohort_institution: cohort.institution,
+            cohort_batch: cohort.batch,
+          }
+        : { email, source };
     const res = await fetch("/api/waitlist/register", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, source }),
+      body: JSON.stringify(body),
     });
     return res.ok;
   } catch {
