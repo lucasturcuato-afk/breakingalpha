@@ -48,6 +48,7 @@ ruling names no step, the work sits off the mobile build path entirely.
 | 15 | Memo. **STAYS in scope, as a port.** Not retired: `MemoModal.tsx` is mounted at 21 sites across 17 files, the most widely mounted component in the product, and it has no mobile surface at all. | Step 9. | **In scope, unbuilt.** The largest live desktop surface with zero mobile presence. |
 | 16 | Signal, Story and Deal detail. **Reclassified: NEW SCREENS, not ports.** None has a desktop source. `src/app/signal` and `src/app/story` do not exist; `/deal-flow` exists with no `[id]` route. Calling them 'missing' overstated readiness: there is nothing to port from, so each is new work. | Step 10. | **Reclassified.** |
 | 17 | Pole names: **Watch becomes Radar, Today becomes Dashboard.** One decision about desktop-to-mobile continuity, ruled 2026-08-26. Both mobile labels diverged from the desktop names users already know, and in both cases the mobile label also collides with something. **Watch** is already a market-state word at `mood-bar.tsx:38` (`badgeLabel`), names an action rather than a place, and labels a surface that does not exist yet; Radar is the desktop word. **Today** is the prototype's word, but `pageTitle` at `dashboard/page.tsx:824` and the command palette both already say Dashboard, so a reader taps Today and lands on a page headed Dashboard. The prototype says Today 9 times and Dashboard 3, the latter in a jump-list context, so the design itself uses both names for one screen. | Nav shell. | **Ruled.** `badgeLabel` in `mood-bar.tsx` is NOT touched: Watch remains a market state. |
+| 18 | Signed-in screenshots on a public repo. **Third instance. Remove the 24 carrying plates, keep the blobs in history.** Twenty four of 39 full-page plates committed on 2026-08-27 published account data: name and greeting, the grading tally, personalization chips including the `balanced` tone preference, a nine ticker watchlist plus a sector subscription, and a live email address with a role label. **Ruled 2026-08-28:** the plates come out and the Markdown is repaired, but history is NOT rewritten and nothing is force-pushed. The content is the owner's own account on a three-person repo, and no claim text and no review date appears in any of the 39, so blobs remaining reachable is an accepted cost rather than an oversight. | Off the build path. Affects three PR branches. | Removal commits on #698, #699 and #700. The rule moves INSIDE the capture, see below. |
 
 ### Ruling 17: what the Radar name does and does not promise
 
@@ -63,6 +64,50 @@ Ledger, which is where a record belongs.
 Recorded because the objection is real and someone will raise it again: the name
 under-describes what sits behind it, and that was weighed against the cost of a
 third name for the same idea.
+
+
+### Ruling 18: what was exposed, and why the rule kept failing
+
+Recorded rather than quietly cleaned up, because a scrub with no record is how
+the same thing happens a fourth time.
+
+**What was published, on a public repository, across three PR branches.**
+Twenty four full-page renders carried, between them: the greeting "Good morning,
+Noah." and the account avatar; the personal grading tally in two states,
+including "2 of your calls were checked"; the "Personalized for" chip row naming
+three followed sectors plus a `balanced` tone preference; the full watchlist
+membership across nine tickers with a Real Estate sector subscription and a 26
+item count; and, on two desktop plates, the sidebar account card rendering the
+address `noahhanning03+e2e` beside the role `Analyst`.
+
+That last one is a different category from the rest. It is not product output,
+it is a live deliverable mailbox, and it is the reason this ruling names the
+exposure instead of summarising it.
+
+**What was NOT exposed, verified by three independent auditors opening all 39
+images individually rather than matching filenames.** No claim text and no
+review date appears anywhere. That is the specific harm the two earlier
+incidents caused, and it did not recur. The category around it did.
+
+**Why history stays.** The repository has three people in it, the account is the
+owner's own, and the most sensitive item is an email address that is live
+whatever the repository does. Rewriting history costs a force push across three
+branches, invalidates every open review, and defends against an audience that
+does not exist here. The blobs stay reachable through history and through
+the GitHub file views, by decision rather than by omission.
+
+**Why the rule failed three times.** It was a rule that ran AFTER the capture:
+someone had to remember it, at review time, on an image that already existed.
+Three times nobody did. The two plates in all 39 that carried nothing were not
+careful, they were structurally incapable of leaking: one is a pure skeleton
+whose avatar pill has no letter in it, the other is a typography specimen sheet
+whose only string is fabricated.
+
+So the rule moves inside the capture. A capture refuses to write a frame
+containing an account name, a record block or personalization chips, and a
+component crop is the default rather than the exception. A rule that runs before
+the file exists cannot be forgotten at review time, which is the only failure
+mode this has ever had.
 
 ### Ruling 14 to 16: the test that produced them
 
