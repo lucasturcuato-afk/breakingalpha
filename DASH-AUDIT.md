@@ -25,16 +25,36 @@ What that zero does reveal is a real engagement collapse rather than an
 instrumentation bug: non-founder memo usage is about 5 in 30 days and 0 in 7.
 That belongs in a pilot conversation, but it is a product fact, not a defect.
 
-### The one thing that looks like an outage and is one
+### The finding that outranks every measurement defect
 
-**The commit sheet is unreachable for every signed-in user.** It is mounted at
-exactly one place, `src/app/ledger/page.tsx:109`, behind a gate that requires
-`user === null && mobileFixtureScreensEnabled()`. The only adoption path a
-signed-in reader can actually reach, `BriefCallsSection.tsx:415`, posts
-`call_id` and a window and never sends `commit_note` at all. That is why 17 of
-18 claim rows have no note. The required-note product loop is not running in
-production. This is not a dashboard defect, it is the loop itself, and it
-outranks every measurement problem below.
+**The product loop the pilot would be sold on is not running in production.**
+Three independent facts, each separately verified:
+
+1. **Exactly one real user has ever adopted a call.** `user_claims` holds 15
+   adopted rows across 3 distinct users, but 12 of those 15 rows and 2 of those
+   3 users are founder or test accounts that `dim_users` excludes. Scoped to
+   real users, all-time adoption is one person.
+
+```
+user_claims rows 18 | adopted 15 | authored 3
+distinct adopting users 3 | of which present in dim_users (real) 1
+```
+
+2. **The note is not required.** The brief describes the loop as "user adopts a
+   call with a required note". The server route says otherwise, verbatim at
+   `src/app/api/radar/claims/adopt/route.ts:82`: "Accepted, never required".
+   `commit_note` is populated on 1 of 18 claims, 5.6 percent.
+
+3. **The commit sheet is unreachable for every signed-in user.** It is mounted
+   at exactly one place, `src/app/ledger/page.tsx:109`, behind a gate requiring
+   `user === null && mobileFixtureScreensEnabled()`. The adoption path a
+   signed-in reader can reach, `BriefCallsSection.tsx:415`, posts `call_id` and
+   a window and never sends `commit_note` at all.
+
+Taken together: the dashboard defects below distort how the loop reads, but the
+loop itself has one real participant. That is the fact a pilot decision turns
+on, and no card on /internal shows it, because the page never references
+`user_claims`, adoption, notes, or outcomes at all.
 
 ### Ranked defects
 
@@ -819,7 +839,129 @@ brief.call.tracked     age_hours=16.3  displays 1
 
 ## INVARIANTS
 
-PENDING
+Re-pulled live at 2026-08-28T05:00:31Z. Boundaries used: 7d
+`>= 2026-08-21T05:00:31Z`, 30d `>= 2026-07-29T05:00:31Z`, 4w cohort
+`created_at <= 2026-07-31T05:00:31Z`.
+
+**Headline: all 12 pass numerically, and 9 of the 12 are TRUE BY CONSTRUCTION,
+meaning they measure nothing.** In `internal_kpi_summary` both sides of each are
+`count(*) FILTER (...)` over the same `peruser` rows inside one statement with
+one frozen `now()`, and the windows are strictly nested. No data value can make
+them fail short of a Postgres arithmetic bug. Each is listed below with a
+replacement that can actually fail.
+
+| # | Assertion | Numbers | Result | Can it fail? |
+|---|---|---|---|---|
+| 1 | new_users_7d <= total_users | 98 <= 199 | PASS | NO, by construction |
+| 2 | weekly_actives <= total_users | 13 <= 199 | PASS | NO, by construction |
+| 3 | memos_7d <= memos_all_time | 0 <= 160 | PASS | NO, by construction |
+| 4 | retention numerator <= cohort <= total | 11 <= 100 <= 199 | PASS | NO, both legs by construction |
+| 5 | users_with_watchlist <= total_users | 40 <= 199 | PASS | NO, while the DISTINCT stands |
+| 6 | WAPS numerator subset of its denominator | 11 of 199 | **FAIL by the literal rule, count = 2** | YES |
+| 7 | SUM(cohort_size) == total_users | 199 == 199 | PASS | YES, genuinely |
+| 8 | All == USC + other | 199 == 153 + 46 | PASS | NO, GROUPING SETS over one row set |
+| 9 | brief_opens_7d >= brief_open_users_7d | 213 >= 11 | PASS | NO, same FILTER twice |
+| 10 | active_30d >= weekly_actives | 17 >= 13 | PASS | NO, nested windows |
+| 11 | memos_30d >= memos_7d | 5 >= 0 | PASS | NO, by construction |
+| 12 | companies <= memo rows in outputs | 5 <= 142 | PASS | YES, but semantically vacuous |
+| 12b | memo events reconcile with memo artifacts | 0 vs 2 (7d), 5 vs 15 (30d) | **FAIL** | YES, added by this audit |
+
+### Assertion 6, the one that discriminates
+
+Subset-hood INSIDE the view HOLDS. Migration lines 49-61 read
+`FROM dim_users d LEFT JOIN public.user_events e`, so `brief_open_user_7d` can
+only be true for a `dim_users` row. The numerator is drawn from the same
+population as the denominator and the card label is honest.
+
+The probe the brief asked for, run against the raw event stream:
+
+```
+brief_open events in 7d                        : 224
+  with NULL user_id                            : 0
+DISTINCT users with a brief open in 7d (raw)   : 13
+  of which IN dim_users                        : 11
+  of which NOT IN dim_users                    : 2   <-- > 0
+brief_open EVENTS in 7d from dim_users         : 213  (= view brief_opens_7d)
+brief_open EVENTS in 7d from outside dim_users : 11   (4.9% discarded)
+```
+
+Per the literal rule given ("if that count is greater than zero, the invariant
+FAILS"), this is FAIL with the number 2. The conservative reading recorded
+inline: those 2 are the deliberately excluded founder and test accounts, so the
+view narrows correctly. This is a population-definition gap, not a subset
+violation. WHAT WOULD MAKE IT GENUINELY FAIL: the `ev` CTE being rewritten to
+start `FROM user_events` and join out to `dim_users`, a second user identity
+column on `user_events`, or a numerator sourced from a snapshot taken before an
+exclusion-list change while the denominator is live.
+
+Not provable from here: whether those 2 are exclusions rather than orphaned
+user ids pointing at deleted auth rows. `auth.users` is unreachable via
+PostgREST and the MCP path is unauthorized. The inference rests on 206 minus 199
+equalling 7 excluded accounts.
+
+### Assertion 12b, added by this audit, and it FAILS
+
+The brief asked what would make each assertion fail. For assertions 3 and 11 the
+answer is nothing, so here is the assertion they should have been: memo events
+must reconcile with memo artifacts persisted in `outputs`.
+
+```
+outputs memo rows created >= 2026-08-21T05:00:31Z (7d)   : 2
+internal_kpi_summary memos_7d                            : 0     FAIL
+outputs memo rows created >= 2026-07-29T05:00:31Z (30d)  : 15
+internal_kpi_summary memos_30d                           : 5     FAIL
+outputs memo rows all time                               : 142
+raw memo_generated events all time                       : 262
+memo_generated events all time for dim_users             : 160
+memo_generated events all time OUTSIDE dim_users         : 102 (39%)
+```
+
+Two defects fall out. The event over-emits roughly 1.8x relative to stored
+artifacts. And in the 7d window the direction inverts: 2 memos were written and
+the dashboard shows 0.
+
+### Replacements that can fail, for the nine vacuous assertions
+
+- **1.** Assert `new_users_7d` equals the count of `dim_users` rows with
+  `created_at >= now()-7d` read in a SEPARATE statement. Fails on view staleness,
+  materialization, exclusion-list drift between reads, or a week-bucket boundary
+  disagreeing with the rolling window. Live and worth checking: 98 of 199 users
+  are under 7 days old.
+- **2.** Assert `weekly_actives` equals `COUNT(DISTINCT user_id)` from the raw
+  table intersected with `dim_users`. RAN IT: raw 15, in `dim_users` 13, view 13,
+  PASS. Fails on a user_id type mismatch, an orphaned user_id, NULL user_ids, or
+  the `ev` CTE losing its GROUP BY and fanning out.
+- **3 and 11.** Replaced by 12b above, which fails today.
+- **4.** Assert the summary's 4w numerator (11) is at most
+  `sum(active_last_7d)` across the cohorts view (13), and that the gap equals
+  users active but younger than 4 weeks (2). RAN IT: 11 + 2 = 13, PASS. Fails
+  because the two views define cohort differently, rolling `created_at` versus
+  `date_trunc('week')` buckets, and those disagree for anyone signing up between
+  the two boundaries. A genuine definitional seam.
+- **5.** Assert `users_with_watchlist` equals `COUNT(DISTINCT watchlist.user_id)`
+  restricted to `dim_users`, and separately report owners outside it. RAN IT:
+  226 rows, 43 distinct owners, 40 inside, 3 outside, view 40, PASS. Fails on
+  orphaned watchlist rows whose owner was deleted.
+- **8.** The arithmetic cannot fail, so assert the segment PROXY is complete
+  instead: that no USC-affiliated user sits under a third campus subdomain. Today
+  only `usc.edu` and `marshall.usc.edu` match, so a user on any other subdomain
+  is silently filed "other" while assertion 8 still passes.
+- **9.** Assert the ratio is BOUNDED, not merely ordered:
+  opens-per-opener-per-day should not exceed briefs published per day times a
+  small refresh factor. That FAILS today: the "other" segment runs 197 opens
+  across 2 users, roughly 14 per user per day against 2 publishable briefs.
+- **10.** Assert `active_30d <= logged_in_30d`, that every event-active user was
+  also reachable by `last_sign_in_at`. Passes today (17 vs 104) but CAN fail,
+  since the two come from different sources, and a failure means events are
+  attributed to users whose session never refreshed. It also quantifies a real
+  gap: 96 users signed in in 7d but only 13 emitted an event, so 86 percent of
+  signed-in users produce zero first-party telemetry.
+- **12.** Semantically vacuous as written: 0 of the 142 memo rows contribute,
+  because `source_id` is NULL on every one. Replace with
+  `count(DISTINCT content->>'ticker')` over memo outputs, and assert that memo
+  rows with a resolvable company equals memo rows. That FAILS today, 43 != 142:
+  99 memo rows have no recoverable company at all, and the honest floor for the
+  card is 28 distinct tickers rather than the 5 displayed.
 
 ## EVENT INVENTORY
 
@@ -1052,8 +1194,188 @@ client-side placement is deliberate.
 
 ## METRIC GAPS
 
-PENDING
+The dashboard measures reach, not the loop. `src/app/internal/page.tsx` and
+`src/lib/internal-kpis.ts` contain zero references to `claim`, `adopt`,
+`outcome`, or `record`. A pilot decision currently rests on three cards, two of
+which are structurally broken.
+
+### The monotone-denominator defect, quantified
+
+Any metric whose denominator is all-time signups falls forever regardless of
+product quality. This is not hypothetical: 98 of 199 users, 49.2 percent of the
+denominator, signed up in the last 7 days.
+
+```
+numerator: 7d brief openers (real users) = 11
+A) / all-time signups    199 => 5.5%
+B) / 7d-active users      13 => 84.6%
+C) / tenured (>7d old)   101 => 9.9%   (numerator 10)
+D) 30d openers / 30d-active  16 / 17 => 94.1%
+```
+
+| Card | Shown | Corrected | Defect |
+|---|---|---|---|
+| WAPS | 5.5% | 84.6% over 7d-active, 9.9% over tenured | DEFECTIVE, monotone denominator |
+| % with a watchlist | 20.1% | up to 39.6% over the 101 tenured users | DEFECTIVE, same denominator |
+| Pitch sentence | "13 weekly actives of 199 users" = 6.5% | 13 of 101 tenured = 12.9% | DEFECTIVE, and this is the sentence a pilot conversation quotes |
+| Brief opens / active | 16.38 blended, 98.5 non-USC | median 1 distinct open day per opener per week | NUMERATOR defect, 13.3x inflated |
+| 4-week retention | 11% | unchanged | NOT defective, correctly tenure-gated |
+| Activation funnel | per-cohort | unchanged | NOT defective, correctly cohorted |
+
+### The eight metrics asked about
+
+| # | Metric | Verdict |
+|---|---|---|
+| 1 | Adoption rate over brief openers | COMPUTABLE TODAY crudely, NEEDS NEW EVENTS to be trustworthy |
+| 2 | Median calls adopted per adopting user | COMPUTABLE TODAY |
+| 3 | Time from brief open to adoption | COMPUTABLE TODAY, partial, 13 of 14 rows |
+| 4 | Resolution view rate | NEEDS NEW EVENTS |
+| 5 | Return rate after a call moves to challenged | NEEDS NEW EVENTS |
+| 6 | Brief-open days per user per week | COMPUTABLE TODAY |
+| 7 | Cohort retention curves by signup week | COMPUTABLE TODAY, needs a new view, no new events |
+| 8 | Seat activation rate | NEEDS NEW EVENTS AND NEW SCHEMA |
+
+**1. Adoption rate over brief openers.** Crude form computable by joining
+`user_claims` to a distinct-brief-opener subquery over `user_events`, both
+scoped by `dim_users`. Untrustworthy because the server adopt route writes
+`user_claims` and returns with no `user_events` append (`grep -rn "user_events"
+src/app/api/radar/` returns zero). The only adoption signal in the log is the
+client-side `brief.call.tracked`, 14 rows all time, which is fire-and-forget by
+design. Needs a server-side `radar.claim.adopted` emission immediately after the
+insert succeeds, carrying `adopted_from_call_id`, `briefing_id`, `gradeable`,
+`commit_note_present`, and an `already_adopted` flag so idempotent retries are
+distinguishable from real adoptions.
+
+**2. Median calls adopted per adopting user.** `percentile_cont(0.5)` over a
+group-by on `user_claims`. Live: counts per adopting user are 3, 4, 8, median 4.
+Report it with n attached or it reads as a product fact when it is a founder
+fact: only 1 of the 3 is a real user.
+
+**3. Time from brief open to adoption.** Already carried in the existing
+payload: `brief.call.tracked.seconds_since_surface_open`, present on 13 of 14
+rows. Observed values: 12.4, 79.5, 4.1, 6.2, 12.8, 52.5, 69.5, 9.0, 24.3, 19.3,
+3.8, 0.5, 0.6. Coverage is 14 events against 15 adopted claims, and two rows are
+the same user and call 116 seconds apart, so at least one is a retry.
+
+**4. Resolution view rate.** NEEDS NEW EVENTS. Not one of the 20 event types
+that have ever fired is a view of the graded record. The five surfaces that
+render it (`src/app/record`, `desk-record`, `ledger`, `review`,
+`radar/track-record`) contain zero tracking calls. Required: `record.page.opened`
+on route mount, and `record.claim.exposed` per card entering the viewport using
+the intersection-observer pattern already proven by `brief.call.exposed`, with
+`claim_id`, `outcome_state`, and `seconds_since_surface_open`.
+
+**5. Return rate after a call moves to challenged.** NEEDS NEW EVENTS. Exactly
+one claim from a real user has ever reached challenged. Two blockers: no
+record-view event, so "came back after being challenged" is indistinguishable
+from "came back", and `user_claims.status` is a mutable column with no
+transition history, so `graded_at` is the only transition timestamp and it does
+not cover archived or ungradable moves. Required: the `record.claim.exposed`
+event above plus a `radar.claim.state_changed` emission where the grader writes
+the outcome row, carrying `from_state`, `to_state`, `claim_id`.
+
+**6. Brief-open days per user per week.** COMPUTABLE TODAY with
+`count(DISTINCT created_at::date)`. This single computation dismantles the
+16.38 card:
+
+```
+n openers 11 | distinct-day counts [1,1,1,1,1,1,1,2,2,2,3] | median 1 | mean 1.45
+raw open counts per opener: 1,1,1,1,1,2,2,3,3,3,195
+raw 7d open total 213 vs distinct-day total 16 -> inflation factor 13.3x
+```
+
+Seven of eleven openers opened on exactly one day. The habit does not exist yet.
+
+**7. Cohort retention curves by signup week.** COMPUTABLE TODAY, no new events,
+but needs a new view. The existing cohorts view has one activity column,
+`active_last_7d`, so a 21-week-old cohort and a 0-week-old cohort are both
+scored against the same trailing 7 days. That is a snapshot, not a curve. Cross
+join `dim_users` against `generate_series(0, 12) AS wk` and count distinct users
+with an event inside `[signup_week + wk*7d, signup_week + (wk+1)*7d)`, null where
+`wk` exceeds cohort age. Only two cohorts have mass: 58 and 98.
+
+**8. Seat activation rate.** NEEDS NEW EVENTS AND SCHEMA. No seat, invite, or
+club object exists anywhere. The nearest proxy is `waitlist.notified_at` (70 of
+130 notified), but `waitlist` keys on email and `dim_users` deliberately exposes
+no email, so there is no join. Requires a seats or invites table, a cohort field
+captured at signup, and a redemption event.
+
+### Further metrics a pilot decision needs, all missing today
+
+**9. Note attachment rate on adoption. COMPUTABLE TODAY, and it is the single
+most decision-relevant number on this page.** 1 of 18 claims, 5.6 percent. A
+pilot pitched on "adopt with reasoning" is pitched on a behavior that has
+happened once.
+
+**10. Real-user share of the adoption signal. COMPUTABLE TODAY.** 3 of 15
+adopted rows are from `dim_users` members. If adoption is ever added to this
+page without the `dim_users` guard every other card already applies, it will
+show 15 and mean 3.
+
+**11. Gradeability rate at adoption. COMPUTABLE TODAY.** 13 of 15 adopted rows
+are `gradeable=true`. One adopted row has a `resolution_window_end` of
+2026-07-03 against a `created_at` of 2026-07-04, a window that closed before it
+opened. An ungradable adoption never reaches the graded record, so it leaks
+silently out of the loop being sold.
+
+**12. Idempotent-retry rate on adoption. NEEDS NEW EVENTS.** The adopt route is
+idempotent server-side and returns `alreadyAdopted`, but that outcome is never
+emitted, so 14 client events cannot be reconciled against 15 claims. Any pilot
+readout counting client track events will over-count adoption by the retry rate,
+which here looks like roughly 1 in 14.
+
+**13. Brief supply coverage. COMPUTABLE TODAY** by joining
+`payload->>'briefing_id'` against the briefings table. The loop starts with
+publication, and nothing on the page shows whether a brief was published at all
+on a given day, so a flat adoption week is indistinguishable from a week with no
+supply.
+
+**14. Time from signup to first adoption.** Crudely computable now. The
+activation funnel currently defines activated as a brief open or a memo, which
+is the top of the loop, not the loop.
+
+**15. Club or cohort membership at signup. NEEDS NEW CAPTURE.** Already conceded
+by the page footnote. Addressed by Phase 2 of this PR.
 
 ## FOLLOW-UPS
 
-PENDING
+Recorded, deliberately not built tonight.
+
+1. **Settle whether the 2026-08-28 batch of 96 users is real signups or an
+   import.** Every window-sensitive card is currently dominated by it. This
+   should be answered before anyone reads the dashboard as demand.
+2. **Root-cause the mid-July memo step-down** (15 per week to 1 at the week of
+   2026-07-13, partial recovery to 9 in August). Not a clean cliff, so probably
+   not a single deploy, but unexplained.
+3. **Fix the brief-open emit to dedupe per user per day per briefing.** Replace
+   the per-mount ref with a once-per-day guard, or change the metric to
+   `count(DISTINCT (user_id, day, briefing_id))`, which yields 27 rather than 224
+   on the current window.
+4. **Repoint Companies researched at `content->>'ticker'`** and scope it to
+   `dim_users`. The honest floor today is 28 distinct tickers, not 5.
+5. **Wire `thesis_approved` or delete it.** It is read in four places including a
+   user-visible label and emitted nowhere.
+6. **Decide the fate of the 10 orphaned dotted events**, 1067 rows and 35.4
+   percent of telemetry feeding no metric, and resolve the duplicate pairs where
+   `brief.page.opened` and `morning_brief_opened` fire from the same effect.
+7. **Instrument the commit sheet and the record surfaces** (loop steps 4, 5, 8,
+   9). Until then, resolution view rate and post-challenged return rate cannot be
+   measured at all.
+8. **Reconcile memo events against memo artifacts.** 262 events, 142 artifacts,
+   and one day where two artifacts produced one event.
+9. **Add a lower bound to the activation funnel's onboarded and activated
+   filters.** Latent today, zero events predate their own signup, but nothing
+   forbids it.
+10. **Mark right-censored cohorts in both tables**, and replace the hard-coded
+    "2026-04-27 is the reliable read" sentence with a computed largest-complete
+    cohort.
+11. **Normalize `beta_allowlist.notes`**, which is being used as a de facto
+    cohort field in free text. "BSIG" and "BSIG " are currently distinct values,
+    and one row holds a sentence of biography.
+12. **Fix the allowlist row whose stored email has a trailing newline.** It will
+    fail the equality lookup in `isAllowlisted`, so that person cannot get in.
+13. **Reconcile prod `user_profiles` against its migration.** The repo's
+    `handle_new_user` trigger inserts `full_name`, and prod has no such column.
+14. **Consider whether `days_since_last` should be an interval rather than a date
+    subtraction**, so a row reading "1 day ago" cannot be fresher than one
+    reading "0".
