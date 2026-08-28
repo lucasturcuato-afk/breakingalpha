@@ -5,9 +5,9 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { AppShell } from "@/components/shell";
 import { RadarTabs } from "@/components/radar/RadarTabs";
-import { WatchlistGallery, type GalleryFilter } from "@/components/radar/WatchlistGallery";
+import { WatchlistGallery, type GalleryFilter, type GalleryReadiness } from "@/components/radar/WatchlistGallery";
 import { ArticleMemoActions } from "@/components/radar/ArticleMemoActions";
-import { GroupJumpNav } from "@/components/radar/GroupJumpNav";
+import { GroupJumpNav, type ChipCount } from "@/components/radar/GroupJumpNav";
 import { useMotionSettled } from "@/lib/use-motion-settled";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -156,6 +156,51 @@ interface MatchedArticle {
   url?: string;
 }
 
+/**
+ * A read has three states, and absence is not one of them.
+ *
+ * Every tracked identifier is seeded { status: "pending" } at the same moment
+ * setWatchlist commits, so no lookup ever needs a fallback and a missing key
+ * never stands in for an answer. "ready" is the only state permitted to draw
+ * a zero, and a ready zero is a real answer worth showing.
+ *
+ * The map this replaces was Record<string, MatchedArticle[]>, read everywhere
+ * as `map[id] ?? []`. That expression cannot tell an unfinished read from an
+ * empty one, so at t=1202ms with 26 entries the rail drew 26 zeros of which
+ * 25 were false, and with a cache slower than the 4000ms abort those zeros
+ * were the final committed state.
+ */
+type ArticleRead =
+  | { status: "pending" }
+  | { status: "ready"; articles: MatchedArticle[] }
+  | { status: "failed" };
+type ArticleReads = Record<string, ArticleRead>;
+
+const FAILED_READ: ArticleRead = { status: "failed" };
+
+/**
+ * Every read must be able to REACH a terminal state.
+ *
+ * fetchCachedArticles was bounded at 4000ms, but the two PostgREST queries and
+ * the Finnhub fallback had no client-side bound at all, so a hung connection
+ * left that entry pending forever. Because the feed count is pending while ANY
+ * read is outstanding, one stuck read pinned the header as a skeleton over a
+ * populated article list, permanently. Measured before this bound: at
+ * t=25426ms, 25 chips carried numerals and 22 articles were on screen while
+ * the count line was still a 42px skeleton with no number and no failure
+ * string.
+ *
+ * That is the mirror image of the defect this branch is about. Rendering an
+ * ANSWERABLE state as unanswered forever is the same kind of lie as rendering
+ * an unanswered one as a zero, so the fix belongs at the cause: a read that
+ * cannot finish is a read that failed, and the UI already says so honestly.
+ * 8000ms sits above the 4000ms cache read and the 6000ms fallbacks, so it only
+ * fires when a query is genuinely stuck.
+ */
+const DB_READ_TIMEOUT_MS = 8000;
+const FALLBACK_TIMEOUT_MS = 6000;
+const ready = (articles: MatchedArticle[]): ArticleRead => ({ status: "ready", articles });
+
 function stripHtml(raw: string | null | undefined): string {
   if (!raw) return "";
   return raw
@@ -249,22 +294,27 @@ function dedupeAndSort(rows: MatchedArticle[]): MatchedArticle[] {
   return out.slice(0, 20);
 }
 
-async function fetchCachedArticles(identifier: string): Promise<MatchedArticle[]> {
+/** A cache read that did not answer is not the same as a cache read that
+ *  answered "none", and the caller has to be able to tell them apart. */
+type CacheRead = { ok: true; articles: MatchedArticle[] } | { ok: false };
+
+async function fetchCachedArticles(identifier: string): Promise<CacheRead> {
   try {
     const res = await fetch(
       `/api/watchlist-articles?identifier=${encodeURIComponent(identifier)}`,
       { signal: AbortSignal.timeout(4000) },
     );
-    if (!res.ok) return [];
+    if (!res.ok) return { ok: false };
     const json = await res.json();
-    if (!Array.isArray(json.articles)) return [];
-    return json.articles.map(mapCachedArticle);
+    if (!Array.isArray(json.articles)) return { ok: false };
+    return { ok: true, articles: json.articles.map(mapCachedArticle) };
   } catch {
-    return [];
+    // Timed out at 4000ms, aborted, or the network failed. Not an answer.
+    return { ok: false };
   }
 }
 
-async function fetchArticlesForEntry(entry: WatchlistEntry): Promise<MatchedArticle[]> {
+async function fetchArticlesForEntry(entry: WatchlistEntry): Promise<ArticleRead> {
   const baseSelect = "id, title, source, sector, primary_company, industry_verticals, activity_types, published_at, ingested_at, relevance_score, summary, url";
 
   if (entry.type === "sector") {
@@ -275,15 +325,18 @@ async function fetchArticlesForEntry(entry: WatchlistEntry): Promise<MatchedArti
     if (dbSectors && dbSectors.length > 0) {
       sectorQuery = getSupabase().from("articles").select(baseSelect)
         .in("sector", dbSectors)
-        .order("ingested_at", { ascending: false }).limit(30);
+        .order("ingested_at", { ascending: false }).limit(30)
+        .abortSignal(AbortSignal.timeout(DB_READ_TIMEOUT_MS));
     } else {
       sectorQuery = getSupabase().from("articles").select(baseSelect)
         .ilike("sector", `%${canonicalVertical}%`)
-        .order("ingested_at", { ascending: false }).limit(30);
+        .order("ingested_at", { ascending: false }).limit(30)
+        .abortSignal(AbortSignal.timeout(DB_READ_TIMEOUT_MS));
     }
 
-    const { data } = await sectorQuery;
-    return dedupeAndSort((data || []).map(mapArticle));
+    const { data, error } = await sectorQuery;
+    if (error) return FAILED_READ;
+    return ready(dedupeAndSort((data || []).map(mapArticle)));
   }
 
   // Cache-first: use pre-fetched watchlist_articles if entry is older than 60 minutes.
@@ -294,10 +347,11 @@ async function fetchArticlesForEntry(entry: WatchlistEntry): Promise<MatchedArti
 
   if (entryAgeMs >= SIXTY_MIN_MS) {
     const cached = await fetchCachedArticles(entry.identifier);
-    if (cached.length > 0) {
-      return dedupeAndSort(cached);
+    if (cached.ok && cached.articles.length > 0) {
+      return ready(dedupeAndSort(cached.articles));
     }
-    // Cache miss — fall through to live fetches below
+    // Cache miss, or the cache read faulted. Either way, fall through to the
+    // live reads below and let those decide the state.
   }
 
   // ticker or company — use fuzzy suffix-stripping to build a multi-term OR query.
@@ -308,34 +362,49 @@ async function fetchArticlesForEntry(entry: WatchlistEntry): Promise<MatchedArti
       : (entry.display_name ?? LEGACY_TICKER_NAMES[entry.identifier.toUpperCase()] ?? null);
 
   const orFilter = buildArticleOrFilter(entry.identifier, displayNameForSearch, entry.type);
-  if (!orFilter) return [];
+  // Nothing searchable for this identifier. Deterministic, not a fault.
+  if (!orFilter) return ready([]);
 
-  const { data } = await getSupabase()
+  const { data, error } = await getSupabase()
     .from("articles")
     .select(baseSelect)
     .or(orFilter)
     .order("ingested_at", { ascending: false })
-    .limit(30);
+    .limit(30)
+    .abortSignal(AbortSignal.timeout(DB_READ_TIMEOUT_MS));
+
+  if (error) return FAILED_READ;
 
   const result = dedupeAndSort((data || []).map(mapArticle));
 
   if (entry.type === "company" && entry.identifier.length < 6) {
-    return result.filter(a =>
+    return ready(result.filter(a =>
       a.primary_company?.toLowerCase().includes(entry.identifier.toLowerCase())
-    );
+    ));
   }
+
+  /* The fallbacks below are where a ticker or a thinly-covered company gets
+   * its only articles, so a fallback that faults and leaves nothing behind is
+   * a failed read, not an empty one. When the primary read already returned
+   * rows there is real data to show, and the read stays ready. */
+  let fallbackFaulted = false;
 
   if (result.length === 0 && entry.type === "ticker") {
     try {
-      const res = await fetch(`/api/finnhub-news?symbol=${encodeURIComponent(entry.identifier)}`);
+      const res = await fetch(
+        `/api/finnhub-news?symbol=${encodeURIComponent(entry.identifier)}`,
+        { signal: AbortSignal.timeout(FALLBACK_TIMEOUT_MS) },
+      );
       if (res.ok) {
         const json = await res.json();
         if (Array.isArray(json.articles) && json.articles.length > 0) {
-          return dedupeAndSort(json.articles.map(mapArticle));
+          return ready(dedupeAndSort(json.articles.map(mapArticle)));
         }
+      } else {
+        fallbackFaulted = true;
       }
     } catch {
-      // silent fallback failure — return empty
+      fallbackFaulted = true;
     }
   }
 
@@ -343,20 +412,27 @@ async function fetchArticlesForEntry(entry: WatchlistEntry): Promise<MatchedArti
   if (entry.type === "company" && result.length < 3) {
     try {
       const searchName = entry.display_name || entry.identifier;
-      const gdeltRes = await fetch(`/api/news-search?q=${encodeURIComponent(searchName)}`, { signal: AbortSignal.timeout(6000) });
+      const gdeltRes = await fetch(
+        `/api/news-search?q=${encodeURIComponent(searchName)}`,
+        { signal: AbortSignal.timeout(FALLBACK_TIMEOUT_MS) },
+      );
       if (gdeltRes.ok) {
         const gdeltJson = await gdeltRes.json();
         if (Array.isArray(gdeltJson.articles) && gdeltJson.articles.length > 0) {
           const gdeltArticles = gdeltJson.articles.map(mapArticle);
-          return dedupeAndSort([...result, ...gdeltArticles]);
+          return ready(dedupeAndSort([...result, ...gdeltArticles]));
         }
+      } else {
+        fallbackFaulted = true;
       }
     } catch {
-      // silent fallback failure
+      fallbackFaulted = true;
     }
   }
 
-  return result;
+  if (result.length === 0 && fallbackFaulted) return FAILED_READ;
+
+  return ready(result);
 }
 
 function buildWatchlistMemoContent(entry: WatchlistEntry, articles: MatchedArticle[]): string {
@@ -371,6 +447,66 @@ function buildWatchlistMemoContent(entry: WatchlistEntry, articles: MatchedArtic
     lines.push(`- ${a.title} (${a.source ?? "unknown"}, ${date})`);
   });
   return lines.join("\n");
+}
+
+function chipCountFor(read: ArticleRead): ChipCount {
+  if (read.status === "pending") return { kind: "pending" };
+  if (read.status === "failed") return { kind: "failed" };
+  return { kind: "ready", value: read.articles.length };
+}
+
+/**
+ * The article-count pill on a tracked row, in all four states.
+ *
+ * A ready zero now DRAWS. The `articleCount > 0` gates this replaces hid the
+ * one genuine zero the page had, which meant the only zero a reader ever saw
+ * was a chip on the rail, and that one was usually false.
+ */
+function CountBadge({ count }: { count: ChipCount }) {
+  if (count.kind === "none") return null;
+  /* Same box in every state, so the row's price and chevron never shift.
+   *
+   * 31x22 is measured. The pill renders 20.05px wide for a single digit and
+   * 30.63px for "20+", its widest form, at a natural height of 22px, while the
+   * skeleton that used to stand in for it was 24x16. So resolving a count both
+   * narrowed and grew the badge and shifted everything beside it. Fixing the
+   * skeleton alone would not have helped: the pill has to be pinned too, or it
+   * still changes width between "3" and "20+". */
+  if (count.kind === "pending") {
+    return (
+      <span
+        aria-hidden
+        className="skeleton-shimmer inline-block h-[22px] w-[31px] rounded-md"
+      />
+    );
+  }
+  // A failed read keeps the box open rather than collapsing the row.
+  if (count.kind === "failed") {
+    return <span aria-hidden className="inline-block h-[22px] w-[31px]" />;
+  }
+  return (
+    <span className="inline-block w-[31px] text-center font-sans text-[10px] text-text-faint bg-parchment-mid border border-border-base py-0.5 rounded-md">
+      {count.value >= 20 ? "20+" : count.value}
+    </span>
+  );
+}
+
+/** Stand-in rows for a feed whose reads have not landed. Never a sentence. */
+function FeedReadSkeleton() {
+  return (
+    <div className="space-y-2" aria-hidden>
+      {[1, 2, 3].map((i) => (
+        <div
+          key={i}
+          className="bg-white dark:bg-elevated border border-border-base dark:border-border-default rounded-xl p-3 space-y-2"
+        >
+          <Skeleton className="h-[10px] w-[110px] rounded-[4px]" />
+          <Skeleton className="h-[14px] w-3/4 rounded-[4px]" />
+          <Skeleton className="h-[12px] w-2/3 rounded-[4px]" />
+        </div>
+      ))}
+    </div>
+  );
 }
 
 function cleanDisplayName(name: string | null | undefined): string | null {
@@ -391,8 +527,11 @@ export default function WatchlistPage() {
   const [articleMemoEntry, setArticleMemoEntry] = useState<MatchedArticle | null>(null);
   const [watchlist, setWatchlist] = useState<WatchlistEntry[]>([]);
   const [prices, setPrices] = useState<Record<string, WatchlistPrice>>({});
-  const [articlesByIdentifier, setArticlesByIdentifier] = useState<Record<string, MatchedArticle[]>>({});
+  const [articleReads, setArticleReads] = useState<ArticleReads>({});
   const [loading, setLoading] = useState(true);
+  /** The LIST read itself faulted. Outranks "nothing tracked yet", which is a
+   *  statement about the reader's account and would be false here. */
+  const [listFailed, setListFailed] = useState(false);
   const [addType, setAddType] = useState<AddType>("ticker");
   const [addError, setAddError] = useState("");
   const [selectedIdentifier, setSelectedIdentifier] = useState<string | null>(null);
@@ -416,24 +555,48 @@ export default function WatchlistPage() {
     }
   }, []);
 
-  const fetchAllArticles = useCallback(async (entries: WatchlistEntry[]) => {
-    if (entries.length === 0) {
-      setArticlesByIdentifier({});
-      return;
-    }
-    const results = await Promise.allSettled(
-      entries.map(async (entry) => ({
-        identifier: entry.identifier,
-        articles: await fetchArticlesForEntry(entry),
-      }))
+  /**
+   * The list and the pending seed commit together, so there is never a render
+   * where an identifier is in the watchlist but absent from the read map.
+   *
+   * setLoading(false) fires here rather than after the article reads: the left
+   * column only needs the list, and keeping its skeleton up for the slowest
+   * of twenty-six article reads bought nothing.
+   */
+  const commitWatchlist = useCallback((entries: WatchlistEntry[]) => {
+    const seeded: ArticleReads = {};
+    for (const e of entries) seeded[e.identifier] = { status: "pending" };
+    setWatchlist(entries);
+    setArticleReads(seeded);
+    setListFailed(false);
+    setLoading(false);
+    // A selection that is no longer tracked has no read to look up.
+    setSelectedIdentifier((sel) =>
+      sel !== null && entries.some((e) => e.identifier === sel) ? sel : null,
     );
-    const byIdent: Record<string, MatchedArticle[]> = {};
-    results.forEach((r) => {
-      if (r.status === "fulfilled") {
-        byIdent[r.value.identifier] = r.value.articles;
-      }
+    setMemoEntry((m) =>
+      m !== null && entries.some((e) => e.identifier === m.identifier) ? m : null,
+    );
+  }, []);
+
+  /**
+   * Commit each identifier as its own read resolves.
+   *
+   * Committing once after Promise.allSettled made the blank window the MAX of
+   * every read rather than the median. Measured on the before state: with one
+   * entry 3.6s slower than the rest, all 26 sat at zero until t=8002ms even
+   * though 25 of them had their data at t=~1200ms.
+   */
+  const fetchAllArticles = useCallback((entries: WatchlistEntry[]) => {
+    entries.forEach((entry) => {
+      fetchArticlesForEntry(entry)
+        .then((read) => {
+          setArticleReads((prev) => ({ ...prev, [entry.identifier]: read }));
+        })
+        .catch(() => {
+          setArticleReads((prev) => ({ ...prev, [entry.identifier]: FAILED_READ }));
+        });
     });
-    setArticlesByIdentifier(byIdent);
   }, []);
 
   const refreshWatchlist = useCallback(async () => {
@@ -441,6 +604,7 @@ export default function WatchlistPage() {
       const res = await fetch("/api/watchlist");
       if (!res.ok) {
         console.error("Watchlist fetch failed:", res.status);
+        setListFailed(true);
         return;
       }
       const { entries } = await res.json();
@@ -457,24 +621,41 @@ export default function WatchlistPage() {
         (e: WatchlistEntry) => e.type === "sector" && STALE_TO_CANONICAL[e.identifier.toUpperCase()]
       );
       if (staleSectors.length > 0) {
+        /* A migration write that fails must not take the list down with it.
+         * Before: an unhandled rejection here fell through to the catch below,
+         * which swallowed it while the finally still ran setLoading(false), so
+         * the whole watchlist rendered "Nothing tracked yet". Any sector in
+         * STALE_TO_CANONICAL was enough to trigger it. Each write now swallows
+         * its own failure, so the re-read below still runs and still tells the
+         * truth about what is actually stored. */
         await Promise.all(
           staleSectors.map(async (e: WatchlistEntry) => {
             const canonical = STALE_TO_CANONICAL[e.identifier.toUpperCase()];
-            await fetch("/api/watchlist", {
-              method: "DELETE",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ id: e.id }),
-            });
-            await fetch("/api/watchlist", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ identifier: canonical, type: "sector" }),
-            });
+            try {
+              await fetch("/api/watchlist", {
+                method: "DELETE",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ id: e.id }),
+              });
+              await fetch("/api/watchlist", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ identifier: canonical, type: "sector" }),
+              });
+            } catch (err) {
+              console.error("Stale sector migration failed:", e.identifier, err);
+            }
           })
         );
         // Re-fetch after migration
         const res2 = await fetch("/api/watchlist");
-        if (!res2.ok) return;
+        if (!res2.ok) {
+          console.error("Watchlist re-read after migration failed:", res2.status);
+          /* The pre-migration snapshot is known stale here, since rows were
+           * just deleted, so there is nothing honest left to render. */
+          setListFailed(true);
+          return;
+        }
         const { entries: entries2 } = await res2.json();
         const seen2 = new Set<string>();
         const migratedEntries = (entries2 || []).filter((e: WatchlistEntry) => {
@@ -492,8 +673,8 @@ export default function WatchlistPage() {
           if (aOrder !== bOrder) return aOrder - bOrder;
           return new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime();
         });
-        setWatchlist(sortedMigrated);
-        await fetchAllArticles(sortedMigrated);
+        commitWatchlist(sortedMigrated);
+        fetchAllArticles(sortedMigrated);
         fetchPrices(sortedMigrated);
         return;
       }
@@ -508,15 +689,16 @@ export default function WatchlistPage() {
         if (aOrder !== bOrder) return aOrder - bOrder;
         return new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime();
       });
-      setWatchlist(sortedEntries);
-      await fetchAllArticles(sortedEntries);
+      commitWatchlist(sortedEntries);
+      fetchAllArticles(sortedEntries);
       fetchPrices(sortedEntries);
     } catch (e) {
       console.error("Failed to refresh watchlist:", e);
+      setListFailed(true);
     } finally {
       setLoading(false);
     }
-  }, [fetchAllArticles, fetchPrices]);
+  }, [commitWatchlist, fetchAllArticles, fetchPrices]);
 
   useEffect(() => {
     refreshWatchlist();
@@ -659,6 +841,69 @@ export default function WatchlistPage() {
         : (selectedEntry?.display_name ?? LEGACY_TICKER_NAMES[selectedIdentifier.toUpperCase()] ?? selectedIdentifier))
     : null;
 
+  /**
+   * The tracked count is not known until the LIST read lands, and 0 is not a
+   * stand-in for "not yet". Omit the numeral rather than invent one.
+   */
+  const listCountLabel = (noun: string) =>
+    loading || listFailed ? noun : `${noun} (${watchlist.length})`;
+
+  /**
+   * Articles from READY reads only, seeded for every tracked identifier so
+   * consumers never need a fallback. A pending or failed entry contributes an
+   * empty list here and says so through its own read state elsewhere; it is
+   * never described as having no news.
+   */
+  const readyArticles = useMemo(() => {
+    const out: Record<string, MatchedArticle[]> = {};
+    for (const e of watchlist) {
+      const read = articleReads[e.identifier];
+      out[e.identifier] = read.status === "ready" ? read.articles : [];
+    }
+    return out;
+  }, [watchlist, articleReads]);
+
+  /**
+   * What the feed can honestly say about its own count.
+   *
+   * Focused on one entity it is that entity's read. Across everything it is
+   * pending while any read is outstanding, because a total is not known until
+   * the last one lands, and failed only when EVERY read faulted. A mixed
+   * result renders the count it has, with the rail's own "Counts unavailable"
+   * marker carrying the disclosure, since claiming "Articles unavailable"
+   * above a list of visible articles would be its own falsehood.
+   *
+   * "Pending while any read is outstanding" was a deliberate choice and it
+   * stays. The alternative considered was a count-so-far with a disclosure,
+   * which was rejected: it invents a fourth header state and new copy to
+   * describe a symptom, when the real problem was that "outstanding" had no
+   * upper bound. Every read path is now bounded (see DB_READ_TIMEOUT_MS), so
+   * this resolves to a number or to "Articles unavailable" and can no longer
+   * sit as a skeleton forever.
+   */
+  const feedStatus: ArticleRead["status"] = useMemo(() => {
+    /* The LIST read gates everything below it. Without these two the header
+       rendered "0 articles" on a failed list read and during the loading
+       window, because an empty watchlist trivially satisfies "every read
+       landed". Same false zero, one level up. */
+    if (listFailed) return "failed";
+    if (loading) return "pending";
+    if (selectedIdentifier) return articleReads[selectedIdentifier].status;
+    const reads = watchlist.map((e) => articleReads[e.identifier]);
+    if (reads.length === 0) return "ready";
+    if (reads.some((r) => r.status === "pending")) return "pending";
+    if (reads.every((r) => r.status === "failed")) return "failed";
+    return "ready";
+  }, [listFailed, loading, selectedIdentifier, watchlist, articleReads]);
+
+  /** The gallery asserts quiet, so any failure outranks any pending. */
+  const galleryReadiness: GalleryReadiness = useMemo(() => {
+    const reads = watchlist.map((e) => articleReads[e.identifier]);
+    if (reads.some((r) => r.status === "failed")) return { status: "failed" };
+    if (reads.some((r) => r.status === "pending")) return { status: "pending" };
+    return { status: "ready" };
+  }, [watchlist, articleReads]);
+
   const displayedArticles = useMemo(() => {
     const now = Date.now();
     const AGE_WINDOWS: Record<string, number> = {
@@ -684,12 +929,12 @@ export default function WatchlistPage() {
 
     if (selectedIdentifier) {
       const arts = applyAgeFilter(
-        (articlesByIdentifier[selectedIdentifier] ?? []).filter((a) => isEnglishTitle(a.title)),
+        readyArticles[selectedIdentifier].filter((a) => isEnglishTitle(a.title)),
       );
       return sortArticles(arts, sortMode).slice(0, 20);
     }
 
-    const allArts = Object.values(articlesByIdentifier).flat();
+    const allArts = Object.values(readyArticles).flat();
     const seenId = new Set<string>();
     const seenKey = new Set<string>();
     const deduped = allArts.filter((a) => {
@@ -705,7 +950,7 @@ export default function WatchlistPage() {
       applyAgeFilter(deduped.filter((a) => isEnglishTitle(a.title))),
       sortMode,
     ).slice(0, 60);
-  }, [selectedIdentifier, articlesByIdentifier, sortMode, ageFilter]);
+  }, [selectedIdentifier, readyArticles, sortMode, ageFilter]);
 
   // Pointer sensor with a small activation distance prevents clicks from starting a drag;
   // TouchSensor with a long-press delay enables drag-reorder on touch devices without
@@ -869,7 +1114,8 @@ export default function WatchlistPage() {
           <WatchlistGallery
             entries={watchlist}
             prices={prices}
-            articlesByIdentifier={articlesByIdentifier}
+            articlesByIdentifier={readyArticles}
+            readiness={galleryReadiness}
             filter={galleryFilter}
             onFilterChange={setGalleryFilter}
             onFocus={(identifier) => {
@@ -957,14 +1203,23 @@ export default function WatchlistPage() {
 
           {/* Tracking list */}
           <div>
-            <p className="font-sans text-[9px] text-text-muted mb-2.5">
-              Tracking ({watchlist.length})
+            <p className="font-sans text-[10px] text-text-muted mb-2.5">
+              {listCountLabel("Tracking")}
             </p>
 
             {loading ? (
               <div className="space-y-2">
                 {[1, 2, 3].map((i) => <Skeleton key={i} className="h-12 rounded-xl" />)}
               </div>
+            ) : listFailed ? (
+              /* Outranks the empty branch below. "Nothing tracked yet" is a
+                 statement about the reader's account, and the account is not
+                 what failed. */
+              <EmptyState
+                icon={<Star size={32} />}
+                title="Watchlist unavailable"
+                description="The list could not be read."
+              />
             ) : watchlist.length === 0 ? (
               <EmptyState
                 icon={<Star size={32} />}
@@ -980,7 +1235,7 @@ export default function WatchlistPage() {
                       <p className="font-sans text-[8px] text-text-faint mb-1.5">Sectors</p>
                     )}
                     {sectorEntries.map((entry) => {
-                      const articleCount = (articlesByIdentifier[entry.identifier] ?? []).length;
+                      const count = chipCountFor(articleReads[entry.identifier]);
                       return (
                         <div
                           key={entry.id}
@@ -1000,11 +1255,7 @@ export default function WatchlistPage() {
                             {toDisplayName(entry.identifier)}
                           </span>
                           <div className="flex items-center gap-2 flex-shrink-0">
-                            {articleCount > 0 && (
-                              <span className="font-sans text-[9px] text-text-faint bg-parchment-mid border border-border-base px-1.5 py-0.5 rounded-md">
-                                {articleCount >= 20 ? "20+" : articleCount}
-                              </span>
-                            )}
+                            <CountBadge count={count} />
                             <div
                               className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
                               onClick={(e) => e.stopPropagation()}
@@ -1048,7 +1299,7 @@ export default function WatchlistPage() {
                         <ul className="space-y-1.5 list-none p-0 m-0">
                           {publicEntries.map((entry) => {
                             const price = prices[entry.identifier];
-                            const articleCount = (articlesByIdentifier[entry.identifier] ?? []).length;
+                            const count = chipCountFor(articleReads[entry.identifier]);
                             const subtitle = cleanDisplayName(entry.display_name ?? LEGACY_TICKER_NAMES[entry.identifier.toUpperCase()]);
                             return (
                               <SortableEntryRow
@@ -1058,7 +1309,7 @@ export default function WatchlistPage() {
                                 isKeyboardActive={selectedEntryIndex !== null && allEntries[selectedEntryIndex]?.id === entry.id}
                                 onSelect={() => setSelectedIdentifier(sel => sel === entry.identifier ? null : entry.identifier)}
                                 subtitle={subtitle ?? null}
-                                articleCount={articleCount}
+                                count={count}
                                 price={price}
                                 onGenerateMemo={() => setMemoEntry(entry)}
                                 onOpenBrief={() => router.push(`/watchlist/${encodeURIComponent(entry.identifier)}`)}
@@ -1090,7 +1341,7 @@ export default function WatchlistPage() {
                         <ul className="space-y-1.5 list-none p-0 m-0">
                           {privateEntries.map((entry) => {
                             const price = prices[entry.identifier];
-                            const articleCount = (articlesByIdentifier[entry.identifier] ?? []).length;
+                            const count = chipCountFor(articleReads[entry.identifier]);
                             const subtitle = cleanDisplayName(entry.display_name ?? LEGACY_TICKER_NAMES[entry.identifier.toUpperCase()]);
                             return (
                               <SortableEntryRow
@@ -1100,7 +1351,7 @@ export default function WatchlistPage() {
                                 isKeyboardActive={selectedEntryIndex !== null && allEntries[selectedEntryIndex]?.id === entry.id}
                                 onSelect={() => setSelectedIdentifier(sel => sel === entry.identifier ? null : entry.identifier)}
                                 subtitle={subtitle ?? null}
-                                articleCount={articleCount}
+                                count={count}
                                 price={price}
                                 onGenerateMemo={() => setMemoEntry(entry)}
                                 onOpenBrief={() => router.push(`/watchlist/${encodeURIComponent(entry.identifier)}`)}
@@ -1128,11 +1379,14 @@ export default function WatchlistPage() {
             <GroupJumpNav
               ariaLabel="Filter feed by tracked entity"
               groups={[
-                { id: "__all", label: "All", count: undefined },
+                /* Explicit ChipCount at every chip, never a bare number and
+                   never undefined. The All chip counts nothing by design and
+                   now says so. */
+                { id: "__all", label: "All", count: { kind: "none" } as ChipCount },
                 ...watchlist.map((e) => ({
                   id: e.identifier,
                   label: e.display_name || toDisplayName(e.identifier),
-                  count: (articlesByIdentifier[e.identifier] ?? []).length,
+                  count: chipCountFor(articleReads[e.identifier]),
                 })),
               ]}
               activeId={selectedIdentifier ?? "__all"}
@@ -1143,13 +1397,28 @@ export default function WatchlistPage() {
             {selectedIdentifier ? (
               <div className="flex items-center gap-2">
                 <span className="font-display text-[15px] font-bold text-espresso">{selectedDisplayLabel}</span>
-                <span className="font-sans text-[9px] text-text-faint">{displayedArticles.length} articles</span>
+                {feedStatus === "pending" ? (
+                  <Skeleton className="h-[12px] w-[56px] rounded-[4px]" />
+                ) : feedStatus === "failed" ? (
+                  <span className="font-sans text-[10px] text-text-muted">Articles unavailable</span>
+                ) : (
+                  <span className="font-sans text-[10px] text-text-faint">{displayedArticles.length} articles</span>
+                )}
                 <button onClick={() => setSelectedIdentifier(null)} className="font-sans text-[9px] text-text-muted hover:text-text-primary cursor-pointer ml-1">← All</button>
               </div>
             ) : (
               <div>
-                <p className="font-sans text-[9px] text-text-muted">Watchlist feed</p>
-                <p className="font-sans text-[11px] text-gold font-semibold">{displayedArticles.length} articles</p>
+                <p className="font-sans text-[10px] text-text-muted">Watchlist feed</p>
+                {feedStatus === "pending" ? (
+                  /* Sized to the column, not to the word it replaces. At 390px
+                     the filter row squeezes this column to about 46px, and a
+                     pending marker the reader cannot see is not a marker. */
+                  <Skeleton className="mt-1 h-[13px] w-[42px] rounded-[4px]" />
+                ) : feedStatus === "failed" ? (
+                  <p className="font-sans text-[11px] text-text-muted font-semibold">Articles unavailable</p>
+                ) : (
+                  <p className="font-sans text-[11px] text-gold font-semibold">{displayedArticles.length} articles</p>
+                )}
               </div>
             )}
             <div className="flex items-center gap-1.5">
@@ -1189,6 +1458,39 @@ export default function WatchlistPage() {
 
           {displayedArticles.length === 0 ? (
             (() => {
+              /* Read state is checked FIRST. A read that has not finished, or
+                 that faulted, is never an empty answer, and every branch below
+                 this point is an answer. */
+              if (loading) {
+                /* The LIST read has not landed. "Your feed is empty" below is
+                   an answer, and there is no answer yet. */
+                return <FeedReadSkeleton />;
+              }
+              if (listFailed) {
+                // The left column already names this. One statement, not two.
+                return null;
+              }
+              if (feedStatus === "pending") {
+                return <FeedReadSkeleton />;
+              }
+              if (feedStatus === "failed") {
+                if (selectedIdentifier) {
+                  const entry = watchlist.find((e) => e.identifier === selectedIdentifier);
+                  const name = entry?.display_name || selectedDisplayLabel || selectedIdentifier;
+                  return (
+                    <div className="bg-parchment-mid border border-border-base rounded-xl p-5">
+                      <p className="font-sans text-[13px] font-semibold text-text-primary mb-1">Articles unavailable for {name}</p>
+                      <p className="font-sans text-[12px] text-text-secondary">The read did not complete.</p>
+                    </div>
+                  );
+                }
+                return (
+                  <div className="bg-parchment-mid border border-border-base rounded-xl p-5">
+                    <p className="font-sans text-[13px] font-semibold text-text-primary mb-1">Watchlist articles unavailable</p>
+                    <p className="font-sans text-[12px] text-text-secondary">The read did not complete.</p>
+                  </div>
+                );
+              }
               if (watchlist.length === 0) {
                 return (
                   <div className="bg-parchment-mid border border-border-base rounded-xl p-5 text-center">
@@ -1309,6 +1611,9 @@ export default function WatchlistPage() {
                   />
                 </div>
               ))}
+              {/* Reads still landing. The list fills in as each one arrives
+                  rather than waiting for the slowest of them. */}
+              {feedStatus === "pending" && <FeedReadSkeleton />}
             </div>
           )}
         </div>
@@ -1334,7 +1639,7 @@ export default function WatchlistPage() {
             }}
           >
             <Star size={14} />
-            Watchlist ({watchlist.length})
+            {listCountLabel("Watchlist")}
           </button>
         </div>
       )}
@@ -1360,7 +1665,7 @@ export default function WatchlistPage() {
         }}>
           <div style={{ padding: '12px 16px 8px', borderBottom: '1px solid var(--border-base)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
             <span style={{ fontFamily: 'Inter, sans-serif', fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>
-              Watchlist ({watchlist.length})
+              {listCountLabel("Watchlist")}
             </span>
             <button
               type="button"
@@ -1385,6 +1690,12 @@ export default function WatchlistPage() {
                 <div className="space-y-2">
                   {[1, 2, 3].map((i) => <Skeleton key={i} className="h-12 rounded-xl" />)}
                 </div>
+              ) : listFailed ? (
+                <EmptyState
+                  icon={<Star size={32} />}
+                  title="Watchlist unavailable"
+                  description="The list could not be read."
+                />
               ) : watchlist.length === 0 ? (
                 <EmptyState
                   icon={<Star size={32} />}
@@ -1394,7 +1705,7 @@ export default function WatchlistPage() {
               ) : (
                 <>
                   {watchlist.map((entry) => {
-                    const articleCount = (articlesByIdentifier[entry.identifier] ?? []).length;
+                    const count = chipCountFor(articleReads[entry.identifier]);
                     return (
                       <div
                         key={entry.id}
@@ -1413,11 +1724,7 @@ export default function WatchlistPage() {
                         <span style={{ fontFamily: 'Inter, sans-serif', fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>
                           {entry.type === 'sector' ? entry.identifier : (entry.display_name ?? entry.identifier)}
                         </span>
-                        {articleCount > 0 && (
-                          <span style={{ fontFamily: 'Inter, sans-serif', fontSize: '9px', color: 'var(--text-faint)', background: 'var(--parchment-mid)', border: '1px solid var(--border-base)', borderRadius: '4px', padding: '2px 6px' }}>
-                            {articleCount >= 20 ? '20+' : articleCount}
-                          </span>
-                        )}
+                        <CountBadge count={count} />
                       </div>
                     );
                   })}
@@ -1439,7 +1746,7 @@ export default function WatchlistPage() {
           isOpen={true}
           onClose={() => setMemoEntry(null)}
           title={memoEntry.identifier}
-          content={buildWatchlistMemoContent(memoEntry, articlesByIdentifier[memoEntry.identifier] ?? [])}
+          content={buildWatchlistMemoContent(memoEntry, readyArticles[memoEntry.identifier])}
           type="company"
         />
       )}
@@ -1508,7 +1815,7 @@ function SortableEntryRow(props: {
   isKeyboardActive: boolean;
   onSelect: () => void;
   subtitle: string | null;
-  articleCount: number;
+  count: ChipCount;
   price?: WatchlistPrice;
   onGenerateMemo: () => void;
   onOpenBrief: () => void;
@@ -1522,7 +1829,7 @@ function SortableEntryRow(props: {
     isKeyboardActive,
     onSelect,
     subtitle,
-    articleCount,
+    count,
     price,
     onGenerateMemo,
     onOpenBrief,
@@ -1627,11 +1934,7 @@ function SortableEntryRow(props: {
 
       {/* RIGHT: article count, price, hover actions, chevron */}
       <div className="flex items-center gap-2 flex-shrink-0 self-center">
-        {articleCount > 0 && (
-          <span className="font-sans text-[9px] text-text-faint bg-parchment-mid border border-border-base px-1.5 py-0.5 rounded-md">
-            {articleCount >= 20 ? "20+" : articleCount}
-          </span>
-        )}
+        <CountBadge count={count} />
         {entry.type === "ticker" && price && (
           <span className={cn("font-data text-[11px] tabular-nums", price.pct >= 0 ? "text-signal-up" : "text-signal-dn")}>
             ${price.price} <span className="text-[10px]">{price.pct >= 0 ? "+" : ""}{price.pct}%</span>
