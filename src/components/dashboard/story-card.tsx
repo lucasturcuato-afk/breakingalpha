@@ -13,7 +13,7 @@ import {
 import { SentimentPill, sentimentToTone } from "@/components/ui/sentiment-pill";
 import { BookmarkButton } from "@/components/ui/bookmark";
 import { Sparkles, Plus, MessageSquare, ExternalLink } from "lucide-react";
-import { MemoModal } from "@/components/memo/MemoModal";
+import { MemoModal } from "@/components/memo/MemoModalLazy";
 import { HeroPeers } from "@/components/dashboard/hero-peers";
 import { HeroThread } from "@/components/dashboard/hero-thread";
 import type { Completeness } from "@/lib/article-signal";
