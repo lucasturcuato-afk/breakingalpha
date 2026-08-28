@@ -44,11 +44,37 @@ ruling names no step, the work sits off the mobile build path entirely.
 | 8 | SIGNAL scores. **Stay.** Not a compliance issue. It is a relevance score, not an accuracy figure. Relevance ranking is editorial judgment, not a claim about accuracy, so it does not fall under the compliance rule. | **Lands on step 2, the Ledger card**, not the nav shell. The Ledger is the anatomy every other card reuses, so the design needs a slot for the badge before that card is written. Also touches steps 5, 9 and 10. | No production change. The design carries the deviation, not the code. |
 | 9 | cross-source palette. **Retoken.** One file, no shared surface. | Off the build path, same route as ruling 1. | Queued, own PR. |
 | 10 | Stats band, the VIX label. **Deviate from the design.** One anatomy across all four cells: Inter 700 in `--c-muted`. The design draws three labels in Inter 700 and the fourth in `"JetBrains Mono"` 400 at `--c-oninv-dim`, which is two anatomies in one band of equivalent cells, the thing the README's own responsive rule forbids. It also fails contrast on its own terms: `--c-oninv-dim` `#a2937a` on `--c-bg` `#fffdf9` measures **2.96:1** at a 10px label, against a 4.5 floor. The built `--c-muted` `#786a52` measures **5.19:1**. | Step 2 surface (Ledger). | **Shipped in #622.** Not to be reverted. The design carries the deviation, not the code. |
+| 11 | Desktop `/radar/calls` grows the same note requirement. **Ruled 2026-08-25.** The note is part of what adopting a call MEANS, not a mobile enrichment. A call taken without stated reasoning is a different object from one taken with it, and the record cannot tell them apart later. Scope: the same 12-character gate on the desktop adopt flow. The API already accepts the note without requiring it, so desktop needs no second API change. | Desktop `/radar/calls`. Not built here. | **Logged, not scheduled.** Desktop has no design for this; it inherits mobile's contract or gets its own pass. |
 | 14 | Thesis Tracker and Thesis detail. **CUT from mobile scope.** Tracker's desktop surface is a four-line redirect shim: `/radar/theses` answers `redirect('/radar/calls?views=open')`, `RadarTabs` carries four tabs and Theses is not among them, and three files call it retired in their own comments (`radar/calls/page.tsx:250`, `search-data.ts:35`, `TrackedViews.tsx:17`). There is nothing to port. Detail (`/radar/track-record/[thesis_id]`) still renders but is orphaned: reachable only from the command palette and one link at `TrackedViews.tsx:402`, and absent from RadarTabs. | Step 8. | **Cut.** Missing-screen count corrects from 6 to 5. |
 | 15 | Memo. **STAYS in scope, as a port.** Not retired: `MemoModal.tsx` is mounted at 21 sites across 17 files, the most widely mounted component in the product, and it has no mobile surface at all. | Step 9. | **In scope, unbuilt.** The largest live desktop surface with zero mobile presence. |
 | 16 | Signal, Story and Deal detail. **Reclassified: NEW SCREENS, not ports.** None has a desktop source. `src/app/signal` and `src/app/story` do not exist; `/deal-flow` exists with no `[id]` route. Calling them 'missing' overstated readiness: there is nothing to port from, so each is new work. | Step 10. | **Reclassified.** |
 | 17 | Pole names: **Watch becomes Radar, Today becomes Dashboard.** One decision about desktop-to-mobile continuity, ruled 2026-08-26. Both mobile labels diverged from the desktop names users already know, and in both cases the mobile label also collides with something. **Watch** is already a market-state word at `mood-bar.tsx:38` (`badgeLabel`), names an action rather than a place, and labels a surface that does not exist yet; Radar is the desktop word. **Today** is the prototype's word, but `pageTitle` at `dashboard/page.tsx:824` and the command palette both already say Dashboard, so a reader taps Today and lands on a page headed Dashboard. The prototype says Today 9 times and Dashboard 3, the latter in a jump-list context, so the design itself uses both names for one screen. | Nav shell. | **Ruled.** `badgeLabel` in `mood-bar.tsx` is NOT touched: Watch remains a market state. |
 | 18 | Signed-in screenshots on a public repo. **Third instance. Remove the 24 carrying plates, keep the blobs in history.** Twenty four of 39 full-page plates committed on 2026-08-27 published account data: a greeting naming the reader, the personal grading tally, the followed-sector chip row including a tone preference, the full watchlist membership with a sector subscription, and a live plus-addressed mailbox beside a role label. The categories are named here; **the values deliberately are not.** **Ruled 2026-08-28:** the plates come out and the Markdown is repaired, but history is NOT rewritten and nothing is force-pushed. The content is the owner's own account on a three-person repo, and no claim text and no review date appears in any of the 39, so blobs remaining reachable is an accepted cost rather than an oversight. | Off the build path. Affects three PR branches. | Removal commits on #698, #699 and #700. The rule moves INSIDE the capture, see below. |
+
+### Ruling 11, the two consequences that need owners
+
+**1. Claims adopted before 2026-08-25 have a permanently null note, and cannot be backfilled.**
+
+Nothing recorded when those notes would have been written, because there were no
+notes. So this is not a gap that closes over time from the old side. Review and
+the record both need a treatment that **reads as history rather than as a
+missing value**: a claim from before the feature existed is not a claim whose
+note failed to load, and rendering it as one would be the same defect class this
+programme spent its run removing.
+
+It must NOT fall back to `created_at`. That would put a real-looking timestamp
+above a note that does not exist.
+
+**2. Requiring a note will lower adoption conversion. That is intended.**
+
+A gate that costs nothing is not a gate. The point is that adopting a call
+should require saying why, and some people will decline — which is the feature
+working, not failing.
+
+But it should be **measured**, and it cannot be measured yet: the only accounts
+using this are the founders', and two people are not a conversion signal.
+**Measure once anyone outside the founder accounts is adopting calls**, and
+compare against the pre-gate rate rather than against an expectation.
 
 ### Ruling 17: what the Radar name does and does not promise
 
