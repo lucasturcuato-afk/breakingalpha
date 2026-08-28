@@ -29,6 +29,49 @@
   }
 }
 
+/* ── The reveal gate ─────────────────────────────────────────────────
+ *
+ * The briefing tree and the skeleton stack in ONE grid cell, so the gate is as
+ * tall as the taller of the two and neither is clipped by the other. An
+ * absolutely positioned overlay would have taken its height from whichever
+ * sibling stayed in flow, and early on that is the tree with almost every read
+ * still outstanding, which is the shorter of the two.
+ *
+ * WHY `visibility` AND NOT `opacity`. The desktop gate hides its real tree
+ * with `opacity-0`, and opacity leaves the text in the layout, in the
+ * accessibility tree and in `innerText`. A briefing built from reads that have
+ * not answered is exactly the content PR #675 ruled must never be legible, and
+ * legible is not only a question of pixels: a screen reader would have read it
+ * out. `visibility: hidden` takes the subtree out of all three at once and
+ * still lays it out, which is what keeps the skeleton the right size.
+ *
+ * Nothing here changes a duration, a delay or a curve. The ladder is paused at
+ * frame zero while the gate is shut and resumes when it opens, so the stagger
+ * plays AS the skeleton clears rather than four seconds behind it. Under
+ * `prefers-reduced-motion` there is no animation to pause and the rule below
+ * matches nothing, so the tree simply becomes visible, drawn and unanimated. */
+.gate {
+  display: grid;
+}
+
+.gate > * {
+  grid-area: 1 / 1;
+  min-width: 0;
+}
+
+.gateShut {
+  visibility: hidden;
+}
+
+.gateShut .rise,
+.gateShut .bar {
+  animation-play-state: paused;
+}
+
+.gateOpen {
+  visibility: visible;
+}
+
 /* The dot texture behind the briefing. A masked field, not a surface
  * gradient: it fades out well before the fold and paints nothing over the
  * lower half of the screen. */

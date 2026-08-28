@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { DashboardScreen } from "./dashboard-screen";
 import { BriefingSplash } from "./briefing-splash";
+import { MobileRevealGate } from "./mobile-reveal-gate";
 import { DASH_FIXTURES_ALLOWED } from "./fixture-gate";
 import type { DashboardData, DashStage } from "./fixture";
 
@@ -25,6 +26,14 @@ import type { DashboardData, DashStage } from "./fixture";
  * the fixture through a dynamic import so the prose is not in the bundle a
  * production reader downloads. Neither condition can be met by a signed-in
  * reader on production.
+ *
+ * The real path goes through `MobileRevealGate`, which mounts the briefing
+ * tree and hides it rather than keeping it back until the last read lands, so
+ * the entrance ladder plays as the skeleton clears instead of four seconds
+ * later. The preview path does NOT: it has its whole payload the moment the
+ * dynamic import resolves, there is no read to wait on, and parity fingerprints
+ * the screen root, so a gate between them would only add a wrapper for the
+ * audit to walk through.
  *
  * The splash lives on the preview path only. It is a full-screen overlay
  * reading "142 stories read overnight. One of your calls was checked." Both
@@ -76,10 +85,16 @@ function useFixturePreview(stage: DashStage | null): FixturePreview | null {
 export function MobileDashboardRoute({
   data,
   stage,
+  revealed,
 }: {
   /** REQUIRED and NULLABLE, resolved by the caller. Null draws the skeleton. */
   data: DashboardData | null;
   stage: DashStage;
+  /**
+   * Whether the caller's reads have answered. The gate reads it; the screen
+   * never does. Passing it does NOT gate the mount, only what is legible.
+   */
+  revealed: boolean;
 }) {
   const params = useSearchParams();
   const raw = params.get("stage");
@@ -102,5 +117,5 @@ export function MobileDashboardRoute({
     );
   }
 
-  return <DashboardScreen stage={stage} data={data} />;
+  return <MobileRevealGate revealed={revealed} stage={stage} data={data} />;
 }
