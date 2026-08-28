@@ -97,3 +97,18 @@ parity-*.json
 # Local verification probes. Scratch, never part of a change.
 .verify/
 .verify-*.mjs
+# The scratchpad directory agents are told to namespace their work under.
+#
+# It was NOT ignored, and on 2026-08-28 five worktrees held Playwright
+# storage-state files containing live session cookies for the test account,
+# alongside 243 PNG captures of signed-in surfaces. One `git add -A` in any
+# of those trees would have staged a session token into a public repository.
+# Nothing was committed; the exposure was potential and is now closed.
+#
+# Also a gate conflict, which is how it surfaced: eslint's default ignores
+# cover node_modules and .git only, so scratch scripts here landed in the
+# lint path and failed a gate on a change that touched only images and
+# Markdown.
+#
+# Root-anchored like its neighbours above, for the reason stated there.
+/scratchpad/
