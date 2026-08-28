@@ -50,14 +50,79 @@ Warm, same runs:
 
 ## The shots
 
-- `dashboard-mobile-gate-shut.png` — Slow 4G, the gate shut. The briefing tree
+- `dashboard-mobile-gate-shut.png`. Slow 4G, the gate shut. The briefing tree
   is mounted underneath at `visibility: hidden`; the screen root's `innerText`
-  is 0 chars and the whole body is 83. Nothing empty-looking is legible.
-- `dashboard-mobile-mid-ladder.png` — 260ms after the gate opens. The early
-  rungs have settled, the brief card and the sections below it are still
-  rising. The ladder plays as the skeleton clears.
-- `dashboard-mobile-light.png` / `dashboard-mobile-dark.png` — settled, both
-  themes, 390x844.
-- `dashboard-mobile-reduced-motion.png` — `prefers-reduced-motion: reduce`.
-  0 `animationstart` events, 0 `animationend` events, and the same 1513 chars
-  of screen text as the animated runs. Unanimated, never absent.
+  is 0 chars and the whole body is 83. Nothing empty-looking is legible. The
+  avatar pill is an empty circle with no letter in it and every content block is
+  blank, so this frame is structurally incapable of carrying account data.
+- `market-band-light.png` / `market-band-dark.png`. The settled market band,
+  both themes, cropped out of the 390x844 renders. What these carry is the
+  theme tokens: ink and ground invert, and the up and down tones go from deep
+  green and crimson to mint and rose. The four cells are
+  `DEFAULT_MARKET_CARDS` (SPY, VIX, TNX, SIGNALS) unchanged, so the band says
+  nothing about the account that took the capture.
+
+## Plates removed, 2026-08-28
+
+Four full-page plates came out under DECISIONS.md ruling 18: while this
+repository is public, no committed capture of a signed-in view may carry an
+account name, a record block or personalization chips.
+
+Removed:
+
+- `dashboard-mobile-light.png`
+- `dashboard-mobile-dark.png`
+- `dashboard-mobile-mid-ladder.png`
+- `dashboard-mobile-reduced-motion.png`
+
+All four rendered the greeting "Good morning, Noah.", the account avatar
+letter, the personal record block reading SUPPORTED 0 / CHALLENGED 0 / NO
+CLEAN READ 0 / AWAITING 3 under the heading "your record", the desk's 996
+signal counts and the brief teaser headline.
+
+**The blobs stay reachable in history, by decision rather than by omission.**
+The repository has three people in it, the account is the owner's own, and no
+claim text and no review date appears in any of the four. History is not
+rewritten and nothing is force-pushed.
+
+### What replaced them
+
+The two settled plates are replaced by `market-band-light.png` and
+`market-band-dark.png`. Those are honest sub-regions of the very same renders.
+Nothing is blurred, masked, redacted or painted over: the crop is a plain
+rectangle cut in the blank gutters above and below the band, at device rows
+600 and 1289, against greeting ink that ends at row 523 and brief-card ink
+that starts at row 1317. The gutters are blank at the same rows in both
+themes, so one box serves both.
+
+The other two have no visual replacement. Reasons follow, because a plate that
+vanishes with no reason given is the same defect as a plate that overstates.
+
+`mid-ladder` was tested for a crop and failed the test. Its stagger, measured
+as vertical displacement from the settled frame by row-profile correlation, in
+device px at dSF 3:
+
+| rung | displacement |
+| --- | --- |
+| header and logo | 0 |
+| date rule | 2 |
+| greeting block | 5 |
+| MARKET head | 8 |
+| market band | 13 |
+| brief card | 27 |
+
+The `your record` heading rule is at zero opacity in that frame while the
+paragraph under it has already settled. The only two rungs inside the safe
+crop region are the MARKET head and the band, 5 device px apart, which is 1.7
+CSS px. That is not legible in a still, and a still cannot show displacement
+at all without the settled frame next to it. Such a crop would be
+indistinguishable from `market-band-light.png` while being captioned as
+mid-flight evidence, which is worse than no image. The table above is the
+evidence instead.
+
+`reduced-motion` is pixel-identical to the settled light render: zero row
+shift in every band, and a mean absolute luminance difference at or under 0.20
+out of 255. A still of it therefore carries nothing the light crop does not,
+and "unanimated" is an absence that no still can show in the first place. The
+proof is the event count already stated above: 0 `animationstart`, 0
+`animationend`, and the same 1513 chars of screen text as the animated runs.
