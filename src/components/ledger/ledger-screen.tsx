@@ -628,7 +628,7 @@ function StatsBar({ data, loading }: { data: LedgerData; loading: boolean }) {
           ) : (
             <span
               style={{
-                font: "700 12px/1 var(--font-jetbrains-mono), monospace",
+                font: "600 12px/1 var(--font-jetbrains-mono), monospace",
                 color:
                   s.tone === "calm"
                     ? "var(--c-greenink)"
@@ -710,7 +710,7 @@ function Continuity({ continuity }: { continuity: NonNullable<LedgerData["contin
           {l.before ? (
             <span
               style={{
-                font: "500 10px/1 var(--font-jetbrains-mono), monospace",
+                font: "600 10px/1 var(--font-jetbrains-mono), monospace",
                 letterSpacing: "0.04em",
                 color: "var(--c-muted)",
               }}

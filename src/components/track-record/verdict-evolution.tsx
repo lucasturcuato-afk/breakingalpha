@@ -211,7 +211,7 @@ export function VerdictEvolution({ scored }: { scored?: ScoredThesisLite[] } = {
               <div className="font-sans text-[11px] text-text-muted">
                 Avg live score · last {DAYS_BACK}d
               </div>
-              <div className="font-data text-2xl font-bold text-espresso mt-0.5">
+              <div className="font-data text-2xl font-semibold text-espresso mt-0.5">
                 {todayAvg !== null ? formatSignedScore(Math.round(todayAvg)) : "--"}
               </div>
             </div>

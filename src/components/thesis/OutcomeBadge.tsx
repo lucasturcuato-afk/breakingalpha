@@ -39,7 +39,7 @@ export function OutcomeBadge({ outcome, size = "md", className }: OutcomeBadgePr
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1 rounded-full border font-data font-bold uppercase",
+        "inline-flex items-center gap-1 rounded-full border font-data font-semibold uppercase",
         classes,
         isSm ? "px-1.5 py-0.5 text-[8px]" : "px-2.5 py-1 text-[10px]",
         className,

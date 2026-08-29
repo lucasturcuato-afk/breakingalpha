@@ -310,7 +310,7 @@ export default function CompanyIntelMemoModal(props: CompanyIntelMemoModalProps)
             className={cn(
               "inline-flex items-center justify-center align-baseline",
               "mx-0.5 px-1 rounded",
-              "font-data text-[10px] font-bold leading-none",
+              "font-data text-[10px] font-semibold leading-none",
               "border transition-colors",
               sourceExists
                 ? "border-gold-border bg-gold-muted text-gold hover:bg-gold/15 cursor-pointer"
@@ -595,7 +595,7 @@ export default function CompanyIntelMemoModal(props: CompanyIntelMemoModalProps)
                         <div className="flex items-start gap-2">
                           <span
                             className={cn(
-                              "font-data text-[10px] font-bold flex-shrink-0",
+                              "font-data text-[10px] font-semibold flex-shrink-0",
                               "mt-0.5 px-1.5 py-0.5 rounded border",
                               "border-gold-border bg-gold-muted text-gold",
                             )}
@@ -640,7 +640,7 @@ export default function CompanyIntelMemoModal(props: CompanyIntelMemoModalProps)
               onClick={handleCopy}
               className={cn(
                 "inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg",
-                "font-data text-[10px] font-bold uppercase border cursor-pointer transition-colors",
+                "font-data text-[10px] font-semibold uppercase border cursor-pointer transition-colors",
                 copied
                   ? "border-signal-up/30 bg-signal-up/10 text-signal-up"
                   : "border-gold/40 bg-gold-muted text-gold hover:bg-gold/10",
@@ -656,7 +656,7 @@ export default function CompanyIntelMemoModal(props: CompanyIntelMemoModalProps)
               className={cn(
                 "inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg",
                 "border border-gold/40 bg-gold-muted text-gold",
-                "font-data text-[10px] font-bold uppercase cursor-pointer hover:bg-gold/10 transition-colors",
+                "font-data text-[10px] font-semibold uppercase cursor-pointer hover:bg-gold/10 transition-colors",
                 exporting && "opacity-60 cursor-not-allowed",
               )}
             >
@@ -669,7 +669,7 @@ export default function CompanyIntelMemoModal(props: CompanyIntelMemoModalProps)
               className={cn(
                 "inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg",
                 "border border-border-base text-text-muted",
-                "font-data text-[10px] font-bold uppercase cursor-pointer hover:text-text-primary transition-colors",
+                "font-data text-[10px] font-semibold uppercase cursor-pointer hover:text-text-primary transition-colors",
               )}
             >
               Close
@@ -743,7 +743,7 @@ function ErrorBanner({ message, onRetry }: { message: string; onRetry: () => voi
             className={cn(
               "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg",
               "border border-gold/40 bg-gold-muted text-gold",
-              "font-data text-[10px] font-bold uppercase cursor-pointer hover:bg-gold/10 transition-colors",
+              "font-data text-[10px] font-semibold uppercase cursor-pointer hover:bg-gold/10 transition-colors",
             )}
           >
             <Sparkles size={11} />

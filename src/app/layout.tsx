@@ -9,10 +9,12 @@ import "./globals.css";
 //   Fraunces        serif voice for headlines and the lead story
 //   Space Grotesk   sans for all UI, labels, and body copy
 //   IBM Plex Mono   numbers, tickers, prices, dates (tabular figures)
-// Weights are limited to 400 and 500. globals.css aliases the prior
-// variable names (--font-playfair-display / --font-inter /
-// --font-jetbrains-mono) onto these new families, so existing component
-// references inherit the swap with zero per-file churn.
+// The two variable families carry the full wght axis. IBM Plex Mono ships
+// two real faces, 400 and 600, so 600 is the ONLY bold mono on screen.
+// globals.css aliases the prior variable names
+// (--font-playfair-display / --font-inter / --font-jetbrains-mono) onto
+// these new families, so existing component references inherit the swap
+// with zero per-file churn.
 /*
   No `weight` array on the two variable families, deliberately.
 
@@ -32,6 +34,18 @@ import "./globals.css";
   IBM Plex Mono below keeps its array because it has no variable form.
   Its 10 descriptors resolve to 10 genuinely distinct files, and
   omitting `weight` would throw.
+
+  Its array is 400 and 600, not 400 and 500. Loading 500 as the only
+  non-regular face left 600, 700 and 800 with no real face to match, so
+  Chrome synthesised bold off the 500 outline. That faux face measured
+  +44.6% ink over 500, HEAVIER than a genuine 700 at +28.8%, and w600,
+  w700 and w800 rendered byte-identical to each other. With 600 loaded,
+  600 is a real face and 700 and 800 no longer resolve to a synthesised
+  one. Every retuned mono declaration is now 400 or 600. Six declarations
+  behind the MemoModal and /radar fences still say 700 and will resolve
+  to 600 until those fences lift. Cost of the swap is +60 B latin, the
+  only subset a latin reader preloads, and +284 B across all 10 emitted
+  subsets.
 */
 const fraunces = Fraunces({
   variable: "--font-fraunces",
@@ -48,7 +62,7 @@ const spaceGrotesk = Space_Grotesk({
 const plexMono = IBM_Plex_Mono({
   variable: "--font-plex-mono",
   subsets: ["latin"],
-  weight: ["400", "500"],
+  weight: ["400", "600"],
   display: "swap",
 });
 

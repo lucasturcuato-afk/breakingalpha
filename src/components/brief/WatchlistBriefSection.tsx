@@ -162,7 +162,7 @@ export default function WatchlistBriefSection({
               style={{
                 flex: "0 0 auto",
                 fontSize: 12,
-                fontWeight: 800,
+                fontWeight: 600,
                 color: GOLD_DARK,
                 minWidth: 52,
                 letterSpacing: "0.02em",

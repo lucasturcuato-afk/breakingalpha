@@ -166,7 +166,7 @@ function WatchDeck({
               aria-hidden={!front}
             >
               <div className="flex items-center gap-2 mb-1.5">
-                <span className="px-1.5 py-0.5 rounded font-data text-[8px] font-bold uppercase bg-gold-muted text-gold border border-gold/20">
+                <span className="px-1.5 py-0.5 rounded font-data text-[8px] font-semibold uppercase bg-gold-muted text-gold border border-gold/20">
                   {a.identifier}
                 </span>
                 <TickerPct ticker="" quote={quotes[a.identifier]} />

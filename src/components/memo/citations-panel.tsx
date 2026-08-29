@@ -49,7 +49,7 @@ export function CitationsPanel({ citations = defaultCitations, hasMemo = false }
                   "hover:bg-parchment-mid",
                 )}
               >
-                <span className="font-data text-[10px] text-text-faint font-bold flex-shrink-0 w-4 text-right mt-0.5">
+                <span className="font-data text-[10px] text-text-faint font-semibold flex-shrink-0 w-4 text-right mt-0.5">
                   {i + 1}
                 </span>
                 <div className="flex-1 min-w-0">

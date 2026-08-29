@@ -319,7 +319,7 @@ export function CompanyStockChart({ ticker, companyName }: CompanyStockChartProp
             </span>
           ) : (
             <>
-              <span className="font-data text-[20px] font-bold text-espresso leading-none">
+              <span className="font-data text-[20px] font-semibold text-espresso leading-none">
                 {formatPrice(headerPrice, data?.currency ?? null)}
               </span>
               <span

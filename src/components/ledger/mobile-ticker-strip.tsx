@@ -122,7 +122,7 @@ export function MobileTickerStrip({ quotes: external }: { quotes?: TickerCell[] 
             </span>
             <span
               style={{
-                font: `500 10.5px/1 ${MONO}`,
+                font: `600 10.5px/1 ${MONO}`,
                 letterSpacing: "0.045em",
                 color: "var(--c-oninv-strong)",
                 fontVariantNumeric: "tabular-nums",

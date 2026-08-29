@@ -70,7 +70,7 @@ export function TickerStrip({ quotes: externalQuotes }: TickerStripProps) {
         {items.map((q, i) => (
           <div key={`${q.symbol}-${i}`} className="flex items-center gap-1.5 px-4 flex-shrink-0">
             <span className="font-data text-[10px] text-text-muted dark:text-text-muted">{q.symbol}</span>
-            <span className="font-data text-[11px] font-bold text-cream dark:text-text-secondary">{q.price}</span>
+            <span className="font-data text-[11px] font-semibold text-cream dark:text-text-secondary">{q.price}</span>
             <span
               className={cn(
                 "font-data text-[10px] font-semibold",
