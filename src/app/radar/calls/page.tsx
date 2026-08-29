@@ -788,8 +788,15 @@ function RecordHero({
 }) {
   const R = 34;
   const C = 2 * Math.PI * R;
+  // CONTRAST ONLY. The dark variant swapped the fill and left the ink alone:
+  // `--cream` is #fbf6ec in light and #0f0f0f in dark, so in dark this block
+  // drew rgb(15,15,15) on `--elevated` rgb(30,30,30), measured at 1.15:1
+  // against a 4.5 floor. Light was 17.19:1, which is why the block read as
+  // fine to anyone reviewing in light. `--text-primary` is #f5e6d3 in dark and
+  // measures 13.61:1 on the same fill. The dial, the figure, the ring and this
+  // block's own vocabulary are deliberately untouched.
   return (
-    <div className="mb-6 flex items-center gap-6 rounded-xl bg-espresso px-6 py-5 text-cream dark:border dark:border-border-default dark:bg-elevated">
+    <div className="mb-6 flex items-center gap-6 rounded-xl bg-espresso px-6 py-5 text-cream dark:border dark:border-border-default dark:bg-elevated dark:text-text-primary">
       <div className="relative h-24 w-24 shrink-0">
         <svg viewBox="0 0 84 84" className="h-24 w-24 -rotate-90">
           <circle cx="42" cy="42" r={R} fill="none" stroke="currentColor" strokeOpacity="0.15" strokeWidth="7" />
