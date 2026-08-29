@@ -197,6 +197,8 @@ shape a linter could catch: design-lint already has `ink-as-fill` for the
 
 ### Ruling 19: the fourth pole is Radar, and the route stays /watch
 
+**Origin: ruling 17.** The "navigational continuity, not a promise of a tab set" half below restates ruling 17 rather than extending it; 19 adds only the label change and the route decision.
+
 **The name.** The pole reads **Radar**, not Watch. Three reasons, in the order
 they decide it:
 

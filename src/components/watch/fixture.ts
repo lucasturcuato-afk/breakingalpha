@@ -20,27 +20,41 @@
 /**
  * A view the desk is watching with no direction and no window on it.
  *
- * THE TIER IS NOT DRAWN and `WatchData` carries no `trackedViews` field. This
- * interface stays because it is the contract the tier would need, and the
- * missing half of it is the whole reason the tier is absent: `note` and `date`
- * are readable off `user_claims`, and `headline` is not. That table
- * (`sql/0012_radar_user_claims.sql`) has no article foreign key, no article_id
- * and no title column, so the story a note was written against cannot be
- * recovered from it. A note without its story has lost the thing that made it a
- * tracked view, and inventing a plausible headline beside a real note is the
- * `/ledger` invented-brief defect (see #670) by another route.
+ * THE TIER IS NOT DRAWN and `WatchData` carries no `trackedViews` field. The
+ * screen now states that on screen rather than only here; the reason and the
+ * measurement behind it are in `omissions.ts`, which is the one place either
+ * should be read from.
  *
- * Two ways out, both needing an owner and a migration:
- *   1. add an article foreign key to `user_claims` and backfill what can be
- *      recovered;
- *   2. amend this interface to drop `headline` and redraw the tier around note
- *      plus date alone.
+ * WHAT THIS COMMENT USED TO SAY, AND WHY IT WAS WRONG. It said the tier was
+ * absent because `headline` had no source, `user_claims` carrying no article
+ * foreign key. That is retracted. `sql/0012_radar_user_claims.sql:10-11` says
+ * `user_claim` "is the headline" in as many words, `/radar/calls` renders it as
+ * one, and `src/lib/review-data.ts` already reads `user_claim` beside
+ * `commit_note` and `commit_note_at` for the Review screen. The premise held
+ * only if `headline` had to be an ARTICLE headline, and the tier is tracked
+ * VIEWS: a view is a claim, not a story. The mapping is
+ * `{ id, note: commit_note, headline: user_claim, date: commit_note_at }` and
+ * it needs no migration and no backfill.
+ *
+ * WHAT IS ACTUALLY MISSING is the row set, not the column. This interface and
+ * the two lines below define a tracked view as a claim with NO DIRECTION and NO
+ * WINDOW, and therefore one that is never graded. Measured against production
+ * on 2026-08-29, read only, whole table: zero of eighteen `user_claims` rows
+ * have a null `expected_direction`, zero have a null `resolution_window_end`,
+ * and the single row carrying a `commit_note` is bullish over a two-day window
+ * with a verdict already written against it. Drawing that row here would print
+ * "NO DIRECTION, NO WINDOW" beside a direction. `omissions.ts` carries the
+ * full measurement.
+ *
+ * So the interface stays as the contract, unchanged, and the tier stays absent
+ * until either a claim with neither is writable or an owner rules that this
+ * tier means something else.
  */
 export interface TrackedView {
   id: string;
   /** The user's own words, in their own voice. Set in italic serif. */
   note: string;
-  /** The headline the note was written against. NO SOURCE. See above. */
+  /** `user_claims.user_claim`, verbatim. The claim IS the headline. */
   headline: string;
   /** Date stamp only. The second half of the meta line is invariant. */
   date: string;

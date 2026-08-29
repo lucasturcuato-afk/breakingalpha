@@ -289,8 +289,11 @@ test("no reader is null data, not an empty screen", async () => {
 test("every figure is a count of rows, and no tracked-views field exists", async () => {
   const { data } = await loadWatch(clientFor(world()), "u1");
   assert.ok(data);
-  // The tier is omitted, not emptied: there is no field to fill in later
-  // without also deciding where `headline` comes from.
+  // The tier is omitted, not emptied. NOT for want of a headline: `user_claim`
+  // IS the headline (sql/0012:10-11), and that earlier reason is retracted. No
+  // row in `user_claims` is a tracked view, because a tracked view carries no
+  // direction and no window and every row carries both. The measurement is in
+  // `src/components/watch/omissions.ts`; the reason is now on screen.
   assert.ok(!("trackedViews" in data));
   // followsWithCoverage + followsQuiet + followsMuted + couldNotCheck accounts
   // for every follow row exactly once.

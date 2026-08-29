@@ -16,6 +16,11 @@ import type {
   WatchQuote,
   WatchQuotes,
 } from "./fixture";
+/* A VALUE import, deliberately. These are the product's own reasons for what
+   it does not draw, they have to reach the browser, and they are not sample
+   content. The rule the import beside it obeys is about `fixture.ts`'s invented
+   prose reaching `.next/static`; this is the opposite of invented. */
+import { WATCH_OMISSIONS } from "./omissions";
 import styles from "./watch.module.css";
 import { FONT_DISPLAY, FONT_MONO, FONT_SANS } from "@/components/mobile/fonts";
 
@@ -25,23 +30,25 @@ import { FONT_DISPLAY, FONT_MONO, FONT_SANS } from "@/components/mobile/fonts";
  *
  * WHAT IS DRAWN AND WHAT IS NOT.
  *
- * TRACKED VIEWS ARE NOT DRAWN. The design puts them first, as ruled italic
- * prose. `TrackedView` needs a headline, and `user_claims` carries no article
- * foreign key, no article_id and no title column, so the story a note was
- * written against is not recoverable. `fixture.ts` records the two ways out and
- * both need an owner. An empty-tier notice was not shipped in its place either:
- * "No tracked views yet" is a claim about the reader, and there is no read
- * behind it to make.
+ * THE OMITTED THINGS NOW STATE THEIR REASON ON SCREEN, and the reasons live in
+ * `omissions.ts` rather than in this comment. That file carries the ruling and
+ * the measurement behind each one; `OmittedNotes` at the foot of this file
+ * draws them. The rule that decides the copy is that a REASON is about the
+ * PRODUCT and needs no read, while an EMPTY STATE is about the READER and does,
+ * so none of those strings is conditional on anything the loader hands back.
  *
- * THE PINNED-ESPRESSO HERO IS NOT DRAWN. The design promotes one entity to a
- * dark panel carrying "today's strongest story". Nothing in the schema ranks a
- * reader's names against each other, and deriving a winner from `published_at`
- * would dress a timestamp up as a judgement. Every entry renders as the same
- * card.
+ * Four things are omitted: tracked views, the pinned-espresso hero, theme
+ * headings over following, and staleness. The one that changed is the first.
+ * The reason recorded here for two releases was that `user_claims` has no
+ * headline column; `sql/0012_radar_user_claims.sql:10-11` says `user_claim`
+ * IS the headline, so that premise is retracted. What is measured is a fact
+ * about the rows rather than the columns, and `omissions.ts` states it.
  *
- * THEME HEADINGS ARE NOT DRAWN over following. Cluster labels come from a lazy
- * model pass and are null until it runs, so the rows ship under one unlabelled
- * rule.
+ * The hero and the theme headings are unchanged in substance: nothing in the
+ * schema ranks a reader's names against each other, so every entry renders as
+ * the same card, and cluster labels come from a lazy model pass and are null
+ * until it runs, so the rows ship under one unlabelled rule. Both now say so
+ * where a reader can read it.
  *
  * Every measurement is taken off the rendered prototype with getComputedStyle.
  * The prototype's sc-if blocks need a runtime that does not resolve over
@@ -455,6 +462,14 @@ export function WatchScreen({
             />
           </>
         ) : null}
+
+        {/* ── what is not drawn here ─────────────────────────────────── */}
+        {/* UNCONDITIONAL, and that is the point rather than an oversight. A
+            reason is a statement about the product, so it is true in every
+            stage, including loading and including a tier that failed. Gating
+            it on the read would make it behave like an empty state, which is
+            the exact thing `omissions.ts` exists to keep it from being. */}
+        <OmittedNotes />
       </div>
 
       <TabBarClearance />
@@ -895,5 +910,61 @@ function FollowingTail({
         />
       ) : null}
     </>
+  );
+}
+
+/**
+ * What Radar does not draw, and why, at the foot of the screen.
+ *
+ * THE RULING: omitted tiers must state their reason on screen. A reason is not
+ * an empty state. Say what is absent and why, in the register the other
+ * omissions use.
+ *
+ * The register is the one this file already uses well and in two places: the
+ * per-entry fault notice names the identifiers and then says "They are not
+ * quiet and they are not counted quiet", and `FollowingTail` withdraws its own
+ * claim when a follow could not be checked. Flat, specific, about the product.
+ * So this block is `tailCopy`, the quieter of the two, because none of these is
+ * a fault: the notice surface is for something that went wrong, and nothing
+ * here went wrong.
+ *
+ * ONE BLOCK RATHER THAN FOUR NOTICES. Three of the four absences belong to
+ * different parts of the screen and one belongs to all of it, and scattering
+ * four bordered surfaces through the scroll would read as a wall of apology and
+ * would open three empty wells between the tiers. They are collected once,
+ * after the last tier, under a heading that says what the block is.
+ *
+ * The heading is a heading and not a `SectionRule`: a rule with a label and a
+ * hairline is this screen's shape for A TIER, and a tier is the one thing this
+ * block must not look like.
+ */
+function OmittedNotes() {
+  return (
+    <section
+      aria-labelledby="watch-omitted"
+      style={{
+        marginTop: "26px",
+        paddingTop: "16px",
+        borderTop: "1px solid var(--c-border)",
+      }}
+    >
+      <h2
+        id="watch-omitted"
+        style={{
+          margin: 0,
+          font: `600 11px/1.3 ${FONT_SANS}`,
+          letterSpacing: "0.12em",
+          color: "var(--c-secondary)",
+        }}
+      >
+        NOT SHOWN HERE
+      </h2>
+      {WATCH_OMISSIONS.map((o) => (
+        <p key={o.id} style={tailCopy}>
+          <span style={{ fontWeight: 600, color: "var(--c-body)" }}>{o.absent}.</span>{" "}
+          {o.reason}
+        </p>
+      ))}
+    </section>
   );
 }
