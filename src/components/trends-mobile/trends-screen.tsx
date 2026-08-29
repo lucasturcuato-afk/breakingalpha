@@ -22,6 +22,7 @@ import { FIXTURE_ALLOWED } from "./fixture-gate";
 import { TrendSignalCard } from "./trend-signal-card";
 import styles from "./trends.module.css";
 import { FONT_DISPLAY, FONT_SANS } from "@/components/mobile/fonts";
+import { ASK_POLE_HREF } from "@/components/shell/mobile-tab-bar";
 
 /**
  * Mobile Trends. The theme list.
@@ -195,11 +196,17 @@ export function TrendsScreen({ preview = null }: { preview?: TrendsPreview | nul
       className={styles.enter}
       style={{ backgroundColor: "var(--c-bg)", minHeight: "100%" }}
     >
-      {/* Back to Ask. The prototype's control goes back to the Ask directory at
-          `:2130`. That screen is a separate unit and does not exist yet, so
-          this points at the Ask pole's own destination, exactly the precedent
-          `mobile-tab-bar.tsx` set for Watch: aim at the live surface rather
-          than at a route that would 404. */}
+      {/* Back to Ask. The prototype's control goes back to the Ask directory
+          at `:2130`, and this points at the Ask pole's own destination,
+          exactly the precedent `mobile-tab-bar.tsx` set for Watch: aim at the
+          live surface rather than at a route that would 404.
+
+          THAT SENTENCE WAS ALREADY TRUE AND THE VALUE WAS STILL WRONG. The
+          href was the literal `/intelligence`, where the pole pointed when
+          this was written; PR #736 moved the pole to /ask and the literal did
+          not move with it. The comment described a dependency the code did not
+          have. It has it now: `ASK_POLE_HREF` comes from the pole table, so
+          the next pole move carries these three controls with it. */}
       <div
         style={{
           /* content-box, matching the prototype's own box model. The app sets
@@ -214,7 +221,7 @@ export function TrendsScreen({ preview = null }: { preview?: TrendsPreview | nul
         }}
       >
         <Link
-          href="/intelligence"
+          href={ASK_POLE_HREF}
           style={{
             minHeight: "44px",
             display: "flex",

@@ -13,6 +13,7 @@ import type {
   FeedStory,
 } from "./types";
 import { FONT_DISPLAY, FONT_MONO, FONT_SANS } from "@/components/mobile/fonts";
+import { ASK_POLE_HREF } from "@/components/shell/mobile-tab-bar";
 
 /**
  * Live Feed, mobile.
@@ -314,11 +315,17 @@ function Header({
         borderBottom: "1px solid var(--c-border)",
       }}
     >
-      {/* The design labels this Ask and the Ask pole's live destination is
-          /intelligence, so the label is the design's and the href is the one
-          the shell already owns. */}
+      {/* The design labels this Ask and the href is the Ask pole's own live
+          destination, read from the pole table rather than written out here.
+
+          It was the literal `/intelligence` until now, and the comment above
+          it named the pole while the string named a route. PR #736 moved the
+          pole to /ask; the comment stayed true and the string went stale, so a
+          reader who tapped Ask, then Live Feed, then back landed on the desk
+          chat instead of the directory they came from. `ASK_POLE_HREF` is the
+          one definition, in the file that owns the pole table. */}
       <Link
-        href="/intelligence"
+        href={ASK_POLE_HREF}
         style={{
           minHeight: "44px",
           display: "flex",

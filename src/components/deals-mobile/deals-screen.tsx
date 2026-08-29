@@ -13,6 +13,7 @@ import {
 import type { MobileDeal } from "./types";
 import styles from "./deals.module.css";
 import { FONT_DISPLAY, FONT_SANS } from "@/components/mobile/fonts";
+import { ASK_POLE_HREF } from "@/components/shell/mobile-tab-bar";
 
 /**
  * Deal Flow, mobile. The whole deal universe, lensed by stage.
@@ -123,7 +124,14 @@ export function DealsScreen({
           is not among them, the same design bug DECISIONS.md logs as O2 for
           Evening Wrap and Search. The shell's tab bar is not removed here, so
           the Ask pole lights and this control is the design's own second exit
-          rather than the only one. */}
+          rather than the only one.
+
+          The href is `ASK_POLE_HREF`, read from the pole table, NOT a literal.
+          It read `/intelligence` until now, which is where the Ask pole used
+          to point; PR #736 moved the pole to /ask and this control kept
+          sending the reader to the desk chat, with no route back to the
+          directory they arrived from. It depends on where the Ask pole goes,
+          so it reads that from the one place that decides it. */}
       <div
         style={{
           flex: "none",
@@ -135,7 +143,7 @@ export function DealsScreen({
         }}
       >
         <Link
-          href="/intelligence"
+          href={ASK_POLE_HREF}
           style={{
             minHeight: "44px",
             display: "flex",

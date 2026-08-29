@@ -68,6 +68,28 @@ const IconAsk = (stroke: string) => (
 );
 
 /**
+ * THE ASK POLE'S DESTINATION, and the only definition of it.
+ *
+ * Three mobile screens draw a back control labelled Ask: `deals-screen.tsx`,
+ * `feed-mobile-screen.tsx` and `trends-mobile/trends-screen.tsx`. Each one
+ * had this route hardcoded, each comment said it aimed at "the Ask pole's own
+ * destination", and PR #736 moved the pole from /intelligence to /ask without
+ * touching any of them. Three copies of a rule with one owner is how that
+ * happened, and it is the fourth time this repo has paid for it (#713, #721,
+ * #738, and a fourth `slugToCompanyName`). The pole table below reads this
+ * constant, the three screens import it, and the next pole move is one edit.
+ *
+ * It lives here, in the file that owns the pole table, rather than in a new
+ * shared module, because the destination and the table have to move together.
+ * The one constraint that buys: this module is `"use client"`, so every export
+ * of it is a client reference when a Server Component imports it. All three
+ * consumers are `"use client"` and the only importer of the bar itself
+ * (`app-shell.tsx`) is too, so nothing crosses the boundary today. A Server
+ * Component that needs this string must not import it from here.
+ */
+export const ASK_POLE_HREF = "/ask";
+
+/**
  * The four poles, in the design's order.
  *
  * `owns` lists only routes whose pole is settled by the handoff's navigation
@@ -209,7 +231,7 @@ const POLES: Pole[] = [
        `href`, so /company, /deal-flow, /trends and /live-feed all still light
        this pole exactly as before. */
     label: "Ask",
-    href: "/ask",
+    href: ASK_POLE_HREF,
     icon: IconAsk,
     owns: [
       "/intelligence",
@@ -223,7 +245,7 @@ const POLES: Pole[] = [
          /ask is this pole's destination as well as a member of its list, and it
          has to be both: `isActive` reads `owns` alone, so a pole whose href is
          missing from its own list goes dark the moment the reader arrives. */
-      "/ask",
+      ASK_POLE_HREF,
       "/search",
       "/trends-mobile",
       "/signal",

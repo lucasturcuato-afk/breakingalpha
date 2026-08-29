@@ -28,24 +28,31 @@ export type AskDirectoryRoute = {
  * renders with or without the gate; only the counter and the summary are
  * invented.
  *
- * `/trends` is a deliberate stand-in, and it is the one row here that is
- * knowingly aimed at a desk page rather than a mobile one. The mobile Trends
- * screen is a separate unit, is open as PR #657, and lands at
- * `/trends-mobile`. That route does not exist on `main`, so pointing at it
- * from here before it merges aims the row at a 404, and merge order between
- * the two is not something this file can depend on. A working desk page beats
- * a dead link; a dead link is not a smaller defect for being aspirational.
+ * TRENDS NOW POINTS AT THE MOBILE SCREEN. `/trends` was a deliberate
+ * stand-in: the mobile Trends screen was a separate unit, open as PR #657,
+ * and `/trends-mobile` did not exist on `main`, so aiming this row at it
+ * would have aimed it at a 404. A working desk page beat a dead link.
  *
- * Both routes are already in the Ask pole's `owns` list
- * (`mobile-tab-bar.tsx:128` and `:135`), so the pole lights either way and the
- * swap is this one string and nothing else.
+ * That precondition is spent. `/trends-mobile` is on `main`, builds, and
+ * renders live clusters with `FIXTURE_ALLOWED` closed in production. The
+ * stand-in outlived its reason, which is the only interesting part: a TODO
+ * whose condition has been met reads exactly like one whose condition has
+ * not, so it was not the TODO that caught this, it was walking the route at
+ * 390. `/trends` carries no breakpoint prefixes at all and does not pass
+ * `mobileFullBleed`; a phone reader landed on the desk mood bar, a search
+ * placeholder over three lines and clipped filter rows.
  *
- * TODO(when the mobile Trends screen merges): change this href to
- * `/trends-mobile`. There is nothing else to change.
+ * The desk page keeps its route and is not edited by this. It is fenced under
+ * CLAUDE.md, and `trends-mobile/page.tsx` already links back to it above the
+ * breakpoint, so the desk surface stays reachable from a wide viewport.
+ *
+ * All three destinations are already in the Ask pole's `owns` list in
+ * `mobile-tab-bar.tsx`, so the pole lights on arrival at any of them:
+ * `isActive` reads `owns` alone and never `href`.
  */
 export const ASK_DIRECTORY: AskDirectoryRoute[] = [
   { id: "deals", label: "Deal Flow", href: "/deal-flow" },
-  { id: "trends", label: "Trends", href: "/trends" },
+  { id: "trends", label: "Trends", href: "/trends-mobile" },
   { id: "feed", label: "Live Feed", href: "/live-feed" },
 ];
 

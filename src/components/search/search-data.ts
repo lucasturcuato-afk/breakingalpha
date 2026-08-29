@@ -37,9 +37,8 @@ import type { OutcomeState } from "@/components/ledger/claim-anatomy";
  *                  destination. Drawing it here as a first-class row would
  *                  reinstate a surface the product demoted.
  *
- * Every href below resolves to a route that exists on this branch. Two differ
- * from the palette's own href because the prototype wires them somewhere else,
- * and the prototype is the design:
+ * Every href below resolves to a route that exists on this branch. Three
+ * differ from the palette's own href, and the reasons are not the same:
  *
  *   Morning Brief  the palette sends this to /morning-brief; the prototype
  *                  fires goLedger. The Ledger IS the mobile morning brief, so
@@ -47,6 +46,14 @@ import type { OutcomeState } from "@/components/ledger/claim-anatomy";
  *   Tracked Views  the prototype fires goRecord, which is the Desk record
  *                  screen. That screen is not built, so this keeps the
  *                  palette's live href rather than aiming at a 404.
+ *   Trends         the palette sends this to /trends, which is the desk page.
+ *                  This list is only ever tapped on a phone, and /trends at
+ *                  390 carries no breakpoint prefixes anywhere in the file and
+ *                  does not pass `mobileFullBleed`. /trends-mobile is the
+ *                  mobile screen for the same table, is live on `main`, and is
+ *                  in the Ask pole's `owns` list, so the pole still lights.
+ *                  The desk page keeps its route; it is simply not where a
+ *                  phone reader should be dropped.
  */
 
 export type JumpRow = { label: string; href: string };
@@ -69,7 +76,7 @@ export const JUMP_GROUPS: JumpGroup[] = [
       { label: "Tracked Views", href: "/radar/calls?views=open" },
       { label: "Deal Flow", href: "/deal-flow" },
       { label: "Watchlist", href: "/radar/watchlist" },
-      { label: "Trends", href: "/trends" },
+      { label: "Trends", href: "/trends-mobile" },
       { label: "Company Intel", href: "/company" },
     ],
   },
