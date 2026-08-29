@@ -1,0 +1,94 @@
+{
+ "slug": "grab",
+ "name": "Grab",
+ "filings": {
+  "cik": 1855612,
+  "companyId": "4bf2241e-3890-4e0e-8cfb-7074da30c2cd",
+  "filings": [
+   {
+    "accessionNumber": "0001976718-26-000011",
+    "formType": "4",
+    "filingDate": "2026-08-19",
+    "documentUrl": "https://www.sec.gov/Archives/edgar/data/1855612/000197671826000011/wk-form4_1787171029.xml",
+    "summary": "Form 4: 1 qualifying insider transaction(s)",
+    "outputId": null
+   },
+   {
+    "accessionNumber": "0001896497-26-000007",
+    "formType": "4",
+    "filingDate": "2026-08-12",
+    "documentUrl": "https://www.sec.gov/Archives/edgar/data/1855612/000189649726000007/wk-form4_1786566255.xml",
+    "summary": "Form 4: 1 qualifying insider transaction(s)",
+    "outputId": null
+   },
+   {
+    "accessionNumber": "0001976718-26-000009",
+    "formType": "4",
+    "filingDate": "2026-07-17",
+    "documentUrl": "https://www.sec.gov/Archives/edgar/data/1855612/000197671826000009/wk-form4_1784327816.xml",
+    "summary": "Form 4: 1 qualifying insider transaction(s)",
+    "outputId": null
+   },
+   {
+    "accessionNumber": "0001855612-26-000117",
+    "formType": "4",
+    "filingDate": "2026-07-14",
+    "documentUrl": "https://www.sec.gov/Archives/edgar/data/1855612/000185561226000117/wk-form4_1784076680.xml",
+    "summary": "Form 4: 1 qualifying insider transaction(s)",
+    "outputId": null
+   },
+   {
+    "accessionNumber": "0002026373-26-000005",
+    "formType": "4",
+    "filingDate": "2026-06-25",
+    "documentUrl": "https://www.sec.gov/Archives/edgar/data/1855612/000202637326000005/wk-form4_1782436471.xml",
+    "summary": "Form 4: 1 qualifying insider transaction(s)",
+    "outputId": null
+   },
+   {
+    "accessionNumber": "0001855612-26-000094",
+    "formType": "4",
+    "filingDate": "2026-06-17",
+    "documentUrl": "https://www.sec.gov/Archives/edgar/data/1855612/000185561226000094/wk-form4_1781744566.xml",
+    "summary": "Form 4: 1 qualifying insider transaction(s)",
+    "outputId": null
+   },
+   {
+    "accessionNumber": "0001855612-26-000090",
+    "formType": "4",
+    "filingDate": "2026-06-16",
+    "documentUrl": "https://www.sec.gov/Archives/edgar/data/1855612/000185561226000090/wk-form4_1781656753.xml",
+    "summary": "Form 4: 1 qualifying insider transaction(s)",
+    "outputId": null
+   }
+  ]
+ },
+ "financials": {
+  "cik": 1855612,
+  "annual": {
+   "periods": [
+    {
+     "key": "FY-2022",
+     "label": "FY2022",
+     "fiscalYear": 2022,
+     "fiscalPeriod": "FY",
+     "periodEnd": "2022-12-31"
+    }
+   ],
+   "grid": {
+    "cost_of_revenue": {
+     "FY-2022": {
+      "value": 68000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/1855612/000095017024037611/ck0001855612-20231231.htm",
+      "accession": "0000950170-24-037611"
+     }
+    }
+   }
+  },
+  "quarterly": {
+   "periods": [],
+   "grid": {}
+  },
+  "reportingCurrency": "USD"
+ }
+}

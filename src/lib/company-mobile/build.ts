@@ -87,13 +87,22 @@
 
 import type { CompanyDetail } from "@/lib/data-access/getCompanyDetail";
 import type { InsiderTransactionsResult } from "@/lib/data-access/getInsiderTransactions";
-import type { CompanyFinancialsResult } from "@/lib/financial-facts";
+import type {
+  CompanyFinancialsResult,
+  FinancialCell,
+  FinancialView,
+} from "@/lib/financial-facts";
 import type { CompanyFilingsResult } from "@/lib/sec-filings";
 import type { CompanyArticle, CompanyIdentity } from "@/lib/company-intel";
 import type {
   CompanyIntelData,
   CompanyKpiCell,
+  FinancialsBand,
+  FinancialsBasis,
+  FinancialsRow,
 } from "@/components/company/mobile/types";
+import { currencyNote, isNonUsd } from "@/lib/reporting-currency";
+import { formatValue, type Fmt } from "@/components/company/tabs/financials-format";
 
 /**
  * Everything the page has in hand by the time it draws.
@@ -276,11 +285,71 @@ export function buildTone(detail: CompanyDetail): CompanyIntelData["tone"] {
  * that are actually present, so a chip can only ever claim what tapping it
  * produces.
  *
- * TODO(wiring): unwired. Gives back no rows.
+ * WHAT THE CHIP ROW WILL LOOK LIKE, measured on the live table so a future
+ * reader does not file a bug against a chip that is working. `sec_filings`
+ * carries 4,575 rows and exactly EIGHT distinct form types across all of them:
+ * 8-K 2,330, 4 1,545, 10-Q 599, 8-K/A 43, 10-K 31, 4/A 9, 10-K/A 7, 10-Q/A 5.
+ * `categorizeForm()` routes every one of those to annual, quarterly, events or
+ * insider, so the `Other` chip counts 0 for every company on the platform and
+ * `FilingsSection` renders it disabled. That is the classifier agreeing with
+ * the corpus, not a broken chip. There is no Form 3, Form 5, 424B5, 20-F, 6-K
+ * or DEF 14A row anywhere in the table today, and the day the ingest writes one
+ * the chip starts counting without a change here.
+ *
+ * NULLABILITY, measured on the same 4,575 rows. `form_type` is 0 null and
+ * `filing_date` is 0 null TODAY, but both columns are nullable and this mapper
+ * is not the place to bet on that holding: `formType` is carried through as
+ * stored, including null, which is exactly why the shape widened it, and a null
+ * `filingDate` yields "" so the row draws its form badge with no date under it
+ * rather than the string "Invalid Date". `summary` is 24 null (0.52%), which
+ * `FilingsSection` draws as its own "Summary pending" line.
+ *
+ * SUMMARIES ARE RENDERED AS STORED. Form 4 summaries are boilerplate ("Form 4:
+ * 1 qualifying insider transaction(s)") and a handful of narrative ones are
+ * truncated mid-sentence by the summariser. Both are what the row says. Tidying
+ * either one here would put words on the screen that no row contains.
  */
 export function buildFilings(filings: CompanyFilingsResult): CompanyIntelData["filings"] {
-  void filings;
-  return { rows: [] };
+  return {
+    rows: filings.filings.map((f) => ({
+      formType: f.formType,
+      date: formatFilingDate(f.filingDate),
+      summary: f.summary,
+    })),
+  };
+}
+
+const MONTHS_UPPER = [
+  "JAN", "FEB", "MAR", "APR", "MAY", "JUN",
+  "JUL", "AUG", "SEP", "OCT", "NOV", "DEC",
+];
+
+/**
+ * "2026-07-31" -> "JUL 31", the design's own filing-date mark.
+ *
+ * PARSED, NOT `new Date()`. `sec_filings.filing_date` is a DATE column and
+ * arrives as a bare "YYYY-MM-DD" with no time and no zone. `new Date(...)` on
+ * that string is midnight UTC, and `toLocaleDateString` in any Americas zone
+ * then renders the PREVIOUS DAY. A filing dated the 1st would read as the 31st
+ * of the month before, which is a wrong date on a legal document. Reading the
+ * three fields off the string cannot drift, and it needs no zone argument to
+ * be right.
+ *
+ * NO YEAR, matching the design and matching the fact that the list is already
+ * ordered newest first. "" for a null or malformed date: an absent date is
+ * absent, and never today's date standing in for it.
+ *
+ * THE DAY STAYS ZERO PADDED, "MAY 09" and not "MAY 9", which is what the design
+ * draws and what keeps every date the same width inside a 54px fixed column
+ * beside the form badge.
+ */
+export function formatFilingDate(filingDate: string | null): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec((filingDate ?? "").slice(0, 10));
+  if (!m) return "";
+  const month = MONTHS_UPPER[Number(m[2]) - 1];
+  const day = Number(m[3]);
+  if (!month || day < 1 || day > 31) return "";
+  return `${month} ${m[3]}`;
 }
 
 /**
@@ -299,18 +368,225 @@ export function buildFilings(filings: CompanyFilingsResult): CompanyIntelData["f
  * through `formatMoney(value, reportingCurrency)` for the same reason, so a
  * non-USD figure can never carry a bare dollar sign.
  *
- * TODO(wiring): unwired. Gives back both bases empty, which `FinancialsSection`
- * draws as its sourced section-level empty rather than as an empty table.
+ * ROW ORDER IS `FinancialsTab`'s, NOT A SECOND ONE. `INCOME_BAND` below is that
+ * tab's `INCOME_ROWS` with the three lines the design does not draw removed and
+ * nothing reordered, and `balanceBand()` is its `balanceRows` plus its separate
+ * operating-cash-flow key line. Two surfaces that order the income statement
+ * differently is a defect a reader cannot diagnose.
+ *
+ * A ROW WITH NO FACT IS DROPPED, NOT DASHED, which is `FinancialsTab`'s own
+ * rule and which is also what keeps this section from leaving a hole. A band
+ * with no surviving row is dropped whole, so no band heading is ever drawn over
+ * nothing.
+ *
+ * TWO DERIVED LINES AND NO OTHERS. Gross margin is `gross_profit / revenue` and
+ * total equity is parent equity plus its components, both computed per period
+ * from facts of that same period. Neither is an aggregate across periods, across
+ * companies or across outcomes. Everything else is a value copied off a row.
  */
 export function buildFinancials(
   financials: CompanyFinancialsResult,
 ): CompanyIntelData["financials"] {
-  void financials;
+  const currency = financials.reportingCurrency;
+  const note = currencyNote(currency);
   return {
-    annual: { periods: [], bands: [] },
-    quarterly: { periods: [], bands: [] },
-    note: "",
+    annual: buildBasis(financials.annual, currency),
+    quarterly: buildBasis(financials.quarterly, currency),
+    /* `currencyNote()` and never the literal "reported in USD". Measured: ASML
+       reports in EUR, and `selectReportingCurrency` reads that off the fact
+       units rather than assuming. The second clause is verbatim from
+       `FinancialsTab`, because there is no FX source in this repo and a reader
+       looking at a EUR figure has to be told the number was not converted. ""
+       when no monetary fact exists, in which case no band survives anyway. */
+    note: isNonUsd(currency) ? `${note} Not converted to USD.` : note,
   };
+}
+
+interface FinancialRowSpec {
+  key: string;
+  label: string;
+  fmt: Fmt;
+  /** Indented and muted: a derived ratio, or a component inside the equity block. */
+  derived?: boolean;
+}
+
+/**
+ * The income band.
+ *
+ * `cost_of_revenue` IS HERE ON PURPOSE and it is the one line the design does
+ * not draw. Measured: GRAB (cik 1855612) has exactly ONE validated fact in the
+ * entire view, `cost_of_revenue` FY2022, and nothing else. Dropping the line
+ * leaves that company with no band, no table, and `financialsEmptyCopy(true)`,
+ * which reads "Financials appear after the first periodic report" over a
+ * company whose figure came off a periodic report. That sentence would be
+ * false. `FinancialsTab` draws the line, so carrying it also keeps the two
+ * surfaces agreeing about what is on file. Flagged in the PR body.
+ *
+ * `eps_basic` and `shares_diluted` are the two `INCOME_ROWS` lines that stay
+ * out: both are secondary to a line already here, and the mobile table has one
+ * label column beside up to eight period columns.
+ */
+const INCOME_BAND: FinancialRowSpec[] = [
+  { key: "revenue", label: "Revenue", fmt: "usd" },
+  { key: "cost_of_revenue", label: "Cost of revenue", fmt: "usd" },
+  { key: "gross_profit", label: "Gross profit", fmt: "usd" },
+  { key: "__gross_margin", label: "Gross margin", fmt: "pct", derived: true },
+  { key: "operating_income", label: "Operating income", fmt: "usd" },
+  { key: "net_income", label: "Net income", fmt: "usd" },
+  { key: "eps_diluted", label: "EPS (diluted)", fmt: "eps" },
+];
+
+/**
+ * The equity components, and the reason the balance band is built per basis
+ * rather than declared as a constant.
+ *
+ * Parent equity alone reads wrong for a filer carrying noncontrolling or
+ * temporary equity, which is `FinancialsTab`'s own finding: Cheniere's parent
+ * 3.755B plus NCI 4.917B is a total of 8.672B, and a table showing only the
+ * first states a number a reader would compare against the wrong denominator.
+ * Measured on this branch: Quantinuum carries both `minority_interest` and
+ * `temporary_equity`, so its balance band takes the breakdown path.
+ */
+const EQUITY_COMPONENTS: FinancialRowSpec[] = [
+  { key: "minority_interest", label: "+ Noncontrolling interests", fmt: "usd", derived: true },
+  { key: "redeemable_noncontrolling_interest", label: "+ Redeemable NCI", fmt: "usd", derived: true },
+  { key: "temporary_equity", label: "+ Temporary equity", fmt: "usd", derived: true },
+];
+
+const GROSS_MARGIN_KEY = "__gross_margin";
+const TOTAL_EQUITY_KEY = "__total_equity";
+const PARENT_EQUITY_KEY = "stockholders_equity";
+
+/**
+ * The two computed cell maps, per basis. Both are per-period arithmetic on facts
+ * of that period and neither aggregates anything across periods.
+ *
+ * Gross margin needs a nonzero revenue, so a filer that reported a zero top line
+ * gets no ratio rather than a division by zero rendered as a number.
+ */
+function derivedCells(view: FinancialView): Record<string, Record<string, FinancialCell>> {
+  const grossMargin: Record<string, FinancialCell> = {};
+  const totalEquity: Record<string, FinancialCell> = {};
+  for (const p of view.periods) {
+    const rev = view.grid.revenue?.[p.key];
+    const gp = view.grid.gross_profit?.[p.key];
+    if (rev && gp && rev.value !== 0) {
+      grossMargin[p.key] = {
+        value: gp.value / rev.value,
+        filingUrl: gp.filingUrl,
+        accession: gp.accession,
+      };
+    }
+    const parent = view.grid[PARENT_EQUITY_KEY]?.[p.key];
+    if (parent) {
+      let total = parent.value;
+      for (const c of EQUITY_COMPONENTS) {
+        const cell = view.grid[c.key]?.[p.key];
+        if (cell) total += cell.value;
+      }
+      totalEquity[p.key] = {
+        value: total,
+        filingUrl: parent.filingUrl,
+        accession: parent.accession,
+      };
+    }
+  }
+  return { [GROSS_MARGIN_KEY]: grossMargin, [TOTAL_EQUITY_KEY]: totalEquity };
+}
+
+/**
+ * The balance band for one basis.
+ *
+ * The breakdown only appears when a component carries a NONZERO value in some
+ * shown period, matching `FinancialsTab`. A filer that tags a component at zero
+ * gets the single-line form, because three extra rows of zeroes is noise, not
+ * disclosure.
+ *
+ * When there is no breakdown the single line is labelled "Total equity", which
+ * is both the design's own label and, with no components on file, an accurate
+ * one: parent equity IS the total.
+ */
+function balanceBand(view: FinancialView): FinancialRowSpec[] {
+  const components = EQUITY_COMPONENTS.filter((c) =>
+    view.periods.some((p) => {
+      const cell = view.grid[c.key]?.[p.key];
+      return cell != null && cell.value !== 0;
+    }),
+  );
+  const equity: FinancialRowSpec[] =
+    components.length > 0
+      ? [
+          { key: PARENT_EQUITY_KEY, label: "Equity (parent)", fmt: "usd" },
+          ...components,
+          { key: TOTAL_EQUITY_KEY, label: "= Total equity", fmt: "usd" },
+        ]
+      : [{ key: PARENT_EQUITY_KEY, label: "Total equity", fmt: "usd" }];
+  return [
+    { key: "total_assets", label: "Total assets", fmt: "usd" },
+    ...equity,
+    { key: "operating_cash_flow", label: "Operating cash flow", fmt: "usd" },
+  ];
+}
+
+/**
+ * One band, or null when nothing in it has a fact.
+ *
+ * `values` is built by mapping the period list itself, so `values.length` is
+ * `periods.length` by construction and there is no pad step that could add a
+ * cell under a period that does not exist.
+ *
+ * A CELL WITH NO FACT IS `null`, never a zero and never "0". A zero is a
+ * reported figure and `formatValue` renders a real one as "$0"; emitting it for
+ * an absence would state that a company reported nothing where in fact nothing
+ * was reported to us. `FinancialsSection` draws the null as an EN dash, which
+ * is also why no glyph is chosen here.
+ */
+function buildBand(
+  band: string,
+  specs: FinancialRowSpec[],
+  view: FinancialView,
+  cellsFor: (key: string) => Record<string, FinancialCell> | undefined,
+  currency: string | null,
+): FinancialsBand | null {
+  const rows: FinancialsRow[] = [];
+  for (const spec of specs) {
+    const cells = cellsFor(spec.key);
+    if (!cells) continue;
+    // Dropped, not dashed: a row empty across every shown period says nothing.
+    if (!view.periods.some((p) => cells[p.key] != null)) continue;
+    const row: FinancialsRow = {
+      label: spec.label,
+      values: view.periods.map((p) => {
+        const cell = cells[p.key];
+        return cell && Number.isFinite(cell.value)
+          ? formatValue(cell.value, spec.fmt, currency)
+          : null;
+      }),
+    };
+    if (spec.derived) row.derived = true;
+    rows.push(row);
+  }
+  return rows.length > 0 ? { band, rows } : null;
+}
+
+/**
+ * One reporting basis.
+ *
+ * `periods` is exactly what the view has, newest first, capped upstream by
+ * `ANNUAL_PERIODS` (5) and `QUARTERLY_PERIODS` (8). Nothing is padded and
+ * nothing is truncated to a pair. Measured through the real read: GRAB's annual
+ * basis is a single column and its quarterly basis has none at all, ASML's
+ * quarterly basis carries eight fiscal year-end balance sheets under EUR, and
+ * Quantinuum has no annual column and five quarterly ones.
+ */
+function buildBasis(view: FinancialView, currency: string | null): FinancialsBasis {
+  const derived = derivedCells(view);
+  const cellsFor = (key: string) => derived[key] ?? view.grid[key];
+  const bands = [
+    buildBand("INCOME STATEMENT", INCOME_BAND, view, cellsFor, currency),
+    buildBand("BALANCE SHEET", balanceBand(view), view, cellsFor, currency),
+  ].filter((b): b is FinancialsBand => b !== null);
+  return { periods: view.periods.map((p) => p.label), bands };
 }
 
 /**
