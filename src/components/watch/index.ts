@@ -12,6 +12,11 @@ export type {
   WatchLens,
   WatchlistItem,
   WatchlistKind,
+  WatchQuote,
+  WatchQuotes,
+  TierRead,
+  /* Exported although the tier is not drawn. It is the contract tracked views
+     would need, and `fixture.ts` records the one field with no source. */
   TrackedView,
   FollowCluster,
   FollowRow,

@@ -22,12 +22,22 @@ export function WatchNotice({
   body,
   onRetry,
   retryLabel = "Try again",
+  action,
 }: {
   /** Present on a failure. Absent on an empty or a stale tier. */
   heading?: string;
   body: string;
   onRetry?: () => void;
   retryLabel?: string;
+  /**
+   * A real destination, on an empty tier that names one.
+   *
+   * The empty copy already says these things are added "on the desk". Naming
+   * the desk and not going there leaves a phone reader with an instruction and
+   * no way to follow it, since `/watch` has no add affordance and is not
+   * getting one in this unit. A real `a` element, never a button with a push.
+   */
+  action?: { href: string; label: string };
 }) {
   return (
     <div
@@ -81,6 +91,29 @@ export function WatchNotice({
         >
           {retryLabel}
         </button>
+      ) : null}
+      {action ? (
+        <a
+          href={action.href}
+          /* Same 44px construction as the retry control above: content-box
+             padding plus a negative margin, so the drawn line keeps its size
+             and its position while the target does not. */
+          style={{
+            boxSizing: "content-box",
+            marginTop: "8px",
+            minHeight: "16px",
+            padding: "14px 0",
+            marginBottom: "-14px",
+            display: "inline-flex",
+            alignItems: "center",
+            font: `600 12.5px/1 ${FONT_SANS}`,
+            color: "var(--c-goldink)",
+            textDecoration: "underline",
+            textUnderlineOffset: "3px",
+          }}
+        >
+          {action.label}
+        </a>
       ) : null}
     </div>
   );
