@@ -57,32 +57,38 @@ import {
 } from "./honesty-detectors.ts";
 import {
   DeskRecordLine,
-  type DeskVerdictCounts,
+  type DeskResolutionCounts,
 } from "@/components/brief/DeskRecordLine";
 import { DESK_RECORD_COPY } from "../../src/lib/desk-record.ts";
 
 // ── level 1: what /morning-brief actually renders ──────────────────────────
 
-/** Field names are the stored `verdict` values, which is what the component's
- *  prop counts. Built here rather than written inline so the vocabulary
- *  question stays in DeskRecordLine, where it is answered. */
-function counts(a: number, b: number, c: number, d = 0): DeskVerdictCounts {
-  return { correct: a, wrong: b, partial: c, ungradable: d };
+/** Field names are the shared resolution buckets, which is what the
+ *  component's prop counts. They used to be the values the grader stores, and
+ *  that was the second half of the same defect: a row the grader could not
+ *  separate from its sector still carried a directional grade, so this line
+ *  filed it under Supported while every other surface filed it under No clean
+ *  read. Built here rather than written inline so the vocabulary question
+ *  stays in DeskRecordLine, where it is answered. */
+function counts(a: number, b: number, c: number, d = 0): DeskResolutionCounts {
+  return { supported: a, challenged: b, noCleanRead: c, notGraded: d };
 }
 
-/** The live production shape on 2026-08-22, read off the rendered surface. */
-const LIVE = counts(53, 50, 41, 6);
+/** The live production shape on 2026-08-29, read off the rendered surface at
+ *  390x844 once the brief read through fetchDeskRecord. The same four figures
+ *  render on /desk-record, which is the point: they are one answer now. */
+const LIVE = counts(42, 30, 54, 46);
 
-const SHAPES: [string, DeskVerdictCounts][] = [
+const SHAPES: [string, DeskResolutionCounts][] = [
   ["live shape", LIVE],
   ["an empty record", counts(0, 0, 0)],
   ["one supported call", counts(1, 0, 0)],
   ["one challenged call", counts(0, 1, 0)],
-  ["nothing but ungradable rows", counts(0, 0, 0, 12)],
+  ["nothing but not-graded rows", counts(0, 0, 0, 12)],
   ["a whole number ratio", counts(50, 25, 25)],
 ];
 
-function markup(record: DeskVerdictCounts): string {
+function markup(record: DeskResolutionCounts): string {
   return renderToStaticMarkup(createElement(DeskRecordLine, { record }));
 }
 
@@ -99,7 +105,7 @@ test("the desk record line keeps its counts and its provenance", () => {
   const html = markup(LIVE);
   // The counts survive. Removing a figure and leaving a hole is the other
   // failure, and it is not the fix.
-  for (const n of ["53", "50", "41", "144"]) {
+  for (const n of ["42", "30", "54", "126"]) {
     assert.ok(html.includes(n), `count ${n} missing from: ${html}`);
   }
   assert.ok(html.includes("graded calls"), "the roll-up count has no noun");
@@ -116,6 +122,14 @@ test("the desk record line reads the shared vocabulary, not a second copy", () =
   // partial + clean attribution maps to state `inconclusive` in
   // scored-object-map.ts, which verdict-vocabulary.ts maps to `noCleanRead`.
   assert.ok(html.includes(DESK_RECORD_COPY.bucketLabel.noCleanRead), "no-clean-read label");
+});
+
+test("the roll-up counts the resolved buckets and not the absence", () => {
+  const html = markup(LIVE);
+  // 42 + 30 + 54. The not-graded rows are an absence, and rolling them into a
+  // noun that says `graded` would be the same overstatement in a new place.
+  assert.ok(html.includes("126 graded calls"), `roll-up wrong in: ${html}`);
+  assert.equal(html.includes("172"), false, "not-graded rows counted as graded");
 });
 
 test("an empty record shows no roll-up count rather than a zero", () => {

@@ -8,11 +8,14 @@
  *             first, each with the one-tap track control. This is the
  *             actionable layer; a resolved call never appears here and never
  *             carries a track affordance.
- *   RECORD    the desk's graded record, counted from ALL real outcome rows and
- *             shown ONCE at section level as a trust signal, not as a
- *             scoreboard of stale calls mixed into today's action. Counts
- *             only: the line is rendered by DeskRecordLine, which carries the
- *             shared outcome vocabulary and no aggregate figure.
+ *   RECORD    the desk's graded record, read through fetchDeskRecord (the
+ *             SAME query /desk-record, /radar/desk-record and both dashboard
+ *             records run) and shown ONCE at section level as a trust signal,
+ *             not as a scoreboard of stale calls mixed into today's action.
+ *             Counts only: the line is rendered by DeskRecordLine, which
+ *             carries the shared outcome vocabulary and no aggregate figure.
+ *             NOT A SIXTH READ. This section is why those surfaces printed one
+ *             set of figures and the brief printed another.
  *   THIS BRIEF the brief's own calls that have resolved, each shown with its
  *             real outcome and then a forward hook: the most specific REAL
  *             related object that already exists (an open desk call on the
@@ -66,8 +69,9 @@ import {
 } from "@/lib/brief-call-related";
 import {
   DeskRecordLine,
-  type DeskVerdictCounts,
+  type DeskResolutionCounts,
 } from "@/components/brief/DeskRecordLine";
+import { fetchDeskRecord } from "@/lib/desk-record-query";
 import { trackClientEvent } from "@/lib/track-event";
 import { notifyRadarLanded } from "@/lib/radar-landed";
 import { buildTrackProvenance } from "@/lib/call-track-provenance";
@@ -111,7 +115,13 @@ const CLUSTER_LOOKBACK_DAYS = 7;
 /** The desk's graded record, counted from real outcome rows only. The shape
  *  and the line that renders it live in DeskRecordLine, so the copy can be
  *  rendered and asserted over without this component's Supabase effect. */
-type DeskRecord = DeskVerdictCounts;
+type DeskRecord = DeskResolutionCounts;
+
+/** The record read here is COUNTS ONLY: the line names buckets and rolls them
+ *  up, and the resolved cards below come from this brief's own rows. A list
+ *  limit of zero is what the shared query takes to mean that, and it is the
+ *  same argument /dashboard's mobile record passes. */
+const RECORD_LIST_LIMIT = 0;
 
 /** What a surface needs to observe one rendered call card. Identity included,
  *  so the observer never has to read it back out of the DOM. */
@@ -233,7 +243,7 @@ export default function BriefCallsSection({
 
         // The brief's own calls, the open pool, the desk record and the
         // emerging clusters are independent reads; fetch them together.
-        const [briefRes, poolRes, recordRes, clusterRes] = await Promise.all([
+        const [briefRes, poolRes, deskRecord, clusterRes] = await Promise.all([
           q.order("confidence", { ascending: false }),
           sb
             .from("morning_brief_calls")
@@ -242,7 +252,16 @@ export default function BriefCallsSection({
             .gte("brief_date", poolCutoff)
             .order("brief_date", { ascending: false })
             .limit(24),
-          sb.from("morning_brief_call_outcomes").select("verdict").limit(1000),
+          // THE SHARED READ, not a sixth one. This surface used to select the
+          // stored grade alone and bucket on it, which meant a row the grader
+          // could not separate from its sector or the market was filed here as
+          // a hit while every other surface filed it under No clean read.
+          // Attribution beats raw direction; desk-record.ts states the rule and
+          // scored-object-map.ts enforces it. Reading through fetchDeskRecord
+          // is what makes the six surfaces one answer. It also drops orphan
+          // grades and keeps the newest grade per call, neither of which the
+          // hand-rolled read did.
+          fetchDeskRecord(sb, RECORD_LIST_LIMIT),
           sb
             .from("trend_clusters")
             .select("id, label, headline, top_sectors, created_at")
@@ -262,18 +281,10 @@ export default function BriefCallsSection({
         const poolRows = poolRes.error ? null : ((poolRes.data as BriefCall[] | null) ?? []);
         setPool(poolRows);
 
-        if (recordRes.error) {
-          setRecord(null);
-        } else {
-          const rec: DeskRecord = { correct: 0, wrong: 0, partial: 0, ungradable: 0 };
-          for (const r of (recordRes.data as { verdict: string }[] | null) ?? []) {
-            if (r.verdict === "correct") rec.correct += 1;
-            else if (r.verdict === "wrong") rec.wrong += 1;
-            else if (r.verdict === "partial") rec.partial += 1;
-            else rec.ungradable += 1;
-          }
-          setRecord(rec);
-        }
+        // null from the shared query means a failed select, which is the same
+        // honest "unavailable" this section already rendered. There is no
+        // reduction left here to drift.
+        setRecord(deskRecord ? deskRecord.byResolution : null);
 
         // Clusters are a best-effort enrichment for the forward hooks;
         // a failed read degrades to fewer hooks, never to invented ones.

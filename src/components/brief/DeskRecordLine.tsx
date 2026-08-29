@@ -17,46 +17,56 @@
  *    tests/unit/reader-output-honesty.test.ts asserts over what a reader sees
  *    rather than over what a module happens to author.
  *
- * The words are not typed here. They come from DESK_RECORD_COPY.bucketLabel,
- * the same table /dashboard's record and the user's own record read, because a
- * hand-typed second copy of a vocabulary is exactly how this line drifted from
- * desk-record.ts in the first place.
+ * Neither the words NOR the buckets are decided here. The words come from
+ * DESK_RECORD_COPY.bucketLabel and the order from RESOLUTION_ORDER, the same
+ * table and the same order /dashboard's record and the user's own record read.
+ * The counts arrive already bucketed by buildDeskRecord. A hand-typed second
+ * copy of a vocabulary is how this line drifted from desk-record.ts once
+ * already; a hand-rolled second bucketing is how it drifted a second time.
  */
-import { DESK_RECORD_COPY } from "@/lib/desk-record";
+import { Fragment } from "react";
+import { DESK_RECORD_COPY, RESOLUTION_ORDER } from "@/lib/desk-record";
+import type { DeskRecord, Resolution } from "@/lib/desk-record";
 
 /**
- * Counts of morning_brief_call_outcomes rows by stored `verdict`.
+ * Bucket counts, exactly the shape `buildDeskRecord` produces.
  *
- * Field names stay tied to the values backend/grading writes, so the mapping
- * from a stored value to a shown word is visible in one place. `partial` is a
- * graded call with no attributable directional hit, which
- * `scored-object-map.ts` maps to state `inconclusive` and
- * `verdict-vocabulary.ts` maps to resolution `noCleanRead`.
+ * This prop used to be a shape of its own, keyed by the values the grader
+ * stores rather than by the resolution buckets every other surface counts. So
+ * a row whose attribution the grader could not separate from its sector still
+ * carried a directional grade, and this line filed it under Supported while
+ * /dashboard filed the same row under No clean read. Attribution beats raw
+ * direction, and the mapping that enforces that lives in scored-object-map.ts.
+ * Taking the shared model's own type means this surface cannot re-derive it.
  */
-export interface DeskVerdictCounts {
-  correct: number;
-  wrong: number;
-  partial: number;
-  ungradable: number;
-}
-
-const L = DESK_RECORD_COPY.bucketLabel;
+export type DeskResolutionCounts = DeskRecord["byResolution"];
 
 /** The eyebrow: the monospace ledger line, the one place capitals survive. */
 const EYEBROW = "font-data text-[10px] tracking-[0.12em] uppercase text-text-faint mr-2";
 
+const L = DESK_RECORD_COPY.bucketLabel;
+
+/** The buckets this line names, in the shared order. `notGraded` is an absence
+ *  rather than a resolution: the full record surface explains it at length, and
+ *  a single line in a brief states the three that resolved. It is excluded from
+ *  the roll-up for the same reason, so the noun stays true. */
+const SHOWN: Resolution[] = RESOLUTION_ORDER.filter((r) => r !== "notGraded");
+
 /** Data is a required prop. There is no default and no fallback content: a
  *  caller with nothing to show renders its own unavailable line instead. */
-export function DeskRecordLine({ record }: { record: DeskVerdictCounts }) {
+export function DeskRecordLine({ record }: { record: DeskResolutionCounts }) {
   // Deliberately not on one line with the word `graded`: the counted buckets
   // and the noun they roll up to are separate statements.
-  const counted =
-    record.correct + record.wrong + record.partial;
+  const counted = SHOWN.reduce((n, r) => n + record[r], 0);
   return (
     <p className="font-sans text-[11px] text-text-muted">
       <span className={EYEBROW}>Desk record</span>
-      {record.correct} {L.supported} · {record.wrong} {L.challenged} ·{" "}
-      {record.partial} {L.noCleanRead}
+      {SHOWN.map((r, i) => (
+        <Fragment key={r}>
+          {i > 0 ? " · " : ""}
+          {record[r]} {L[r]}
+        </Fragment>
+      ))}
       {counted > 0 ? ` · ${counted} graded calls` : ""}
       {" · "}graded by price attribution
     </p>
