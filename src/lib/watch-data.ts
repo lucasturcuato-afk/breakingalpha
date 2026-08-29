@@ -35,7 +35,7 @@
  * headline a note was written against is not recoverable from it. A note
  * rendered without the story it answers has lost the thing that made it a
  * tracked view, and synthesising a plausible headline beside a real note is the
- * invented-brief defect (#670) with a different table under it. Two ways out,
+ * invented-brief defect (see #670) with a different table under it. Two ways out,
  * both needing an owner and a migration this unit will not write:
  *   1. add an article FK to `user_claims` and backfill what can be recovered;
  *   2. amend the `TrackedView` contract to drop `headline`, and redraw the tier
@@ -123,7 +123,7 @@ interface ReadArticle {
 /**
  * A per-entry article read, in the only two states a settled read can be in.
  * There is no "pending" member on purpose: everything is awaited before this
- * module returns, so a caller can never observe one.
+ * module gives anything back, so a caller can never observe one.
  */
 type EntryRead = { status: "ready"; articles: ReadArticle[] } | { status: "failed" };
 

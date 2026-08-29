@@ -169,8 +169,8 @@ export function WatchScreen({
    * mounted in production with `stage: "ready"` over the empty data, so it
    * told a reader "Nothing on your watchlist yet" when nothing had been read
    * at all. Those are claims about the reader, made with no source. Now there
-   * IS a loader (`src/lib/watch-data.ts`), and it returns null on exactly one
-   * condition: no reader to scope the tiers to. The early return below says
+   * IS a loader (`src/lib/watch-data.ts`), and it hands back null on exactly
+   * one condition: no reader to scope the tiers to. The early return below says
    * that and nothing more.
    */
   data: WatchData | null;

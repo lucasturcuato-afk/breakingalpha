@@ -28,7 +28,7 @@
  * and no title column, so the story a note was written against cannot be
  * recovered from it. A note without its story has lost the thing that made it a
  * tracked view, and inventing a plausible headline beside a real note is the
- * `/ledger` invented-brief defect (#670) by another route.
+ * `/ledger` invented-brief defect (see #670) by another route.
  *
  * Two ways out, both needing an owner and a migration:
  *   1. add an article foreign key to `user_claims` and backfill what can be
