@@ -262,9 +262,11 @@ export function WatchScreen({
     (lens === "all" || lens === "public") && data.quietNames.length > 0;
   const followRows = data.following.reduce((n, c) => n + c.rows.length, 0);
 
-  /* A screen with no cards and no rows in either tier. It is drawn centred
-     rather than top-aligned; see the note in the no-reader branch. */
-  const sparse = !loading && !stale && visible.length === 0 && followRows === 0;
+  /* A screen with no cards and no rows in either tier. Reported on the root so
+     a test and a measurement script can name the state they are looking at;
+     the centring below does not depend on it. */
+  const sparse =
+    (watchlistFailed || visible.length === 0) && (followingFailed || followRows === 0);
 
   const followingEmpty =
     coverage === 0 &&
@@ -290,12 +292,27 @@ export function WatchScreen({
     >
       <WatchMasthead />
 
+      {/* THE SHORT STATE IS CENTRED, and it is centred unconditionally.
+          Omitting a whole tier plus a hero without reflowing is how PR #710
+          shipped 415px of dead screen on `/claim`, 49.1% of the viewport.
+          `justifyContent: center` is safe on every state rather than only the
+          short ones: `flex: 1` leaves `min-height: auto` on a column flex
+          item, so a body taller than the free space has no free space to
+          distribute and centring is a no-op. Measured both ways; the numbers
+          are in the PR body.
+
+          What centring CANNOT remove is the floor. `#main-content` already
+          carries `padding-bottom: var(--mobile-tabbar-height)`, measured at
+          59px, and the fixed bar sits at top 785 in a 844 viewport, so the
+          59px clearance block below plus this block's own 24px is 83px of
+          structural gap under every state, short or tall. 83px is 9.8% of the
+          viewport and it is the floor the 15% gate is measured against. */}
       <div
         style={{
           flex: 1,
           display: "flex",
           flexDirection: "column",
-          justifyContent: sparse ? "center" : "flex-start",
+          justifyContent: "center",
           padding: `18px ${PAD} 24px`,
         }}
       >
@@ -326,7 +343,7 @@ export function WatchScreen({
         <TierStandfirst>
           News about what you watch: names, private companies and industries. Price is the quiet part.
         </TierStandfirst>
-        {loading ? <WatchSkeleton rows={3} /> : null}
+        {loading ? <WatchSkeleton rows={4} /> : null}
         {watchlistFailed ? (
           <WatchNotice
             heading="Could not load your watchlist."
@@ -403,7 +420,7 @@ export function WatchScreen({
           marginTop="26px"
         />
         <TierStandfirst>This week&apos;s coverage.</TierStandfirst>
-        {loading ? <WatchSkeleton rows={3} /> : null}
+        {loading ? <WatchSkeleton rows={5} /> : null}
         {followingFailed ? (
           <WatchNotice
             heading="Could not load what you follow."
