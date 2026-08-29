@@ -75,6 +75,12 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { buildArticleOrFilter } from "./watchlist-utils";
+import {
+  NO_PROOF,
+  linkLookups,
+  watchlistHref,
+  type WatchLinkProof,
+} from "./watch-links";
 import { matchFollow, type FollowRow } from "./radar-following";
 import { formatPTClock, formatPTDateShort } from "./format-pt";
 import { WATCH_RECENCY_DAYS } from "@/components/watch/recency";
@@ -275,6 +281,65 @@ async function readEntryArticles(sb: SupabaseClient, row: WatchlistRow): Promise
   return { status: "ready", articles: (data as ReadArticle[] | null) ?? [] };
 }
 
+/**
+ * The rows `/company/[id]` would have to find for these entries' links to land.
+ *
+ * ONE READ, TWO FILTERS, and never one query per entry. `resolveAlias` is
+ * exported and calling it per row would answer this exactly, at up to four
+ * queries a row against a screen whose own header argues against paying time to
+ * first byte for a decoration. So this asks for the anchor rows the route's two
+ * branches would look for, and nothing else.
+ *
+ * The ticker filter is the route's own `.eq("ticker", UPPER)` widened to a set.
+ * The name filter is its `.ilike(name)` narrowed to a case-SENSITIVE set, which
+ * is the one place this is not the route: a company stored as "eBay" against a
+ * reconstruction of "Ebay" comes back unproved and its card draws no link.
+ * `watch-links.ts` states why the error has to fall that way.
+ *
+ * A FAILED READ PROVES NOTHING, and proves nothing in the safe direction: the
+ * proof comes back empty, every card draws as a card, and no reader is told
+ * their own company is missing on the strength of a query that did not answer.
+ */
+async function loadLinkProof(
+  sb: SupabaseClient,
+  rows: WatchlistRow[],
+): Promise<WatchLinkProof> {
+  const tickers = new Set<string>();
+  const names = new Set<string>();
+  for (const row of rows) {
+    if (kindFor(row.type) !== "public") continue;
+    const lookups = linkLookups(row.identifier);
+    if (lookups === null) continue;
+    if (lookups.ticker !== null) tickers.add(lookups.ticker);
+    if (lookups.name.length > 0) names.add(lookups.name);
+  }
+  if (tickers.size === 0 && names.size === 0) return NO_PROOF;
+
+  const [byTicker, byName] = await Promise.all([
+    tickers.size > 0
+      ? sb.from("companies").select("ticker").in("ticker", [...tickers])
+      : Promise.resolve({ data: [], error: null }),
+    names.size > 0
+      ? sb.from("companies").select("name").in("name", [...names])
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+
+  if (byTicker.error) console.error("[watch-data] link proof, tickers", byTicker.error.message);
+  if (byName.error) console.error("[watch-data] link proof, names", byName.error.message);
+
+  const provedTickers = new Set<string>();
+  for (const r of (byTicker.data as Array<{ ticker: string | null }> | null) ?? []) {
+    const t = r.ticker?.trim().toUpperCase();
+    if (t) provedTickers.add(t);
+  }
+  const provedNames = new Set<string>();
+  for (const r of (byName.data as Array<{ name: string | null }> | null) ?? []) {
+    const n = r.name?.trim().toLowerCase();
+    if (n) provedNames.add(n);
+  }
+  return { tickers: provedTickers, names: provedNames };
+}
+
 interface WatchlistTier {
   items: WatchlistItem[];
   quietNames: string[];
@@ -287,8 +352,13 @@ async function loadWatchlist(
   rows: WatchlistRow[],
 ): Promise<WatchlistTier> {
   /* Every read is awaited before anything below runs. That is what makes a
-     mid-flight zero unreachable rather than merely unlikely. */
-  const reads = await Promise.all(rows.map((row) => readEntryArticles(sb, row)));
+     mid-flight zero unreachable rather than merely unlikely. The link proof
+     rides alongside rather than after: it reads a different table and neither
+     result depends on the other. */
+  const [reads, proof] = await Promise.all([
+    Promise.all(rows.map((row) => readEntryArticles(sb, row))),
+    loadLinkProof(sb, rows),
+  ]);
 
   const items: WatchlistItem[] = [];
   const quietNames: string[] = [];
@@ -325,6 +395,10 @@ async function loadWatchlist(
       qualifier: qualifierFor(row, kind, recent.length),
       headline: story.title,
       source: sourceLine(story, recent),
+      /* Proved, never assumed. `watchlistHref` gives back null for a private
+         company, for an industry, and for any public name the read above did
+         not find, so a card that cannot land draws no link at all. */
+      href: watchlistHref({ kind, identifier: row.identifier }, proof),
     });
   });
 

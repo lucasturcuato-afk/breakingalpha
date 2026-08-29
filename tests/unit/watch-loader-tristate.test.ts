@@ -100,6 +100,13 @@ function world(overrides: Partial<Record<string, Result>> = {}): Resolver {
     if (ops.table === "watchlist") return overrides.watchlist ?? ok(ENTRIES);
     if (ops.table === "follows") return overrides.follows ?? ok(FOLLOWS);
 
+    /* The link proof (`src/lib/watch-links.ts`), which this file does not
+       assert on. `tests/unit/watch-card-links.test.ts` owns that contract.
+       Answering EMPTY rather than throwing is the honest default here: nothing
+       proves out, so every card comes back with `href: null`, and none of the
+       tri-state facts below depend on an href either way. */
+    if (ops.table === "companies") return overrides.companies ?? ok([]);
+
     if (ops.table === "watchlist_articles") {
       const identifier = String(ops.eq.identifier);
       if (identifier === "NVDA") return boom("57014 statement timeout");
@@ -375,6 +382,9 @@ function ptWorld(): Resolver {
       }
       return ok([]);
     }
+    /* The link proof, which the PT tests do not assert on. Empty, so nothing
+       proves out and no href is set; the two stamps below are unaffected. */
+    if (ops.table === "companies") return ok([]);
     throw new Error(`unexpected table ${ops.table}`);
   };
 }

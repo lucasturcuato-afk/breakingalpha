@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState, Fragment } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { SectionRule } from "./section-rule";
-import { watchlistHref } from "./links";
 import { WatchNotice, WatchSkeleton } from "./watch-notice";
 import { WATCH_RECENCY_DAYS } from "./recency";
 /* Type-only. A value import out of this path would drag the sample headlines
@@ -248,10 +247,16 @@ export function WatchScreen({
             left dangling under the masthead is the defect PR #710 shipped on
             `/claim` (415px, 49.1% of the viewport).
 
-            It is also the shortest state on the screen by a distance, about
-            296px of content in a 785px root, and no arrangement of 489px of
-            free space puts every gap inside the 15% gate. Naming that is worth
-            more than pretending a weighting fixed it. */}
+            IT IS ALSO NOT REACHABLE ON A DEVELOPMENT SERVER, so nothing about
+            it is stated here as measured. It needs a signed-out PRODUCTION
+            build, and `src/proxy.ts` redirects that request to `/auth` before
+            this component runs. What can be said from the code is that it draws
+            one notice under the masthead and nothing else, which is the
+            shortest body on this screen by a distance and leaves far more free
+            space than any weighting could place inside the 15% gate. The
+            per-entry failure branch is unreachable for its own reason: it needs
+            a database error, and the sample content's `watchlistCouldNotRead`
+            is empty. Both are named rather than tabulated. */}
         <div
           style={{
             flex: 1,
@@ -735,23 +740,28 @@ function WatchlistCard({ item, quote }: { item: WatchlistItem; quote?: WatchQuot
     </>
   );
 
-  /* WHERE THE CARD GOES, decided in `links.ts` and not here, so the negative
-     half of it can be asserted in a unit test. A public name opens
-     `/company/<ticker>`; a private company and an industry open nothing.
+  /* WHERE THE CARD GOES IS NOT DECIDED HERE, and that is the whole design of
+     it. `item.href` arrives from the loader, which PROVED it against
+     `companies` before setting it (`src/lib/watch-links.ts`). This component
+     runs in the browser and cannot check anything, so it renders a destination
+     rather than inventing one.
 
      WHAT CHANGED. Every card was a `<button>` with `onClick={() => {}}`, on the
-     stated grounds that neither destination existed. Half of that is no longer
-     true: `/company/[id]` shipped in PR #721 and takes a raw ticker, so the
-     public cards had been drawing a control that looked tappable and was not.
-     This was also the only place a phone reader could have reached Company
-     Intel from their own watchlist and could not.
+     stated grounds that neither destination existed. Half of that expired:
+     `/company/[id]` shipped in PR #721. This was also the only path from a
+     phone reader's own watchlist to Company Intel, and it was not connected.
+
+     WHY IT IS PROVED RATHER THAN BUILT. The obvious version, `/company/` plus
+     the identifier, tells a reader with BRK.B on their list that Berkshire
+     Hathaway is not on Signalera, over a company with 540 corpus mentions. The
+     resolver's ticker regex rejects the dot. So a card links only when the
+     route's own reconstruction has been shown to land, and draws as a plain
+     card otherwise. An unlinked card is a card; a card that lands on the miss
+     surface is a false claim about the reader's own list, which is the thing
+     `watch-data.ts` spends its header refusing to make.
 
      TODO, see #643: open the industry signal. `/signal` is step 10 and still
-     does not exist, so an industry card stays a plain container rather than
-     carrying a link to a route that would 404. The private branch below is not
-     a TODO: `/company/[id]` resolves a slug to a company by exact name match,
-     and a private entry's identifier is a name rather than a symbol, so
-     linking it would send an unknown share of entries to a miss state.
+     does not exist, so an industry never carries an href.
 
      A REAL ANCHOR, never a button with a router push. It gives back long press,
      open in a new tab and the status-bar preview, and it is what
@@ -760,11 +770,10 @@ function WatchlistCard({ item, quote }: { item: WatchlistItem; quote?: WatchQuot
      `aria-pressed` and no disabled state, so `styles.bare` is the whole of what
      it was, and the same class resets the anchor. `text-decoration` is the one
      thing that reset does not cover, so the anchor turns it off inline. */
-  const href = watchlistHref(item);
-  if (href === null) return <div style={shape}>{body}</div>;
+  if (item.href === null) return <div style={shape}>{body}</div>;
 
   return (
-    <Link href={href} prefetch={false} className={styles.bare} style={{ ...shape, textDecoration: "none" }}>
+    <Link href={item.href} prefetch={false} className={styles.bare} style={{ ...shape, textDecoration: "none" }}>
       {body}
     </Link>
   );
