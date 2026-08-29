@@ -9,6 +9,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  adoptWindowDays,
   adoptWindowForCall,
   adoptWindowOptions,
   adoptWindowRequest,
@@ -28,6 +29,8 @@ import {
   isPriceableClaimType,
   normalizeAdoptHorizon,
   resolveAdoptWindow,
+  windowElapsed,
+  type AdoptWindow,
   type HorizonType,
 } from "./call-horizons";
 
@@ -85,15 +88,28 @@ test("each horizon yields a real multi-day forward window", () => {
   assert.equal(resolveAdoptWindow(TODAY, "multiweek"), "2026-08-15");
 });
 
-test("a session horizon still yields at least one day forward", () => {
-  // The old bug was window_start === window_end, a claim that could never
-  // stay open. Even the shortest adopted window must move forward.
+test("a session horizon is a ZERO-day window, ending on the session it opens", () => {
+  // This test used to assert the opposite, and the assertion was the defect.
+  // The sheet said "resolves at today's close" and the route stored tomorrow,
+  // so one commitment carried three different strings. The sheet's copy is
+  // right: a same-session window opens and closes on today's session, and
+  // backend/grading/price_attribution.py grades exactly that, one session open
+  // to close, on the same branch every brief call already takes.
   const end = resolveAdoptWindow(TODAY, "session");
-  assert.ok(end > TODAY, `expected > ${TODAY}, got ${end}`);
-  assert.equal(daysBetween(TODAY, end), 1);
+  assert.equal(end, TODAY, `expected ${TODAY}, got ${end}`);
+  assert.equal(daysBetween(TODAY, end), 0);
 });
 
-test("an explicit day override wins and is clamped to [1, 90]", () => {
+test("a zero-day window is what the adopt route's gradeable check must accept", () => {
+  // The route compares windowEnd >= todayIso. Pinned here because the two
+  // lines are one change: with `>` a session adopt is written ungradeable, and
+  // nothing in the product ever closes an ungradeable claim.
+  const end = resolveAdoptWindow(TODAY, "session");
+  assert.equal(end >= TODAY, true, "a session window must pass the adopt gate");
+  assert.equal(end > TODAY, false, "and it is NOT strictly after today");
+});
+
+test("an explicit day override wins and is capped at 90", () => {
   assert.equal(resolveAdoptWindow(TODAY, "week", 30), addCalendarDays(TODAY, 30));
   assert.equal(resolveAdoptWindow(TODAY, "week", 5000), addCalendarDays(TODAY, MAX_WINDOW_DAYS));
   assert.equal(resolveAdoptWindow(TODAY, "week", 0), addCalendarDays(TODAY, 7));
@@ -287,4 +303,104 @@ test("an as-called window is never 0, 7, or 21, so it never duplicates a bucket"
     const w = adoptWindowForCall(anchor, addCalendarDays(anchor, days));
     assert.equal(w.kind, "bucket", `days=${days}`);
   }
+});
+
+
+// ---------------------------------------------------------------------------
+// The sheet and the route must agree
+//
+// src/components/commit/commit-target.ts asserts in prose that "the phrase a
+// reader agrees to and the window the row is written with cannot come apart",
+// on the grounds that both sides import this module. They did, and they still
+// disagreed, because the sheet called adoptWindowDays + addCalendarDays and the
+// route called resolveAdoptWindow, and only the second one had a floor in it.
+// This is that comment made executable. It fails on `session` before the fix.
+// ---------------------------------------------------------------------------
+
+/** Exactly what the commit sheet draws its date line from (commit-sheet.tsx). */
+function sheetEnd(todayIso: string, w: AdoptWindow): string {
+  return addCalendarDays(todayIso, adoptWindowDays(w));
+}
+
+/** Exactly what /api/radar/claims/adopt stores. */
+function routeEnd(todayIso: string, w: AdoptWindow): string {
+  const body = adoptWindowRequest(w);
+  return resolveAdoptWindow(todayIso, body.horizon, body.window_days);
+}
+
+test("PARITY: every horizon bucket writes the date the sheet showed", () => {
+  for (const t of HORIZON_TYPES) {
+    const w: AdoptWindow = { kind: "bucket", type: t };
+    assert.equal(sheetEnd(TODAY, w), routeEnd(TODAY, w), t);
+  }
+});
+
+test("PARITY: an off-bucket as-called span writes the date the sheet showed", () => {
+  for (const days of [1, 2, 13, 45, 89]) {
+    const w: AdoptWindow = { kind: "as-called", days };
+    assert.equal(sheetEnd(TODAY, w), routeEnd(TODAY, w), `${days} days`);
+  }
+});
+
+test("PARITY: a call with no resolve_on agrees on the shared default", () => {
+  const w = adoptWindowForCall(TODAY, null);
+  assert.deepEqual(w, { kind: "bucket", type: DEFAULT_ADOPT_HORIZON });
+  assert.equal(sheetEnd(TODAY, w), routeEnd(TODAY, w));
+  assert.equal(routeEnd(TODAY, w), addCalendarDays(TODAY, 7));
+});
+
+test("PARITY: the four states a card can preselect, end to end", () => {
+  // session (0), week (7), an off-bucket as-called span, and no resolve_on.
+  const cases: [string, string | null, string][] = [
+    ["session", TODAY, TODAY],
+    ["week", addCalendarDays(TODAY, 7), addCalendarDays(TODAY, 7)],
+    ["as-called 13", addCalendarDays(TODAY, 13), addCalendarDays(TODAY, 13)],
+    ["no resolve_on", null, addCalendarDays(TODAY, 7)],
+  ];
+  for (const [name, resolveOn, expected] of cases) {
+    const w = adoptWindowForCall(TODAY, resolveOn);
+    assert.equal(sheetEnd(TODAY, w), expected, `${name}: sheet`);
+    assert.equal(routeEnd(TODAY, w), expected, `${name}: route`);
+  }
+});
+
+test("PARITY survives a month boundary", () => {
+  const eve = "2026-12-28";
+  for (const t of HORIZON_TYPES) {
+    const w: AdoptWindow = { kind: "bucket", type: t };
+    assert.equal(sheetEnd(eve, w), routeEnd(eve, w), t);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// The progress ring
+//
+// Exposed by removing the floor: a same-session window has end === start, and
+// the old branch answered 1 there, drawing a completed ring on a window that
+// had not run.
+// ---------------------------------------------------------------------------
+
+test("a same-session window reads as live on its own date, not complete", () => {
+  assert.equal(windowElapsed(TODAY, TODAY, TODAY), 0);
+});
+
+test("a same-session window reads as complete only once the date is past", () => {
+  assert.equal(windowElapsed(TODAY, TODAY, addCalendarDays(TODAY, 1)), 1);
+  assert.equal(windowElapsed(TODAY, TODAY, addCalendarDays(TODAY, -1)), 0);
+});
+
+test("a multi-day window is the fraction of calendar days elapsed", () => {
+  const end = addCalendarDays(TODAY, 10);
+  assert.equal(windowElapsed(TODAY, end, TODAY), 0);
+  assert.equal(windowElapsed(TODAY, end, addCalendarDays(TODAY, 5)), 0.5);
+  assert.equal(windowElapsed(TODAY, end, end), 1);
+  assert.equal(windowElapsed(TODAY, end, addCalendarDays(TODAY, 40)), 1);
+  assert.equal(windowElapsed(TODAY, end, addCalendarDays(TODAY, -3)), 0);
+});
+
+test("an absent or unreadable date draws an empty ring, never a wrong one", () => {
+  assert.equal(windowElapsed(null, TODAY, TODAY), 0);
+  assert.equal(windowElapsed(TODAY, null, TODAY), 0);
+  assert.equal(windowElapsed(TODAY, TODAY, null), 0);
+  assert.equal(windowElapsed("nonsense", TODAY, TODAY), 0);
 });

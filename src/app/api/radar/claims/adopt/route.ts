@@ -140,7 +140,14 @@ export async function POST(request: NextRequest) {
   // Server-side gradeability, mirroring src/app/api/radar/claims/author/route.ts.
   const symbol = typeof call.target_symbol === "string" ? call.target_symbol.trim() : "";
   const direction = call.expected_direction;
-  const endsAfterToday = windowEnd > todayIso;
+  // `>=`, not `>`. A same-session adopt is a REAL claim: the window opens and
+  // closes on today's session and the grader resolves it open to close (see
+  // resolveAdoptWindow). With `>` a zero-day window scored ungradeable, and per
+  // the read-side defect nothing in the product ever closes an ungradeable
+  // claim, so every same-session adopt became a permanently open context entry.
+  // The authoring path keeps `>` on purpose: its prompt requires a window end
+  // strictly after today and its composer never offers a session.
+  const endsAfterToday = windowEnd >= todayIso;
   const withinMax =
     (new Date(windowEnd).getTime() - new Date(todayIso).getTime()) / 86_400_000 <=
     MAX_WINDOW_DAYS;

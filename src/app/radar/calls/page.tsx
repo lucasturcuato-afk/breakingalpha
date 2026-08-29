@@ -53,6 +53,7 @@ import {
   horizonFromDates,
   horizonPhraseForDays,
   daysBetween,
+  windowElapsed,
   type AdoptWindow,
 } from "@/lib/call-horizons";
 
@@ -837,13 +838,14 @@ function RecordHero({
   );
 }
 
+/**
+ * How much of a claim's window has elapsed, for the ring and the bar.
+ *
+ * The arithmetic lives in src/lib/call-horizons.ts beside every other window
+ * rule, so the ring and the stored window cannot drift apart.
+ */
 function windowProgress(c: UserClaim, today: string): number {
-  if (!c.resolution_window_start || !c.resolution_window_end) return 0;
-  const start = new Date(c.resolution_window_start).getTime();
-  const end = new Date(c.resolution_window_end).getTime();
-  const now = new Date(today).getTime();
-  if (end <= start) return 1;
-  return Math.min(1, Math.max(0, (now - start) / (end - start)));
+  return windowElapsed(c.resolution_window_start, c.resolution_window_end, today);
 }
 
 function PinnedHero({

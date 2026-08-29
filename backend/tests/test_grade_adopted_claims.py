@@ -18,6 +18,7 @@ Run from repo root: python -m unittest backend.tests.test_grade_adopted_claims
 import sys
 import types
 import unittest
+from datetime import datetime, timezone
 
 # grade_user_claims imports the supabase SDK at module scope purely to build a
 # client in main(). Nothing under test touches it, so stub it before import:
@@ -35,6 +36,14 @@ from backend.grading.grade_user_claims import (  # noqa: E402
     is_price_gradeable,
     outcome_row,
 )
+from backend.grading.price_attribution import (  # noqa: E402
+    TIER_SINGLE_STOCK,
+    PriceAttributionGrader,
+    scale_tier_for_sessions,
+    window_scale,
+    _grading_window,
+)
+from backend.grading.resolver import VERDICT_CORRECT  # noqa: E402
 
 TODAY = "2026-08-10"
 PRICE = {"method": "price_attribution", "version": 1}
@@ -264,6 +273,115 @@ class TestAdoptedGradesIndependently(unittest.TestCase):
                         resolution_window_start="2026-07-27",
                         resolution_window_end="2026-08-03")
         self.assertEqual(claim_to_call(authored), claim_to_call(adopted))
+
+
+# ---------------------------------------------------------------------------
+# A same-session claim resolves.
+#
+# This is the load-bearing proof behind removing the one-day floor from
+# resolveAdoptWindow in src/lib/call-horizons.ts. The commit sheet says
+# "resolves at today's close" and the stored row used to say tomorrow, because
+# the floor rewrote the window. The floor was justified by the belief that a
+# zero-day window can never grade. It grades.
+# ---------------------------------------------------------------------------
+
+
+def _one_candle_fetcher(prices):
+    """symbol -> (open, close), always exactly one daily bar."""
+
+    def fetch(symbol, from_ts, to_ts):
+        pair = prices.get(symbol.upper())
+        if not pair:
+            return None
+        o, c = pair
+        return {
+            "open_price": o,
+            "close_price": c,
+            "pct_change": round((c - o) / o * 100, 2),
+            "candle_count": 1,
+            "from_ts": from_ts.isoformat(),
+            "to_ts": to_ts.isoformat(),
+        }
+
+    return fetch
+
+
+class TestZeroDayWindowGrades(unittest.TestCase):
+    SESSION = "2026-07-02"
+
+    def test_an_equal_start_and_end_is_one_whole_session(self):
+        w = _grading_window("2026-08-28", "2026-08-28")
+        self.assertEqual(w[0], datetime(2026, 8, 28, 0, 0, tzinfo=timezone.utc))
+        self.assertEqual(
+            w[1], datetime(2026, 8, 28, 23, 59, 59, tzinfo=timezone.utc)
+        )
+
+    def test_it_is_byte_identical_to_the_brief_call_window(self):
+        # _grading_window collapses start onto d when start >= d, which is the
+        # same branch a brief call takes by passing no window_start at all.
+        # 51 of 416 morning_brief_calls rows carry resolve_on == brief_date and
+        # grade through it every day.
+        self.assertEqual(
+            _grading_window("2026-08-28", "2026-08-28"),
+            _grading_window("2026-08-28"),
+        )
+
+    def test_one_candle_grades_and_leaves_the_tier_alone(self):
+        grader = PriceAttributionGrader(
+            ticker_sectors={"NVDA": "technology"},
+            fetch_candle=_one_candle_fetcher(
+                {"NVDA": (100.0, 103.0), "XLK": (200.0, 200.4), "SPY": (500.0, 500.5)}
+            ),
+        )
+        out = grader.resolve(
+            {
+                "id": "same-session-1",
+                "claim_type": "ticker",
+                "target_symbol": "NVDA",
+                "expected_direction": "bullish",
+                "brief_date": self.SESSION,
+                "window_start": self.SESSION,
+            }
+        )
+        self.assertTrue(out.is_gradable)
+        self.assertEqual(out.verdict, VERDICT_CORRECT)
+        self.assertEqual(out.metadata["tier"], TIER_SINGLE_STOCK.name)
+        # The scaling keys are written only when the window ran over more than
+        # one session. Their absence IS the proof the bar was not moved.
+        self.assertNotIn("window_sessions", out.metadata)
+
+    def test_one_session_never_scales_the_bar(self):
+        self.assertEqual(window_scale(1), 1.0)
+        self.assertIs(scale_tier_for_sessions(TIER_SINGLE_STOCK, 1), TIER_SINGLE_STOCK)
+
+    def test_the_due_scan_selects_a_same_session_claim_on_its_own_date(self):
+        # fetch_due_claims uses lte(resolution_window_end, today), so a window
+        # closing today is due today. Nothing else in the scan cares that the
+        # window is zero days long.
+        rows = [
+            claim(
+                id="s1",
+                source="adopted",
+                adopted_from_call_id="call-x",
+                resolution_window_start=TODAY,
+                resolution_window_end=TODAY,
+            )
+        ]
+        self.assertEqual(due_ids(rows), ["s1"])
+
+    def test_a_same_session_claim_written_ungradeable_is_never_selected(self):
+        # What the old floor plus a strict `>` produced: gradeable false, and
+        # the scan cannot see it. Nothing else in the product closes it either.
+        rows = [
+            claim(
+                id="s2",
+                source="adopted",
+                gradeable=False,
+                resolution_window_start=TODAY,
+                resolution_window_end=TODAY,
+            )
+        ]
+        self.assertEqual(due_ids(rows), [])
 
 
 class _FakeOutcome:
