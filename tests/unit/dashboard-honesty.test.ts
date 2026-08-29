@@ -39,7 +39,7 @@ import {
 } from "../../src/lib/your-record.ts";
 import { shouldShowLearningBadge } from "../../src/lib/learning-badge.ts";
 import { isAwaitingOwnVerdict, type ClaimOutcomeRow } from "../../src/lib/claim-outcome.ts";
-import { WL_SHORTHAND, ANY_PERCENT, SPORTS_WORDS } from "./honesty-detectors.ts";
+import { WL_SHORTHAND, ANY_RATE_FIGURE, SPORTS_WORDS } from "./honesty-detectors.ts";
 
 const TODAY = "2026-08-02";
 
@@ -216,7 +216,7 @@ test("neither block authors W/L shorthand, a percentage, or sports vocabulary", 
 
   for (const s of strings) {
     assert.equal(WL_SHORTHAND.test(s), false, `W/L shorthand in: ${s}`);
-    assert.equal(ANY_PERCENT.test(s), false, `percentage in: ${s}`);
+    assert.equal(ANY_RATE_FIGURE.test(s), false, `percentage in: ${s}`);
     assert.equal(SPORTS_WORDS.test(s), false, `sports vocabulary in: ${s}`);
   }
 
@@ -325,7 +325,7 @@ test("context is not a fifth outcome word", () => {
 test("a context count carries no rate and no percentage", () => {
   const record = buildYourRecord([claim("c1"), contextClaim("x1")], {}, TODAY);
   for (const str of yourRecordAuthoredStrings(record)) {
-    assert.equal(ANY_PERCENT.test(str), false, `percentage in: ${str}`);
+    assert.equal(ANY_RATE_FIGURE.test(str), false, `percentage in: ${str}`);
     assert.equal(SPORTS_WORDS.test(str), false, `sports vocabulary in: ${str}`);
     assert.equal(WL_SHORTHAND.test(str), false, `W/L shorthand in: ${str}`);
   }

@@ -2,18 +2,18 @@
  * The house rule, asserted over RENDERED OUTPUT rather than over an authoring
  * file.
  *
- * `design_handoff_signalera_mobile/README.md:316`: "No aggregate accuracy
- * percentage or hit rate anywhere, including seeded content. Counts are
- * permitted; rates are not." Repo-wide, not scoped to a surface.
+ * `design_handoff_signalera_mobile/README.md:316` forbids any aggregate rate
+ * figure anywhere, seeded content included, and permits counts. Repo-wide, not
+ * scoped to a surface. Read the line there rather than a paraphrase here.
  *
  * WHY THIS FILE EXISTS. dashboard-honesty.test.ts already owned the right
  * detectors and applied them only to strings authored by src/lib/desk-record.ts
  * and src/lib/your-record.ts. /morning-brief authored its own string inside
- * BriefCallsSection.tsx and was therefore outside the assertion's reach, so
- * `53W · 50L · 41 partial · 37% hit rate across 144 graded calls` rendered to
- * every reader at every width while a test three directories away asserted
- * that call-record.tsx "(59% / 22W 15L) must stay deleted". A rule enforced by
- * authoring file is enforced against the files that already obey it.
+ * BriefCallsSection.tsx and was therefore outside the assertion's reach, so a
+ * summary rate figure and W/L shorthand rendered to every reader at every
+ * width while a test three directories away asserted that a component deleted
+ * for that exact format stays deleted. A rule enforced by authoring file is
+ * enforced against the files that already obey it.
  *
  * TWO LEVELS, because neither alone is enough.
  *
@@ -34,7 +34,7 @@
  *     owned elsewhere. `npm run design:rates` is the repo-wide net; this file
  *     is the locked contract for the record surfaces.
  *   - Strings assembled at runtime inside a component not rendered below.
- *     Adding a record surface without adding it here buys nothing.
+ *     Adding a record surface without adding it here gains nothing.
  *   - Server-generated copy: prompt text, emails and the pipeline's own
  *     output are not rendered here.
  *   - The counts themselves. This asserts the vocabulary and the absence of a
@@ -51,7 +51,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 import {
   WL_SHORTHAND,
-  ANY_PERCENT,
+  ANY_RATE_FIGURE,
   SPORTS_WORDS,
   stripComments,
 } from "./honesty-detectors.ts";
@@ -63,16 +63,23 @@ import { DESK_RECORD_COPY } from "../../src/lib/desk-record.ts";
 
 // ── level 1: what /morning-brief actually renders ──────────────────────────
 
+/** Field names are the stored `verdict` values, which is what the component's
+ *  prop counts. Built here rather than written inline so the vocabulary
+ *  question stays in DeskRecordLine, where it is answered. */
+function counts(a: number, b: number, c: number, d = 0): DeskVerdictCounts {
+  return { correct: a, wrong: b, partial: c, ungradable: d };
+}
+
 /** The live production shape on 2026-08-22, read off the rendered surface. */
-const LIVE: DeskVerdictCounts = { correct: 53, wrong: 50, partial: 41, ungradable: 6 };
+const LIVE = counts(53, 50, 41, 6);
 
 const SHAPES: [string, DeskVerdictCounts][] = [
   ["live shape", LIVE],
-  ["nothing graded", { correct: 0, wrong: 0, partial: 0, ungradable: 0 }],
-  ["one supported call", { correct: 1, wrong: 0, partial: 0, ungradable: 0 }],
-  ["one challenged call", { correct: 0, wrong: 1, partial: 0, ungradable: 0 }],
-  ["only ungraded rows", { correct: 0, wrong: 0, partial: 0, ungradable: 12 }],
-  ["a whole number ratio", { correct: 50, wrong: 25, partial: 25, ungradable: 0 }],
+  ["an empty record", counts(0, 0, 0)],
+  ["one supported call", counts(1, 0, 0)],
+  ["one challenged call", counts(0, 1, 0)],
+  ["nothing but ungradable rows", counts(0, 0, 0, 12)],
+  ["a whole number ratio", counts(50, 25, 25)],
 ];
 
 function markup(record: DeskVerdictCounts): string {
@@ -83,7 +90,7 @@ for (const [name, record] of SHAPES) {
   test(`the desk record line carries no rate and no W/L (${name})`, () => {
     const html = markup(record);
     assert.equal(WL_SHORTHAND.test(html), false, `W/L shorthand in: ${html}`);
-    assert.equal(ANY_PERCENT.test(html), false, `percentage in: ${html}`);
+    assert.equal(ANY_RATE_FIGURE.test(html), false, `percentage in: ${html}`);
     assert.equal(SPORTS_WORDS.test(html), false, `sports vocabulary in: ${html}`);
   });
 }
@@ -95,7 +102,7 @@ test("the desk record line keeps its counts and its provenance", () => {
   for (const n of ["53", "50", "41", "144"]) {
     assert.ok(html.includes(n), `count ${n} missing from: ${html}`);
   }
-  assert.ok(html.includes("graded calls"), "the graded-call count lost its noun");
+  assert.ok(html.includes("graded calls"), "the roll-up count has no noun");
   assert.ok(
     html.includes("graded by price attribution"),
     "provenance is not a rate and must stay",
@@ -111,8 +118,8 @@ test("the desk record line reads the shared vocabulary, not a second copy", () =
   assert.ok(html.includes(DESK_RECORD_COPY.bucketLabel.noCleanRead), "no-clean-read label");
 });
 
-test("an empty record shows no graded-call count rather than a zero", () => {
-  const html = markup({ correct: 0, wrong: 0, partial: 0, ungradable: 0 });
+test("an empty record shows no roll-up count rather than a zero", () => {
+  const html = markup(counts(0, 0, 0));
   assert.equal(html.includes("graded calls"), false);
 });
 

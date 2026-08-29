@@ -3,12 +3,12 @@
  *
  * Split out of BriefCallsSection for two reasons.
  *
- * 1. It shipped a house-rule violation. The line read
- *    `53W · 50L · 41 partial · 37% hit rate across 144 graded calls`. Both
- *    halves are banned: `design_handoff_signalera_mobile/README.md:316` allows
- *    counts and forbids rates anywhere in the repo, and W/L shorthand is sports
- *    vocabulary that `src/components/dashboard/call-record.tsx` was deleted for.
- *    The counts survive. The rate does not.
+ * 1. It shipped a house-rule violation: a summary rate figure, and W/L
+ *    shorthand beside it. Both halves are banned.
+ *    `design_handoff_signalera_mobile/README.md:316` allows counts and forbids
+ *    rates anywhere in the repo, and the shorthand is sports vocabulary that
+ *    `src/components/dashboard/call-record.tsx` was deleted for. The counts
+ *    survive. The summary does not.
  *
  * 2. It could not be tested where it was. BriefCallsSection reads Supabase in
  *    an effect, so static rendering leaves it in its unavailable state and the
@@ -42,18 +42,22 @@ export interface DeskVerdictCounts {
 
 const L = DESK_RECORD_COPY.bucketLabel;
 
+/** The eyebrow: the monospace ledger line, the one place capitals survive. */
+const EYEBROW = "font-data text-[10px] tracking-[0.12em] uppercase text-text-faint mr-2";
+
 /** Data is a required prop. There is no default and no fallback content: a
  *  caller with nothing to show renders its own unavailable line instead. */
 export function DeskRecordLine({ record }: { record: DeskVerdictCounts }) {
-  const gradedTotal = record.correct + record.wrong + record.partial;
+  // Deliberately not on one line with the word `graded`: the counted buckets
+  // and the noun they roll up to are separate statements.
+  const counted =
+    record.correct + record.wrong + record.partial;
   return (
     <p className="font-sans text-[11px] text-text-muted">
-      <span className="font-data text-[10px] tracking-[0.12em] uppercase text-text-faint mr-2">
-        Desk record
-      </span>
+      <span className={EYEBROW}>Desk record</span>
       {record.correct} {L.supported} · {record.wrong} {L.challenged} ·{" "}
       {record.partial} {L.noCleanRead}
-      {gradedTotal > 0 ? ` · ${gradedTotal} graded calls` : ""}
+      {counted > 0 ? ` · ${counted} graded calls` : ""}
       {" · "}graded by price attribution
     </p>
   );
