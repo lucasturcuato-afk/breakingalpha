@@ -227,7 +227,28 @@ export function CommitSheet({ target, onDismiss, onCommitted }: CommitSheetProps
       style={{
         position: "fixed",
         inset: 0,
-        zIndex: 9,
+        /* 50 IS ABOVE THE APP CHROME, AND IT HAS TO BE. DO NOT LOWER IT.
+           At 9 this overlay painted UNDER `MobileTabBar`, which is
+           `position: fixed`, z-40, and `backgroundColor: var(--c-bg)`, so
+           opaque. Measured at 375/390/430 in both themes: "Not this one"
+           occupies y 778..822 and the bar occupies y 785..844, so 37 of the
+           control's 44px sat under it and only a 7px band was live.
+           `document.elementFromPoint` at the control's own centre returned
+           the bar's "Watch" link, and a real tap there navigated to
+           /radar/watchlist, which signed out redirects to /auth. The
+           designed dismiss control did not merely fail to dismiss: it threw
+           the reader off the Ledger and took the unsaved note with it, which
+           is the header's "silently fails to save" reached by another route.
+
+           There is no z-index token scale in this repo, so this is a
+           literal. 50 clears everything between: the only things that exist
+           in 10..49 are `#dash-cursor-glow` (z-30, `pointer-events: none`
+           decoration) and the z-40 pair of `MobileTabBar` and the desktop
+           sidebar, all of which are chrome a modal must cover. It stays
+           BELOW the memo modals (9999), the sidebar drawer (9000/9001), the
+           tour (8000), the export dialog (100) and the briefing intro (60),
+           so nothing that should outrank a sheet stops doing so. */
+        zIndex: 50,
         display: "flex",
         flexDirection: "column",
         justifyContent: "flex-end",
