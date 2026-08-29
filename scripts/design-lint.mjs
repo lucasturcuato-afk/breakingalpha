@@ -106,6 +106,14 @@ const OUTCOME_CONTEXT = /(outcome|verdict|status|state|grade|graded|result|resol
 const RATE_SHAPES = [
   /\baccuracy\b/i,
   /\bhit[_\s-]?rate\b/i,
+  /* `win rate` and `success rate` are the same claim in different words, and
+     both escaped rule 4 entirely. src/lib/article-signal.tsx renders
+     `Source: {N}% win rate` to a reader and was flagged by nothing: rule 3
+     needs an outcome keyword that line does not carry, and rule 4 had no shape
+     for it. A rule that names one synonym of a banned figure is a rule the
+     figure walks around. */
+  /\bwin[_\s-]?rate\b/i,
+  /\bsuccess[_\s-]?rate\b/i,
   /\bwilson\b/i,
   /\*\s*100\s*\)\s*\.toFixed/,          // (x * 100).toFixed(n)
   /\b(pct|percent)(age)?[_A-Za-z]*\s*=/i,
@@ -342,27 +350,106 @@ function isAllowlisted(lineText) {
   return BANNED_ALLOW.find(a => a.pattern.test(lineText));
 }
 
+/* Which lines are ENTIRELY a comment.
+ *
+ * Rule 1 is a substring ban, and a substring ban run over prose fires on
+ * prose. Across this programme it fired about a dozen times on comments and
+ * every single one was someone explaining code: a sentence about a loader, a
+ * sentence naming a DOM attribute, twice on a message correcting a comment by
+ * quoting the sentence being corrected. It has never once caught a real
+ * violation inside a comment, because a comment is not a rendered string and
+ * is not an identifier. So comment-only lines are exempt from RULE 1 ONLY.
+ * Every other rule still reads every line, em-dashes and the rate shapes very
+ * much included; those are about what is written, not about where.
+ *
+ * ENTIRELY is the whole point. `const x = "performance"; // named by design`
+ * is code with a comment stapled to it, and the ban still applies to it. A
+ * line qualifies only when it CONTAINS comment text and everything left after
+ * the comment spans are removed is whitespace or JSX wrapper braces, which is
+ * what makes `{/* ... *\/}` a comment line and a bare `}` not one.
+ *
+ * Strings are tracked so `const s = "/*";` cannot open a comment that swallows
+ * the real code after it. A template literal left open at end of line stays
+ * open, which keeps its continuation lines linted: every ambiguity here is
+ * resolved towards checking the line rather than skipping it.
+ *
+ * In .css `//` is not a comment, but a line with real CSS before it has code
+ * in the remainder and is checked anyway, so only a line that was already
+ * invalid CSS is affected.
+ */
+function commentOnlyLines(text) {
+  const lines = text.split('\n');
+  const out = new Array(lines.length).fill(false);
+  let inBlock = false;   // inside a block comment, possibly from a line above
+  let inString = null;   // the quote character of an open string, or null
+
+  for (let li = 0; li < lines.length; li++) {
+    const line = lines[li];
+    let code = '';
+    let sawComment = inBlock;
+
+    for (let i = 0; i < line.length; i++) {
+      const c = line[i];
+      if (inBlock) {
+        sawComment = true;
+        if (c === '*' && line[i + 1] === '/') { inBlock = false; i++; }
+        continue;
+      }
+      if (inString) {
+        code += c;
+        if (c === '\\') { code += line[i + 1] ?? ''; i++; continue; }
+        if (c === inString) inString = null;
+        continue;
+      }
+      if (c === '/' && line[i + 1] === '/') { sawComment = true; break; }
+      if (c === '/' && line[i + 1] === '*') { sawComment = true; inBlock = true; i++; continue; }
+      if (c === '"' || c === "'" || c === '`') { inString = c; code += c; continue; }
+      code += c;
+    }
+
+    // Only a template literal survives a newline. Anything else is closed
+    // here, which can only ever make the next line MORE likely to be linted.
+    if (inString !== '`') inString = null;
+
+    out[li] = sawComment && code.replace(/[{}\s]/g, '') === '';
+  }
+  return out;
+}
+
+/* Rule 1, as a function so the self-test can hold specimens against it. It
+ * lived inline in lintFile, where nothing could reach it. */
+function bannedSubstringHits(text) {
+  const commentOnly = commentOnlyLines(text);
+  const out = [];
+  text.split('\n').forEach((raw, i) => {
+    if (commentOnly[i]) return;
+    const lower = raw.toLowerCase();
+    for (const word of BANNED) {
+      if (!lower.includes(word)) continue;
+      out.push({ line: i + 1, word, raw, allow: isAllowlisted(raw) });
+    }
+  });
+  return out;
+}
+
 function lintFile(file) {
   const text = readFileSync(file, 'utf8');
   const lines = text.split('\n');
   const isCss = extname(file) === '.css';
   const isTokens = /tokens(\.reference)?\.css$/.test(file);
 
+  // 1. banned substrings. Skips whole-line comments; see bannedSubstringHits.
+  for (const hit of bannedSubstringHits(text)) {
+    if (hit.allow) {
+      add('WARN', file, hit.line, 'banned-allowlisted', `"${hit.word}" via ${hit.allow.why}`);
+    } else {
+      add('ERROR', file, hit.line, 'banned-substring',
+          `"${hit.word}" in: ${hit.raw.trim().slice(0, 90)}`);
+    }
+  }
+
   lines.forEach((raw, i) => {
     const n = i + 1;
-    const lower = raw.toLowerCase();
-
-    // 1. banned substrings
-    for (const word of BANNED) {
-      if (lower.includes(word)) {
-        const allow = isAllowlisted(raw);
-        if (allow) {
-          add('WARN', file, n, 'banned-allowlisted', `"${word}" via ${allow.why}`);
-        } else {
-          add('ERROR', file, n, 'banned-substring', `"${word}" in: ${raw.trim().slice(0, 90)}`);
-        }
-      }
-    }
 
     // 2. em-dash
     if (raw.includes(EMDASH)) {
@@ -639,6 +726,40 @@ function lintFixtureRules(file, text) {
  */
 const SELFTEST = [
   {
+    /* Both halves, deliberately. A change that only proved comments are
+     * skipped would be indistinguishable from switching the rule off, and the
+     * rule is load-bearing: `npm run design:rates` runs this same file. So the
+     * bad list carries the shapes that MUST still fire, including a banned
+     * word sitting beside a comment on the same line and one hidden inside a
+     * string that looks like a comment. */
+    rule: 'banned-substring',
+    run: (t) => bannedSubstringHits(t).filter(h => !h.allow).length,
+    bad: [
+      'const label = "performance";',
+      'const label = "performance"; // named by the design, not by us',
+      'const shareholder = row.owner;',
+      /* A string that merely looks like a comment. If the scanner ignored
+         strings, this line would open a block that swallowed real code. */
+      'const s = "/* not a comment */ performance";',
+      /* Comment first, code second. The line is not ENTIRELY a comment. */
+      '/* opens and closes */ const holder = 1;',
+      /* The block ends mid-line and code follows it. */
+      '/**\n * prose about performance\n */ const holder = 1;',
+    ],
+    good: [
+      '// the loader returns a value before the effect settles',
+      '// used to hold a mirror up to the section above',
+      '/* performance is the word this sentence is explaining */',
+      /* Interior lines of a block carry no marker of their own. */
+      '/**\n * used to hold a mirror\n * the loader returns\n * buy and sell read as prose here\n */',
+      /* JSX, which this repo writes constantly. */
+      '{/* performance of the section, stated in prose */}',
+      '        {/* buy and sell, in a section marker */}',
+      /* Indented continuation of a JSDoc block. */
+      '  /**\n   * allocation of the grid, described\n   */',
+    ],
+  },
+  {
     rule: 'fixture-default',
     run: (t, f) => fixtureDefaults(t, f).length,
     bad: [
@@ -794,6 +915,53 @@ if (sinceIdx !== -1 && (!sinceRef || sinceRef.startsWith('--'))) {
   process.exit(2);
 }
 
+/* --only <rule-ids> and --path <prefixes>. Both take a comma-separated list.
+ *
+ * Rule 4 has detected the /radar/calls rate since it was written. It was never
+ * a gate for two reasons. The default is the ratchet, so a pre-existing line is
+ * invisible, and `--all` answers with thousands of findings across every rule,
+ * where the rate hits are buried. Unusable output is the same as no rule.
+ *
+ * These two flags are the difference between a detector and a check somebody
+ * can run: `--all --only aggregate-rate,outcome-vocabulary --path src/app,src/components`
+ * is the reader-facing rate question and nothing else. See the design:rates
+ * npm script.
+ *
+ * Neither flag changes what is DETECTED. Every file is still linted by every
+ * rule; these narrow only what is printed and counted, so a filtered run can
+ * never be quieter than the truth about the slice it names. */
+function listArg(flag) {
+  const i = args.indexOf(flag);
+  if (i === -1) return null;
+  const v = args[i + 1];
+  if (!v || v.startsWith('--')) {
+    console.error(`design-lint: ${flag} needs a comma-separated list, e.g. ${flag} aggregate-rate`);
+    process.exit(2);
+  }
+  return v.split(',').map(x => x.trim()).filter(Boolean);
+}
+
+/* Every rule id this script can emit. A typo in --only would otherwise report
+ * zero findings, which reads in a terminal and in a PR body as a clean slice.
+ * That is the one failure mode a filter must not have. */
+const KNOWN_RULES = new Set([
+  'aggregate-rate', 'all-caps', 'banned-allowlisted', 'banned-substring',
+  'bare-vh', 'coloured-left-border', 'em-dash', 'frosted-glass', 'gradient',
+  'hardcoded-hex', 'outcome-vocabulary', 'token-role', 'unreadable',
+]);
+
+const onlyRules = listArg('--only');
+const onlyPaths = listArg('--path');
+if (onlyRules) {
+  const unknown = onlyRules.filter(r => !KNOWN_RULES.has(r));
+  if (unknown.length) {
+    console.error(`design-lint: --only names ${unknown.length} rule id(s) this script never emits:`);
+    for (const u of unknown) console.error(`  ${u}`);
+    console.error(`  Known ids: ${[...KNOWN_RULES].sort().join(' ')}`);
+    process.exit(2);
+  }
+}
+
 /* Say so, on stderr so it cannot be mistaken for a finding. A reader who
  * pastes this output into a PR body should be able to see which ref the
  * numbers below are measured against without knowing the default. */
@@ -826,6 +994,13 @@ if (sinceRef) {
   files = walk(SRC);
 } else {
   files = args.filter(f => EXT.has(extname(f)) && !isExcluded(f));
+}
+
+/* Applied to whichever file set the mode produced, so --path composes with
+ * --all, --since and an explicit list alike. Prefix match on the repo-relative
+ * path, which is what walk() and the diff both produce. */
+if (onlyPaths) {
+  files = files.filter(f => onlyPaths.some(prefix => f.startsWith(prefix)));
 }
 
 if (!files.length) {
@@ -869,12 +1044,26 @@ const reported = sinceRef
   ? findings.filter(f => f.line === 0 || addedByFile.get(f.file)?.has(f.line))
   : findings;
 
-const errors = reported.filter(f => f.level === 'ERROR');
-const warns = reported.filter(f => f.level === 'WARN');
+/* `unreadable` is exempt from --only on purpose. It means a file this run
+ * claimed to check was never read, and a slice that hides that is reporting on
+ * files it did not open. */
+const shown = onlyRules
+  ? reported.filter(f => onlyRules.includes(f.rule) || f.rule === 'unreadable')
+  : reported;
+
+const errors = shown.filter(f => f.level === 'ERROR');
+const warns = shown.filter(f => f.level === 'WARN');
 
 for (const f of [...errors, ...warns]) {
   console.log(`${f.level}  ${f.file}:${f.line}  [${f.rule}]  ${f.detail}`);
 }
+
+/* The filters go in the summary, not just in the caller's shell history. A
+ * number pasted into a PR body has to carry the slice it measured. */
+const slice = [
+  onlyRules ? `rules: ${onlyRules.join(',')}` : null,
+  onlyPaths ? `paths: ${onlyPaths.join(',')}` : null,
+].filter(Boolean).join('  ');
 
 if (sinceRef) {
   const preExisting = findings.length - reported.length;
@@ -883,6 +1072,10 @@ if (sinceRef) {
   console.log(`new: ${errors.length} errors, ${warns.length} warnings`);
 } else {
   console.log(`\ndesign-lint: ${files.length} files, ${errors.length} errors, ${warns.length} warnings`);
+}
+if (slice) {
+  console.log(`filtered slice, ${slice}`);
+  console.log(`${findings.length} findings exist across every rule in this run; ${shown.length} are in the slice.`);
 }
 
 if (warns.length) {
