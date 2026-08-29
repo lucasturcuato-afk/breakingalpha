@@ -292,21 +292,34 @@ const PRIMER_LEDE =
 const PRIMER_FOOTNOTE = "Informational only, not investment advice.";
 
 /**
- * The figures the primer draws, and the only ones it can.
+ * The figures the primer may draw, in the order it prefers them.
  *
- * Two metric keys off `financial_facts_latest`, both plain monetary facts that
- * a filer reported. No ratio and no margin: a margin is a division, the primer
- * states no derived number, and the desktop `PrimerFinancialSnapshot` already
- * owns that digest on its own surface.
+ * Plain monetary facts off `financial_facts_latest`, each one a value a filer
+ * reported. No ratio and no margin: a margin is a division, the primer states no
+ * derived number at all, and the desktop `PrimerFinancialSnapshot` already owns
+ * that digest on its own surface.
  *
- * Two rather than a longer list because the grid is two columns wide and these
- * are the two figures present for essentially every filer, so the grid fills a
- * whole row or draws nothing.
+ * THE FIRST TWO THAT EXIST, NOT THE FIRST TWO ON THE LIST. Measured on the live
+ * table, Broadcom's newest annual column carries `revenue` and no `net_income`,
+ * so a mapper pinned to those two exact keys drew ONE cell into a two-column
+ * grid and left the second column painted in the grid's own border colour. That
+ * reads as a figure that failed to arrive. Walking the list until two facts are
+ * in hand fills the row with figures that are all equally real, and the full
+ * ledger stays where it already lives, in the Financials section.
+ *
+ * TWO IS THE WHOLE CONTRACT. The primer names two figures and the grid is two
+ * columns wide. Nothing is hidden by the cap: every fact this filer reported is
+ * on the Financials section under its own period column.
  */
 const PRIMER_FIGURES: { key: string; label: string }[] = [
   { key: "revenue", label: "REVENUE" },
   { key: "net_income", label: "NET INCOME" },
+  { key: "operating_income", label: "OPERATING INCOME" },
+  { key: "gross_profit", label: "GROSS PROFIT" },
 ];
+
+/** How many figures the two-column grid draws when the facts are there. */
+const PRIMER_FIGURE_COUNT = 2;
 
 /**
  * The newest period the filer actually filed, on whichever basis carries one.
@@ -377,12 +390,12 @@ function latestFiledPeriod(
  *   rows out of 5,599. It is a dead column, so reading it would add a query that
  *   can only ever answer null.
  *
- * KEY FIGURES are validated XBRL and nothing else, newest filed period first,
- * with the period named in the label so a figure can never float free of the
- * column it was filed under. Values go through `formatMoney(value,
- * reportingCurrency)` so a filer reporting in EUR, TWD or DKK can never carry a
- * bare dollar sign, and nothing here is divided: both figures are values copied
- * off a fact row.
+ * KEY FIGURES are validated XBRL and nothing else: the first two facts the
+ * filer reported off its newest filed period, with the period named in the
+ * label so a figure can never float free of the column it was filed under.
+ * Values go through `formatMoney(value, reportingCurrency)` so a filer
+ * reporting in EUR, TWD or DKK can never carry a bare dollar sign, and nothing
+ * here is divided: every figure is a value copied off a fact row.
  *
  *   NO `EV / EBITDA`. Zero sources repo-wide; the only occurrences anywhere in
  *   this repo are examples inside LLM prompts.
@@ -423,9 +436,13 @@ export function buildPrimer(
   const filed = latestFiledPeriod(financials);
   if (filed) {
     for (const figure of PRIMER_FIGURES) {
+      if (keyFigures.length === PRIMER_FIGURE_COUNT) break;
       const cell = filed.view.grid[figure.key]?.[filed.period.key];
       if (!cell || !Number.isFinite(cell.value)) continue;
       keyFigures.push({
+        /* The period is IN the label. A figure that does not name its column is
+           a figure a reader has to guess the year of, and the two bases carry
+           different ones. */
         label: `${figure.label} · ${filed.period.label.toUpperCase()}`,
         value: formatMoney(cell.value, financials.reportingCurrency),
         scale: "figure",

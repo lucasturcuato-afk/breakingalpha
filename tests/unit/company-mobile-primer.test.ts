@@ -388,6 +388,48 @@ test("a filer with only a quarterly basis still draws its own period", () => {
   assert.ok(p.keyFigures[0].value.startsWith("EUR "));
 });
 
+test("the grid fills its row from whichever facts the filer reported", () => {
+  // Measured: Broadcom's newest annual column carries revenue and no net_income.
+  // Two facts are still two facts, so the two-column grid still fills a row.
+  const p = buildPrimer(
+    FULL,
+    IDENTITY,
+    [],
+    financials({
+      cik: 1730168,
+      reportingCurrency: "USD",
+      annual: view("FY-2025", "FY2025", {
+        revenue: 63_890_000_000,
+        operating_income: 15_000_000_000,
+        gross_profit: 40_000_000_000,
+      }),
+    }),
+  );
+  assert.deepEqual(p.keyFigures.map((f) => f.label), [
+    "REVENUE · FY2025",
+    "OPERATING INCOME · FY2025",
+  ]);
+});
+
+test("the grid never draws more than the two the contract names", () => {
+  const p = buildPrimer(
+    FULL,
+    IDENTITY,
+    [],
+    financials({
+      cik: 1730168,
+      reportingCurrency: "USD",
+      annual: view("FY-2025", "FY2025", {
+        revenue: 1,
+        net_income: 2,
+        operating_income: 3,
+        gross_profit: 4,
+      }),
+    }),
+  );
+  assert.equal(p.keyFigures.length, 2);
+});
+
 test("a company with no filed period draws no figure at all", () => {
   const p = buildPrimer(FULL, IDENTITY, [], EMPTY_FINANCIALS);
   assert.deepEqual(p.keyFigures, []);
@@ -440,14 +482,31 @@ test("no mapper makes a network call", async () => {
   assert.equal(calls, 0);
 });
 
-test("nothing a mapper emits carries an em dash", () => {
-  const out = JSON.stringify([
-    buildMasthead(FULL),
-    buildKpis(FULL),
-    buildPrimer(FULL, IDENTITY, [development({ id: "1", title: "A development" })], EMPTY_FINANCIALS),
-    buildMasthead(SPARSE),
-    buildKpis(SPARSE),
-    buildPrimer(SPARSE, null, [], EMPTY_FINANCIALS),
-  ]);
-  assert.equal(out.includes(EM_DASH), false);
+test("no string a mapper AUTHORS carries an em dash", () => {
+  // Scoped to the strings this file writes: labels, the lede and the footnote.
+  // A development line is a publisher's own headline or the ingest's own
+  // summary read verbatim off a row, and rewriting a source string to satisfy a
+  // house rule about prose would be editing the evidence.
+  const authored: string[] = [];
+  for (const d of [FULL, SPARSE]) {
+    const m = buildMasthead(d);
+    authored.push(m.memoCorpus);
+    for (const c of buildKpis(d)) {
+      authored.push(c.label, c.value, c.meta ?? "");
+    }
+    const p = buildPrimer(
+      d,
+      IDENTITY,
+      [],
+      financials({
+        cik: 1730168,
+        reportingCurrency: "USD",
+        annual: view("FY-2025", "FY2025", { revenue: 1_000_000, net_income: 2_000_000 }),
+      }),
+    );
+    authored.push(p.lede, p.footnote);
+    for (const r of p.identity) authored.push(r.label);
+    for (const f of p.keyFigures) authored.push(f.label, f.value);
+  }
+  for (const line of authored) assert.equal(line.includes(EM_DASH), false, line);
 });
