@@ -128,7 +128,7 @@ test("the roll-up counts the resolved buckets and not the absence", () => {
   const html = markup(LIVE);
   // 42 + 30 + 54. The not-graded rows are an absence, and rolling them into a
   // noun that says `graded` would be the same overstatement in a new place.
-  assert.ok(html.includes("126 graded calls"), `roll-up wrong in: ${html}`);
+  assert.ok(html.includes("126 graded calls"), `roll-up does not match in: ${html}`);
   assert.equal(html.includes("172"), false, "not-graded rows counted as graded");
 });
 
