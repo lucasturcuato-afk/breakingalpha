@@ -178,7 +178,63 @@ export function IntelligenceChat({ userId }: IntelligenceChatProps) {
   const isEmpty = messages.length === 0;
 
   return (
-    <div className="max-w-3xl mx-auto flex flex-col h-[calc(100vh-180px)]">
+    /* Two things this column has to get right below `md`, both of them
+       consequences of `mobileFullBleed` on the page above it.
+
+       THE GUTTER. `mobileFullBleed` gates the desk chrome out, and with it the
+       only horizontal padding this surface had. `main#main-content` computes
+       `padding-left: 0px` (app-shell.tsx:178 sets bottom padding only), and
+       `max-w-3xl mx-auto` adds none of its own, so at 390 the eyebrow, the
+       title, every bubble, the input and the send button all sat flush against
+       both viewport edges and the send button's right edge landed exactly on
+       x=390. Every other full-bleed screen draws its own gutter inside the
+       flag, all of them from `--v3-pad`: ask-parts.tsx:25, ledger-screen.tsx:41
+       and compose-screen.tsx:65 each define `PAD = "var(--v3-pad)"`. This is
+       the same token so the screens cannot drift.
+
+       `md:px-0` keeps the desk byte-identical, but NOT because the desk is
+       clean. Between 768 and 831 it has this exact defect: `max-w-3xl` is
+       768px and `main` is `vw - 64`, so the column is edge to edge until
+       vw >= 832. Measured send-button right edge: 768 at vw 768, 800 at vw
+       800, 866 at vw 900. That is pre-existing, it is a desk problem rather
+       than a phone one, and this unit does not touch it. Logged, not fixed.
+
+       THE HEIGHT. The column used to subtract a flat 180px from the viewport
+       height, and that 180px was a desktop-chrome constant: the mood bar plus
+       the topbar plus the footer. Below `md` the flag removes all three, so
+       the column stopped 121px short of the tab bar and the composer floated
+       mid-screen (measured: composer bottom 664, tab bar top 785). The right
+       number is already on `main`, which reserves
+       `--mobile-tabbar-height + env(safe-area-inset-bottom)`; read the same
+       token rather than hardcoding a second one. Dynamic viewport units
+       throughout, because on iOS Safari the static unit ignores the collapsing
+       address bar, which is the same class of bug. (Both restatements are
+       deliberately prose: design-lint's rule 7 reads comments too, and quoting
+       the old class literally trips it.)
+
+       `pb-3.5` because landing the column bottom exactly on the tab bar's top
+       rule puts the input's own border on that rule with nothing between them.
+       14px is the sibling's number, read correctly this time:
+       ask-composer.tsx:86 is `12px PAD 14px`, where 12 is the TOP and 14 the
+       BOTTOM, and it derives its height from this identical formula with the
+       composer as its last child (ask-answer-screen.tsx:64). Desktop keeps its
+       old spacing.
+
+       On `env(safe-area-inset-bottom)`: the term is inert today, because
+       `layout.tsx:74` exports `themeColor` only and the rendered meta carries
+       no `viewport-fit=cover`, without which insets resolve to 0. It is still
+       the right thing to subtract. Forcing the inset to 34px on all three
+       consumers keeps the column bottom and the tab bar top equal, because the
+       column shortens by 34 and the bar grows by the same 34, so this stays
+       correct if anyone adds `viewport-fit=cover` later. */
+    <div
+      className={cn(
+        "max-w-3xl mx-auto flex flex-col",
+        "px-[var(--v3-pad)] pb-3.5 md:px-0 md:pb-0",
+        "h-[calc(100dvh-var(--mobile-tabbar-height)-env(safe-area-inset-bottom))]",
+        "md:h-[calc(100dvh-180px)]",
+      )}
+    >
       {/* Header */}
       <div className="mb-4">
         <p className="font-sans text-[13px] text-text-muted">
@@ -296,7 +352,17 @@ export function IntelligenceChat({ userId }: IntelligenceChatProps) {
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Ask about your market intelligence..."
+          /* Shortened because the gutter this PR adds narrowed the field, and
+             the old string stopped fitting: measured at 320 the input's
+             content box is 198px against a 228.9px prompt string, so it rendered
+             "...market intellige|", and at 360 the headroom was 9.1px, thin
+             enough for a fallback face to clip it too. The Ask composer's
+             verbatim string is not available here either: without the ellipsis
+             it still measures 219.1px and overruns 320 by 21.1px, because that
+             composer gives its field the whole row and puts the send control
+             on its own line. This measures 145px, which is 53px of headroom at
+             320 and 64.3px in a generic sans fallback. */
+          placeholder="Ask about the market..."
           disabled={loading}
           className={cn(
             "flex-1 px-4 py-3 border border-border-base rounded-xl bg-parchment",
