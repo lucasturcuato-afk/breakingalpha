@@ -290,6 +290,52 @@ general rule both cases point at: a model call belongs behind a deliberate tap,
 never on a path the framework can walk on its own.**
 
 
+### Ruling 21: the tracked-views tier stays absent, and its reason states a rule rather than a row count
+
+**The ruling, 2026-08-29, verbatim.** "A directionless, windowless claim is not
+writable. Nothing grades it, and 'tracked as context' is already a destination
+with no exit. I am not adding a second path into that state until it has an
+honest treatment. Ship the omission reasons without it."
+
+**What ships.** Radar's `NOT SHOWN HERE` block states four reasons and draws no
+tracked-views tier. `src/components/watch/omissions.ts` carries the copy.
+`src/lib/watch-data.ts` gains no loader for the tier and its reads are unchanged.
+
+**Why the copy had to be reworded.** The string first written on #731 read "None
+has been written that way". That describes a data gap, and it reads as an
+invitation to close it: write one claim with no direction and no window and the
+tier appears. The ruling says the opposite, so the string now records the
+decision instead.
+
+**The measurement.** `user_claims`, whole table, all accounts, read only,
+2026-08-29:
+
+| Count | Rows |
+|---|---|
+| `user_claims` | 18 |
+| `expected_direction IS NULL` | 0 |
+| `resolution_window_end IS NULL` | 0 |
+| `gradeable = false` and `status = 'open'` | 2 |
+
+The tier's own predicate therefore selects zero rows, and the adopt route at
+`src/app/api/radar/claims/adopt/route.ts:162` cannot produce one: it stamps a
+direction and a window on every claim it takes.
+
+**The state that has no exit.** A claim written `gradeable: false` with
+`resolution_method.method = "none"` is dropped by `is_price_gradeable` at
+`backend/grading/grade_user_claims.py:103-107`, which gates on the flag before it
+ever reads the method, and the drop happens at `:138`, before the grading loop
+runs. The row is never resolved, never written to `user_claim_outcomes`, and its
+`status` is never moved off `open`. Two of the 18 rows sit there now, and one has
+been open since its window closed on 2026-07-03. This was PR #713's second
+defect, and #713 fixed it on the READ side only: the screen says the row is not
+graded, and the row is still never closed.
+
+**What would change the answer.** An honest treatment of "tracked as context",
+meaning a state a claim can leave. Not more rows. Writing a directionless,
+windowless claim would not reopen this ruling; giving that state an exit would.
+
+
 ## Open items
 
 Logged 2026-08-16 from a DOM read of `design_handoff_signalera_mobile/Signalera
