@@ -4,7 +4,6 @@ import {
   AskNotice,
   AskSectionRule,
   AskSkeleton,
-  CONTENT_BOX,
   IconDeals,
   IconFeed,
   IconTrends,
@@ -20,7 +19,8 @@ import styles from "./ask.module.css";
    fixture arrives as the `data` prop, resolved on the server by
    `src/app/ask/page.tsx`. */
 import { ASK_FIXTURE_ENABLED } from "./fixture-gate";
-import { ASK_DIRECTORY, type AskBrowseData, type DirectoryId } from "./ask-data";
+import { ASK_DIRECTORY, CHIP_PROMPTS, type AskBrowseData, type DirectoryId } from "./ask-data";
+import type { AskCompaniesLoad } from "@/lib/ask-companies-data";
 import type { ReactNode } from "react";
 import { FONT_DISPLAY, FONT_SANS } from "@/components/mobile/fonts";
 
@@ -38,6 +38,13 @@ import { FONT_DISPLAY, FONT_SANS } from "@/components/mobile/fonts";
  * gives its own phone element `padding:0 var(--v3-pad)` that the real prototype
  * has not got, so a build that also pads its root measures a 310px column
  * against a design that draws 350. See the PR body.
+ *
+ * TWO SOURCES, ONE SCREEN, and they must not be confused for each other. The
+ * three browse counters are still unwired and take the fixture's lifecycle
+ * through `stage`. The company directory below them is a real read in every
+ * environment and arrives as its own `{ data, stage }` prop. Folding the second
+ * into the first would put a real block behind the fixture gate, which would
+ * blank it in production.
  */
 
 export type AskStage = "ready" | "loading" | "error" | "empty" | "stale";
@@ -48,27 +55,66 @@ const ICONS: Record<DirectoryId, ReactNode> = {
   feed: IconFeed,
 };
 
+/**
+ * THE INTRO NAMES THE TWO CONTROLS THAT EXIST, and that is why it is not the
+ * design's string any more.
+ *
+ * The design draws "A ticker resolves to a company; a question is answered from
+ * your intelligence, theses and briefings." Neither clause held. Nothing on the
+ * screen resolved a ticker, and the field it referred to went to an answer
+ * screen that answers "This surface does not answer yet". Both halves are real
+ * now and both are reached differently: a directory row opens a company, and a
+ * prompt chip opens the assistant. The sentence says that instead.
+ *
+ * Costs one text pair in the parity fingerprint, named in the PR body. A
+ * matching sentence that describes the wrong screen is not parity.
+ */
 const INTRO =
-  "Research assistant. A ticker resolves to a company; a question is answered from your intelligence, theses and briefings.";
+  "Research assistant. The rows below open a company; the prompts open the assistant, which answers from your intelligence, theses and briefings.";
 
-const LOOKUP_INTRO =
-  "Type any ticker or company name above for the primer, filings, financials and insider activity. Recent lookups:";
+/**
+ * THE BLOCK IS A DIRECTORY, NOT A HISTORY, and this string is where that shows.
+ *
+ * The design's copy ended "Recent lookups:", and the build shipped a notice
+ * under it saying lookups are not recorded for anyone. Nothing in the product
+ * records that a company was viewed, so the list could never fill. The rows are
+ * the companies the corpus names most often now, which is a fact the read
+ * already carries, and the sentence says that instead of promising a history.
+ *
+ * The ordering is stated HERE, once, rather than as a figure on every row: a
+ * mention count beside each name invites reading the column as a ranking of
+ * importance, which a count of articles is not.
+ */
+const DIRECTORY_INTRO =
+  "The companies named most often across the coverage Signalera has ingested. Each row opens its primer, filings, financials and insider activity.";
 
 export function AskBrowseScreen({
   stage = "ready",
   data,
+  companies,
 }: {
   stage?: AskStage;
   /** The gated fixture, or null when no source exists. Never defaulted. */
   data: AskBrowseData | null;
+  /**
+   * The company directory read, resolved on the server by `src/app/ask/page.tsx`.
+   * Required, with no default: this half of the screen has a real source in
+   * every environment, so it is NOT behind the fixture gate and a missing prop
+   * is a type error rather than a quietly empty block.
+   */
+  companies: AskCompaniesLoad;
 }) {
-  /* Outside development and preview there is no source for either the counters
-     or the lookups. That is NOT the same as an empty read, and it must not
+  /* Outside development and preview there is no source for the three browse
+     counters. That is NOT the same as an empty read, and it must not
      render as one: "nothing has moved since yesterday's close" is a claim about
      the market, and asserting it off no source at all is the same fabrication
      the fixture gate exists to prevent. Unwired says unwired. The three
      destinations stay, their figures do not. */
   const effective: AskStage | "unwired" = ASK_FIXTURE_ENABLED ? stage : "unwired";
+
+  /* Read once into a local so the empty check and the map are looking at the
+     same value, and so neither needs a non-null assertion to say so. */
+  const companyRows = companies.data;
   const loading = effective === "loading";
   const showDetail = effective === "ready" || effective === "stale";
 
@@ -153,71 +199,50 @@ export function AskBrowseScreen({
             textWrap: "pretty",
           }}
         >
-          {LOOKUP_INTRO}
+          {DIRECTORY_INTRO}
         </p>
 
-        {loading ? (
-          <div style={{ marginTop: "12px" }}>
-            {[0, 1, 2].map((i) => (
-              <div
-                key={i}
-                /* Same box model as the AskLookupRow it stands in for, or the
-                   list would grow 1px a row when the real thing arrived. */
-                style={{
-                  ...CONTENT_BOX,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "13px",
-                  minHeight: "56px",
-                  borderTop: "1px solid var(--c-hair)",
-                  ...(i === 2 ? { borderBottom: "1px solid var(--c-hair)" } : null),
-                }}
-              >
-                <AskSkeleton width="34px" height={11} />
-                <AskSkeleton width="60%" height={12} />
-              </div>
-            ))}
-          </div>
-        ) : null}
+        {/* THIS BLOCK IS NOT GATED ON `effective`, and that is deliberate. The
+            counters above are still unwired, so they take the fixture's
+            lifecycle. The directory has a real read in every environment and
+            takes its own, which is the only way a failed read can say a
+            different thing from an empty corpus.
 
-        {effective === "error" ? (
-          <AskNotice>Your recent lookups did not load. They have not been cleared.</AskNotice>
-        ) : null}
-
-        {effective === "empty" ? (
-          <AskNotice>No recent lookups yet. Type a ticker or a company name above and it will land here.</AskNotice>
-        ) : null}
-
-        {/* Same distinction as the counters above, and the wording is careful
-            for the same reason. "No lookups yet" would read as a fact about
-            this reader; nothing records lookups for anyone, so the sentence
-            says that instead. */}
-        {effective === "unwired" ? (
+            THERE IS NO SKELETON HERE ANY MORE. `/ask` is a server component and
+            this read is awaited before a byte of the screen is sent, so a
+            reader can never observe the block mid-flight. A skeleton for a
+            state that cannot be reached is a drawing of a load, not a load. */}
+        {companies.stage === "error" ? (
           <AskNotice>
-            Lookups are not recorded yet, so this list is empty for everyone and nothing here has been cleared. Type a
-            ticker or a company name above; the primer is already live.
+            The company directory did not load. This is a failed read and not an empty one: no company has
+            been ruled out of coverage, and the rows are missing rather than absent.
           </AskNotice>
         ) : null}
 
-        {showDetail
-          ? data?.lookups.map((lookup, i) => (
-              <AskLookupRow
-                key={lookup.ticker}
-                href={lookup.href}
-                ticker={lookup.ticker}
-                name={lookup.name}
-                entries={lookup.entries}
-                first={i === 0}
-                last={i === data?.lookups.length - 1}
-              />
-            ))
-          : null}
+        {companyRows !== null && companyRows.length === 0 ? (
+          <AskNotice>The read answered with no companies, so there is nothing to list here yet.</AskNotice>
+        ) : null}
+
+        {companyRows?.map((company, i) => (
+          <AskLookupRow
+            key={company.id}
+            href={company.href}
+            ticker={company.ticker}
+            name={company.name}
+            detail={company.detail}
+            first={i === 0}
+            last={i === companyRows.length - 1}
+          />
+        ))}
       </div>
 
-      {/* The two chips come off the data, not off a second hardcoded pair here.
-          Two sources for one pair means a `data` override silently keeps the
-          fixture's chips. */}
-      <AskComposer prompts={data?.prompts} />
+      {/* The chips come off `CHIP_PROMPTS`, NOT off `data`. They are the live
+          chat's own strings, so they are invented nothing and belong in front
+          of every reader; taking them off `data` put them behind the fixture
+          gate, and production drew a screen whose intro promised a question
+          would be answered with nothing on it that asked one. There is still
+          one definition of the pair: the fixture reads the same constant. */}
+      <AskComposer prompts={CHIP_PROMPTS} />
     </div>
   );
 }

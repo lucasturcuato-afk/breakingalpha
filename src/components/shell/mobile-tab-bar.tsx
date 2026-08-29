@@ -167,8 +167,49 @@ const POLES: Pole[] = [
     owns: ["/radar/watchlist", "/radar/following", "/watch"],
   },
   {
+    /* THE HREF HAS MOVED TO /ask, under the same ruling the Radar pole above
+       carries and for the same reason: move the href when the route READS A
+       LOADER, not when it merely answers. PR #653 moved a pole against a screen
+       with no read behind it and was closed for it.
+
+       WHAT THE BAR WAS. The pole pointed at /intelligence. At 390 that route is
+       the desk chat rendered full bleed: a sparkle tile, three prompt chips and
+       a composer. No browse block, no directory, no company affordance of any
+       kind. Meanwhile /ask, the designed mobile entry layer for this pole, had
+       ZERO inbound links anywhere in src and drew a section headed "company
+       intel" that nothing could reach.
+
+       WHAT MADE IT TRUE. `src/lib/ask-companies-data.ts` reads `companies` and
+       /ask renders it. That block used to list RECENT LOOKUPS, which nothing in
+       the product records, and it shipped a notice saying so under an empty
+       list. It is a directory now: real rows, real sectors, and every row's
+       href proved to resolve against /company/[id] before it is built. A phone
+       reader tapping this pole lands on a screen with a working read on it.
+
+       WHAT SHIPPED AND WHAT DID NOT, so a reader of this file in six months
+       does not have to guess:
+
+         directory  SHIPS. The head of the mention-ordered read, rows linked at
+                    a slug proved to land, a failed read distinguishable on
+                    screen from a corpus with nothing in it.
+         browse
+         counters   UNWIRED still. The three destinations (Deal Flow, Trends,
+                    Live Feed) are live and their figures are not: no defined
+                    query and no defined interval. The screen says unwired
+                    rather than drawing a quiet day.
+         answer     NOT WIRED, deliberately. /ask?q= still draws "This surface
+                    does not answer yet". DECISIONS.md Ruling 20 governs how it
+                    may ever be wired: a client fetch behind an explicit submit,
+                    never a server read of ?q=, because next/link prefetched
+                    four full RSC renders of it with zero interaction.
+
+       /intelligence STAYS IN `owns` and stays reachable. It is the surface the
+       prompt chips open, it is not edited by this change, and reaching it must
+       light Ask rather than nothing. `isActive` reads `owns` alone and never
+       `href`, so /company, /deal-flow, /trends and /live-feed all still light
+       this pole exactly as before. */
     label: "Ask",
-    href: "/intelligence",
+    href: "/ask",
     icon: IconAsk,
     owns: [
       "/intelligence",
@@ -178,7 +219,10 @@ const POLES: Pole[] = [
       "/live-feed",
       /* Step 9 and 10. /trends-mobile is the mobile Trends screen, which lands
          beside /trends rather than editing it. Without this entry it would
-         light no pole, since the Ask pole owns /trends and not its sibling. */
+         light no pole, since the Ask pole owns /trends and not its sibling.
+         /ask is this pole's destination as well as a member of its list, and it
+         has to be both: `isActive` reads `owns` alone, so a pole whose href is
+         missing from its own list goes dark the moment the reader arrives. */
       "/ask",
       "/search",
       "/trends-mobile",

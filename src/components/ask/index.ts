@@ -14,5 +14,14 @@ export {
    it one careless import away from the browser bundle. The server page imports
    `./fixture` by path instead. Everything below is invented nothing. */
 export { ASK_FIXTURE_ENABLED } from "./fixture-gate";
-export { ASK_DIRECTORY, EMPTY_KB_ANSWER, SUGGESTED_PROMPTS } from "./ask-data";
-export type { AskBrowseData, AskAnswerData, AskLookup, AnswerBlock } from "./ask-data";
+export {
+  ANSWER_CHIP_PROMPTS,
+  ASK_DIRECTORY,
+  CHIP_PROMPTS,
+  EMPTY_KB_ANSWER,
+  SUGGESTED_PROMPTS,
+} from "./ask-data";
+/* `AskLookup` is gone with the recent-lookups list it described. The company
+   directory's row shape lives beside its read, in
+   `src/lib/ask-companies-data.ts`, because nothing about it is a fixture. */
+export type { AskBrowseData, AskAnswerData, AnswerBlock } from "./ask-data";

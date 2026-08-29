@@ -10,6 +10,7 @@ import styles from "./ask.module.css";
    the `data` prop, resolved on the server by `src/app/ask/page.tsx`. */
 import { ASK_FIXTURE_ENABLED } from "./fixture-gate";
 import {
+  ANSWER_CHIP_PROMPTS,
   EMPTY_KB_ANSWER,
   type AnswerRecordCitation,
   type AskAnswerData,
@@ -187,10 +188,13 @@ export function AskAnswerScreen({
         </div>
       </div>
 
-      {/* The two chips come off the data, not off a second hardcoded pair here.
-          Two sources for one pair means a `data` override silently keeps the
-          fixture's chips. */}
-      <AskComposer prompts={data?.prompts} />
+      {/* The chips come off `ANSWER_CHIP_PROMPTS`, NOT off `data`, and on this
+          screen that is the difference between an escape hatch and a dead end.
+          Taken off `data` they were behind the fixture gate, so production drew
+          this screen saying nothing answers yet with no visible way to reach
+          the surface that does. There is still one definition of the pair: the
+          fixture reads the same constant. */}
+      <AskComposer prompts={ANSWER_CHIP_PROMPTS} />
     </div>
   );
 }
