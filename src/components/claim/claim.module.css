@@ -30,15 +30,54 @@
   }
 }
 
-/* The press state on the action bar is DELIBERATELY ABSENT, and the prototype
- * does draw one: `style-active="transform:scale(0.98)"` sits on both controls
- * in the bar. It shipped here once and came out.
+/* The press state, back on the one control that now does something.
  *
- * Both controls are inert, and press feedback on an inert control is the only
- * thing on the screen still telling a reader their tap landed. It is the
- * design's own touch affordance repurposed into a small untruth. It comes back
- * the day either control does something, with the rule above it: the animation
- * belongs to the action, not to the shape of the button. */
+ * It was deliberately absent while both controls in the bar were inert: press
+ * feedback on an inert control is the design's own touch affordance repurposed
+ * into a small untruth, the last thing still telling a reader their tap landed
+ * on something that would never answer. The rule written beside it was that it
+ * comes back the day either control does something, because the animation
+ * belongs to the ACTION and not to the shape of the button.
+ *
+ * That day is this one. The primary opens the commit sheet. The prototype
+ * draws `style-active="transform:scale(0.98)"` on it (`:492`), and that is the
+ * value below. The square carries no rule, because the square is no longer a
+ * control at all: the prototype gives it no handler, no tabindex and no role,
+ * and this build stopped inventing one.
+ *
+ * No transition on it, deliberately. The state is applied and removed with the
+ * press, so there is no interpolation running and nothing for the
+ * reduced-motion block below to suppress. */
+.press:active {
+  transform: scale(0.98);
+}
+
+/* DARK ONLY: an edge on the live primary.
+ *
+ * Measured on the running build: in dark the button fills with `--c-inverse`
+ * and sits on `--c-bg`, and those two resolve about 1.05:1 apart. The LABEL is
+ * fine,
+ * `--c-oninv` against that fill is the pair `commit-sheet.tsx:204-217` already
+ * corrected to and measures 17.34:1, so a reader can read the words. They just
+ * cannot see the button: there is no figure and ground, only a sentence
+ * floating on the page. That was tolerable while this was one of two inert
+ * shapes and is not now that it is the only live action on the screen. The
+ * Ledger's own Track control avoids it by being outlined rather than filled.
+ *
+ * An inset shadow rather than a border, so the box model does not move: the
+ * geometry note in `claim-screen.tsx` is measured, and a border would make it
+ * wrong by 2px. `--c-border` is the same token the square beside it and the
+ * bar's own top rule already draw with, so this adds no colour to the screen.
+ *
+ * Both selectors, because both flip this app: `html.dark` is what
+ * `theme-provider.tsx` sets and `html[data-theme="dark"]` is what the prototype
+ * and `scripts/screen-audit.mjs` use. There is no `prefers-color-scheme` rule
+ * anywhere in `tokens.css`, so a media query here would fire on a page that is
+ * still drawing light. */
+:global(html.dark) .press,
+:global(html[data-theme="dark"]) .press {
+  box-shadow: inset 0 0 0 1px var(--c-border);
+}
 
 /* Loading. The shimmer is the design's own, at its own duration. */
 .sk {

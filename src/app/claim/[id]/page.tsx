@@ -1,36 +1,58 @@
 import { AppShell } from "@/components/shell";
-import { ClaimScreen, CLAIM_FIXTURE, type ClaimStage } from "@/components/claim";
+import { CommitSheetProvider } from "@/components/commit";
+import { ClaimScreen } from "@/components/claim";
+import { getSupabaseWithUser } from "@/lib/supabase-server";
+import { loadClaim } from "@/lib/claim-data";
 
 /**
- * A claim, opened out of the Ledger. Server component so it can read the
- * lifecycle switch off the async searchParams, matching /ledger and /waitlist.
+ * One desk call, opened out of the Ledger. Server component, so the read
+ * happens before a byte of the screen is sent and the query never reaches the
+ * browser.
  *
- * The route is new: nothing under `src/app/` renders a single call full
- * screen. `src/app/radar/calls/page.tsx` is the nearest thing and is a LIST.
- * `src/proxy.ts` already opens `/claim` and its children in local dev, and
- * `mobile-tab-bar.tsx` already lists `/claim` under the Ledger pole, so
- * neither file is touched here.
+ * WIRED. `src/lib/claim-data.ts` reads the row by id, asks whether the desk has
+ * graded it and whether this reader has already taken it onto their own record,
+ * and gives back the shape `ClaimScreen` consumes. There is no fixture and no
+ * `?stage=` switch: every state this screen has is now reachable by reproducing
+ * its condition, which is what that switch existed to stand in for. The
+ * `unwired` state went with the fixture.
  *
- * NO DATA LOADER. `[id]` is read, echoed into the fixture's id and otherwise
- * unused: this unit renders from `CLAIM_FIXTURE` and wires no fetch. The
- * fixture's own header records which of its fields have a column behind them
- * and which three do not.
+ * WHICH BLOCKS OF THE DESIGN ARE ABSENT, AND WHY. Three, and THE REASON IS NO
+ * COLUMN, NOT NO TIME:
  *
- * BECAUSE THERE IS NO LOADER, PRODUCTION DRAWS `unwired`. This route requires
- * a session in production, so an ungated fixture would put a fabricated Cash
- * App call and a fabricated desk reading in front of a real reader, under a
- * counter claiming it is the second of five calls in their brief. The gate is
- * `CLAIM_FIXTURE_ENABLED` and it is enforced inside `ClaimScreen` rather than
- * here, so it cannot be forgotten at a second call site the day one exists.
- * The stage below is a request, not a decision.
+ *   the "what the desk sees" paragraphs   no column. `morning_brief_calls`
+ *                                         stores the falsifiable sentence and
+ *                                         nothing behind it.
+ *   the "WHAT WOULD SETTLE IT" well       no column. Nothing stores what would
+ *                                         falsify the claim.
+ *   the "Measured against" row            no value at read time, and NOT
+ *                                         derived on purpose. The grader picks
+ *                                         the benchmark when it runs, so
+ *                                         deriving it here would print this
+ *                                         screen's prediction of that choice.
  *
- * ?stage= renders a lifecycle state directly, for the same reason the Ledger
- * takes one: with no data source the states cannot be reached by reproducing
- * their conditions, and the runtime audit has to be able to reach each one.
+ * `sql/0003_brief_self_grading.sql:14-24` plus 0013 and 0014 are the whole
+ * column list, and `backend/synthesize.py:1497-1518` writes exactly those. None
+ * of the three is stubbed and none is drawn empty. What is left is still the
+ * only surface where a reader can see a call's window and its settlement date
+ * and commit to it, and it is the ONLY surface that shows an ADOPTED call while
+ * its window is still open: the record lists graded entries only.
+ *
+ * `[id]` IS A morning_brief_calls id. `src/app/entry/[id]/page.tsx` is the
+ * sibling route and takes a user_claims id; both are uuids, so the string
+ * cannot settle it and the ROUTE does. The loader looks the id up in
+ * morning_brief_calls, and anything not there renders missing, which is where a
+ * user_claims id pasted in here correctly lands.
+ *
+ * THE COMMIT SHEET is a global overlay rather than a child of the screen, so it
+ * is mounted here as a provider around the route, exactly as
+ * `src/app/ledger/page.tsx:109` mounts it. Nothing in `src/components/commit/`
+ * changed: a new surface adds a trigger and inherits the note gate, the press,
+ * the write and the failure path. `initialTarget` is null on every path,
+ * because on this route the sheet only ever opens on a tap.
  *
  * The shell is mounted per page, the way every other page in this repo mounts
- * it. `mobileFullBleed` gates the desk's mood bar, topbar and footer, which
- * are chrome stacked on a screen that already draws its own head.
+ * it. `mobileFullBleed` gates the desk's mood bar, topbar and footer, which are
+ * chrome stacked on a screen that already draws its own head.
  *
  * ONE DIVERGENCE FROM THE PROTOTYPE, stated rather than hidden: the design's
  * `showNav` lists four screens and `claim` is not among them, so the design
@@ -39,48 +61,43 @@ import { ClaimScreen, CLAIM_FIXTURE, type ClaimStage } from "@/components/claim"
  * unit's to edit. The bar renders and lights Ledger.
  */
 
-const STAGES: ClaimStage[] = [
-  "ready",
-  "loading",
-  "error",
-  "missing",
-  "stale",
-  "ungradeable",
-  "unwired",
-];
-
-export default async function ClaimPage({
-  params,
-  searchParams,
-}: {
-  params: Promise<{ id: string }>;
-  searchParams: Promise<{ stage?: string | string[] }>;
-}) {
+export default async function ClaimPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const query = await searchParams;
-  const raw = Array.isArray(query.stage) ? query.stage[0] : query.stage;
-  const stage = STAGES.includes(raw as ClaimStage) ? (raw as ClaimStage) : "ready";
+
+  const { supabase, user } = await getSupabaseWithUser();
+  const { data, stage } = await loadClaim(supabase, user?.id ?? null, id);
 
   return (
     <AppShell pageTitle="Claim" mobileFullBleed>
-      {/* The mobile layout is gated on the same breakpoint the shell uses to
-          swap the sidebar for the tab bar. Gating lives in classes, never in an
-          inline style: an inline display beats the class at every breakpoint. */}
-      <div className="md:hidden">
-        <ClaimScreen stage={stage} data={{ ...CLAIM_FIXTURE, id }} />
-      </div>
+      <CommitSheetProvider initialTarget={null}>
+        {/* The mobile layout is gated on the same breakpoint the shell uses to
+            swap the sidebar for the tab bar. Gating lives in classes, never in
+            an inline style: an inline display beats the class at every
+            breakpoint.
 
-      {/* Above the breakpoint this route has no layout of its own. The desk
-          reads a call inside the brief it came from, and that surface already
-          exists. */}
-      <div className="hidden md:block" style={{ padding: "48px", backgroundColor: "var(--c-bg)" }}>
-        <p style={{ margin: 0, font: "500 17px/1.4 var(--font-playfair-display), serif", color: "var(--c-ink)" }}>
-          A claim is a mobile surface.
-        </p>
-        <p style={{ margin: "10px 0 0", font: "400 13px/1.6 var(--font-inter), sans-serif", color: "var(--c-secondary)" }}>
-          On a wider screen the desk reads a call inside the brief it was written in.
-        </p>
-      </div>
+            `h-full` is load bearing and not cosmetic, for the reason
+            `src/app/ledger/page.tsx:114-123` records at length: `main` gives
+            this subtree a definite height and `PageTransition` passes it
+            through, but a shrink-wrapping gate div ends that chain and makes
+            the screen's own `minHeight: 100%` inert. Here that would leave a
+            short claim painting `--c-bg` over only part of a `bg-parchment`
+            page, which is a visible two-tone seam across the phone. */}
+        <div className="md:hidden h-full">
+          <ClaimScreen stage={stage} data={data} />
+        </div>
+
+        {/* Above the breakpoint this route has no layout of its own. The desk
+            reads a call inside the brief it came from, and that surface already
+            exists. */}
+        <div className="hidden md:block" style={{ padding: "48px", backgroundColor: "var(--c-bg)" }}>
+          <p style={{ margin: 0, font: "500 17px/1.4 var(--font-playfair-display), serif", color: "var(--c-ink)" }}>
+            A claim is a mobile surface.
+          </p>
+          <p style={{ margin: "10px 0 0", font: "400 13px/1.6 var(--font-inter), sans-serif", color: "var(--c-secondary)" }}>
+            On a wider screen the desk reads a call inside the brief it was written in.
+          </p>
+        </div>
+      </CommitSheetProvider>
     </AppShell>
   );
 }

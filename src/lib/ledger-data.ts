@@ -215,8 +215,14 @@ const OUTCOME_BY_RESOLUTION: Record<Resolution, OutcomeState> = {
   notGraded: "awaiting",
 };
 
-/** Sentence-cased claim type, used as an eyebrow when there is no symbol. */
-function eyebrowFor(row: { target_symbol: string | null; claim_type: string | null }): string {
+/**
+ * Sentence-cased claim type, used as an eyebrow when there is no symbol.
+ *
+ * Exported for `src/lib/claim-data.ts`, which reads one of the same rows for
+ * `/claim/[id]`. A second copy of this rule is how the card and the screen it
+ * opens start showing one call two different eyebrows.
+ */
+export function eyebrowFor(row: { target_symbol: string | null; claim_type: string | null }): string {
   const symbol = asText(row.target_symbol);
   if (symbol) return symbol;
   const kind = asText(row.claim_type);
