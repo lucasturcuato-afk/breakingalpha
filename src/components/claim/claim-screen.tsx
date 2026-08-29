@@ -1,36 +1,39 @@
 "use client";
 
 import Link from "next/link";
-import { ClaimAnatomy, CLAIM_TYPE_SCALE, Chevron } from "@/components/ledger";
+import { ClaimAnatomy, Chevron } from "@/components/ledger";
 import { UNGRADEABLE_REASON } from "@/components/calls/TrackCallControl";
-import { CLAIM_FIXTURE_ENABLED, type ClaimData } from "./fixture";
+import { useCommitSheet } from "@/components/commit/commit-sheet-provider";
+import type { ClaimData, ClaimStage } from "@/lib/claim-data";
 import styles from "./claim.module.css";
 
 /**
- * The Claim screen. One call opened out of the Ledger: what the desk sees, what
- * would settle it, and the benchmark and window it will be judged against.
+ * The Claim screen. One desk call opened out of the Ledger: the sentence, the
+ * window it is judged over, the date it is checked, and the commitment.
  *
- * Every measurement is taken off the rendered prototype with getComputedStyle.
- * The prototype's sc-if blocks need a runtime that does not resolve over
- * file://, so the screen was rendered through `scripts/parity_harness.py`,
- * which resolves those branches from the design's own state map.
+ * WHAT THIS SCREEN DOES NOT DRAW, and why that is absence rather than a stub.
+ * The design puts three more blocks here and NO COLUMN EXISTS behind any of
+ * them: the two "what the desk sees" paragraphs, the "WHAT WOULD SETTLE IT"
+ * well, and the "Measured against" row. THE REASON IS NO COLUMN, NOT NO TIME.
+ * `src/lib/claim-data.ts` names the schema and the writer that prove it. They
+ * are omitted entirely rather than drawn empty: an empty well is a promise the
+ * data cannot keep, and a derived benchmark pair would be this screen
+ * PREDICTING what the grader picks on grading day, out of a fourth copy of a
+ * map already duplicated three times.
  *
- * WHAT THIS SCREEN IS NOT ALLOWED TO DO YET. Its primary action opens the
- * commit sheet, and the commit sheet is held: the note it requires has no
- * column to be written to, which is open in PR #643. The button is built in
- * its drawn state, at its drawn position, with its drawn label, and does
- * nothing. `src/components/ledger/ledger-claim-card.tsx` set that precedent by
- * making `onTrack` optional for the same reason; the difference here is that
- * this screen's whole bottom bar IS the action, so it renders inert rather
- * than not at all.
+ * The counter the design draws beside the back control ("2 / 5") goes with
+ * them. It is a position in the brief, and the ordering it would count against
+ * is a confidence sort the reader is never shown, so the numeral would be a
+ * rank asserted out of a hidden ordering rather than a fact off the row.
  *
  * ANATOMY. The eyebrow and the claim come from `ClaimAnatomy` at the `screen`
- * scale, which is the same four slots the Ledger card and the entry row use.
- * Everything below the claim sits BESIDE the anatomy rather than inside it:
- * the design's reading is two paragraphs and the anatomy's prose slot is one
- * `<p>`, which a second paragraph cannot nest inside. The two paragraphs still
- * draw in the anatomy's own type, read from `CLAIM_TYPE_SCALE`, so there is no
- * second copy of the scale to drift from the first.
+ * scale, the same four slots the Ledger card and the entry row use. With the
+ * reading gone, nothing sits between the claim and the settlement rows except
+ * the design's own hairline. The design's SECOND hairline went with the blocks
+ * it separated: two rules with nothing between them is not the design's
+ * spacing, it is the residue of deleting what they framed.
+ *
+ * Every measurement is taken off the rendered prototype with getComputedStyle.
  */
 
 const PAD = "var(--v3-pad)";
@@ -46,54 +49,45 @@ const SCREEN_HEIGHT =
   "calc(100dvh - var(--mobile-tabbar-height) - env(safe-area-inset-bottom))";
 
 /**
- * ready        the claim, with its action bar
- * loading      the read is in flight
- * error        the read failed, which is never rendered as emptiness
- * missing      the read succeeded and there is no such claim
- * stale        the claim came from a brief that is no longer today's
- * ungradeable  no honest grader exists for this claim type, so nothing can be
- *              committed to and the action bar carries the reason instead
- * unwired      there is no source behind this screen at all, so no read has
- *              been attempted and none is running
+ * `data` is REQUIRED and NULLABLE, and it has no default. Defaulting it would
+ * mean a caller that forgets to pass it draws something other than the claim
+ * the reader asked for. Null is the page saying it has nothing to hand over,
+ * and the screen then draws loading, error or missing and never a sentence
+ * about the reader.
  *
- * The design draws exactly one of these, `ready`. The prototype's dev strip
- * enumerates lifecycle states for the brief and the wrap and none for a claim,
- * so the other six are built from the repo's own copy where it has some and
- * are flagged as authored where it does not. See the PR body.
- */
-export type ClaimStage =
-  | "ready"
-  | "loading"
-  | "error"
-  | "missing"
-  | "stale"
-  | "ungradeable"
-  | "unwired";
-
-/**
- * `data` is required and has no default. Defaulting it to the fixture would
- * mean a caller that forgets to pass it, or that passes nothing while a read is
- * in flight, renders the sample Cash App claim as though it were the reader's
- * own. Sample content reaches a screen because a page hands it over, never
- * because a component fell back to it.
+ * THE `loading` ARM IS UNREACHABLE FROM THE ONLY CALL SITE, recorded here
+ * rather than left for the next reader to rediscover, the way
+ * `ledger-screen.tsx:96-124` records its own. `/claim/[id]/page.tsx` is a
+ * server component that AWAITS its read before it renders, so by the time this
+ * component exists the read has already answered ready, ungradeable, error or
+ * missing. The arm stays because it is what a caller that has not answered
+ * looks like, and drawing nothing instead would make an unanswered read look
+ * like an answered and empty one. What would make it reachable: a client fetch,
+ * or a Suspense boundary that renders this screen before the read settles.
  */
 export function ClaimScreen({
   data,
   stage = "ready",
 }: {
-  data: ClaimData;
+  data: ClaimData | null;
   stage?: ClaimStage;
 }) {
-  /* With the fixture gate closed the screen is `unwired` whatever `?stage=`
-     says. That parameter is a way to reach the lifecycle states in development
-     and a preview; it is not a source, so it cannot be allowed to put invented
-     content, or a confident empty state, in front of a production reader. In
-     development and preview `?stage=unwired` reaches this branch on purpose so
-     it can be audited and captured like the rest. */
-  const effective: ClaimStage = CLAIM_FIXTURE_ENABLED ? stage : "unwired";
+  /* Null outside a `CommitSheetProvider`, and the screen then draws no action
+     rather than an action that goes nowhere. `/claim/[id]/page.tsx` mounts its
+     own provider around this screen. That is a second provider, not a second
+     sheet competing with the Ledger's: the context is created once at module
+     scope but its VALUE is per-instance state, and the overlay portals to
+     document.body off a ref callback. It is also why the sheet's
+     `router.refresh()` re-reads THIS claim, which is what turns the button
+     into the marker with no toast. */
+  const commit = useCommitSheet();
 
-  const showsClaim =
-    effective === "ready" || effective === "stale" || effective === "ungradeable";
+  const showsClaim = data !== null && (stage === "ready" || stage === "ungradeable");
+  const settlement = data?.settlement;
+  const showsSettlement =
+    showsClaim &&
+    settlement != null &&
+    (settlement.window !== null || settlement.checked !== null);
 
   return (
     <div
@@ -112,7 +106,6 @@ export function ClaimScreen({
           minHeight: "48px",
           display: "flex",
           alignItems: "center",
-          justifyContent: "space-between",
           padding: `0 ${PAD}`,
           borderBottom: "1px solid var(--c-border)",
         }}
@@ -135,31 +128,14 @@ export function ClaimScreen({
           <Chevron direction="left" size={16} stroke="currentColor" />
           Ledger
         </Link>
-        {/* The counter is a fact about a claim that was read. On loading, error
-            and missing there is no claim, so a position for it is an assertion
-            the screen cannot make: "2 / 5" sitting above "There is no claim at
-            this address" is the header contradicting the body. Gated on the
-            same condition the claim body is. */}
-        {showsClaim ? (
-          <span
-            style={{
-              font: "400 10.5px/1 var(--font-jetbrains-mono), monospace",
-              letterSpacing: "0.045em",
-              color: "var(--c-muted)",
-            }}
-          >
-            {data.position.index} / {data.position.total}
-          </span>
-        ) : null}
       </div>
 
       <div style={{ flex: 1, padding: `22px ${PAD} 24px` }}>
-        {effective === "loading" ? <ClaimSkeleton /> : null}
-        {effective === "error" ? <ClaimError /> : null}
-        {effective === "missing" ? <ClaimMissing /> : null}
-        {effective === "unwired" ? <ClaimUnwired /> : null}
-        {effective === "stale" ? <StaleNotice generatedAt={data.generatedAt} /> : null}
-
+        {/* One chain, so exactly one of these draws. A stage that says there is
+            a claim with no claim to draw falls to missing rather than to
+            nothing: unreachable from the loader, where `ready` and
+            `ungradeable` both carry a payload, and it is the honest landing
+            for a caller that has answered with no row. */}
         {showsClaim ? (
           <>
             <ClaimAnatomy
@@ -172,73 +148,59 @@ export function ClaimScreen({
               claim={data.claim}
             />
 
-            <Hairline marginTop="20px" />
-
-            <div
-              style={{
-                marginTop: "16px",
-                font: "400 italic 12.5px/1 var(--font-playfair-display), serif",
-                color: "var(--c-secondary)",
-              }}
-            >
-              what the desk sees
-            </div>
-            {data.reading.map((paragraph, i) => (
-              <p
-                key={i}
-                style={{
-                  /* 10px under the label, 11px between paragraphs. The design
-                     draws both and they are not the same number. */
-                  margin: `${i === 0 ? "10px" : "11px"} 0 0`,
-                  font: CLAIM_TYPE_SCALE.screen.prose,
-                  color: "var(--c-body)",
-                  textWrap: "pretty",
-                }}
-              >
-                {paragraph}
-              </p>
-            ))}
-
-            <div
-              style={{
-                marginTop: "18px",
-                padding: "14px 15px",
-                border: "1px solid var(--c-border)",
-                borderRadius: "12px",
-                backgroundColor: "var(--c-well)",
-              }}
-            >
-              {/* Capitals, and sanctioned. The design's own carve-out is that
-                  they survive in the monospace machine record and nowhere
-                  else; this is a mono label on a well, set as literal capitals
-                  rather than by text-transform, so it is what it says it is. */}
-              <div style={{ font: "400 11px/1 var(--font-jetbrains-mono), monospace", color: "var(--c-muted)" }}>
-                WHAT WOULD SETTLE IT
-              </div>
-              <p
-                style={{
-                  margin: "9px 0 0",
-                  font: "400 13.5px/1.6 var(--font-inter), sans-serif",
-                  color: "var(--c-body)",
-                  textWrap: "pretty",
-                }}
-              >
-                {data.settles}
-              </p>
-            </div>
-
-            <Hairline marginTop="18px" />
-
-            <div style={{ marginTop: "14px", display: "flex", flexDirection: "column", gap: "10px" }}>
-              <SettlementRow label="Measured against" value={data.settlement.benchmarks} />
-              <SettlementRow label="Window" value={data.settlement.window} />
-              <SettlementRow label="Checked" value={data.settlement.checked} />
-            </div>
+            {showsSettlement ? (
+              <>
+                <Hairline marginTop="20px" />
+                <div style={{ marginTop: "14px", display: "flex", flexDirection: "column", gap: "10px" }}>
+                  {/* "Desk window", not the design's bare "Window". The span is
+                      the DESK CALL's, brief_date to resolve_on, and a reader
+                      who commits gets a DIFFERENT one: the adopt route opens
+                      theirs today and runs it to their own horizon. Their
+                      window belongs on /entry, which is the screen that has it.
+                      The fixture this replaced said "90 days, fixed at entry",
+                      which was untrue twice in six words. */}
+                  {settlement.window ? (
+                    <SettlementRow label="Desk window" value={settlement.window} />
+                  ) : null}
+                  {settlement.checked ? (
+                    <SettlementRow label="Checked" value={settlement.checked} />
+                  ) : null}
+                </div>
+              </>
+            ) : null}
           </>
-        ) : null}
+        ) : stage === "loading" ? (
+          <ClaimSkeleton />
+        ) : stage === "error" ? (
+          <ClaimError />
+        ) : (
+          <ClaimMissing />
+        )}
       </div>
 
-      {showsClaim ? <ActionBar ungradeable={effective === "ungradeable"} /> : null}
+      {showsClaim ? (
+        <ActionBar
+          variant={data.variant}
+          ungradeable={stage === "ungradeable"}
+          /* Gated the way `ledger-screen.tsx:209-211` gates the card, plus two
+             conditions the Ledger does not need. The Ledger draws today's
+             brief, so its cards are open by construction; this screen can be
+             reached by a bookmark long after the card is gone, and the loader's
+             `variant` carries the closed window and the already-graded call
+             that the Ledger never has to describe. */
+          onTrack={
+            data.variant === "open" && commit
+              ? () =>
+                  commit.open({
+                    callId: data.callId,
+                    claim: data.claim,
+                    resolveOn: data.resolveOn,
+                    sessionIso: data.sessionIso,
+                  })
+              : undefined
+          }
+        />
+      ) : null}
     </div>
   );
 }
@@ -265,54 +227,54 @@ function SettlementRow({ label, value }: { label: string; value: string }) {
 }
 
 /**
- * The bottom bar. Two controls in the design, and both of them are inert.
+ * The bottom bar. Four renderings, and only one of them carries a control.
  *
- * The primary opens the commit sheet, which is held. The secondary is drawn
- * with no handler, no label and no state anywhere in the prototype: it is a
- * bordered square carrying the same rotated 12px diamond the design uses as its
- * "on your ledger" mark, and nothing in the handoff says what pressing it
- * does. It is built as a real button with an authored label rather than
- * dropped, because removing it would change the geometry of the bar the
- * primary sits in, and built as a button rather than a div because a
- * cursor:pointer element with no control behind it is a defect the runtime
- * audit rejects. The label is inferred. See the PR body.
+ * THE SQUARE IS NOT A CONTROL, and that is a correction rather than a
+ * simplification. It shipped here as a button with an authored label ("Save
+ * this claim. Not available yet.") and `aria-disabled`, which put a
+ * keyboard-reachable control on the screen announcing a name the design never
+ * gave it and a state it could never leave. The evidence is measured: in the
+ * prototype at `'Signalera Mobile v3.dc.html':491` the square is a bare div
+ * with NO onClick, NO tabindex and NO role, while on the SAME screen the back
+ * control at `:471` and the primary at `:492` each carry all three. The design
+ * marks its controls and does not mark this one. There is also nowhere for it
+ * to write: `claim_follows` exists nowhere on this ref, `follows` is
+ * CHECK-constrained with no claim slot, and `user_saved_deals` is deal-shaped.
  *
- * BOTH CARRY A REAL DISABLED AFFORDANCE, and the first build did not.
+ * So it is a plain div with the design's geometry and no role, no tabindex, no
+ * handler and no `cursor: pointer`. The prototype does draw the pointer on it;
+ * a pointer over an element with no control behind it is the defect
+ * `README.md:309` names, and it is the one drawn value not carried over. The
+ * geometry is: square 54x54 including its border, the primary flexing to fill,
+ * 9px between them, an 85px bar.
  *
- * It shipped two keyboard-reachable buttons that announced as buttons, drew a
- * `cursor:pointer`, ran a press animation on touch, and called an empty
- * function. `README.md:309` calls a `cursor:pointer` element with no handler a
- * defect; an empty handler is the same defect with a function around it. The
- * unit's constraint is that the primary stays inert, and that constraint says
- * nothing about lying to the reader while it is.
+ * THE PRIMARY IS LIVE. It opens the commit sheet, which is a global overlay
+ * mounted by the provider on the route, so this screen adds a trigger and
+ * inherits the note gate, the press, the write and the failure path. Nothing in
+ * `src/components/commit/` changed to make that work.
  *
- * So: `aria-disabled` on both, the default cursor rather than the pointer, the
- * drawn colours at reduced opacity, and no press animation, since the press
- * was the last thing telling a reader their tap had landed. `aria-disabled`
- * rather than `disabled` on purpose. `disabled` drops the control out of the
- * tab order entirely, so a keyboard reader would never find it and would never
- * be told it is here and not yet available; `aria-disabled` keeps it
- * reachable and announces it as unavailable. No handler is attached at all,
- * so nothing runs on the click `aria-disabled` still permits.
- *
- * WHY EACH IS INERT, kept here because the empty functions that used to carry
- * these notes are gone:
- *
- *   Track this call   opens the commit sheet, which is held. The note it
- *                     requires has nowhere to persist, which is open in
- *                     PR #643. Deliberately inert rather than partially wired:
- *                     a sheet that takes a note and drops it is worse than a
- *                     control that says it is not ready.
- *   Save this claim   there is no save path for a claim. `useSavedDeals` and
- *                     `user_saved_deals` are deal-shaped, and github.md
- *                     records the live Saved surface as deals only.
+ * WHEN THE BAR DRAWS NOTHING AT ALL. A call the desk has already graded, and a
+ * call whose window has closed, both arrive as `variant: "closed"` and get no
+ * bar. The design has no graded state and this screen has no slot for an
+ * outcome word, so inventing one would be a new design rather than a wiring;
+ * the desk's verdict also answers a different question from the reader's own,
+ * which `src/lib/claim-outcome.ts` enforces by construction. And adopting a
+ * closed-window call is worse than useless: the adopt route silently writes
+ * `gradeable: false` (adopt/route.ts:141-149), a commitment that can never
+ * settle.
  */
-const INERT_CONTROL = {
-  cursor: "default",
-  opacity: 0.55,
-} as const;
+function ActionBar({
+  variant,
+  ungradeable,
+  onTrack,
+}: {
+  variant: ClaimData["variant"];
+  ungradeable: boolean;
+  onTrack?: () => void;
+}) {
+  const onLedger = variant === "onLedger";
+  if (!onLedger && !ungradeable && !onTrack) return null;
 
-function ActionBar({ ungradeable }: { ungradeable: boolean }) {
   return (
     <div
       style={{
@@ -320,10 +282,33 @@ function ActionBar({ ungradeable }: { ungradeable: boolean }) {
         padding: `14px ${PAD} 16px`,
         borderTop: "1px solid var(--c-border)",
         display: "flex",
+        alignItems: "center",
         gap: "9px",
       }}
     >
-      {ungradeable ? (
+      {onLedger ? (
+        /* The Ledger's own marker, verbatim: the diamond, the words, 600 12px,
+           `--c-muted` (ledger-claim-card.tsx:127-146). A claim adopted while
+           its window is still open has NO /entry page, because the record
+           lists graded entries only, so this screen is the only surface that
+           state is visible on and it has to carry it. Never a disabled Track
+           button: a control that announces itself and cannot be operated is
+           what this bar just removed. */
+        <div
+          style={{
+            minHeight: "52px",
+            display: "flex",
+            alignItems: "center",
+            font: "600 12px/1 var(--font-inter), sans-serif",
+            color: "var(--c-muted)",
+          }}
+        >
+          <span aria-hidden="true" style={{ marginRight: "6px" }}>
+            {"\u25C6"}
+          </span>
+          On your ledger
+        </div>
+      ) : ungradeable ? (
         <p
           style={{
             margin: 0,
@@ -335,10 +320,7 @@ function ActionBar({ ungradeable }: { ungradeable: boolean }) {
         </p>
       ) : (
         <>
-          <button
-            type="button"
-            aria-disabled="true"
-            aria-label="Save this claim. Not available yet."
+          <div
             style={{
               flex: "none",
               minWidth: "52px",
@@ -346,13 +328,8 @@ function ActionBar({ ungradeable }: { ungradeable: boolean }) {
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              appearance: "none",
-              margin: 0,
-              padding: 0,
-              background: "none",
               border: "1px solid var(--c-border)",
               borderRadius: "9px",
-              ...INERT_CONTROL,
             }}
           >
             <span
@@ -365,12 +342,12 @@ function ActionBar({ ungradeable }: { ungradeable: boolean }) {
                 transform: "rotate(45deg)",
               }}
             />
-          </button>
+          </div>
 
           <button
             type="button"
-            aria-disabled="true"
-            aria-label="Track this call. Not available yet."
+            onClick={onTrack}
+            className={styles.press}
             style={{
               flex: 1,
               minHeight: "52px",
@@ -385,7 +362,7 @@ function ActionBar({ ungradeable }: { ungradeable: boolean }) {
               borderRadius: "9px",
               font: "600 14.5px/1 var(--font-inter), sans-serif",
               color: "var(--c-oninv)",
-              ...INERT_CONTROL,
+              cursor: "pointer",
             }}
           >
             Track this call
@@ -401,13 +378,17 @@ function ClaimSkeleton() {
     /* role="status" is load bearing, not decoration. aria-label on a bare div
        lands on the generic role, which prohibits an author name, so without
        the role a screen reader arriving here announces nothing at all: no
-       label, no content, just silence where the claim will be. */
+       label, no content, just silence where the claim will be.
+
+       The blocks are the ones that draw: eyebrow, claim, hairline, the two
+       settlement rows. The three the design draws and the schema cannot fill
+       are not skeletoned either, because a skeleton is a promise that content
+       is coming. */
     <div role="status" aria-busy="true" aria-label="Loading this claim">
       <div className={styles.sk} style={{ height: "11px", width: "38%" }} />
       <div className={styles.sk} style={{ height: "56px", marginTop: "13px" }} />
       <div className={styles.sk} style={{ height: "1px", marginTop: "20px" }} />
-      <div className={styles.sk} style={{ height: "92px", marginTop: "16px" }} />
-      <div className={styles.sk} style={{ height: "76px", marginTop: "18px", borderRadius: "12px" }} />
+      <div className={styles.sk} style={{ height: "44px", marginTop: "14px" }} />
     </div>
   );
 }
@@ -417,12 +398,6 @@ function ClaimSkeleton() {
  * directions. The principle is already stated verbatim in the repo, and the
  * Ledger's own error block words it the same way, so the two surfaces do not
  * describe the same failure differently.
- *
- * It used to close with "and the claim is unchanged on the ledger". That is a
- * statement about the reader's own record, made by a screen that just failed
- * to read anything and has no second source to check it against. Cut. What is
- * left describes only the read that failed, which is the one thing this state
- * does know.
  */
 function ClaimError() {
   return (
@@ -447,9 +422,10 @@ function ClaimError() {
 /**
  * The read came back and there is no such claim.
  *
- * "Your open calls are unaffected" used to close this block, and it is gone
- * for the same reason as the line above it. This screen reads one claim. It
- * has never read the reader's open calls and cannot say anything about them.
+ * This is also where an id belonging to the SIBLING route lands. /entry takes a
+ * user_claims id, both are uuids, and nothing in the string distinguishes them,
+ * so the loader does not guess: it looks the id up in morning_brief_calls, and
+ * a user_claims id is not there.
  */
 function ClaimMissing() {
   return (
@@ -468,57 +444,6 @@ function ClaimMissing() {
         Nothing failed to load. A claim is never removed once it is written, so this one was
         never here.
       </p>
-    </div>
-  );
-}
-
-/**
- * No source at all, which is this screen's honest production state today.
- *
- * `loading` would say a read is on its way when nothing is coming. `missing`
- * would say a read came back empty. `error` would say a read failed. None of
- * the three happened, so this state says the fourth thing and asserts nothing
- * about the reader, their brief or their record. It names what is absent and
- * stops.
- */
-function ClaimUnwired() {
-  return (
-    <div role="status">
-      <p style={{ margin: 0, font: "500 17px/1.4 var(--font-playfair-display), serif", color: "var(--c-ink)" }}>
-        This screen is not wired to a claim yet.
-      </p>
-      <p
-        style={{
-          margin: "10px 0 0",
-          font: "400 13px/1.6 var(--font-inter), sans-serif",
-          color: "var(--c-secondary)",
-          maxWidth: "32ch",
-        }}
-      >
-        Nothing has been read and nothing is being read. The desk&rsquo;s reading and the
-        benchmark a claim would be measured against have no source behind them on this screen.
-      </p>
-    </div>
-  );
-}
-
-function StaleNotice({ generatedAt }: { generatedAt: string }) {
-  return (
-    <div
-      style={{
-        marginBottom: "18px",
-        border: "1px solid var(--c-amber-edge)",
-        backgroundColor: "var(--c-amber-well)",
-        borderRadius: "12px",
-        padding: "13px 14px",
-      }}
-    >
-      <div style={{ font: "600 12px/1 var(--font-inter), sans-serif", color: "var(--c-ink)" }}>
-        This claim is from yesterday&rsquo;s brief.
-      </div>
-      <div style={{ marginTop: "4px", font: "400 11.5px/1.5 var(--font-inter), sans-serif", color: "var(--c-body)" }}>
-        Generated {generatedAt}. Its review date is unaffected.
-      </div>
     </div>
   );
 }

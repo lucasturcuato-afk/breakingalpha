@@ -197,11 +197,17 @@ export function LedgerScreen({
                 variant={c.variant}
                 ungradeableReason={c.ungradeableReason}
                 delayMs={60 + i * 60}
-                /* No onOpen. There is no claim detail route to send anyone to,
-                   and a card that opens nothing must not be a button. */
+                /* The claim detail route, which now exists and is wired to a
+                   loader. The card's reading region becomes a real button
+                   carrying `styles.bare` the moment this is passed
+                   (ledger-claim-card.tsx:87-93), and the card CONTAINER stays
+                   unfocusable, so a keyboard reader does not tab into a control
+                   named after a whole card. The design agrees: prototype :415
+                   puts goClaim on exactly that region. */
+                onOpen={() => router.push(`/claim/${c.id}`)}
                 /* The commit sheet, which is a GLOBAL OVERLAY rather than a
                    child of this screen: `CommitSheetProvider` mounts it and
-                   Claim opens the same one later through the same hook. Null
+                   Claim mounts its own and opens it through the same hook. Null
                    when no provider is above this screen, and the card then
                    draws no action rather than an action that goes nowhere.
                    Before this unit the handler pushed to /radar/calls, which

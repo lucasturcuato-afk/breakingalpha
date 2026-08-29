@@ -30,15 +30,27 @@
   }
 }
 
-/* The press state on the action bar is DELIBERATELY ABSENT, and the prototype
- * does draw one: `style-active="transform:scale(0.98)"` sits on both controls
- * in the bar. It shipped here once and came out.
+/* The press state, back on the one control that now does something.
  *
- * Both controls are inert, and press feedback on an inert control is the only
- * thing on the screen still telling a reader their tap landed. It is the
- * design's own touch affordance repurposed into a small untruth. It comes back
- * the day either control does something, with the rule above it: the animation
- * belongs to the action, not to the shape of the button. */
+ * It was deliberately absent while both controls in the bar were inert: press
+ * feedback on an inert control is the design's own touch affordance repurposed
+ * into a small untruth, the last thing still telling a reader their tap landed
+ * on something that would never answer. The rule written beside it was that it
+ * comes back the day either control does something, because the animation
+ * belongs to the ACTION and not to the shape of the button.
+ *
+ * That day is this one. The primary opens the commit sheet. The prototype
+ * draws `style-active="transform:scale(0.98)"` on it (`:492`), and that is the
+ * value below. The square carries no rule, because the square is no longer a
+ * control at all: the prototype gives it no handler, no tabindex and no role,
+ * and this build stopped inventing one.
+ *
+ * No transition on it, deliberately. The state is applied and removed with the
+ * press, so there is no interpolation running and nothing for the
+ * reduced-motion block below to suppress. */
+.press:active {
+  transform: scale(0.98);
+}
 
 /* Loading. The shimmer is the design's own, at its own duration. */
 .sk {
