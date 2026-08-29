@@ -1,0 +1,1012 @@
+{
+ "slug": "goldman-sachs",
+ "name": "Goldman Sachs",
+ "filings": {
+  "cik": 886982,
+  "companyId": "86094111-a21a-4128-9733-3b5aa2f0e58c",
+  "filings": [
+   {
+    "accessionNumber": "0000886982-26-000522",
+    "formType": "4/A",
+    "filingDate": "2026-08-28",
+    "documentUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000522/wk-form4a_1787953085.xml",
+    "summary": "Form 4: 3 qualifying insider transaction(s)",
+    "outputId": null
+   },
+   {
+    "accessionNumber": "0000886982-26-000495",
+    "formType": "4",
+    "filingDate": "2026-08-13",
+    "documentUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000495/wk-form4_1786672305.xml",
+    "summary": "Form 4: 3 qualifying insider transaction(s)",
+    "outputId": null
+   },
+   {
+    "accessionNumber": "0001193125-26-344912",
+    "formType": "8-K",
+    "filingDate": "2026-08-11",
+    "documentUrl": "https://www.sec.gov/Archives/edgar/data/886982/000119312526344912/d179572d8k.htm",
+    "summary": "Goldman Sachs filed a Certificate of Elimination for its Series U Preferred Stock following its redemption on August 10, 2026. Concurrently, the company filed a Restated Certificate of Incorporation to include the terms of its newly designated 6.500% Fixed-Rate Reset Non-Cumulative Preferred Stock, Series AA, reflecting these changes.",
+    "outputId": "06f1ed1a-1af0-4c70-af6d-8e894b9c4c94"
+   },
+   {
+    "accessionNumber": "0000886982-26-000297",
+    "formType": "10-Q",
+    "filingDate": "2026-08-03",
+    "documentUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000297/gs-20260630.htm",
+    "summary": "10-Q filing detected. Full financial detail extraction pending (XBRL parsing in follow-up PR).",
+    "outputId": null
+   },
+   {
+    "accessionNumber": "0001193125-26-318147",
+    "formType": "8-K",
+    "filingDate": "2026-07-27",
+    "documentUrl": "https://www.sec.gov/Archives/edgar/data/886982/000119312526318147/d113214d8k.htm",
+    "summary": "Goldman Sachs filed a Certificate of Designations for its new 6.500% Fixed-Rate Reset Non-Cumulative Preferred Stock, Series AA. The issuance of this preferred stock will impose restrictions on GS's ability to pay common stock dividends or repurchase shares if it fails to pay dividends on the Series AA Preferred Stock. This filing, under Item 5.03, formalizes the terms of the new preferred stock and its impact on common shareholders' rights.",
+    "outputId": "ff4a9306-2f18-412c-ad18-0cd0d3a0d3f7"
+   },
+   {
+    "accessionNumber": "0001193125-26-310408",
+    "formType": "8-K",
+    "filingDate": "2026-07-21",
+    "documentUrl": "https://www.sec.gov/Archives/edgar/data/886982/000119312526310408/d102046d8k.htm",
+    "summary": "Goldman Sachs Group Inc. (GS) filed an 8-K to report the issuance of $10 billion in new debt securities on July 21, 2026. This includes $3.5 billion in 5.240% fixed/floating rate notes due 2032, $3.5 billion in 5.655% fixed/floating rate notes due 2037, and $3.0 billion in 6.215% fixed/floating rate notes due 2057. The filing also updated the list of their registered securities, including various preferred stocks and medium-term notes.",
+    "outputId": "dd394c2a-03d9-4694-92d3-cf3227caa5d8"
+   },
+   {
+    "accessionNumber": "0001193125-26-308384",
+    "formType": "8-K",
+    "filingDate": "2026-07-20",
+    "documentUrl": "https://www.sec.gov/Archives/edgar/data/886982/000119312526308384/d279459d8k.htm",
+    "summary": "Goldman Sachs announced a proposed public offering of depositary shares representing interests in a new series of Fixed-Rate Reset Non-Cumulative Preferred Stock, Series AA. Proceeds from this offering are intended to fund the redemption of all outstanding 3.65% Fixed-Rate Reset Non-Cumulative Preferred Stock, Series U, though the offering and redemption are subject to market conditions and other considerations.",
+    "outputId": "ed1896d3-414d-4684-b409-28280e6e0880"
+   },
+   {
+    "accessionNumber": "0000886982-26-000294",
+    "formType": "8-K",
+    "filingDate": "2026-07-14",
+    "documentUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000294/gs-20260714.htm",
+    "summary": "Goldman Sachs Group Inc. (GS) reported its second quarter 2026 earnings on July 14, 2026, which included detailed financial results. The company also disclosed a presentation for a conference call held the same day, discussing its financial performance and outlook. This 8-K includes the press release and presentation as exhibits.",
+    "outputId": "ab93416d-fbf8-4be6-88f5-f0a1c0c101b9"
+   },
+   {
+    "accessionNumber": "0001193125-26-281123",
+    "formType": "8-K",
+    "filingDate": "2026-06-24",
+    "documentUrl": "https://www.sec.gov/Archives/edgar/data/886982/000119312526281123/d103941d8k.htm",
+    "summary": "Goldman Sachs Group Inc. filed an 8-K to announce a press release on June 24, 2026, incorporated as Exhibit 99.1. The filing lists various securities, including common stock, preferred stocks (Series A, C, and D), and several fixed-to-floating rate notes, but does not provide specific details about the content of the press release. The company also confirmed its Chief Financial Officer, Denis P. Coleman III, signed the report.",
+    "outputId": "c13fd879-d92d-4987-a89a-8146750952df"
+   },
+   {
+    "accessionNumber": "0001193125-26-255626",
+    "formType": "8-K",
+    "filingDate": "2026-06-03",
+    "documentUrl": "https://www.sec.gov/Archives/edgar/data/886982/000119312526255626/d107600d8k.htm",
+    "summary": "Goldman Sachs issued $5.0 billion in new debt on June 3, 2026. This offering comprised $2.5 billion of 4.972% Fixed/Floating Rate Notes due 2032 and $2.5 billion of 5.425% Fixed/Floating Rate Notes due 2037.",
+    "outputId": "50b10073-4772-4daf-949a-9b10e23f6519"
+   },
+   {
+    "accessionNumber": "0001193125-26-219511",
+    "formType": "8-K",
+    "filingDate": "2026-05-12",
+    "documentUrl": "https://www.sec.gov/Archives/edgar/data/886982/000119312526219511/d142159d8k.htm",
+    "summary": "Goldman Sachs redeemed all outstanding shares of its 3.80% Fixed-Rate Reset Non-Cumulative Preferred Stock, Series T, on May 10, 2026. The company subsequently filed an amendment to its corporate charter on May 11, 2026, formally eliminating this preferred stock.",
+    "outputId": "f7c2bd8a-ee3d-4aaf-bc06-106f6d328f2c"
+   },
+   {
+    "accessionNumber": "0001193125-26-199988",
+    "formType": "8-K",
+    "filingDate": "2026-05-01",
+    "documentUrl": "https://www.sec.gov/Archives/edgar/data/886982/000119312526199988/gs-20260429.htm",
+    "summary": "At its April 29, 2026 Annual Meeting, Goldman Sachs shareholders elected all 13 nominated directors and approved the advisory vote on executive compensation. Shareholders also rejected three distinct proposals concerning special meeting thresholds, energy supply ratio disclosure, and lobbying disclosure.",
+    "outputId": "831ef8dc-6a22-4a19-91ac-d2df4f75c33e"
+   },
+   {
+    "accessionNumber": "0001193125-26-164058",
+    "formType": "8-K",
+    "filingDate": "2026-04-20",
+    "documentUrl": "https://www.sec.gov/Archives/edgar/data/886982/000119312526164058/d122102d8k.htm",
+    "summary": "Goldman Sachs Group issued $6.5 billion in new debt securities on April 20, 2026, under its shelf registration statement. This issuance comprises $500 million in floating rate notes due 2030, $3 billion in 4.594% fixed/floating rate notes due 2030, and $3 billion in 5.094% fixed/floating rate notes due 2034. The filing includes the legal opinions and consents related to these new securities.",
+    "outputId": "3f8aedc0-f307-4242-a0da-5ed0d8f4bf05"
+   },
+   {
+    "accessionNumber": "0000886982-26-000096",
+    "formType": "8-K",
+    "filingDate": "2026-04-13",
+    "documentUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000096/gs-20260413.htm",
+    "summary": "Goldman Sachs (GS) reported its first quarter 2026 earnings on April 13, 2026. The detailed financial results are available in an accompanying press release (Exhibit 99.1), with a conference call and presentation (Exhibit 99.2) scheduled to discuss the outlook.",
+    "outputId": "13f5330b-e7c0-4741-ac2b-d391cb5fa365"
+   },
+   {
+    "accessionNumber": "0001193125-26-105328",
+    "formType": "8-K",
+    "filingDate": "2026-03-13",
+    "documentUrl": "https://www.sec.gov/Archives/edgar/data/886982/000119312526105328/gs-20260309.htm",
+    "summary": "Lakshmi Mittal is retiring from Goldman Sachs Group Inc.'s Board of Directors, effective at the 2026 Annual Meeting. His departure is in accordance with the Board's age-based retirement policy, which the Board accepted on March 9, 2026.",
+    "outputId": "b52a85ba-5f18-4e00-9d9d-6a5f3d6aa0a8"
+   }
+  ]
+ },
+ "financials": {
+  "cik": 886982,
+  "annual": {
+   "periods": [
+    {
+     "key": "FY-2025",
+     "label": "FY2025",
+     "fiscalYear": 2025,
+     "fiscalPeriod": "FY",
+     "periodEnd": "2025-12-31"
+    },
+    {
+     "key": "FY-2024",
+     "label": "FY2024",
+     "fiscalYear": 2024,
+     "fiscalPeriod": "FY",
+     "periodEnd": "2024-12-31"
+    },
+    {
+     "key": "FY-2023",
+     "label": "FY2023",
+     "fiscalYear": 2023,
+     "fiscalPeriod": "FY",
+     "periodEnd": "2023-12-31"
+    },
+    {
+     "key": "FY-2022",
+     "label": "FY2022",
+     "fiscalYear": 2022,
+     "fiscalPeriod": "FY",
+     "periodEnd": "2022-12-31"
+    },
+    {
+     "key": "FY-2021",
+     "label": "FY2021",
+     "fiscalYear": 2021,
+     "fiscalPeriod": "FY",
+     "periodEnd": "2021-12-31"
+    }
+   ],
+   "grid": {
+    "shares_basic": {
+     "FY-2025": {
+      "value": 312700000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000091/gs-20251231.htm",
+      "accession": "0000886982-26-000091"
+     },
+     "FY-2024": {
+      "value": 328100000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000091/gs-20251231.htm",
+      "accession": "0000886982-26-000091"
+     },
+     "FY-2023": {
+      "value": 340800000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000091/gs-20251231.htm",
+      "accession": "0000886982-26-000091"
+     },
+     "FY-2022": {
+      "value": 352100000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698225000005/0000886982-25-000005-index.htm",
+      "accession": "0000886982-25-000005"
+     },
+     "FY-2021": {
+      "value": 350500000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698224000006/0000886982-24-000006-index.htm",
+      "accession": "0000886982-24-000006"
+     }
+    },
+    "total_assets": {
+     "FY-2025": {
+      "value": 1809320000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000297/gs-20260630.htm",
+      "accession": "0000886982-26-000297"
+     },
+     "FY-2024": {
+      "value": 1675972000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000091/gs-20251231.htm",
+      "accession": "0000886982-26-000091"
+     },
+     "FY-2023": {
+      "value": 1641594000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698225000005/0000886982-25-000005-index.htm",
+      "accession": "0000886982-25-000005"
+     },
+     "FY-2022": {
+      "value": 1441799000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698224000006/0000886982-24-000006-index.htm",
+      "accession": "0000886982-24-000006"
+     },
+     "FY-2021": {
+      "value": 1463988000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698223000003/0000886982-23-000003-index.htm",
+      "accession": "0000886982-23-000003"
+     }
+    },
+    "cash_and_equivalents": {
+     "FY-2025": {
+      "value": 164259000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000297/gs-20260630.htm",
+      "accession": "0000886982-26-000297"
+     },
+     "FY-2024": {
+      "value": 182092000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000091/gs-20251231.htm",
+      "accession": "0000886982-26-000091"
+     },
+     "FY-2023": {
+      "value": 241577000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698225000005/0000886982-25-000005-index.htm",
+      "accession": "0000886982-25-000005"
+     },
+     "FY-2022": {
+      "value": 241825000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698224000006/0000886982-24-000006-index.htm",
+      "accession": "0000886982-24-000006"
+     },
+     "FY-2021": {
+      "value": 261036000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698223000003/0000886982-23-000003-index.htm",
+      "accession": "0000886982-23-000003"
+     }
+    },
+    "net_income": {
+     "FY-2025": {
+      "value": 17176000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000091/gs-20251231.htm",
+      "accession": "0000886982-26-000091"
+     },
+     "FY-2024": {
+      "value": 14276000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000091/gs-20251231.htm",
+      "accession": "0000886982-26-000091"
+     },
+     "FY-2023": {
+      "value": 8516000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000091/gs-20251231.htm",
+      "accession": "0000886982-26-000091"
+     },
+     "FY-2022": {
+      "value": 11261000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698225000005/0000886982-25-000005-index.htm",
+      "accession": "0000886982-25-000005"
+     },
+     "FY-2021": {
+      "value": 21635000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698224000006/0000886982-24-000006-index.htm",
+      "accession": "0000886982-24-000006"
+     }
+    },
+    "shares_diluted": {
+     "FY-2025": {
+      "value": 317600000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000091/gs-20251231.htm",
+      "accession": "0000886982-26-000091"
+     },
+     "FY-2024": {
+      "value": 333600000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000091/gs-20251231.htm",
+      "accession": "0000886982-26-000091"
+     },
+     "FY-2023": {
+      "value": 345800000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000091/gs-20251231.htm",
+      "accession": "0000886982-26-000091"
+     },
+     "FY-2022": {
+      "value": 358100000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698225000005/0000886982-25-000005-index.htm",
+      "accession": "0000886982-25-000005"
+     },
+     "FY-2021": {
+      "value": 355800000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698224000006/0000886982-24-000006-index.htm",
+      "accession": "0000886982-24-000006"
+     }
+    },
+    "total_liabilities": {
+     "FY-2025": {
+      "value": 1684348000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000297/gs-20260630.htm",
+      "accession": "0000886982-26-000297"
+     },
+     "FY-2024": {
+      "value": 1553976000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000091/gs-20251231.htm",
+      "accession": "0000886982-26-000091"
+     },
+     "FY-2023": {
+      "value": 1524689000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698225000005/0000886982-25-000005-index.htm",
+      "accession": "0000886982-25-000005"
+     },
+     "FY-2022": {
+      "value": 1324610000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698224000006/0000886982-24-000006-index.htm",
+      "accession": "0000886982-24-000006"
+     },
+     "FY-2021": {
+      "value": 1354062000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698223000003/0000886982-23-000003-index.htm",
+      "accession": "0000886982-23-000003"
+     }
+    },
+    "preferred_dividends": {
+     "FY-2025": {
+      "value": 876000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000091/gs-20251231.htm",
+      "accession": "0000886982-26-000091"
+     },
+     "FY-2024": {
+      "value": 751000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000091/gs-20251231.htm",
+      "accession": "0000886982-26-000091"
+     },
+     "FY-2023": {
+      "value": 609000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000091/gs-20251231.htm",
+      "accession": "0000886982-26-000091"
+     },
+     "FY-2022": {
+      "value": 497000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698225000005/0000886982-25-000005-index.htm",
+      "accession": "0000886982-25-000005"
+     },
+     "FY-2021": {
+      "value": 484000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698224000006/0000886982-24-000006-index.htm",
+      "accession": "0000886982-24-000006"
+     }
+    },
+    "eps_diluted": {
+     "FY-2025": {
+      "value": 51.32,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000091/gs-20251231.htm",
+      "accession": "0000886982-26-000091"
+     },
+     "FY-2024": {
+      "value": 40.54,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000091/gs-20251231.htm",
+      "accession": "0000886982-26-000091"
+     },
+     "FY-2023": {
+      "value": 22.87,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000091/gs-20251231.htm",
+      "accession": "0000886982-26-000091"
+     },
+     "FY-2022": {
+      "value": 30.06,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698225000005/0000886982-25-000005-index.htm",
+      "accession": "0000886982-25-000005"
+     },
+     "FY-2021": {
+      "value": 59.45,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698224000006/0000886982-24-000006-index.htm",
+      "accession": "0000886982-24-000006"
+     }
+    },
+    "eps_basic": {
+     "FY-2025": {
+      "value": 51.95,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000091/gs-20251231.htm",
+      "accession": "0000886982-26-000091"
+     },
+     "FY-2024": {
+      "value": 41.07,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000091/gs-20251231.htm",
+      "accession": "0000886982-26-000091"
+     },
+     "FY-2023": {
+      "value": 23.05,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000091/gs-20251231.htm",
+      "accession": "0000886982-26-000091"
+     },
+     "FY-2022": {
+      "value": 30.42,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698225000005/0000886982-25-000005-index.htm",
+      "accession": "0000886982-25-000005"
+     },
+     "FY-2021": {
+      "value": 60.25,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698224000006/0000886982-24-000006-index.htm",
+      "accession": "0000886982-24-000006"
+     }
+    },
+    "operating_cash_flow": {
+     "FY-2025": {
+      "value": -45154000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000091/gs-20251231.htm",
+      "accession": "0000886982-26-000091"
+     },
+     "FY-2024": {
+      "value": -13212000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000091/gs-20251231.htm",
+      "accession": "0000886982-26-000091"
+     },
+     "FY-2023": {
+      "value": -12587000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000091/gs-20251231.htm",
+      "accession": "0000886982-26-000091"
+     },
+     "FY-2022": {
+      "value": 8708000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698225000005/0000886982-25-000005-index.htm",
+      "accession": "0000886982-25-000005"
+     },
+     "FY-2021": {
+      "value": 6298000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698224000006/0000886982-24-000006-index.htm",
+      "accession": "0000886982-24-000006"
+     }
+    },
+    "ni_available_to_common_basic": {
+     "FY-2025": {
+      "value": 16300000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000091/gs-20251231.htm",
+      "accession": "0000886982-26-000091"
+     },
+     "FY-2024": {
+      "value": 13525000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000091/gs-20251231.htm",
+      "accession": "0000886982-26-000091"
+     },
+     "FY-2023": {
+      "value": 7907000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000091/gs-20251231.htm",
+      "accession": "0000886982-26-000091"
+     },
+     "FY-2022": {
+      "value": 10764000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698225000005/0000886982-25-000005-index.htm",
+      "accession": "0000886982-25-000005"
+     },
+     "FY-2021": {
+      "value": 21151000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698224000006/0000886982-24-000006-index.htm",
+      "accession": "0000886982-24-000006"
+     }
+    },
+    "stockholders_equity": {
+     "FY-2025": {
+      "value": 124972000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000297/gs-20260630.htm",
+      "accession": "0000886982-26-000297"
+     },
+     "FY-2024": {
+      "value": 121996000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000091/gs-20251231.htm",
+      "accession": "0000886982-26-000091"
+     },
+     "FY-2023": {
+      "value": 116905000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000091/gs-20251231.htm",
+      "accession": "0000886982-26-000091"
+     },
+     "FY-2022": {
+      "value": 117189000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698225000005/0000886982-25-000005-index.htm",
+      "accession": "0000886982-25-000005"
+     },
+     "FY-2021": {
+      "value": 109926000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698224000006/0000886982-24-000006-index.htm",
+      "accession": "0000886982-24-000006"
+     }
+    }
+   }
+  },
+  "quarterly": {
+   "periods": [
+    {
+     "key": "2026-06-30",
+     "label": "Q2 FY2026",
+     "fiscalYear": 2026,
+     "fiscalPeriod": "Q2",
+     "periodEnd": "2026-06-30"
+    },
+    {
+     "key": "2026-03-31",
+     "label": "Q1 FY2026",
+     "fiscalYear": 2026,
+     "fiscalPeriod": "Q1",
+     "periodEnd": "2026-03-31"
+    },
+    {
+     "key": "2025-12-31",
+     "label": "FY2025",
+     "fiscalYear": 2025,
+     "fiscalPeriod": "FY",
+     "periodEnd": "2025-12-31"
+    },
+    {
+     "key": "2025-09-30",
+     "label": "Q3 FY2025",
+     "fiscalYear": 2025,
+     "fiscalPeriod": "Q3",
+     "periodEnd": "2025-09-30"
+    },
+    {
+     "key": "2025-06-30",
+     "label": "Q2 FY2025",
+     "fiscalYear": 2025,
+     "fiscalPeriod": "Q2",
+     "periodEnd": "2025-06-30"
+    },
+    {
+     "key": "2025-03-31",
+     "label": "Q1 FY2025",
+     "fiscalYear": 2025,
+     "fiscalPeriod": "Q1",
+     "periodEnd": "2025-03-31"
+    },
+    {
+     "key": "2024-12-31",
+     "label": "FY2024",
+     "fiscalYear": 2024,
+     "fiscalPeriod": "FY",
+     "periodEnd": "2024-12-31"
+    },
+    {
+     "key": "2024-09-30",
+     "label": "Q3 FY2024",
+     "fiscalYear": 2024,
+     "fiscalPeriod": "Q3",
+     "periodEnd": "2024-09-30"
+    }
+   ],
+   "grid": {
+    "total_liabilities": {
+     "2026-06-30": {
+      "value": 2004969000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000297/gs-20260630.htm",
+      "accession": "0000886982-26-000297"
+     },
+     "2026-03-31": {
+      "value": 1937398000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000297/gs-20260630.htm",
+      "accession": "0000886982-26-000297"
+     },
+     "2025-12-31": {
+      "value": 1684348000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000297/gs-20260630.htm",
+      "accession": "0000886982-26-000297"
+     },
+     "2025-09-30": {
+      "value": 1683580000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698225001411/gs-20250930.htm",
+      "accession": "0000886982-25-001411"
+     },
+     "2025-06-30": {
+      "value": 1660913000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698225001411/gs-20250930.htm",
+      "accession": "0000886982-25-001411"
+     },
+     "2025-03-31": {
+      "value": 1641881000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698225000022/0000886982-25-000022-index.htm",
+      "accession": "0000886982-25-000022"
+     },
+     "2024-12-31": {
+      "value": 1553976000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000091/gs-20251231.htm",
+      "accession": "0000886982-26-000091"
+     },
+     "2024-09-30": {
+      "value": 1606880000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698224000025/0000886982-24-000025-index.htm",
+      "accession": "0000886982-24-000025"
+     }
+    },
+    "shares_basic": {
+     "2026-06-30": {
+      "value": 300100000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000297/gs-20260630.htm",
+      "accession": "0000886982-26-000297"
+     },
+     "2026-03-31": {
+      "value": 303800000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000118/gs-20260331.htm",
+      "accession": "0000886982-26-000118"
+     },
+     "2025-09-30": {
+      "value": 309600000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698225001411/gs-20250930.htm",
+      "accession": "0000886982-25-001411"
+     },
+     "2025-06-30": {
+      "value": 313700000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000297/gs-20260630.htm",
+      "accession": "0000886982-26-000297"
+     },
+     "2025-03-31": {
+      "value": 320800000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000118/gs-20260331.htm",
+      "accession": "0000886982-26-000118"
+     },
+     "2024-09-30": {
+      "value": 324800000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698225001411/gs-20250930.htm",
+      "accession": "0000886982-25-001411"
+     }
+    },
+    "preferred_dividends": {
+     "2026-06-30": {
+      "value": 229000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000297/gs-20260630.htm",
+      "accession": "0000886982-26-000297"
+     },
+     "2026-03-31": {
+      "value": 227000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000118/gs-20260331.htm",
+      "accession": "0000886982-26-000118"
+     },
+     "2025-09-30": {
+      "value": 238000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698225001411/gs-20250930.htm",
+      "accession": "0000886982-25-001411"
+     },
+     "2025-06-30": {
+      "value": 250000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000297/gs-20260630.htm",
+      "accession": "0000886982-26-000297"
+     },
+     "2025-03-31": {
+      "value": 155000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000118/gs-20260331.htm",
+      "accession": "0000886982-26-000118"
+     },
+     "2024-09-30": {
+      "value": 210000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698225001411/gs-20250930.htm",
+      "accession": "0000886982-25-001411"
+     }
+    },
+    "cash_and_equivalents": {
+     "2026-06-30": {
+      "value": 187266000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000297/gs-20260630.htm",
+      "accession": "0000886982-26-000297"
+     },
+     "2026-03-31": {
+      "value": 179530000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000118/gs-20260331.htm",
+      "accession": "0000886982-26-000118"
+     },
+     "2025-12-31": {
+      "value": 164259000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000297/gs-20260630.htm",
+      "accession": "0000886982-26-000297"
+     },
+     "2025-09-30": {
+      "value": 169577000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698225001411/gs-20250930.htm",
+      "accession": "0000886982-25-001411"
+     },
+     "2025-06-30": {
+      "value": 152967000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698225000022/0000886982-25-000022-index.htm",
+      "accession": "0000886982-25-000022"
+     },
+     "2025-03-31": {
+      "value": 167408000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698225000009/0000886982-25-000009-index.htm",
+      "accession": "0000886982-25-000009"
+     },
+     "2024-12-31": {
+      "value": 182092000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000091/gs-20251231.htm",
+      "accession": "0000886982-26-000091"
+     },
+     "2024-09-30": {
+      "value": 154689000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698224000025/0000886982-24-000025-index.htm",
+      "accession": "0000886982-24-000025"
+     }
+    },
+    "eps_diluted": {
+     "2026-06-30": {
+      "value": 20.98,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000297/gs-20260630.htm",
+      "accession": "0000886982-26-000297"
+     },
+     "2026-03-31": {
+      "value": 17.55,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000118/gs-20260331.htm",
+      "accession": "0000886982-26-000118"
+     },
+     "2025-09-30": {
+      "value": 12.25,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698225001411/gs-20250930.htm",
+      "accession": "0000886982-25-001411"
+     },
+     "2025-06-30": {
+      "value": 10.91,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000297/gs-20260630.htm",
+      "accession": "0000886982-26-000297"
+     },
+     "2025-03-31": {
+      "value": 14.12,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000118/gs-20260331.htm",
+      "accession": "0000886982-26-000118"
+     },
+     "2024-09-30": {
+      "value": 8.4,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698225001411/gs-20250930.htm",
+      "accession": "0000886982-25-001411"
+     }
+    },
+    "ni_available_to_common_basic": {
+     "2026-06-30": {
+      "value": 6399000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000297/gs-20260630.htm",
+      "accession": "0000886982-26-000297"
+     },
+     "2026-03-31": {
+      "value": 5403000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000118/gs-20260331.htm",
+      "accession": "0000886982-26-000118"
+     },
+     "2025-09-30": {
+      "value": 3860000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698225001411/gs-20250930.htm",
+      "accession": "0000886982-25-001411"
+     },
+     "2025-06-30": {
+      "value": 3473000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000297/gs-20260630.htm",
+      "accession": "0000886982-26-000297"
+     },
+     "2025-03-31": {
+      "value": 4583000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000118/gs-20260331.htm",
+      "accession": "0000886982-26-000118"
+     },
+     "2024-09-30": {
+      "value": 2780000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698225001411/gs-20250930.htm",
+      "accession": "0000886982-25-001411"
+     }
+    },
+    "operating_cash_flow": {
+     "2026-06-30": {
+      "value": 6105000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000297/gs-20260630.htm",
+      "accession": "0000886982-26-000297"
+     },
+     "2026-03-31": {
+      "value": -31868000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000118/gs-20260331.htm",
+      "accession": "0000886982-26-000118"
+     },
+     "2025-12-31": {
+      "value": -16276000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000091/gs-20251231.htm",
+      "accession": "0000886982-26-000091"
+     },
+     "2025-09-30": {
+      "value": 2680000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698225001411/gs-20250930.htm",
+      "accession": "0000886982-25-001411"
+     },
+     "2025-06-30": {
+      "value": 5672000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000297/gs-20260630.htm",
+      "accession": "0000886982-26-000297"
+     },
+     "2025-03-31": {
+      "value": -37230000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000118/gs-20260331.htm",
+      "accession": "0000886982-26-000118"
+     },
+     "2024-12-31": {
+      "value": 46766000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000091/gs-20251231.htm",
+      "accession": "0000886982-26-000091"
+     },
+     "2024-09-30": {
+      "value": -38060000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698225001411/gs-20250930.htm",
+      "accession": "0000886982-25-001411"
+     }
+    },
+    "shares_diluted": {
+     "2026-06-30": {
+      "value": 304900000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000297/gs-20260630.htm",
+      "accession": "0000886982-26-000297"
+     },
+     "2026-03-31": {
+      "value": 308000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000118/gs-20260331.htm",
+      "accession": "0000886982-26-000118"
+     },
+     "2025-09-30": {
+      "value": 315000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698225001411/gs-20250930.htm",
+      "accession": "0000886982-25-001411"
+     },
+     "2025-06-30": {
+      "value": 318300000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000297/gs-20260630.htm",
+      "accession": "0000886982-26-000297"
+     },
+     "2025-03-31": {
+      "value": 324500000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000118/gs-20260331.htm",
+      "accession": "0000886982-26-000118"
+     },
+     "2024-09-30": {
+      "value": 330800000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698225001411/gs-20250930.htm",
+      "accession": "0000886982-25-001411"
+     }
+    },
+    "total_assets": {
+     "2026-06-30": {
+      "value": 2127711000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000297/gs-20260630.htm",
+      "accession": "0000886982-26-000297"
+     },
+     "2026-03-31": {
+      "value": 2060180000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000297/gs-20260630.htm",
+      "accession": "0000886982-26-000297"
+     },
+     "2025-12-31": {
+      "value": 1809320000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000297/gs-20260630.htm",
+      "accession": "0000886982-26-000297"
+     },
+     "2025-09-30": {
+      "value": 1807982000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698225001411/gs-20250930.htm",
+      "accession": "0000886982-25-001411"
+     },
+     "2025-06-30": {
+      "value": 1785009000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698225001411/gs-20250930.htm",
+      "accession": "0000886982-25-001411"
+     },
+     "2025-03-31": {
+      "value": 1766181000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698225000022/0000886982-25-000022-index.htm",
+      "accession": "0000886982-25-000022"
+     },
+     "2024-12-31": {
+      "value": 1675972000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000091/gs-20251231.htm",
+      "accession": "0000886982-26-000091"
+     },
+     "2024-09-30": {
+      "value": 1728080000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698224000025/0000886982-24-000025-index.htm",
+      "accession": "0000886982-24-000025"
+     }
+    },
+    "stockholders_equity": {
+     "2026-06-30": {
+      "value": 122742000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000297/gs-20260630.htm",
+      "accession": "0000886982-26-000297"
+     },
+     "2026-03-31": {
+      "value": 122782000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000118/gs-20260331.htm",
+      "accession": "0000886982-26-000118"
+     },
+     "2025-12-31": {
+      "value": 124972000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000297/gs-20260630.htm",
+      "accession": "0000886982-26-000297"
+     },
+     "2025-09-30": {
+      "value": 124402000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698225001411/gs-20250930.htm",
+      "accession": "0000886982-25-001411"
+     },
+     "2025-06-30": {
+      "value": 124096000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000297/gs-20260630.htm",
+      "accession": "0000886982-26-000297"
+     },
+     "2025-03-31": {
+      "value": 124300000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000118/gs-20260331.htm",
+      "accession": "0000886982-26-000118"
+     },
+     "2024-12-31": {
+      "value": 121996000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000091/gs-20251231.htm",
+      "accession": "0000886982-26-000091"
+     },
+     "2024-09-30": {
+      "value": 121200000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698225001411/gs-20250930.htm",
+      "accession": "0000886982-25-001411"
+     }
+    },
+    "net_income": {
+     "2026-06-30": {
+      "value": 6628000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000297/gs-20260630.htm",
+      "accession": "0000886982-26-000297"
+     },
+     "2026-03-31": {
+      "value": 5630000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000118/gs-20260331.htm",
+      "accession": "0000886982-26-000118"
+     },
+     "2025-09-30": {
+      "value": 4098000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698225001411/gs-20250930.htm",
+      "accession": "0000886982-25-001411"
+     },
+     "2025-06-30": {
+      "value": 3723000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000297/gs-20260630.htm",
+      "accession": "0000886982-26-000297"
+     },
+     "2025-03-31": {
+      "value": 4738000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000118/gs-20260331.htm",
+      "accession": "0000886982-26-000118"
+     },
+     "2024-09-30": {
+      "value": 2990000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698225001411/gs-20250930.htm",
+      "accession": "0000886982-25-001411"
+     }
+    },
+    "ni_available_to_common_diluted": {
+     "2026-06-30": {
+      "value": 6398000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000297/gs-20260630.htm",
+      "accession": "0000886982-26-000297"
+     },
+     "2026-03-31": {
+      "value": 5404000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000118/gs-20260331.htm",
+      "accession": "0000886982-26-000118"
+     },
+     "2025-06-30": {
+      "value": 3473000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000297/gs-20260630.htm",
+      "accession": "0000886982-26-000297"
+     },
+     "2025-03-31": {
+      "value": 4583000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000118/gs-20260331.htm",
+      "accession": "0000886982-26-000118"
+     }
+    },
+    "eps_basic": {
+     "2026-03-31": {
+      "value": 17.74,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000118/gs-20260331.htm",
+      "accession": "0000886982-26-000118"
+     },
+     "2025-09-30": {
+      "value": 12.42,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698225001411/gs-20250930.htm",
+      "accession": "0000886982-25-001411"
+     },
+     "2025-06-30": {
+      "value": 11.03,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698225000022/0000886982-25-000022-index.htm",
+      "accession": "0000886982-25-000022"
+     },
+     "2025-03-31": {
+      "value": 14.25,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698226000118/gs-20260331.htm",
+      "accession": "0000886982-26-000118"
+     },
+     "2024-09-30": {
+      "value": 8.52,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/886982/000088698225001411/gs-20250930.htm",
+      "accession": "0000886982-25-001411"
+     }
+    }
+   }
+  },
+  "reportingCurrency": "USD"
+ }
+}

@@ -1,0 +1,662 @@
+{
+ "slug": "asml",
+ "name": "Asml",
+ "filings": {
+  "cik": 937966,
+  "companyId": "0bf6f869-843b-499c-9d93-2b3f303e74e9",
+  "filings": []
+ },
+ "financials": {
+  "cik": 937966,
+  "annual": {
+   "periods": [
+    {
+     "key": "FY-2025",
+     "label": "FY2025",
+     "fiscalYear": 2025,
+     "fiscalPeriod": "FY",
+     "periodEnd": "2025-12-31"
+    },
+    {
+     "key": "FY-2024",
+     "label": "FY2024",
+     "fiscalYear": 2024,
+     "fiscalPeriod": "FY",
+     "periodEnd": "2024-12-31"
+    },
+    {
+     "key": "FY-2023",
+     "label": "FY2023",
+     "fiscalYear": 2023,
+     "fiscalPeriod": "FY",
+     "periodEnd": "2023-12-31"
+    },
+    {
+     "key": "FY-2022",
+     "label": "FY2022",
+     "fiscalYear": 2022,
+     "fiscalPeriod": "FY",
+     "periodEnd": "2022-12-31"
+    },
+    {
+     "key": "FY-2021",
+     "label": "FY2021",
+     "fiscalYear": 2021,
+     "fiscalPeriod": "FY",
+     "periodEnd": "2021-12-31"
+    }
+   ],
+   "grid": {
+    "eps_diluted": {
+     "FY-2025": {
+      "value": 24.71,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000162828026011378/asml-20251231.htm",
+      "accession": "0001628280-26-011378"
+     },
+     "FY-2024": {
+      "value": 19.24,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000162828026011378/asml-20251231.htm",
+      "accession": "0001628280-26-011378"
+     },
+     "FY-2023": {
+      "value": 19.89,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000162828026011378/asml-20251231.htm",
+      "accession": "0001628280-26-011378"
+     },
+     "FY-2022": {
+      "value": 14.13,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000093796625000009/asml-20241231.htm",
+      "accession": "0000937966-25-000009"
+     },
+     "FY-2021": {
+      "value": 14.34,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000093796624000008/asml-20231231.htm",
+      "accession": "0000937966-24-000008"
+     }
+    },
+    "cost_of_revenue": {
+     "FY-2025": {
+      "value": 15409300000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000162828026011378/asml-20251231.htm",
+      "accession": "0001628280-26-011378"
+     },
+     "FY-2024": {
+      "value": 13770900000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000162828026011378/asml-20251231.htm",
+      "accession": "0001628280-26-011378"
+     },
+     "FY-2023": {
+      "value": 13422400000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000162828026011378/asml-20251231.htm",
+      "accession": "0001628280-26-011378"
+     },
+     "FY-2022": {
+      "value": 10473300000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000093796625000009/asml-20241231.htm",
+      "accession": "0000937966-25-000009"
+     },
+     "FY-2021": {
+      "value": 8802000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000093796624000008/asml-20231231.htm",
+      "accession": "0000937966-24-000008"
+     }
+    },
+    "gross_profit": {
+     "FY-2025": {
+      "value": 17258000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000162828026011378/asml-20251231.htm",
+      "accession": "0001628280-26-011378"
+     },
+     "FY-2024": {
+      "value": 14492000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000162828026011378/asml-20251231.htm",
+      "accession": "0001628280-26-011378"
+     },
+     "FY-2023": {
+      "value": 14136100000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000162828026011378/asml-20251231.htm",
+      "accession": "0001628280-26-011378"
+     },
+     "FY-2022": {
+      "value": 10700100000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000093796625000009/asml-20241231.htm",
+      "accession": "0000937966-25-000009"
+     },
+     "FY-2021": {
+      "value": 9809000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000093796624000008/asml-20231231.htm",
+      "accession": "0000937966-24-000008"
+     }
+    },
+    "operating_cash_flow": {
+     "FY-2025": {
+      "value": 12658500000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000162828026011378/asml-20251231.htm",
+      "accession": "0001628280-26-011378"
+     },
+     "FY-2024": {
+      "value": 11166200000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000162828026011378/asml-20251231.htm",
+      "accession": "0001628280-26-011378"
+     },
+     "FY-2023": {
+      "value": 5443400000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000162828026011378/asml-20251231.htm",
+      "accession": "0001628280-26-011378"
+     },
+     "FY-2022": {
+      "value": 8486800000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000093796625000009/asml-20241231.htm",
+      "accession": "0000937966-25-000009"
+     },
+     "FY-2021": {
+      "value": 10845800000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000093796624000008/asml-20231231.htm",
+      "accession": "0000937966-24-000008"
+     }
+    },
+    "revenue": {
+     "FY-2025": {
+      "value": 32667300000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000162828026011378/asml-20251231.htm",
+      "accession": "0001628280-26-011378"
+     },
+     "FY-2024": {
+      "value": 28262900000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000162828026011378/asml-20251231.htm",
+      "accession": "0001628280-26-011378"
+     },
+     "FY-2023": {
+      "value": 27558500000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000162828026011378/asml-20251231.htm",
+      "accession": "0001628280-26-011378"
+     },
+     "FY-2022": {
+      "value": 21173400000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000093796625000009/asml-20241231.htm",
+      "accession": "0000937966-25-000009"
+     },
+     "FY-2021": {
+      "value": 18611000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000093796624000008/asml-20231231.htm",
+      "accession": "0000937966-24-000008"
+     }
+    },
+    "cash_and_equivalents": {
+     "FY-2025": {
+      "value": 12916000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000162828026011378/asml-20251231.htm",
+      "accession": "0001628280-26-011378"
+     },
+     "FY-2024": {
+      "value": 12735900000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000162828026011378/asml-20251231.htm",
+      "accession": "0001628280-26-011378"
+     },
+     "FY-2023": {
+      "value": 7004700000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000093796625000009/asml-20241231.htm",
+      "accession": "0000937966-25-000009"
+     },
+     "FY-2022": {
+      "value": 7268300000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000093796624000008/asml-20231231.htm",
+      "accession": "0000937966-24-000008"
+     },
+     "FY-2021": {
+      "value": 6951800000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000093796623000014/asml-20221231.htm",
+      "accession": "0000937966-23-000014"
+     }
+    },
+    "total_assets": {
+     "FY-2025": {
+      "value": 50566600000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000162828026011378/asml-20251231.htm",
+      "accession": "0001628280-26-011378"
+     },
+     "FY-2024": {
+      "value": 48589600000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000162828026011378/asml-20251231.htm",
+      "accession": "0001628280-26-011378"
+     },
+     "FY-2023": {
+      "value": 39957500000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000093796625000009/asml-20241231.htm",
+      "accession": "0000937966-25-000009"
+     },
+     "FY-2022": {
+      "value": 36300400000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000093796624000008/asml-20231231.htm",
+      "accession": "0000937966-24-000008"
+     },
+     "FY-2021": {
+      "value": 30231000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000093796623000014/asml-20221231.htm",
+      "accession": "0000937966-23-000014"
+     }
+    },
+    "eps_basic": {
+     "FY-2025": {
+      "value": 24.73,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000162828026011378/asml-20251231.htm",
+      "accession": "0001628280-26-011378"
+     },
+     "FY-2024": {
+      "value": 19.25,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000162828026011378/asml-20251231.htm",
+      "accession": "0001628280-26-011378"
+     },
+     "FY-2023": {
+      "value": 19.91,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000162828026011378/asml-20251231.htm",
+      "accession": "0001628280-26-011378"
+     },
+     "FY-2022": {
+      "value": 14.14,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000093796625000009/asml-20241231.htm",
+      "accession": "0000937966-25-000009"
+     },
+     "FY-2021": {
+      "value": 14.36,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000093796624000008/asml-20231231.htm",
+      "accession": "0000937966-24-000008"
+     }
+    },
+    "shares_diluted": {
+     "FY-2025": {
+      "value": 388900000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000162828026011378/asml-20251231.htm",
+      "accession": "0001628280-26-011378"
+     },
+     "FY-2024": {
+      "value": 393600000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000162828026011378/asml-20251231.htm",
+      "accession": "0001628280-26-011378"
+     },
+     "FY-2023": {
+      "value": 394100000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000162828026011378/asml-20251231.htm",
+      "accession": "0001628280-26-011378"
+     },
+     "FY-2022": {
+      "value": 398000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000093796625000009/asml-20241231.htm",
+      "accession": "0000937966-25-000009"
+     },
+     "FY-2021": {
+      "value": 410400000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000093796624000008/asml-20231231.htm",
+      "accession": "0000937966-24-000008"
+     }
+    },
+    "net_income": {
+     "FY-2025": {
+      "value": 9609400000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000162828026011378/asml-20251231.htm",
+      "accession": "0001628280-26-011378"
+     },
+     "FY-2024": {
+      "value": 7571600000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000162828026011378/asml-20251231.htm",
+      "accession": "0001628280-26-011378"
+     },
+     "FY-2023": {
+      "value": 7839000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000162828026011378/asml-20251231.htm",
+      "accession": "0001628280-26-011378"
+     },
+     "FY-2022": {
+      "value": 5624200000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000093796625000009/asml-20241231.htm",
+      "accession": "0000937966-25-000009"
+     },
+     "FY-2021": {
+      "value": 5883200000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000093796624000008/asml-20231231.htm",
+      "accession": "0000937966-24-000008"
+     }
+    },
+    "total_liabilities": {
+     "FY-2025": {
+      "value": 30954400000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000162828026011378/asml-20251231.htm",
+      "accession": "0001628280-26-011378"
+     },
+     "FY-2024": {
+      "value": 30112800000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000162828026011378/asml-20251231.htm",
+      "accession": "0001628280-26-011378"
+     },
+     "FY-2023": {
+      "value": 26505100000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000093796625000009/asml-20241231.htm",
+      "accession": "0000937966-25-000009"
+     },
+     "FY-2022": {
+      "value": 27489600000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000093796624000008/asml-20231231.htm",
+      "accession": "0000937966-24-000008"
+     },
+     "FY-2021": {
+      "value": 20090400000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000093796623000014/asml-20221231.htm",
+      "accession": "0000937966-23-000014"
+     }
+    },
+    "operating_income": {
+     "FY-2025": {
+      "value": 11301400000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000162828026011378/asml-20251231.htm",
+      "accession": "0001628280-26-011378"
+     },
+     "FY-2024": {
+      "value": 9022600000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000162828026011378/asml-20251231.htm",
+      "accession": "0001628280-26-011378"
+     },
+     "FY-2023": {
+      "value": 9042300000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000162828026011378/asml-20251231.htm",
+      "accession": "0001628280-26-011378"
+     },
+     "FY-2022": {
+      "value": 6500700000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000093796625000009/asml-20241231.htm",
+      "accession": "0000937966-25-000009"
+     },
+     "FY-2021": {
+      "value": 6750100000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000093796624000008/asml-20231231.htm",
+      "accession": "0000937966-24-000008"
+     }
+    },
+    "stockholders_equity": {
+     "FY-2025": {
+      "value": 19612200000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000162828026011378/asml-20251231.htm",
+      "accession": "0001628280-26-011378"
+     },
+     "FY-2024": {
+      "value": 18476800000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000162828026011378/asml-20251231.htm",
+      "accession": "0001628280-26-011378"
+     },
+     "FY-2023": {
+      "value": 13452400000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000162828026011378/asml-20251231.htm",
+      "accession": "0001628280-26-011378"
+     },
+     "FY-2022": {
+      "value": 8810800000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000162828026011378/asml-20251231.htm",
+      "accession": "0001628280-26-011378"
+     },
+     "FY-2021": {
+      "value": 10140600000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000093796625000009/asml-20241231.htm",
+      "accession": "0000937966-25-000009"
+     }
+    },
+    "shares_basic": {
+     "FY-2025": {
+      "value": 388500000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000162828026011378/asml-20251231.htm",
+      "accession": "0001628280-26-011378"
+     },
+     "FY-2024": {
+      "value": 393300000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000162828026011378/asml-20251231.htm",
+      "accession": "0001628280-26-011378"
+     },
+     "FY-2023": {
+      "value": 393800000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000162828026011378/asml-20251231.htm",
+      "accession": "0001628280-26-011378"
+     },
+     "FY-2022": {
+      "value": 397700000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000093796625000009/asml-20241231.htm",
+      "accession": "0000937966-25-000009"
+     },
+     "FY-2021": {
+      "value": 409800000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000093796624000008/asml-20231231.htm",
+      "accession": "0000937966-24-000008"
+     }
+    }
+   }
+  },
+  "quarterly": {
+   "periods": [
+    {
+     "key": "2025-12-31",
+     "label": "FY2025",
+     "fiscalYear": 2025,
+     "fiscalPeriod": "FY",
+     "periodEnd": "2025-12-31"
+    },
+    {
+     "key": "2024-12-31",
+     "label": "FY2024",
+     "fiscalYear": 2024,
+     "fiscalPeriod": "FY",
+     "periodEnd": "2024-12-31"
+    },
+    {
+     "key": "2023-12-31",
+     "label": "FY2023",
+     "fiscalYear": 2023,
+     "fiscalPeriod": "FY",
+     "periodEnd": "2023-12-31"
+    },
+    {
+     "key": "2022-12-31",
+     "label": "FY2022",
+     "fiscalYear": 2022,
+     "fiscalPeriod": "FY",
+     "periodEnd": "2022-12-31"
+    },
+    {
+     "key": "2021-12-31",
+     "label": "FY2021",
+     "fiscalYear": 2021,
+     "fiscalPeriod": "FY",
+     "periodEnd": "2021-12-31"
+    },
+    {
+     "key": "2020-12-31",
+     "label": "FY2020",
+     "fiscalYear": 2020,
+     "fiscalPeriod": "FY",
+     "periodEnd": "2020-12-31"
+    },
+    {
+     "key": "2019-12-31",
+     "label": "FY2019",
+     "fiscalYear": 2019,
+     "fiscalPeriod": "FY",
+     "periodEnd": "2019-12-31"
+    },
+    {
+     "key": "2018-12-31",
+     "label": "FY2018",
+     "fiscalYear": 2018,
+     "fiscalPeriod": "FY",
+     "periodEnd": "2018-12-31"
+    }
+   ],
+   "grid": {
+    "cash_and_equivalents": {
+     "2025-12-31": {
+      "value": 12916000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000162828026011378/asml-20251231.htm",
+      "accession": "0001628280-26-011378"
+     },
+     "2024-12-31": {
+      "value": 12735900000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000162828026011378/asml-20251231.htm",
+      "accession": "0001628280-26-011378"
+     },
+     "2023-12-31": {
+      "value": 7004700000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000093796625000009/asml-20241231.htm",
+      "accession": "0000937966-25-000009"
+     },
+     "2022-12-31": {
+      "value": 7268300000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000093796624000008/asml-20231231.htm",
+      "accession": "0000937966-24-000008"
+     },
+     "2021-12-31": {
+      "value": 6951800000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000093796623000014/asml-20221231.htm",
+      "accession": "0000937966-23-000014"
+     },
+     "2020-12-31": {
+      "value": 6049400000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000093796622000013/asml-20211231.htm",
+      "accession": "0000937966-22-000013"
+     },
+     "2019-12-31": {
+      "value": 3532300000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000093796621000007/asml-20201231.htm",
+      "accession": "0000937966-21-000007"
+     },
+     "2018-12-31": {
+      "value": 3121100000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000093796620000011/a2019integratedreportb.htm",
+      "accession": "0000937966-20-000011"
+     }
+    },
+    "total_assets": {
+     "2025-12-31": {
+      "value": 50566600000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000162828026011378/asml-20251231.htm",
+      "accession": "0001628280-26-011378"
+     },
+     "2024-12-31": {
+      "value": 48589600000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000162828026011378/asml-20251231.htm",
+      "accession": "0001628280-26-011378"
+     },
+     "2023-12-31": {
+      "value": 39957500000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000093796625000009/asml-20241231.htm",
+      "accession": "0000937966-25-000009"
+     },
+     "2022-12-31": {
+      "value": 36300400000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000093796624000008/asml-20231231.htm",
+      "accession": "0000937966-24-000008"
+     },
+     "2021-12-31": {
+      "value": 30231000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000093796623000014/asml-20221231.htm",
+      "accession": "0000937966-23-000014"
+     },
+     "2020-12-31": {
+      "value": 27267400000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000093796622000013/asml-20211231.htm",
+      "accession": "0000937966-22-000013"
+     },
+     "2019-12-31": {
+      "value": 22629600000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000093796621000007/asml-20201231.htm",
+      "accession": "0000937966-21-000007"
+     },
+     "2018-12-31": {
+      "value": 20136900000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000093796620000011/a2019integratedreportb.htm",
+      "accession": "0000937966-20-000011"
+     }
+    },
+    "total_liabilities": {
+     "2025-12-31": {
+      "value": 30954400000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000162828026011378/asml-20251231.htm",
+      "accession": "0001628280-26-011378"
+     },
+     "2024-12-31": {
+      "value": 30112800000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000162828026011378/asml-20251231.htm",
+      "accession": "0001628280-26-011378"
+     },
+     "2023-12-31": {
+      "value": 26505100000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000093796625000009/asml-20241231.htm",
+      "accession": "0000937966-25-000009"
+     },
+     "2022-12-31": {
+      "value": 27489600000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000093796624000008/asml-20231231.htm",
+      "accession": "0000937966-24-000008"
+     },
+     "2021-12-31": {
+      "value": 20090400000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000093796623000014/asml-20221231.htm",
+      "accession": "0000937966-23-000014"
+     },
+     "2020-12-31": {
+      "value": 13402000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000093796622000013/asml-20211231.htm",
+      "accession": "0000937966-22-000013"
+     },
+     "2019-12-31": {
+      "value": 10037400000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000093796621000007/asml-20201231.htm",
+      "accession": "0000937966-21-000007"
+     },
+     "2018-12-31": {
+      "value": 8495900000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000093796620000011/a2019integratedreportb.htm",
+      "accession": "0000937966-20-000011"
+     }
+    },
+    "stockholders_equity": {
+     "2025-12-31": {
+      "value": 19612200000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000162828026011378/asml-20251231.htm",
+      "accession": "0001628280-26-011378"
+     },
+     "2024-12-31": {
+      "value": 18476800000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000162828026011378/asml-20251231.htm",
+      "accession": "0001628280-26-011378"
+     },
+     "2023-12-31": {
+      "value": 13452400000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000162828026011378/asml-20251231.htm",
+      "accession": "0001628280-26-011378"
+     },
+     "2022-12-31": {
+      "value": 8810800000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000162828026011378/asml-20251231.htm",
+      "accession": "0001628280-26-011378"
+     },
+     "2021-12-31": {
+      "value": 10140600000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000093796625000009/asml-20241231.htm",
+      "accession": "0000937966-25-000009"
+     },
+     "2020-12-31": {
+      "value": 13865400000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000093796624000008/asml-20231231.htm",
+      "accession": "0000937966-24-000008"
+     },
+     "2019-12-31": {
+      "value": 12592200000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000093796623000014/asml-20221231.htm",
+      "accession": "0000937966-23-000014"
+     },
+     "2018-12-31": {
+      "value": 11641000000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/937966/000093796622000013/asml-20211231.htm",
+      "accession": "0000937966-22-000013"
+     }
+    }
+   }
+  },
+  "reportingCurrency": "EUR"
+ }
+}

@@ -1,0 +1,302 @@
+{
+ "slug": "quantinuum",
+ "name": "Quantinuum",
+ "filings": {
+  "cik": 2110105,
+  "companyId": "cf1f1776-6578-4c2f-b81d-14f6f66811f8",
+  "filings": [
+   {
+    "accessionNumber": "0001628280-26-056743",
+    "formType": "10-Q",
+    "filingDate": "2026-08-13",
+    "documentUrl": "https://www.sec.gov/Archives/edgar/data/2110105/000162828026056743/qnt-20260630.htm",
+    "summary": "10-Q filing detected. Full financial detail extraction pending (XBRL parsing in follow-up PR).",
+    "outputId": null
+   },
+   {
+    "accessionNumber": "0001628280-26-055699",
+    "formType": "8-K",
+    "filingDate": "2026-08-11",
+    "documentUrl": "https://www.sec.gov/Archives/edgar/data/2110105/000162828026055699/qnt-20260811.htm",
+    "summary": "Quantinuum (QNT) announced its Q2 2026 financial results and a new multi-year strategic partnership with Oracle. This collaboration aims to accelerate hybrid quantum computing adoption on Oracle Cloud Infrastructure.",
+    "outputId": "670b0b45-1066-482f-80b8-85bd8173d6cd"
+   },
+   {
+    "accessionNumber": "0001628280-26-041623",
+    "formType": "4",
+    "filingDate": "2026-06-08",
+    "documentUrl": "https://www.sec.gov/Archives/edgar/data/2110105/000162828026041623/wk-form4_1780950660.xml",
+    "summary": "Form 4: 1 qualifying insider transaction(s)",
+    "outputId": null
+   },
+   {
+    "accessionNumber": "0001628280-26-041621",
+    "formType": "4",
+    "filingDate": "2026-06-08",
+    "documentUrl": "https://www.sec.gov/Archives/edgar/data/2110105/000162828026041621/wk-form4_1780950649.xml",
+    "summary": "Form 4: 1 qualifying insider transaction(s)",
+    "outputId": null
+   },
+   {
+    "accessionNumber": "0001628280-26-041622",
+    "formType": "4",
+    "filingDate": "2026-06-08",
+    "documentUrl": "https://www.sec.gov/Archives/edgar/data/2110105/000162828026041622/wk-form4_1780950654.xml",
+    "summary": "Form 4: 1 qualifying insider transaction(s)",
+    "outputId": null
+   },
+   {
+    "accessionNumber": "0001628280-26-041633",
+    "formType": "4",
+    "filingDate": "2026-06-08",
+    "documentUrl": "https://www.sec.gov/Archives/edgar/data/2110105/000162828026041633/wk-form4_1780950710.xml",
+    "summary": "Form 4: 1 qualifying insider transaction(s)",
+    "outputId": null
+   },
+   {
+    "accessionNumber": "0001628280-26-041632",
+    "formType": "4",
+    "filingDate": "2026-06-08",
+    "documentUrl": "https://www.sec.gov/Archives/edgar/data/2110105/000162828026041632/wk-form4_1780950702.xml",
+    "summary": "Form 4: 1 qualifying insider transaction(s)",
+    "outputId": null
+   },
+   {
+    "accessionNumber": "0001628280-26-041626",
+    "formType": "4",
+    "filingDate": "2026-06-08",
+    "documentUrl": "https://www.sec.gov/Archives/edgar/data/2110105/000162828026041626/wk-form4_1780950672.xml",
+    "summary": "Form 4: 1 qualifying insider transaction(s)",
+    "outputId": null
+   },
+   {
+    "accessionNumber": "0001628280-26-041628",
+    "formType": "4",
+    "filingDate": "2026-06-08",
+    "documentUrl": "https://www.sec.gov/Archives/edgar/data/2110105/000162828026041628/wk-form4_1780950688.xml",
+    "summary": "Form 4: 1 qualifying insider transaction(s)",
+    "outputId": null
+   },
+   {
+    "accessionNumber": "0001628280-26-041635",
+    "formType": "4",
+    "filingDate": "2026-06-08",
+    "documentUrl": "https://www.sec.gov/Archives/edgar/data/2110105/000162828026041635/wk-form4_1780950715.xml",
+    "summary": "Form 4: 1 qualifying insider transaction(s)",
+    "outputId": null
+   },
+   {
+    "accessionNumber": "0001628280-26-041627",
+    "formType": "4",
+    "filingDate": "2026-06-08",
+    "documentUrl": "https://www.sec.gov/Archives/edgar/data/2110105/000162828026041627/wk-form4_1780950680.xml",
+    "summary": "Form 4: 1 qualifying insider transaction(s)",
+    "outputId": null
+   },
+   {
+    "accessionNumber": "0001628280-26-041624",
+    "formType": "4",
+    "filingDate": "2026-06-08",
+    "documentUrl": "https://www.sec.gov/Archives/edgar/data/2110105/000162828026041624/wk-form4_1780950666.xml",
+    "summary": "Form 4: 1 qualifying insider transaction(s)",
+    "outputId": null
+   },
+   {
+    "accessionNumber": "0001628280-26-041630",
+    "formType": "4",
+    "filingDate": "2026-06-08",
+    "documentUrl": "https://www.sec.gov/Archives/edgar/data/2110105/000162828026041630/wk-form4_1780950696.xml",
+    "summary": "Form 4: 1 qualifying insider transaction(s)",
+    "outputId": null
+   }
+  ]
+ },
+ "financials": {
+  "cik": 2110105,
+  "annual": {
+   "periods": [],
+   "grid": {}
+  },
+  "quarterly": {
+   "periods": [
+    {
+     "key": "2026-06-30",
+     "label": "Q2 FY2026",
+     "fiscalYear": 2026,
+     "fiscalPeriod": "Q2",
+     "periodEnd": "2026-06-30"
+    },
+    {
+     "key": "2025-12-31",
+     "label": "Q4 FY2025",
+     "fiscalYear": 2025,
+     "fiscalPeriod": "Q4",
+     "periodEnd": "2025-12-31"
+    },
+    {
+     "key": "2025-06-30",
+     "label": "Q2 FY2025",
+     "fiscalYear": 2025,
+     "fiscalPeriod": "Q2",
+     "periodEnd": "2025-06-30"
+    },
+    {
+     "key": "2025-03-31",
+     "label": "Q1 FY2025",
+     "fiscalYear": 2025,
+     "fiscalPeriod": "Q1",
+     "periodEnd": "2025-03-31"
+    },
+    {
+     "key": "2024-12-31",
+     "label": "Q4 FY2024",
+     "fiscalYear": 2024,
+     "fiscalPeriod": "Q4",
+     "periodEnd": "2024-12-31"
+    }
+   ],
+   "grid": {
+    "total_assets": {
+     "2026-06-30": {
+      "value": 3229971000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/2110105/000162828026056743/qnt-20260630.htm",
+      "accession": "0001628280-26-056743"
+     },
+     "2025-12-31": {
+      "value": 1845625000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/2110105/000162828026056743/qnt-20260630.htm",
+      "accession": "0001628280-26-056743"
+     }
+    },
+    "cash_and_equivalents": {
+     "2026-06-30": {
+      "value": 2106686000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/2110105/000162828026056743/qnt-20260630.htm",
+      "accession": "0001628280-26-056743"
+     },
+     "2025-12-31": {
+      "value": 762642000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/2110105/000162828026056743/qnt-20260630.htm",
+      "accession": "0001628280-26-056743"
+     }
+    },
+    "eps_basic": {
+     "2026-06-30": {
+      "value": -1.93,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/2110105/000162828026056743/qnt-20260630.htm",
+      "accession": "0001628280-26-056743"
+     }
+    },
+    "eps_diluted": {
+     "2026-06-30": {
+      "value": -1.93,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/2110105/000162828026056743/qnt-20260630.htm",
+      "accession": "0001628280-26-056743"
+     }
+    },
+    "minority_interest": {
+     "2026-06-30": {
+      "value": 2592272000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/2110105/000162828026056743/qnt-20260630.htm",
+      "accession": "0001628280-26-056743"
+     },
+     "2025-12-31": {
+      "value": 0,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/2110105/000162828026056743/qnt-20260630.htm",
+      "accession": "0001628280-26-056743"
+     }
+    },
+    "net_income": {
+     "2026-06-30": {
+      "value": -65418000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/2110105/000162828026056743/qnt-20260630.htm",
+      "accession": "0001628280-26-056743"
+     }
+    },
+    "operating_income": {
+     "2026-06-30": {
+      "value": -555026000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/2110105/000162828026056743/qnt-20260630.htm",
+      "accession": "0001628280-26-056743"
+     },
+     "2025-06-30": {
+      "value": -51087000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/2110105/000162828026056743/qnt-20260630.htm",
+      "accession": "0001628280-26-056743"
+     }
+    },
+    "revenue": {
+     "2026-06-30": {
+      "value": 7998000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/2110105/000162828026056743/qnt-20260630.htm",
+      "accession": "0001628280-26-056743"
+     },
+     "2025-06-30": {
+      "value": 2108000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/2110105/000162828026056743/qnt-20260630.htm",
+      "accession": "0001628280-26-056743"
+     }
+    },
+    "shares_basic": {
+     "2026-06-30": {
+      "value": 33914995,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/2110105/000162828026056743/qnt-20260630.htm",
+      "accession": "0001628280-26-056743"
+     }
+    },
+    "shares_diluted": {
+     "2026-06-30": {
+      "value": 33914995,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/2110105/000162828026056743/qnt-20260630.htm",
+      "accession": "0001628280-26-056743"
+     }
+    },
+    "stockholders_equity": {
+     "2026-06-30": {
+      "value": 413082000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/2110105/000162828026056743/qnt-20260630.htm",
+      "accession": "0001628280-26-056743"
+     },
+     "2025-12-31": {
+      "value": 173652000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/2110105/000162828026056743/qnt-20260630.htm",
+      "accession": "0001628280-26-056743"
+     },
+     "2025-06-30": {
+      "value": 299145000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/2110105/000162828026056743/qnt-20260630.htm",
+      "accession": "0001628280-26-056743"
+     },
+     "2025-03-31": {
+      "value": 304744000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/2110105/000162828026056743/qnt-20260630.htm",
+      "accession": "0001628280-26-056743"
+     },
+     "2024-12-31": {
+      "value": 309526000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/2110105/000162828026056743/qnt-20260630.htm",
+      "accession": "0001628280-26-056743"
+     }
+    },
+    "temporary_equity": {
+     "2025-06-30": {
+      "value": 689107000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/2110105/000162828026056743/qnt-20260630.htm",
+      "accession": "0001628280-26-056743"
+     },
+     "2025-03-31": {
+      "value": 689107000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/2110105/000162828026056743/qnt-20260630.htm",
+      "accession": "0001628280-26-056743"
+     },
+     "2024-12-31": {
+      "value": 689107000,
+      "filingUrl": "https://www.sec.gov/Archives/edgar/data/2110105/000162828026056743/qnt-20260630.htm",
+      "accession": "0001628280-26-056743"
+     }
+    }
+   }
+  },
+  "reportingCurrency": "USD"
+ }
+}
