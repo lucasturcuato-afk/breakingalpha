@@ -34,7 +34,10 @@ npm project (package-lock.json). Use npm. Do not use pnpm, yarn, or bun.
 - Typecheck: `npx tsc --noEmit`   (no typecheck script is wired)
 - E2E tests: `npm run test:e2e`   (Playwright, auto-starts the dev server locally)
 - Pipeline: `python backend/run.py`
-No unit-test runner is wired. Playwright e2e is the only test layer.
+Unit tests: `npm run test:unit` (`tsx --test` over `src/**/*.test.ts` and
+`tests/unit/**/*.test.ts`). 617 tests at time of writing. Playwright e2e is
+the second layer, and per the preflight gate below a deterministic unit or
+rendered-fixture proof substitutes for it on data-access and logic changes.
 
 ## Where things live
 - `src/` is the canonical frontend. App Router under `src/app/` (route.ts /
