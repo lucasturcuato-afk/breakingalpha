@@ -165,8 +165,8 @@ export function WatchScreen({
    * PRODUCTION client bundle, since a default parameter is a live reference
    * the bundler cannot drop.
    *
-   * And null is not the same value as WATCH_EMPTY. This screen was once
-   * mounted in production with `stage: "ready"` over the empty data, so it
+   * And null is not the same value as an every-tier-empty shape. This screen
+   * was once mounted in production with `stage: "ready"` over empty data, so it
    * told a reader "Nothing on your watchlist yet" when nothing had been read
    * at all. Those are claims about the reader, made with no source. Now there
    * IS a loader (`src/lib/watch-data.ts`), and it hands back null on exactly
@@ -268,6 +268,15 @@ export function WatchScreen({
   const sparse =
     (watchlistFailed || visible.length === 0) && (followingFailed || followRows === 0);
 
+  /* LOADING IS ITS OWN NAME, and it outranks the other two.
+     `sparse` is computed off `data`, which under `stage: "loading"` is whatever
+     the caller had before the read settled. So a loading screen drawing nothing
+     but skeletons reported "populated", which is the one thing an attribute
+     whose whole job is to name the state must not do. Measured at
+     `/watch?stage=loading`. The tri-state discipline this screen is built on is
+     that a read in flight is not an answer; the attribute now says so too. */
+  const watchState = loading ? "loading" : sparse ? "sparse" : "populated";
+
   const followingEmpty =
     coverage === 0 &&
     data.followsQuiet === 0 &&
@@ -277,7 +286,7 @@ export function WatchScreen({
   return (
     <div
       data-parity="watch"
-      data-watch-state={sparse ? "sparse" : "populated"}
+      data-watch-state={watchState}
       /* The skeletons are aria-hidden, so without this a screen reader gets
          two section headings with nothing under either and no signal that
          anything is on its way. */

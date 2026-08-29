@@ -76,6 +76,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { buildArticleOrFilter } from "./watchlist-utils";
 import { matchFollow, type FollowRow } from "./radar-following";
+import { formatPTClock, formatPTDateShort } from "./format-pt";
 import { WATCH_RECENCY_DAYS } from "@/components/watch/recency";
 import type { WatchStage } from "@/components/watch/watch-screen";
 import type {
@@ -200,31 +201,37 @@ function isRecent(a: ReadArticle): boolean {
   return Date.now() - new Date(a.published_at).getTime() <= WATCH_RECENCY_DAYS * DAY_MS;
 }
 
-/** "REUTERS · JUL 29", already uppercased, as `FollowRow.meta` wants it. */
+/**
+ * "REUTERS · JUL 29", already uppercased, as `FollowRow.meta` wants it.
+ *
+ * THE DATE IS PINNED TO PT, and the pinning is the point. An `Intl` formatter
+ * with no `timeZone` formats in the host zone, and Node on Vercel is UTC, so a
+ * story published 6:30 PM PT stamped as the NEXT day for every reader.
+ * `src/lib/format-pt.ts` exists because this exact defect shipped once on the
+ * brief paths, and `src/lib/ledger-data.ts:67-68`, the shape this file's header
+ * says it followed, pins a zone on every formatter it has. This one now does
+ * too, through `format-pt.ts` rather than beside it.
+ */
 function followMeta(source: string | null, publishedAt: string | null): string {
   const parts: string[] = [];
   if (source) parts.push(source.toUpperCase());
-  if (publishedAt) {
-    const d = new Date(publishedAt);
-    if (!Number.isNaN(d.getTime())) {
-      parts.push(
-        new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" })
-          .format(d)
-          .toUpperCase(),
-      );
-    }
-  }
+  const day = formatPTDateShort(publishedAt);
+  if (day) parts.push(day.toUpperCase());
   return parts.join(" · ");
 }
 
-/** "Aug 27 at 6:41 PM" off the newest `fetched_at` the reads actually saw. */
+/**
+ * "Aug 27 at 6:41 PM" off the newest `fetched_at` the reads actually saw.
+ *
+ * PT-pinned for the reason `followMeta` is. This line is unreachable today,
+ * because the loader never gives back `stage: "stale"`, and that makes a wrong
+ * wall clock worse rather than harmless: nobody is looking at it, and it goes
+ * live the moment staleness ships.
+ */
 function lastCheckedFrom(iso: string | null): string {
-  if (!iso) return "not yet";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "not yet";
-  const day = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(d);
-  const time = new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit" }).format(d);
-  return `${day} at ${time}`;
+  const day = formatPTDateShort(iso);
+  if (!day) return "not yet";
+  return `${day} at ${formatPTClock(iso)}`;
 }
 
 /* ── tier 2: the watchlist ──────────────────────────────────────────── */

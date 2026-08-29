@@ -253,28 +253,12 @@ export const WATCH_FIXTURE: WatchData = {
   lastCheckedLabel: "Aug 27 at 6:41 PM",
 };
 
-/**
- * Every tier empty. What a first-run desk sees when the loader comes back with
- * nothing, which is a real answer and the one this screen most often gives.
- *
- * Distinct from a failed read in both directions: `watchlistRead` and
- * `followingRead` are "ok" here, so the screen is entitled to say the lists are
- * empty rather than that nothing was read.
- */
-export const WATCH_EMPTY: WatchData = {
-  watchlist: [],
-  watchlistRead: "ok",
-  watchlistCouldNotRead: [],
-  quietNames: [],
-  quietShown: 4,
-  following: [],
-  followingRead: "ok",
-  followsWithCoverage: 0,
-  followsQuiet: 0,
-  followsMuted: 0,
-  followsCouldNotCheck: [],
-  lastCheckedLabel: "not yet",
-};
+/* THE EVERY-TIER-EMPTY CONSTANT IS GONE, deliberately. It existed so the route
+   could mount the screen over an all-zero shape while there was no loader, and
+   that is precisely how three empty states about a reader shipped with no read
+   behind them. `src/lib/watch-data.ts` now builds the empty shape out of real
+   reads that came back with nothing, so a hand-written stand-in for it is a
+   second way to draw those states, with nothing keeping the two in step. */
 
 /**
  * Sample content is development and preview only, and the gate that decides

@@ -85,3 +85,46 @@ export function ptDateSlug(iso?: string | null): string {
     day: "2-digit",
   }).format(d);
 }
+
+/* ── short forms, added for the mobile Watch screen ─────────────────── */
+
+/**
+ * "Aug 27" in PT. The four helpers above draw the print masthead and the PDF
+ * slug, so none of them emits a short month plus day, and none of them can be
+ * bent into one: `formatPTDateLong` leads with a weekday and spells the month
+ * out. This is the same zone and the same discipline in the shape the Watch
+ * rows want, not a second convention.
+ *
+ * Empty string on null or unparseable input, matching `formatPTStamp`, so a
+ * caller drops the stamp rather than printing "Invalid Date". Deliberately
+ * unlike `formatPTDateLong`, which falls back to now: a missing timestamp on a
+ * row is an absent fact, and dating it today would invent one.
+ */
+export function formatPTDateShort(iso?: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: PT_ZONE,
+    month: "short",
+    day: "numeric",
+  }).format(d);
+}
+
+/**
+ * "6:41 PM" in PT, with no zone suffix. `formatPTTimeShort` appends " PT"
+ * because the print spec asks for it; this one is for prose that already names
+ * the day beside it ("Aug 27 at 6:41 PM"). Same zone, same empty-on-bad-input
+ * rule as `formatPTDateShort`.
+ */
+export function formatPTClock(iso?: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: PT_ZONE,
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }).format(d);
+}

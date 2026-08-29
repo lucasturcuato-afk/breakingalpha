@@ -65,10 +65,11 @@ export default async function WatchPage({
      default and no `??` fallback on the data itself, so a deleted gate is a
      type error rather than invented tiers in front of a reader.
 
-     What changed in production. This route used to pass `WATCH_EMPTY` at
-     `stage: "ready"`, which rendered three empty states: "Nothing on your
-     watchlist yet", "You follow nothing yet", "No tracked views yet". Every one
-     is a statement about the reader, and none of them had a read behind it.
+     What changed in production. This route used to pass a hand-written
+     every-tier-empty shape at `stage: "ready"`, which rendered three empty
+     states: "Nothing on your watchlist yet", "You follow nothing yet", "No
+     tracked views yet". Every one is a statement about the reader, and none of
+     them had a read behind it.
      Then it passed null and the screen said it was not wired. Now there is a
      read, so the empty states it draws are real answers. */
   const data: WatchData | null = sampleAllowed ? WATCH_FIXTURE : (loaded?.data ?? null);

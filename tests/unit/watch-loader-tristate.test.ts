@@ -302,3 +302,91 @@ test("every figure is a count of rows, and no tracked-views field exists", async
     FOLLOWS.length,
   );
 });
+
+/* ── the reader's id is on the query, not only on the policy ─────────── */
+
+/**
+ * A source mutation that deleted `.eq("user_id", userId)` from the watchlist
+ * read left the whole suite green, because the fake client above records
+ * `ops.eq` and nothing ever looked at it. RLS is the real defence, so this was
+ * never a hole; but `watch-data.ts`'s header says the explicit filter is there
+ * "so the two cannot disagree", and until this test nothing kept it there.
+ */
+test("both tier reads are filtered on the reader's own id", async () => {
+  const seen: Ops[] = [];
+  const inner = world();
+  const client = clientFor((ops) => {
+    seen.push({ table: ops.table, eq: { ...ops.eq }, or: ops.or });
+    return inner(ops);
+  });
+  await loadWatch(client, "u1");
+  assert.equal(seen.find((o) => o.table === "watchlist")?.eq.user_id, "u1");
+  assert.equal(seen.find((o) => o.table === "follows")?.eq.user_id, "u1");
+});
+
+/* ── dates are the PT date, whatever zone the host runs in ───────────── */
+
+/**
+ * 6:30 PM PT on 27 August, which is 01:30 UTC on the 28th.
+ *
+ * An `Intl` formatter with no `timeZone` formats in the host zone. Node on
+ * Vercel is UTC, so this instant stamped as "AUG 28" in production and as
+ * "AUG 27" on a laptop in California, and only one of those is the day the
+ * story was published. Both assertions below fail on an unpinned formatter
+ * run under TZ=UTC and pass under TZ=America/Los_Angeles, which is exactly the
+ * split a fixed instant plus a pinned zone closes.
+ */
+const PT_EVENING = "2026-08-28T01:30:00Z";
+
+function ptWorld(): Resolver {
+  return (ops) => {
+    if (ops.table === "watchlist") {
+      return ok([
+        { id: "r1", identifier: "CEG", type: "ticker", display_name: "Constellation Energy", created_at: null },
+      ]);
+    }
+    if (ops.table === "follows") return ok([FOLLOWS[0]]);
+    if (ops.table === "watchlist_articles") {
+      return ok([
+        {
+          title: "An evening story, filed after the close",
+          source: "Reuters",
+          published_at: PT_EVENING,
+          relevance_score: 5,
+          fetched_at: PT_EVENING,
+        },
+      ]);
+    }
+    if (ops.table === "articles") {
+      if (ops.or?.includes("Vistra")) {
+        return ok([
+          {
+            id: "a-vistra",
+            title: "Vistra commits Comanche Peak capacity",
+            source: "Reuters",
+            published_at: PT_EVENING,
+            summary: null,
+            url: null,
+            industry_verticals: null,
+            activity_types: null,
+            primary_company: "Vistra",
+          },
+        ]);
+      }
+      return ok([]);
+    }
+    throw new Error(`unexpected table ${ops.table}`);
+  };
+}
+
+test("a follow row is dated in PT, not in the host's zone", async () => {
+  const { data } = await loadWatch(clientFor(ptWorld()), "u1");
+  assert.ok(data);
+  assert.equal(data.following[0].rows[0].meta, "REUTERS · AUG 27");
+});
+
+test("the last-checked stamp reads the PT wall clock", async () => {
+  const { data } = await loadWatch(clientFor(ptWorld()), "u1");
+  assert.ok(data);
+  assert.equal(data.lastCheckedLabel, "Aug 27 at 6:30 PM");
+});
