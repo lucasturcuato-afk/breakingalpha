@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseWithUser } from "@/lib/supabase-server";
 import { todayPt } from "@/lib/session-date";
+import { COMMIT_NOTE_MAX } from "@/components/commit/commit-target";
 
 export const dynamic = "force-dynamic";
 
@@ -29,9 +30,42 @@ export const dynamic = "force-dynamic";
  * user_claim is stored VERBATIM. Server re-validates gradeability the
  * same way the author route does.
  *
+ * THE COMMIT NOTE. `commit_note` is ACCEPTED and NOT REQUIRED, exactly as
+ * /api/radar/claims/adopt accepts it.
+ *
+ * The mobile composer will not unlock its control below twelve characters, and
+ * that rule lives in the CLIENT, on purpose. Desktop /radar/calls is going to
+ * adopt the same requirement later, and when it does it needs no second change
+ * here: it sends the field this route already takes. A route that rejected a
+ * short note would also break every caller that has no note to send, which
+ * until now was every caller.
+ *
+ * WHAT THIS ROUTE DOES GUARANTEE is that the pair is coherent. `commit_note`
+ * and `commit_note_at` are written in ONE object, from ONE decision, so a note
+ * with no timestamp and a timestamp with no note are both unreachable. A client
+ * cannot get that wrong because it is never asked to: it sends prose, and the
+ * moment is stamped here.
+ *
  * Degrades gracefully when tables are missing (migration sql/0012):
  * GET -> { claims: [], unavailable: true }.
  */
+
+/**
+ * The note as it will be stored, or null when there is nothing to store.
+ *
+ * Whitespace-only is nothing. An absent field is nothing. Both give back null,
+ * and null is what makes the write below skip the timestamp too. Copied whole
+ * from the adopt route, whose header explains every line of it; the trim is
+ * load bearing twice, because the column's own CHECK is
+ * length(btrim(commit_note)) > 0 and an untrimmed all-space note would hit a
+ * constraint violation instead of storing NULL.
+ */
+function readCommitNote(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  return trimmed.slice(0, COMMIT_NOTE_MAX);
+}
 
 const CLAIM_TYPES = ["ticker", "sector", "index", "aggregate", "other"] as const;
 const DIRECTIONS = ["bullish", "bearish", "neutral"] as const;
@@ -158,6 +192,12 @@ export async function POST(request: NextRequest) {
       ? body.target_symbol.trim()
       : null;
 
+  /* Accepted, never required. See the header.
+     `body` is already typed Record<string, unknown>, so `body.commit_note` is
+     `unknown` here without a widening: the adopt route has to declare
+     `commit_note?: unknown` only because its body type names its fields. */
+  const commitNote = readCommitNote(body.commit_note);
+
   // Server-side gradeability enforcement (never trust the client).
   // US market session date (Pacific), NOT UTC, so the window fallback and the
   // max-window check agree with what the user saw. One convention, shared via
@@ -208,8 +248,12 @@ export async function POST(request: NextRequest) {
       confidence_in_reduction: conf,
       status: "open",
       source: "authored",
+      // ONE decision, TWO columns, one object. There is no ordering in which a
+      // note lands without its timestamp or a timestamp without its note.
+      commit_note: commitNote,
+      commit_note_at: commitNote ? new Date().toISOString() : null,
     })
-    .select("id")
+    .select("id, commit_note")
     .single();
 
   if (error) {
@@ -221,7 +265,14 @@ export async function POST(request: NextRequest) {
     }
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-  return NextResponse.json({ id: data.id, gradeable });
+  return NextResponse.json({
+    id: data.id,
+    gradeable,
+    // Read back off the inserted row rather than echoed off the request, so a
+    // caller that cares whether the reasoning is on the record is told by the
+    // database and not by its own optimism.
+    noteWritten: Boolean(data.commit_note),
+  });
 }
 
 export async function PATCH(request: NextRequest) {
