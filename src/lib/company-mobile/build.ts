@@ -85,6 +85,9 @@
  * for a company that has rows in each block.
  */
 
+import { formatEvidence, levelPolarity, type TonePolarity } from "@/lib/tone";
+import { formatMoney } from "@/lib/reporting-currency";
+
 import type { CompanyDetail } from "@/lib/data-access/getCompanyDetail";
 import type { InsiderTransactionsResult } from "@/lib/data-access/getInsiderTransactions";
 import type { CompanyFinancialsResult } from "@/lib/financial-facts";
@@ -92,7 +95,10 @@ import type { CompanyFilingsResult } from "@/lib/sec-filings";
 import type { CompanyArticle, CompanyIdentity } from "@/lib/company-intel";
 import type {
   CompanyIntelData,
+  CompanyKeyFigure,
   CompanyKpiCell,
+  CompanyPrimerRow,
+  ToneDirection,
 } from "@/components/company/mobile/types";
 
 /**
@@ -132,12 +138,57 @@ export type CompanyMastheadBlock = Pick<
  * `memoCorpus` is a COUNT of indexed articles and never a rate, a score or a
  * confidence. `detail.articles` is the list it counts.
  *
- * TODO(wiring): unwired. Gives back the empty block.
+ * WIRED. Four reads off `detail`, no derivation on any of them.
+ *
+ * `ticker` is null on 4,635 of 5,599 companies (964 carry one), so the absent
+ * case is the common case and it renders as nothing at all. Not a dash, not the
+ * slug and not the display name: each of those reads as a symbol somebody could
+ * put into a quote box.
+ *
+ * `sector` is `modeOf(articles.map(r => r.sector))` inside `getCompanyDetail`,
+ * which is the modal sector of this company's own indexed articles over the
+ * trailing 14 days, NOT the `companies.sector` column. It is null for a company
+ * with no articles in that window, and null draws nothing.
+ *
+ * NO `exchange`. `CompanyDetail.exchange` is a hardcoded `null` literal at
+ * `getCompanyDetail.ts:231` and no exchange column exists on any table, so a
+ * listing venue is not a thing this page can state. The field is off the shape
+ * and must stay off it.
+ *
+ * NO `price` and NO `change`. Both come from a CLIENT fetch to
+ * `/api/company-kpis`, which reaches Yahoo. Off the shape for the same reason.
  */
 export function buildMasthead(detail: CompanyDetail): CompanyMastheadBlock {
-  void detail;
-  return { ticker: "", sector: "", name: "", memoCorpus: "" };
+  /* A COUNT of indexed articles, and the unit word is spelled out so it cannot
+     be mistaken for a score or a rate. `detail.articles` is the 14-day window
+     `getCompanyDetail` reads, capped at 50 rows by ARTICLE_LIMIT, so this is a
+     count of what the memo control would actually have in hand. */
+  const corpus = detail.articles.length;
+
+  return {
+    ticker: detail.ticker ?? "",
+    sector: detail.sector ?? "",
+    name: detail.display,
+    memoCorpus: `${corpus} ${corpus === 1 ? "ARTICLE" : "ARTICLES"}`,
+  };
 }
+
+/**
+ * Tone polarity to the screen's tint vocabulary.
+ *
+ * `mixed` lands on `flat`, not on an amber. `TONE_INK` in `sections.tsx` keeps
+ * amber away from a tone level on purpose: amber is the developing and awaiting
+ * outcome hue, and a tone level is not an outcome.
+ *
+ * The polarity itself comes from `levelPolarity()` in `lib/tone.ts`, the one
+ * function that turns a level into a polarity, so the KPI cell here and the
+ * tone section body read the same answer.
+ */
+const POLARITY_INK: Record<TonePolarity, ToneDirection> = {
+  positive: "up",
+  mixed: "flat",
+  negative: "down",
+};
 
 /**
  * The KPI grid.
@@ -163,11 +214,117 @@ export function buildMasthead(detail: CompanyDetail): CompanyMastheadBlock {
  * the cell entirely when `detail.tone.sufficient` is false: "not enough
  * coverage to state a level" is not a level.
  *
- * TODO(wiring): unwired. Gives back no cells.
+ * WIRED, AND THE LIST IS VARIABLE-LENGTH. The design draws a fixed grid of
+ * four. Two of those four are quote data and are gone, and of the two that are
+ * left one is conditional: a company with no indexed articles has no sources to
+ * count and no coverage to read a tone off. A cell carrying an empty value is
+ * the thing this file exists to prevent, so an unsourced cell is not emitted at
+ * all and the grid draws however many it was handed.
  */
 export function buildKpis(detail: CompanyDetail): CompanyKpiCell[] {
-  void detail;
-  return [];
+  const cells: CompanyKpiCell[] = [];
+
+  /* MENTIONS. Relabelled to the window that is actually read. The design says
+     30D and no 30-day read exists on this page: `detail.mentions` is an
+     ALL-TIME sum and `detail.mentions7d` is eight daily slots, so
+     `attention.currentCount`, a trailing 7-day count, is the only mention
+     number here with a window behind it. Always emitted, including at zero,
+     because zero mentions in seven days is a measured answer rather than a
+     missing one. */
+  cells.push({
+    label: "MENTIONS · 7D",
+    value: String(detail.attention.currentCount),
+  });
+
+  /* ARTICLE TONE. Omitted entirely when the window did not carry enough scored
+     coverage to state a level: "not enough coverage to state a level" is not a
+     level, and `levelLabel` is "" on that branch anyway. The tint goes through
+     `levelPolarity()`, the same function the tone SECTION reads, so the cell
+     and the section body cannot disagree. Never pinned to a colour. */
+  if (detail.tone.sufficient && detail.tone.level !== null) {
+    cells.push({
+      label: "ARTICLE TONE",
+      value: detail.tone.levelLabel,
+      meta: formatEvidence(detail.tone.evidence),
+      tone: POLARITY_INK[levelPolarity(detail.tone.level)],
+    });
+  }
+
+  /* SOURCES. A derived count of distinct publishers over the same article list
+     the primer counts, and NO meta line. The design's `primary + tier-1` has no
+     source: nothing on this path tiers a publisher, and there is no primary
+     flag on `articles`, so the second line would be a claim with nothing
+     under it. `source` is nullable on the row, so a null is not a publisher. */
+  const publishers = new Set(
+    detail.articles
+      .map((a) => a.source)
+      .filter((name): name is string => typeof name === "string" && name.trim() !== ""),
+  );
+  if (publishers.size > 0) {
+    cells.push({ label: "SOURCES", value: String(publishers.size) });
+  }
+
+  /* NO MARKET CAP and NO P / E. Both are quote data off the client fetch to
+     `/api/company-kpis`; see the header. Two cells rather than four is the
+     honest shape of what this page resolves. */
+  return cells;
+}
+
+/**
+ * The primer's opening line.
+ *
+ * A STATEMENT ABOUT THIS FILE, verifiable by reading it, and never a statement
+ * about the reader. The design's own lede is "A coverage primer you could walk
+ * into an interview with", which addresses the reader and promises a use; this
+ * says what the block below is made of instead. Every value the primer emits is
+ * copied off a stored row or off the curated identity map, and none of them is
+ * divided, averaged or scored.
+ */
+const PRIMER_LEDE =
+  "Every line below is read from a stored row or a curated entry. Nothing is averaged, scored or inferred.";
+
+/**
+ * The closing caveat. The house line, matching `src/lib/waitlist-email.ts:45`.
+ *
+ * The design's "Nothing here is a recommendation" is the same claim in weaker
+ * words. This one is the sentence the rest of the product already uses.
+ */
+const PRIMER_FOOTNOTE = "Informational only, not investment advice.";
+
+/**
+ * The figures the primer draws, and the only ones it can.
+ *
+ * Two metric keys off `financial_facts_latest`, both plain monetary facts that
+ * a filer reported. No ratio and no margin: a margin is a division, the primer
+ * states no derived number, and the desktop `PrimerFinancialSnapshot` already
+ * owns that digest on its own surface.
+ *
+ * Two rather than a longer list because the grid is two columns wide and these
+ * are the two figures present for essentially every filer, so the grid fills a
+ * whole row or draws nothing.
+ */
+const PRIMER_FIGURES: { key: string; label: string }[] = [
+  { key: "revenue", label: "REVENUE" },
+  { key: "net_income", label: "NET INCOME" },
+];
+
+/**
+ * The newest period the filer actually filed, on whichever basis carries one.
+ *
+ * ANNUAL FIRST, QUARTERLY ONLY IF THERE IS NO ANNUAL. Measured on the live
+ * table, GRAB carries exactly one annual period and ASML exactly one quarterly,
+ * so a mapper that read `annual.periods[0]` alone would draw nothing for a real
+ * filer with real facts on file. Null when neither basis carries a period,
+ * which is every company with no CIK.
+ */
+function latestFiledPeriod(
+  financials: CompanyFinancialsResult,
+): { period: CompanyFinancialsResult["annual"]["periods"][number]; view: CompanyFinancialsResult["annual"] } | null {
+  const annual = financials.annual.periods[0];
+  if (annual) return { period: annual, view: financials.annual };
+  const quarterly = financials.quarterly.periods[0];
+  if (quarterly) return { period: quarterly, view: financials.quarterly };
+  return null;
 }
 
 /**
@@ -192,7 +349,65 @@ export function buildKpis(detail: CompanyDetail): CompanyKpiCell[] {
  * DEVELOPMENTS are one entry per already-classified development article, from
  * `developments`. NEVER `/api/memo`, which is a model call on click.
  *
- * TODO(wiring): unwired. Gives back the empty block.
+ * WIRED. Four blocks, each variable-length, each self-pruning.
+ *
+ * IDENTITY is two rows at most and often fewer. Sector is `detail.sector`, the
+ * modal sector of this company's own 14-day articles, absent for a company with
+ * none. Industry is `COMPANY_IDENTITY[canonical].industry`, a curated map with
+ * 34 entries against 5,599 companies, absent for the other 5,565.
+ * `detail.industry` is NOT read: it is a hardcoded `null` literal at
+ * `getCompanyDetail.ts:231`, so reading it would be reading nothing.
+ *
+ * NO HEADQUARTERS ROW. No column on any table carries it, and `CompanyIdentity`
+ * is `{ industry, brief }` and nothing else. It is one mapper line away and the
+ * line does not exist: Yahoo's `assetProfile` payload is already on the wire and
+ * carries `city` and `state`, and `quoteSummary.ts:111-115` drops both before
+ * anything can read them, while `company-overview.ts:72` separately instructs
+ * the model to strip it. Wiring it means changing the Yahoo mapper first, and
+ * that mapper is a client fetch this screen does not make. Absent, not guessed.
+ *
+ * OVERVIEW is `identity.brief` and nothing else, so it is "" for 5,565 of 5,599
+ * companies and `PrimerSection` omits the whole block for "".
+ *
+ *   NEVER `/api/company-overview`. That route POSTs to gemini-2.5-flash on a
+ *   cache miss. A model call on a server render path is a hard stop, not a
+ *   fallback, and this mapper does not have one.
+ *
+ *   NEVER `companies.description` either. Measured on the live table: 0 non-null
+ *   rows out of 5,599. It is a dead column, so reading it would add a query that
+ *   can only ever answer null.
+ *
+ * KEY FIGURES are validated XBRL and nothing else, newest filed period first,
+ * with the period named in the label so a figure can never float free of the
+ * column it was filed under. Values go through `formatMoney(value,
+ * reportingCurrency)` so a filer reporting in EUR, TWD or DKK can never carry a
+ * bare dollar sign, and nothing here is divided: both figures are values copied
+ * off a fact row.
+ *
+ *   NO `EV / EBITDA`. Zero sources repo-wide; the only occurrences anywhere in
+ *   this repo are examples inside LLM prompts.
+ *
+ *   NO `P / E` and NO `52-WEEK RANGE`. Quote data off the client fetch to
+ *   `/api/company-kpis`; see the header.
+ *
+ *   NO `NUCLEAR CAPACITY`, and no operational metric of any kind. There is no
+ *   per-company operational-metric mechanism at all: no table, no column, no
+ *   extractor. A generation capacity figure beside a real issuer is the most
+ *   convincing kind of invented number there is.
+ *
+ *   The grid is therefore EMPTY for a company with no CIK and no filed period,
+ *   which is the common case, and it draws however many figures it was handed
+ *   rather than padding to the design's four.
+ *
+ * DEVELOPMENTS are one line per already-classified development article, off the
+ * rows the page has in hand. The line is the article's stored `summary` when it
+ * has one and its title otherwise, both of which are plain Postgres columns
+ * written during the nightly ingest.
+ *
+ *   NEVER `/api/memo`. That is a model call on click, and this runs on render.
+ *
+ *   NOT TRUNCATED. The pool is already bounded upstream by `fetchCompanyArticles`,
+ *   so a cap here would only hide rows the page had already paid to read.
  */
 export function buildPrimer(
   detail: CompanyDetail,
@@ -200,17 +415,36 @@ export function buildPrimer(
   developments: CompanyArticle[],
   financials: CompanyFinancialsResult,
 ): CompanyIntelData["primer"] {
-  void detail;
-  void identity;
-  void developments;
-  void financials;
+  const identityRows: CompanyPrimerRow[] = [];
+  if (detail.sector) identityRows.push({ label: "Sector", value: detail.sector });
+  if (identity?.industry) identityRows.push({ label: "Industry", value: identity.industry });
+
+  const keyFigures: CompanyKeyFigure[] = [];
+  const filed = latestFiledPeriod(financials);
+  if (filed) {
+    for (const figure of PRIMER_FIGURES) {
+      const cell = filed.view.grid[figure.key]?.[filed.period.key];
+      if (!cell || !Number.isFinite(cell.value)) continue;
+      keyFigures.push({
+        label: `${figure.label} · ${filed.period.label.toUpperCase()}`,
+        value: formatMoney(cell.value, financials.reportingCurrency),
+        scale: "figure",
+      });
+    }
+  }
+
   return {
-    lede: "",
-    identity: [],
-    overview: "",
-    keyFigures: [],
-    developments: [],
-    footnote: "",
+    lede: PRIMER_LEDE,
+    identity: identityRows,
+    overview: identity?.brief ?? "",
+    keyFigures,
+    developments: developments
+      .map((article) => {
+        const summary = article.summary?.trim();
+        return summary && summary.length > 0 ? summary : article.title.trim();
+      })
+      .filter((line) => line.length > 0),
+    footnote: PRIMER_FOOTNOTE,
   };
 }
 
