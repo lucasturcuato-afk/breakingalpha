@@ -4,8 +4,7 @@ import { todayPt } from "@/lib/session-date";
 import { COMMIT_NOTE_MAX } from "@/components/commit/commit-target";
 import {
   DEFAULT_ADOPT_HORIZON,
-  MAX_WINDOW_DAYS,
-  isPriceableClaimType,
+  isAdoptGradeable,
   normalizeAdoptHorizon,
   resolveAdoptWindow,
 } from "@/lib/call-horizons";
@@ -137,26 +136,11 @@ export async function POST(request: NextRequest) {
   const horizon = normalizeAdoptHorizon(body.horizon, DEFAULT_ADOPT_HORIZON);
   const windowEnd = resolveAdoptWindow(todayIso, horizon, body.window_days);
 
-  // Server-side gradeability, mirroring src/app/api/radar/claims/author/route.ts.
-  const symbol = typeof call.target_symbol === "string" ? call.target_symbol.trim() : "";
-  const direction = call.expected_direction;
-  // `>=`, not `>`. A same-session adopt is a REAL claim: the window opens and
-  // closes on today's session and the grader resolves it open to close (see
-  // resolveAdoptWindow). With `>` a zero-day window scored ungradeable, and per
-  // the read-side defect nothing in the product ever closes an ungradeable
-  // claim, so every same-session adopt became a permanently open context entry.
-  // The authoring path keeps `>` on purpose: its prompt requires a window end
-  // strictly after today and its composer never offers a session.
-  const endsAfterToday = windowEnd >= todayIso;
-  const withinMax =
-    (new Date(windowEnd).getTime() - new Date(todayIso).getTime()) / 86_400_000 <=
-    MAX_WINDOW_DAYS;
-  const gradeable =
-    !!symbol &&
-    !!direction &&
-    endsAfterToday &&
-    withinMax &&
-    isPriceableClaimType(call.claim_type);
+  // Server-side gradeability, never trusted from the client. The rule itself
+  // lives in call-horizons.isAdoptGradeable beside the window arithmetic it
+  // depends on, so there is exactly one implementation and a test can assert
+  // against THIS predicate rather than a hand-written copy of it.
+  const gradeable = isAdoptGradeable(call, todayIso, windowEnd);
 
   const { data, error } = await supabase
     .from("user_claims")

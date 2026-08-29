@@ -406,6 +406,50 @@ export function resolveAdoptWindow(
   return addCalendarDays(todayIso, days);
 }
 
+/** The fields the adopt gradeability rule reads off a brief call. */
+export interface AdoptGradeableCall {
+  target_symbol?: unknown;
+  expected_direction?: unknown;
+  claim_type?: unknown;
+}
+
+/**
+ * Whether an adopted claim can be price-graded. THE rule, not a copy of it.
+ *
+ * /api/radar/claims/adopt calls this and nothing else, so there is no second
+ * implementation to drift from. It used to be inline in the route, and
+ * call-horizons.test.ts carried a hand-written mirror of it under a comment
+ * claiming to be "the exact predicate the route applies". The mirror went stale
+ * the moment the route's compare changed, and the suite stayed green because
+ * its cases only exercised `week`. That is the exact failure this PR exists to
+ * close, so the mirror is deleted rather than repaired.
+ *
+ * `windowEndIso >= todayIso`, not `>`. A same-session adopt is a real claim:
+ * the window opens and closes on today's session and the grader resolves it
+ * open to close. See resolveAdoptWindow for why, and for what a strict compare
+ * costs.
+ *
+ * The AUTHORING path (claims/route.ts, author/route.ts) deliberately keeps a
+ * strict compare and does NOT call this. Its prompt requires a window end
+ * strictly after today and compose-data.ts filters `session` out of the offered
+ * set, so a zero-day window is unreachable there. Widening it would be a
+ * different decision than this one.
+ */
+export function isAdoptGradeable(
+  call: AdoptGradeableCall,
+  todayIso: string,
+  windowEndIso: string,
+): boolean {
+  const symbol = typeof call.target_symbol === "string" ? call.target_symbol.trim() : "";
+  if (!symbol) return false;
+  if (!call.expected_direction) return false;
+  if (!isPriceableClaimType(call.claim_type)) return false;
+  if (windowEndIso < todayIso) return false;
+  const span = daysBetween(todayIso, windowEndIso);
+  if (span === null || span > MAX_WINDOW_DAYS) return false;
+  return true;
+}
+
 /** Claim types the price-attribution grader can actually resolve. */
 export function isPriceableClaimType(claimType: unknown): boolean {
   return claimType === "ticker" || claimType === "sector" || claimType === "index";

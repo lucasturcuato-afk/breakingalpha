@@ -15,6 +15,7 @@ import {
   adoptWindowRequest,
   adoptWindowValue,
   horizonPhraseForDays,
+  isAdoptGradeable,
   DEFAULT_ADOPT_HORIZON,
   HORIZON_DAYS,
   HORIZON_TYPES,
@@ -126,26 +127,71 @@ test("an unrecognized horizon falls back rather than throwing", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Gradeability, mirroring the adopt route's server-side rules
+// Gradeability: the adopt route's server-side rule
+//
+// This block used to carry a hand-written mirror of the route's predicate,
+// under a comment claiming to be "the exact predicate the route applies". It
+// stopped being that the moment the route's compare became `>=`, and the suite
+// stayed green because every case here exercised `week`, where `>` and `>=`
+// agree. A stale mirror of a rule, eighty lines above the PARITY block whose
+// whole thesis is that mirrors go stale.
+//
+// So the mirror is gone rather than corrected. `isAdoptGradeable` IS the rule,
+// the route calls it and nothing else, and these cases exercise the real thing.
+// The `session` case below is the one the mirror could not answer.
 // ---------------------------------------------------------------------------
 
-/** The exact predicate src/app/api/radar/claims/adopt/route.ts applies. */
+/** The route's own call: resolve the window, then apply the rule to it. */
 function adoptGradeable(call: {
   target_symbol?: string | null;
   expected_direction?: string | null;
   claim_type?: string | null;
 }, todayIso: string, horizon: HorizonType): boolean {
-  const windowEnd = resolveAdoptWindow(todayIso, horizon);
-  const symbol = typeof call.target_symbol === "string" ? call.target_symbol.trim() : "";
-  const endsAfterToday = windowEnd > todayIso;
-  const withinMax =
-    (Date.parse(`${windowEnd}T00:00:00Z`) - Date.parse(`${todayIso}T00:00:00Z`)) / 86_400_000 <=
-    MAX_WINDOW_DAYS;
-  return (
-    !!symbol && !!call.expected_direction && endsAfterToday && withinMax &&
-    isPriceableClaimType(call.claim_type)
-  );
+  return isAdoptGradeable(call, todayIso, resolveAdoptWindow(todayIso, horizon));
 }
+
+test("REGRESSION: a session adopt is gradeable, which the old mirror denied", () => {
+  // The drift this file shipped with: the route computed `>=` and the local
+  // copy still computed `>`, so a session horizon answered false here and true
+  // in production. Invisible, because nothing exercised session.
+  const call = {
+    target_symbol: "NVDA",
+    expected_direction: "bullish",
+    claim_type: "ticker",
+  };
+  assert.equal(resolveAdoptWindow(TODAY, "session"), TODAY, "precondition: zero-day window");
+  assert.equal(adoptGradeable(call, TODAY, "session"), true);
+  // A strict compare would answer false here, which is the state that made
+  // every same-session adopt a permanently open context entry.
+  assert.equal(isAdoptGradeable(call, TODAY, TODAY), true);
+});
+
+test("every horizon a reader can pick yields a gradeable priceable call", () => {
+  const call = {
+    target_symbol: "NVDA",
+    expected_direction: "bullish",
+    claim_type: "ticker",
+  };
+  for (const t of HORIZON_TYPES) {
+    assert.equal(adoptGradeable(call, TODAY, t), true, t);
+  }
+});
+
+test("a window ending before today is refused, and only that direction", () => {
+  const call = {
+    target_symbol: "NVDA",
+    expected_direction: "bullish",
+    claim_type: "ticker",
+  };
+  assert.equal(isAdoptGradeable(call, TODAY, addCalendarDays(TODAY, -1)), false);
+  assert.equal(isAdoptGradeable(call, TODAY, TODAY), true, "the same day is not the past");
+  assert.equal(isAdoptGradeable(call, TODAY, addCalendarDays(TODAY, MAX_WINDOW_DAYS)), true);
+  assert.equal(
+    isAdoptGradeable(call, TODAY, addCalendarDays(TODAY, MAX_WINDOW_DAYS + 1)),
+    false,
+    "past the ceiling",
+  );
+});
 
 test("a priceable call adopted over a real window is gradeable", () => {
   assert.equal(
