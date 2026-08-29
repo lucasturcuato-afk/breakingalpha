@@ -40,6 +40,15 @@ import type { CompanyDetail, CompanyDetailArticle } from "../../src/lib/data-acc
 import type { CompanyArticle, CompanyIdentity } from "../../src/lib/company-intel.ts";
 import type { CompanyFinancialsResult } from "../../src/lib/financial-facts.ts";
 
+/**
+ * The character itself, written as an escape.
+ *
+ * These assertions exist to prove no mapper emits an em dash, and a literal one
+ * in the assertion is still an em dash in the repo, which scripts/design-lint.mjs
+ * rejects on sight and is right to.
+ */
+const EM_DASH = "\u2014";
+
 /* ── builders ────────────────────────────────────────────────────────── */
 
 function article(over: Partial<CompanyDetailArticle> = {}): CompanyDetailArticle {
@@ -133,7 +142,7 @@ test("sparse company: masthead states the name and nothing else", () => {
   assert.equal(m.sector, "");
   // Never a stand-in a reader could mistake for a symbol.
   assert.notEqual(m.ticker, "-");
-  assert.notEqual(m.ticker, "—");
+  assert.notEqual(m.ticker, EM_DASH);
   assert.notEqual(m.ticker, "n/a");
   assert.notEqual(m.ticker, m.name);
   assert.notEqual(m.ticker, "mistral-ai");
@@ -149,7 +158,7 @@ test("sparse company: exactly one KPI cell, and no cell carries an empty value",
   for (const c of cells) {
     assert.ok(c.label.length > 0);
     assert.ok(c.value.length > 0);
-    assert.notEqual(c.value, "—");
+    assert.notEqual(c.value, EM_DASH);
     assert.notEqual(c.value, "n/a");
   }
 });
@@ -440,5 +449,5 @@ test("nothing a mapper emits carries an em dash", () => {
     buildKpis(SPARSE),
     buildPrimer(SPARSE, null, [], EMPTY_FINANCIALS),
   ]);
-  assert.equal(out.includes("—"), false);
+  assert.equal(out.includes(EM_DASH), false);
 });
