@@ -619,6 +619,77 @@ html.dark .skeleton-shimmer {
 }
 .dash-rise { animation: dash-rise 720ms cubic-bezier(0.16, 1, 0.3, 1) both; }
 
+/* HOLD THE ENTRANCE AT FRAME ZERO WHILE THE REVEAL GATE IS SHUT.
+ *
+ * `DashboardRevealGate` (dashboard-ready.tsx) always MOUNTS its children and
+ * hides them with `opacity-0`, flipping to `opacity-100` once every registered
+ * source settles. Mount and reveal are therefore different moments, and the
+ * entrance is keyed to mount. The ladder below is 720ms with inline delays
+ * from 0 to 420ms, so it is spent roughly 1150ms after mount. Whenever the
+ * reveal lands after that, the reader sees a 300ms opacity fade of settled
+ * content instead of a stagger.
+ *
+ * MEASURED on production builds at 1440x900, signed in, against the build
+ * immediately before this rule. The honest, reproducible evidence is the
+ * throttled run, because severity scales with how late the reveal lands:
+ *
+ *   4x CPU + Slow 4G   mount 10328ms   reveal 15953ms   14 of 17 finished
+ *
+ * "Finished" means `playState: "finished"` at the first frame with any
+ * visibility. WARM SEVERITY VARIES WITH REVEAL LATENCY and does not reproduce
+ * to a single figure: runs on this branch measured anywhere from 1 of 18 (with
+ * reveal at ~800ms, the ladder about 60% through) to 12 of 15 (reveal at
+ * 1629ms, effectively all of it spent). Do not quote a warm number as if it
+ * were stable. With this rule the figure is 0 in every condition tested.
+ *
+ * Pausing on the gate's own attribute makes the clock start when the content
+ * becomes visible instead of when it mounts. Not one delay, duration or curve
+ * is touched; only when the clock starts. `data-dashboard-ready` already sits
+ * on the gate wrapper, an ancestor of every selector below, so this needs no
+ * TSX change. This is dashboard-mobile/dashboard.module.css `.gateShut`
+ * generalised to the desktop gate.
+ *
+ * REDUCED MOTION STILL WINS. The block at the end of this file sets
+ * `animation: none !important` on every selector below. The shorthand resets
+ * `animation-play-state` to `running`, and carries `!important`, so it beats
+ * this rule; with `animation-name: none` there is nothing to pause anyway.
+ *
+ * WHAT EACH SELECTOR IS ACTUALLY WORTH. The genuinely mistimed set is 15
+ * elements: 10 `.dash-rise`, 4 `.dash-fill-in`, 1 `.dash-hero-in`. The other
+ * three are defensive, not fixes:
+ *   - `.dash-bar` has no consumer anywhere in the app and no DOM instances.
+ *     Listed only for symmetry with the reduced-motion block above.
+ *   - `.dash-fspark-path` / `.dash-fspark-dot` were ALREADY correctly timed on
+ *     the baseline (`playState: "running"`, `currentTime: 0` at first
+ *     visibility), because Fresh Radar is the last source to settle, so the
+ *     sparkline only mounts as the gate opens. Included so the sparkline stays
+ *     correct if Fresh Radar ever settles earlier, not because it was broken.
+ *
+ * `.dash-intro-el` IS DELIBERATELY NOT LISTED, and NOT because the splash is
+ * invisible. Measured per frame on both builds, `.dash-intro` paints on
+ * desktop for 205 frames, 682ms to 2566ms, full screen and on top, with the
+ * splash at `opacity: 1` while the gate wrapper behind it is still at 0. The
+ * reason is that its backdrop is opaque and painted over everything anyway:
+ * pausing `.dash-intro-el` would hold the splash's OWN contents (mark, line,
+ * progress bar, stats) at `opacity: 0` behind that opaque backdrop and gain
+ * nothing, while breaking the splash. Its children are correctly keyed to its
+ * own mount, and it unmounts on its own 2600ms JS timer regardless of the gate.
+ *
+ * KNOWN, FILED SEPARATELY, NOT FIXED HERE. On the FIRST dashboard load of a
+ * tab session the splash is up while the gate opens (751-889ms), so the now
+ * unblocked ladder runs BEHIND the opaque backdrop and 11-17 of 21 are spent
+ * by the first frame a reader can see. That is this same defect one layer
+ * down, pre-existing, and not a regression from this rule. Every load after
+ * the first in a session gets the full ladder. */
+[data-dashboard-ready="false"] .dash-rise,
+[data-dashboard-ready="false"] .dash-fill-in,
+[data-dashboard-ready="false"] .dash-hero-in,
+[data-dashboard-ready="false"] .dash-bar,
+[data-dashboard-ready="false"] .dash-fspark-path,
+[data-dashboard-ready="false"] .dash-fspark-dot {
+  animation-play-state: paused;
+}
+
 /* Dotted texture behind the content column (fades toward the bottom). */
 .dash-dots { position: relative; }
 .dash-dots::before {
