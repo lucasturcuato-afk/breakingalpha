@@ -195,6 +195,55 @@ shape a linter could catch: design-lint already has `ink-as-fill` for the
 `--c-*ink` family, and this is the same class one token over.
 
 
+### Ruling 19: the fourth pole is Radar, and the route stays /watch
+
+**The name.** The pole reads **Radar**, not Watch. Three reasons, in the order
+they decide it:
+
+1. `Watch` is already a market-state word in this product. `mood-bar.tsx:38`
+   uses it as a `badgeLabel` beside Bullish, Bearish, Neutral and Mixed, and the
+   same vocabulary appears in `useLiveMood.ts`, `from-dashboard.ts` and the
+   thesis state map. A pole label that collides with a state label makes two
+   different things read as one thing.
+2. It names an action rather than a place. Every other pole is a destination:
+   Today, Ledger, Ask. "Watch" reads as an instruction.
+3. Radar is the word the reader already knows from the desk, so the pole is
+   navigational continuity rather than a new concept to learn.
+
+**What the name does NOT promise.** Radar on the desk is a tab set:
+`/radar/watchlist`, `/radar/following`, `/radar/calls`, `/radar/theses`. The
+pole carrying that word is **navigational continuity, not a promise of that
+particular tab set.** Which tiers live behind the pole is a separate decision,
+made per tier on whether a real source exists, and it will not always match the
+desk's tab list. A reader who taps Radar is being told "this is the same part of
+the product you know from the desk", not "these are the same four tabs".
+
+**The route stays `/watch`.** `/radar/*` is the desktop namespace and it is
+fenced. Moving the mobile route onto that path would collide with a fenced tree,
+and it would mean rewriting the pole's `owns` array and the standing ruling
+comment in `mobile-tab-bar.tsx` for no reader-visible gain, since the URL is not
+a surface a phone reader reads. Label and route are allowed to differ here, and
+this paragraph exists so the next person to notice the mismatch does not "fix"
+it.
+
+**What changed.** Three rendered strings: the pole label, the shell's
+`pageTitle`, and the screen's `h1`. One stale comment reference. Nothing else.
+
+**What deliberately did not change**, because each is the market-state or
+thesis-state vocabulary rather than the pole: `mood-bar.tsx:38` `badgeLabel`
+(named explicitly in the ruling), `useLiveMood.ts` `watch: "Watch"`,
+`thesis-types.ts` `watch: "Watch"`, `from-dashboard.ts` `WATCH: "Watch"`, and
+`ledger/fixture.ts` `toneLabel: "Watch"`. Also untouched: "Top Deals to Watch"
+in the brief PDF and the share screen, which is the English verb in a different
+feature, and the LLM prompt strings that forbid a title beginning with "Watch",
+which are about directive language and not about this pole.
+
+**History.** This was ruled three times and written into a sprint prompt as item
+A5. It was dropped during a rewrite of that prompt, and #714 shipped the pole
+under the old name. Recorded here so the ruling lives in the repo rather than in
+a prompt that can be rewritten again.
+
+
 ## Open items
 
 Logged 2026-08-16 from a DOM read of `design_handoff_signalera_mobile/Signalera

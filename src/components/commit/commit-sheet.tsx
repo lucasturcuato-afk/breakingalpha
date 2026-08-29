@@ -281,7 +281,7 @@ export function CommitSheet({ target, onDismiss, onCommitted }: CommitSheetProps
            occupies y 778..822 and the bar occupies y 785..844, so 37 of the
            control's 44px sat under it and only a 7px band was live.
            `document.elementFromPoint` at the control's own centre returned
-           the bar's "Watch" link, and a real tap there navigated to
+           the bar's "Radar" link, and a real tap there navigated to
            /radar/watchlist, which signed out redirects to /auth. The
            designed dismiss control did not merely fail to dismiss: it threw
            the reader off the Ledger and took the unsaved note with it, which
