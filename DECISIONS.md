@@ -334,6 +334,74 @@ graded, and the row is still never closed.
 **What would change the answer.** An honest treatment of "tracked as context",
 meaning a state a claim can leave. Not more rows. Writing a directionless,
 windowless claim would not reopen this ruling; giving that state an exit would.
+### Ruling 22: a ruling scoped by a fact about the codebase carries an expiry nobody records
+
+**The rule.** When a ruling's scope rests on a fact about the codebase rather
+than on a principle, the fact is a dependency and it has to be written down as
+one, with the route or file it describes named. A ruling that says "off the
+build path because X has no mobile counterpart" stops being true the day X gets
+a mobile counterpart, and nothing in this repo notices that day.
+
+**The instance, measured.**
+
+- Ruling 1's build-step column excluded the work on the grounds that
+  `/cross-source` **has no mobile counterpart** (README Gaps item 1). That was
+  true of `/cross-source` on 2026-08-15 and is still true today. The ruling is
+  not wrong.
+- The house rule Ruling 1 enforces is not scoped to `/cross-source`.
+  `design_handoff_signalera_mobile/README.md:316` says "No aggregate accuracy
+  percentage or hit rate anywhere, including seeded content. Counts are
+  permitted; rates are not." Repo-wide.
+- `RecordHero` in `src/app/radar/calls/page.tsx` shipped **2026-07-05** in
+  #450, **41 days before Ruling 1**, renders a ring, a percentage figure and a
+  `right / wrong` pair, and was never inside Ruling 1's scope.
+- `/radar/calls` entered the mobile navigation on **2026-08-21** in #619. It
+  sits in the Ledger pole's `owns` array at
+  `src/components/shell/mobile-tab-bar.tsx:99`, and mobile links to it were
+  added later at `src/components/ledger/ledger-screen.tsx:428` and
+  `src/components/settings/mobile-settings-screen.tsx:337`.
+- So from 2026-08-21 the "no mobile counterpart" category stopped describing
+  that route. **Nothing re-ran the audit.** The screen map at
+  `design_handoff_signalera_mobile/github.md:101` still marks the claims
+  surface "NOT YET READ IN FULL for this design; treat as ungrounded until it
+  is", and `RecordHero` appears nowhere in `github.md`, in this file, or in the
+  handoff README.
+- A second instance of the same shape shipped in parallel on `/morning-brief`,
+  which is not `/cross-source` either: `BriefCallsSection.tsx` authored its own
+  record line carrying both a rate and W/L shorthand, at every width, while
+  `tests/unit/dashboard-honesty.test.ts:390` asserted that a component deleted
+  for exactly that format stays deleted.
+
+**Ruling 1 is not reopened.** Its text is correct about the surface it names.
+What is ruled here is that its scope was read as the extent of the house rule,
+and a build-step column is not an inventory.
+
+**What to do about it, concretely.** Three things, in order of how much they
+depend on somebody remembering.
+
+1. **A standing check, which depends on nobody.** `npm run design:rates` runs
+   `scripts/design-lint.mjs --all --only aggregate-rate,outcome-vocabulary
+   --path src/app,src/components`. It reads the whole tree rather than a
+   branch's diff, so a line that predates a ruling is as visible as a line
+   added yesterday, which is the exact property the `--since origin/main`
+   default does not have. Added here with `win rate` and `success rate`, two
+   synonyms rule 4 had no shape for.
+2. **A rendered-output assertion, for the surfaces that are decided.**
+   `tests/unit/reader-output-honesty.test.ts` renders the record line and reads
+   the banned shapes off the markup. Scoping an honesty test to an authoring
+   file enforces the rule against the files that already obey it.
+3. **A named dependency in the ruling itself.** Where a ruling's scope rests on
+   a fact, the fact and the route it describes get written into the ruling, so
+   a later reader can check it rather than inherit it.
+
+**Is the standing check sufficient on its own? No, and the number says why.**
+The slice reports **147 findings** across `src/app` and `src/components` today.
+That is a usable signal and not a gate: it is small enough to read, and far too
+large to require at zero. It also cannot see a figure assembled at runtime from
+parts, which is how `53W` was built, so item 2 is not optional. And it says
+nothing about which findings are violations and which are a price move that
+happens to carry a percentage. **Item 1 replaces the need to remember. It does
+not replace the need to decide.**
 
 
 ## Open items
