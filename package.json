@@ -11,6 +11,7 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "design:lint": "node scripts/design-lint.mjs",
+    "decisions": "node scripts/decisions.mjs",
     "design:rates": "node scripts/design-lint.mjs --all --only aggregate-rate,outcome-vocabulary --path src/app,src/components",
     "design:audit": "node scripts/screen-audit.mjs"
   },

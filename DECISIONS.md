@@ -5,6 +5,22 @@ when the Ledger build produced a deviation that needed a record. This file is
 the record. The design handoff at `design_handoff_signalera_mobile/README.md`
 states the conflicts; this states what won.
 
+## This file is closed at ruling 22
+
+Rulings 1 to 22 live below and keep their numbers forever, because the codebase
+and the PR history reference them by number.
+
+**New rulings go in `decisions/`, one file each, named rather than numbered.**
+Run `npm run decisions` to list them.
+
+The reason is a collision that already happened. On 2026-08-29 two units built
+in parallel, each read this file, each saw the highest ruling was 20, and each
+took 21. One merged; the other had to be renumbered by hand on rebase. That is
+structural rather than careless: every parallel author reading "the next free
+number" from one file reads the same answer, because none of them can see the
+others. A placeholder does not help either, since two appends to this same
+anchor conflict whatever they say. See `decisions/README.md`.
+
 ## How to read the "Build step" column
 
 Build step numbers refer to **`design_handoff_signalera_mobile/IMPLEMENTATION_PROMPT.md`
