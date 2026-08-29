@@ -350,27 +350,106 @@ function isAllowlisted(lineText) {
   return BANNED_ALLOW.find(a => a.pattern.test(lineText));
 }
 
+/* Which lines are ENTIRELY a comment.
+ *
+ * Rule 1 is a substring ban, and a substring ban run over prose fires on
+ * prose. Across this programme it fired about a dozen times on comments and
+ * every single one was someone explaining code: a sentence about a loader, a
+ * sentence naming a DOM attribute, twice on a message correcting a comment by
+ * quoting the sentence being corrected. It has never once caught a real
+ * violation inside a comment, because a comment is not a rendered string and
+ * is not an identifier. So comment-only lines are exempt from RULE 1 ONLY.
+ * Every other rule still reads every line, em-dashes and the rate shapes very
+ * much included; those are about what is written, not about where.
+ *
+ * ENTIRELY is the whole point. `const x = "performance"; // named by design`
+ * is code with a comment stapled to it, and the ban still applies to it. A
+ * line qualifies only when it CONTAINS comment text and everything left after
+ * the comment spans are removed is whitespace or JSX wrapper braces, which is
+ * what makes `{/* ... *\/}` a comment line and a bare `}` not one.
+ *
+ * Strings are tracked so `const s = "/*";` cannot open a comment that swallows
+ * the real code after it. A template literal left open at end of line stays
+ * open, which keeps its continuation lines linted: every ambiguity here is
+ * resolved towards checking the line rather than skipping it.
+ *
+ * In .css `//` is not a comment, but a line with real CSS before it has code
+ * in the remainder and is checked anyway, so only a line that was already
+ * invalid CSS is affected.
+ */
+function commentOnlyLines(text) {
+  const lines = text.split('\n');
+  const out = new Array(lines.length).fill(false);
+  let inBlock = false;   // inside a block comment, possibly from a line above
+  let inString = null;   // the quote character of an open string, or null
+
+  for (let li = 0; li < lines.length; li++) {
+    const line = lines[li];
+    let code = '';
+    let sawComment = inBlock;
+
+    for (let i = 0; i < line.length; i++) {
+      const c = line[i];
+      if (inBlock) {
+        sawComment = true;
+        if (c === '*' && line[i + 1] === '/') { inBlock = false; i++; }
+        continue;
+      }
+      if (inString) {
+        code += c;
+        if (c === '\\') { code += line[i + 1] ?? ''; i++; continue; }
+        if (c === inString) inString = null;
+        continue;
+      }
+      if (c === '/' && line[i + 1] === '/') { sawComment = true; break; }
+      if (c === '/' && line[i + 1] === '*') { sawComment = true; inBlock = true; i++; continue; }
+      if (c === '"' || c === "'" || c === '`') { inString = c; code += c; continue; }
+      code += c;
+    }
+
+    // Only a template literal survives a newline. Anything else is closed
+    // here, which can only ever make the next line MORE likely to be linted.
+    if (inString !== '`') inString = null;
+
+    out[li] = sawComment && code.replace(/[{}\s]/g, '') === '';
+  }
+  return out;
+}
+
+/* Rule 1, as a function so the self-test can hold specimens against it. It
+ * lived inline in lintFile, where nothing could reach it. */
+function bannedSubstringHits(text) {
+  const commentOnly = commentOnlyLines(text);
+  const out = [];
+  text.split('\n').forEach((raw, i) => {
+    if (commentOnly[i]) return;
+    const lower = raw.toLowerCase();
+    for (const word of BANNED) {
+      if (!lower.includes(word)) continue;
+      out.push({ line: i + 1, word, raw, allow: isAllowlisted(raw) });
+    }
+  });
+  return out;
+}
+
 function lintFile(file) {
   const text = readFileSync(file, 'utf8');
   const lines = text.split('\n');
   const isCss = extname(file) === '.css';
   const isTokens = /tokens(\.reference)?\.css$/.test(file);
 
+  // 1. banned substrings. Skips whole-line comments; see bannedSubstringHits.
+  for (const hit of bannedSubstringHits(text)) {
+    if (hit.allow) {
+      add('WARN', file, hit.line, 'banned-allowlisted', `"${hit.word}" via ${hit.allow.why}`);
+    } else {
+      add('ERROR', file, hit.line, 'banned-substring',
+          `"${hit.word}" in: ${hit.raw.trim().slice(0, 90)}`);
+    }
+  }
+
   lines.forEach((raw, i) => {
     const n = i + 1;
-    const lower = raw.toLowerCase();
-
-    // 1. banned substrings
-    for (const word of BANNED) {
-      if (lower.includes(word)) {
-        const allow = isAllowlisted(raw);
-        if (allow) {
-          add('WARN', file, n, 'banned-allowlisted', `"${word}" via ${allow.why}`);
-        } else {
-          add('ERROR', file, n, 'banned-substring', `"${word}" in: ${raw.trim().slice(0, 90)}`);
-        }
-      }
-    }
 
     // 2. em-dash
     if (raw.includes(EMDASH)) {
@@ -646,6 +725,40 @@ function lintFixtureRules(file, text) {
  * it MUST flag and specimens it MUST NOT, and a mismatch is a hard exit.
  */
 const SELFTEST = [
+  {
+    /* Both halves, deliberately. A change that only proved comments are
+     * skipped would be indistinguishable from switching the rule off, and the
+     * rule is load-bearing: `npm run design:rates` runs this same file. So the
+     * bad list carries the shapes that MUST still fire, including a banned
+     * word sitting beside a comment on the same line and one hidden inside a
+     * string that looks like a comment. */
+    rule: 'banned-substring',
+    run: (t) => bannedSubstringHits(t).filter(h => !h.allow).length,
+    bad: [
+      'const label = "performance";',
+      'const label = "performance"; // named by the design, not by us',
+      'const shareholder = row.owner;',
+      /* A string that merely looks like a comment. If the scanner ignored
+         strings, this line would open a block that swallowed real code. */
+      'const s = "/* not a comment */ performance";',
+      /* Comment first, code second. The line is not ENTIRELY a comment. */
+      '/* opens and closes */ const holder = 1;',
+      /* The block ends mid-line and code follows it. */
+      '/**\n * prose about performance\n */ const holder = 1;',
+    ],
+    good: [
+      '// the loader returns a value before the effect settles',
+      '// used to hold a mirror up to the section above',
+      '/* performance is the word this sentence is explaining */',
+      /* Interior lines of a block carry no marker of their own. */
+      '/**\n * used to hold a mirror\n * the loader returns\n * buy and sell read as prose here\n */',
+      /* JSX, which this repo writes constantly. */
+      '{/* performance of the section, stated in prose */}',
+      '        {/* buy and sell, in a section marker */}',
+      /* Indented continuation of a JSDoc block. */
+      '  /**\n   * allocation of the grid, described\n   */',
+    ],
+  },
   {
     rule: 'fixture-default',
     run: (t, f) => fixtureDefaults(t, f).length,
