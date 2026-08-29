@@ -7,13 +7,23 @@
  * companies-row uuid is used as a fallback for rows written before the CIK was
  * populated.
  *
- * BLOCKED ON A MIGRATION. `insider_transactions` has RLS enabled and ZERO
+ * NO LONGER BLOCKED, AND THIS NOTE WAS WRONG UNTIL 2026-08-29. It used to read
+ * "BLOCKED ON A MIGRATION: `insider_transactions` has RLS enabled and ZERO
  * policies, so an authenticated client currently reads zero rows regardless of
- * what is stored. sql/0019_insider_transactions_read_policy.sql adds the same
- * "Public read access" SELECT policy that sec_filings and companies already
- * carry. Until Noah applies it this returns an empty list and the tab renders
- * its empty state, which is the correct fail-closed behavior: no error, no crash,
- * no partial table.
+ * what is stored." sql/0019_insider_transactions_read_policy.sql has since been
+ * applied. Measured with the anon key: a plain PostgREST select against this
+ * table answers 206 with `content-range: 0-0/5052`, so the SELECT policy is live
+ * and rows reach the client.
+ *
+ * The stale sentence mattered. It told a reader that an empty Insider tab was
+ * the migration, when an empty tab now means the company genuinely has no
+ * qualifying Form 4 rows, which is what `insiderEmptyCopy` already says.
+ *
+ * Coverage is still PARTIAL, which is a different fact and the one that
+ * survives: the ingest keeps only transaction codes P and S, and keeps a
+ * disposition only when it clears $1,000,000 or the filer is an executive
+ * officer (backend/edgar/forms/form_4.py). INSIDER_COVERAGE_NOTE states that on
+ * screen, under the populated table and under the empty state alike.
  *
  * Writes nothing. Never throws; a query failure degrades to an empty list.
  */

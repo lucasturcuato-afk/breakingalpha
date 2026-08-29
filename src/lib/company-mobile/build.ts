@@ -85,10 +85,29 @@
  * for a company that has rows in each block.
  */
 
-import { formatEvidence, levelPolarity, type TonePolarity } from "@/lib/tone";
+import {
+  formatDirection,
+  formatEvidence,
+  levelPolarity,
+  levelToLabel,
+  type TonePolarity,
+} from "@/lib/tone";
+import {
+  describeCode,
+  formatDate,
+  formatPrice,
+  formatRole,
+  formatShares,
+  groupByCategory,
+  sortNewestFirst,
+} from "@/lib/insider-transactions";
 import { formatMoney } from "@/lib/reporting-currency";
+import { formatPTDateShort } from "@/lib/format-pt";
 
-import type { CompanyDetail } from "@/lib/data-access/getCompanyDetail";
+import type {
+  CompanyDetail,
+  CompanyDetailArticle,
+} from "@/lib/data-access/getCompanyDetail";
 import type { InsiderTransactionsResult } from "@/lib/data-access/getInsiderTransactions";
 import type {
   CompanyFinancialsResult,
@@ -474,6 +493,111 @@ export function buildPrimer(
   };
 }
 
+/** Read off the two frozen vocabularies rather than restating them. */
+type LevelInk = CompanyIntelData["tone"]["levelTone"];
+type RowInk = CompanyIntelData["tone"]["rows"][number]["direction"];
+
+/**
+ * Level ink, derived from the level's own polarity and never pinned. The design
+ * draws a company that happened to read constructively; a fixed green would
+ * paint a Strongly Negative level as an improving one.
+ *
+ * "mixed" maps to "flat" and not to an amber: `TONE_INK.flat` is
+ * `--c-secondary`, matching `ToneReadout`'s neutral ink, and amber on this
+ * screen is the developing and awaiting outcome hue.
+ */
+const LEVEL_INK: Record<TonePolarity, LevelInk> = {
+  positive: "up",
+  mixed: "flat",
+  negative: "down",
+};
+
+/**
+ * Row tint from the article's OWN three-state sentiment label.
+ *
+ * A label outside these three is not a state this vocabulary can express, so
+ * the row is dropped rather than tinted as "mixed". Tinting an unlabelled
+ * article amber would assert a balanced reading nothing recorded.
+ */
+const ROW_INK: Record<string, RowInk> = {
+  bullish: "up",
+  neutral: "mixed",
+  bearish: "down",
+};
+
+/**
+ * Trailing 7-day window the evidence rows are drawn from, so the rows under the
+ * level are from the same window the level was computed over.
+ *
+ * MIRRORED, not imported. `TONE_WINDOW_MS` in `getCompanyDetail.ts` is not
+ * exported, and `WINDOW_MS` in `tone/ToneEvidenceList.tsx` sits inside a
+ * `"use client"` module that a server lib must not pull in. That file already
+ * set this convention, mirroring the constant with its source named.
+ */
+const TONE_ROW_WINDOW_MS = 7 * 86_400_000;
+
+/**
+ * The one caveat under the reading, drawn in BOTH branches of `ToneSection`.
+ *
+ * NOT the design's sentence. The drawing ends "No number sits behind this
+ * label", and that is false: `computeTone` takes a mean over the window's
+ * scored labels and buckets it, so a number does sit behind it. What is true is
+ * that the score is never displayed, which is a different claim and the one
+ * `lib/tone.ts` actually makes in its own header.
+ */
+const TONE_DISCLAIMER =
+  "A plain-language reading of how indexed coverage is written over the trailing " +
+  "seven days. It describes the coverage, not the security, and the internal " +
+  "score behind it is never displayed.";
+
+/**
+ * Source and date for the one article a row is. Machine record, uppercased
+ * because `LABEL_MONO` carries no text-transform.
+ *
+ * Source AND DATE, not the desktop's `formatAge()` "3d ago". This shape is
+ * assembled on the server and the page is cacheable, so a relative age is stale
+ * the moment it is stored, while a date stays true. `formatPTDateShort` is the
+ * house short form and is the same zone every other stamp in this repo uses.
+ */
+function toneRowMeta(article: CompanyDetailArticle): string {
+  const source = (article.source ?? "").trim().toUpperCase();
+  const date = formatPTDateShort(article.publishedAt).toUpperCase();
+  return [source, date].filter(Boolean).join(" · ");
+}
+
+/**
+ * ONE ARTICLE PER ROW, and no cap.
+ *
+ * `ToneEvidenceList` keeps five and prints "+N more this week" underneath. This
+ * shape has no overflow line, so a cap here would drop real rows with nothing
+ * on screen saying so, which is the one thing the insider section's own header
+ * says a section must not do. The screen scrolls; the desktop rail does not.
+ *
+ * Two filters, both of which drop a row rather than substitute for it:
+ * an article with no stored `sentiment_reason` has no reading to show, and an
+ * article whose sentiment label is missing or unrecognised has no tint this
+ * vocabulary can give it.
+ */
+function toneRows(articles: CompanyDetailArticle[]): CompanyIntelData["tone"]["rows"] {
+  const cutoff = Date.now() - TONE_ROW_WINDOW_MS;
+  const rows: CompanyIntelData["tone"]["rows"] = [];
+
+  for (const article of articles) {
+    const published = article.publishedAt ? Date.parse(article.publishedAt) : NaN;
+    if (!Number.isFinite(published) || published < cutoff) continue;
+
+    const reading = (article.sentimentReason ?? "").trim();
+    if (!reading) continue;
+
+    const direction = ROW_INK[(article.sentiment ?? "").toLowerCase()];
+    if (!direction) continue;
+
+    rows.push({ reading, meta: toneRowMeta(article), direction });
+  }
+
+  return rows;
+}
+
 /**
  * The tone section: level, direction, evidence line, disclaimer, and the rows
  * under "what moved the reading".
@@ -508,18 +632,49 @@ export function buildPrimer(
  * paints a deteriorating tone as an improving one, and a two-way row tint
  * paints a bearish article as merely mixed.
  *
- * TODO(wiring): unwired. Gives back the insufficient-level block, which is the
- * one branch that states nothing about the company.
+ * WIRED. Reads `detail.tone` (the one `ToneSummary` every tone surface shares)
+ * and `detail.articles`. No second aggregation lives here: the level, the
+ * direction and the evidence sentence all come out of `lib/tone.ts` helpers, so
+ * this block and the ARTICLE TONE KPI cell cannot state different things about
+ * the same window.
  */
 export function buildTone(detail: CompanyDetail): CompanyIntelData["tone"] {
-  void detail;
+  const tone = detail.tone;
+  // Computed once for both branches. `ToneSection`'s insufficient branch exits
+  // ahead of the "what moved the reading" rule and never draws them, so this
+  // costs a filter and states nothing extra.
+  const rows = toneRows(detail.articles);
+
+  // INSUFFICIENT IS ITS OWN BRANCH, not a level of zero. No level word, no
+  // direction phrase, and NO EVIDENCE SENTENCE: `formatEvidence` over an empty
+  // window reads "0 of 0 articles positive", which is a claim about a window
+  // that carried nothing. `ToneSection` already draws "Not enough recent
+  // coverage", which is the reason, so the line under it stays absent.
+  if (!tone.sufficient || !tone.level) {
+    return {
+      level: null,
+      direction: "",
+      levelTone: "flat",
+      evidence: "",
+      disclaimer: TONE_DISCLAIMER,
+      rows,
+    };
+  }
+
   return {
-    level: null,
-    direction: "",
-    levelTone: "flat",
-    evidence: "",
-    disclaimer: "",
-    rows: [],
+    // `levelToLabel` is the only thing that produces this word, and it produces
+    // exactly five. The design's "Constructive" is not reachable from it.
+    level: levelToLabel(tone.level),
+    // "" when suppressed, which is every company that did not clear
+    // DIRECTION_MIN_N in BOTH windows. `formatDirection` always carries the
+    // "was X last week" clause, so a bare adjective cannot come out of here.
+    direction: formatDirection(tone) ?? "",
+    levelTone: LEVEL_INK[levelPolarity(tone.level)],
+    // A COUNT, "14 of 17 articles positive". Never converted to a rate.
+    // `ToneEvidence` carries no source count, so no sentence here names one.
+    evidence: formatEvidence(tone.evidence),
+    disclaimer: TONE_DISCLAIMER,
+    rows,
   };
 }
 
@@ -849,6 +1004,35 @@ function buildBasis(view: FinancialView, currency: string | null): FinancialsBas
 }
 
 /**
+ * The house marker for a field the filing left blank.
+ *
+ * `formatRole` already emits exactly this word for the 1,397 of 5,052 rows with
+ * a null title (27.7%, measured 2026-08-29 through the anon key), and
+ * `InsiderTab.tsx:83` emits it for a null filer name. Reused rather than
+ * restated so the two surfaces cannot drift to different words for the same
+ * absence. It is an absence marker and not content: it states that the filing
+ * carried no name, which is itself a fact about the filing.
+ */
+const NOT_STATED = "Not stated";
+
+/**
+ * The SEC code, and what that code means.
+ *
+ * The `Fact` label above this value reads "SEC CODE", so the value leads with
+ * the code as filed. The plain-English half comes from `describeCode`, the one
+ * lookup in this repo that translates a Form 4 code, because the letter alone
+ * does not tell a reader which side of the transaction it was and the desktop
+ * table does not make them guess. A code with no entry in that table renders as
+ * "Code X" rather than as something plausible, which is `describeCode`'s own
+ * rule, and an absent code renders as "Unspecified".
+ */
+function insiderCodeFact(code: string | null): string {
+  const key = (code ?? "").trim().toUpperCase();
+  const meaning = describeCode(code);
+  return key ? `${key} · ${meaning.label}` : meaning.label;
+}
+
+/**
  * The insider record.
  *
  * `routine` AND `other` ARE `[]`, AND THAT IS NOT A STUB. Measured on the live
@@ -863,11 +1047,47 @@ function buildBasis(view: FinancialView, currency: string | null): FinancialsBas
  * model, and the day the extractor writes those codes the rows land in the
  * right group instead of in a group that had been deleted.
  *
- * TODO(wiring): `openMarket` unwired. Gives back no rows.
+ * WIRED, for `openMarket` only, for the reason above.
  */
 export function buildInsider(insider: InsiderTransactionsResult): CompanyIntelData["insider"] {
-  void insider;
-  return { openMarket: [], routine: [], other: [] };
+  // The desktop order and the desktop grouping, through the same two exported
+  // helpers. Grouping rather than mapping `transactions` straight across is
+  // load-bearing: the group heading states "SEC codes P and S", so a row with
+  // any other code must not be able to land under it.
+  const groups = groupByCategory(sortNewestFirst(insider.transactions));
+
+  return {
+    openMarket: groups.openMarket.map((row) => ({
+      name: (row.insiderName ?? "").trim() || NOT_STATED,
+      role: formatRole(row.insiderTitle),
+      // `formatDate` parses the ISO string with a regex rather than through a
+      // timezone, which is required here: `transaction_date` is date-only, and
+      // a zone conversion moves half the rows to the previous calendar day.
+      // Uppercased because `LABEL_MONO` carries no text-transform.
+      //
+      // THE YEAR STAYS. The design draws "JUL 18". Rows arrive newest-first
+      // under a limit of 100 and nothing bounds their age, so a bare month and
+      // day dates a 2023 filing as if it were this year.
+      date: formatDate(row.transactionDate).toUpperCase(),
+      code: insiderCodeFact(row.transactionCode),
+      shares: formatShares(row.shares),
+      price: formatPrice(row.pricePerShare),
+      heldAfter: formatShares(row.sharesOwnedAfter),
+    })),
+    // `[]` BY MEASUREMENT, NOT BY OMISSION. Re-measured 2026-08-29 against the
+    // live table through the anon key: 5,052 rows, transaction_code S 4,612 and
+    // P 440, and A, M, F, G and C at zero each. Both stored codes are open
+    // market, so `groupByCategory` cannot put a row in either list below and
+    // there is nothing here to map. `InsiderSection` self-omits each group on
+    // `length > 0`, so a reader sees neither.
+    //
+    // The day `backend/edgar/forms/form_4.py` keeps a code outside P and S,
+    // this is the line that has to change: map `groups.routine` and
+    // `groups.other` into `InsiderCompactRow`, whose `detail` string has no
+    // precedent in this repo yet and needs one written.
+    routine: [],
+    other: [],
+  };
 }
 
 /* ── the assembler ──────────────────────────────────────────────────── */
