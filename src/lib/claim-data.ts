@@ -45,7 +45,7 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { daysBetween, isPriceableClaimType } from "./call-horizons";
+import { HORIZON_LABEL, daysBetween, isPriceableClaimType } from "./call-horizons";
 import { eyebrowFor } from "./ledger-data";
 import { todayPt } from "./session-date";
 
@@ -75,8 +75,9 @@ export type ClaimVariant = "open" | "onLedger" | "closed";
 
 export interface ClaimSettlement {
   /**
-   * The span of the DESK CALL's own window, in days, or null when the row
-   * carries no resolve_on to measure to.
+   * The span of the DESK CALL's own window, already said. Null when the row
+   * carries no resolve_on to measure to. See `windowSpan` below for the one
+   * case that is not a day count.
    *
    * It is `daysBetween(brief_date, resolve_on)` and it is usually not 90. The
    * fixture this screen replaced wrote "90 days, fixed at entry", which was two
@@ -138,6 +139,25 @@ function asText(value: unknown): string | null {
  * this file can decline to make.
  */
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * The desk call's own window, said in days.
+ *
+ * A ZERO DAY SPAN IS A REAL WINDOW, not a missing one, and it is the common
+ * case: the extractor's `session` bucket resolves a call at the close of the
+ * day it was written. "0 days" alone reads as an absent value, so that one
+ * count is said in the vocabulary the rest of the product already uses for it,
+ * `HORIZON_LABEL.session`, imported rather than typed again.
+ *
+ * Null when there is nothing to measure, and null when the measurement is
+ * negative: a resolve_on before the brief date is a broken row, not a window,
+ * and the row is then simply absent from the screen.
+ */
+function windowSpan(days: number | null): string | null {
+  if (days === null || days < 0) return null;
+  if (days === 0) return HORIZON_LABEL.session;
+  return `${days} ${days === 1 ? "day" : "days"}`;
+}
 
 interface BriefCallRow {
   id: string;
@@ -248,7 +268,7 @@ export async function loadClaim(
       resolveOn,
       sessionIso: today,
       settlement: {
-        window: span !== null && span > 0 ? `${span} ${span === 1 ? "day" : "days"}` : null,
+        window: windowSpan(span),
         checked: resolveOn,
       },
       variant,
