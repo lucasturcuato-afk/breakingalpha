@@ -109,29 +109,60 @@ const POLES: Pole[] = [
     ],
   },
   {
-    /* The href STAYS on /radar/watchlist, and /watch existing does not change
-       that. This comment was written to move the moment the screen existed,
-       and PR #653 moved it. It is moved back here, deliberately.
+    /* THE HREF HAS MOVED TO /watch, and the condition it was waiting on is
+       satisfied. The rule this comment carried was: move it when /watch READS
+       A LOADER, not when /watch merely answers. PR #653 moved it against a
+       screen with no read behind it and was closed for it; the href sat back
+       on /radar/watchlist until now.
 
-       /radar/watchlist reads the reader's real watchlist and paints their real
-       articles. /watch has no loader at all: in production it renders its
-       unwired state and shows nothing. Aiming the pole at /watch would send
-       every reader on a phone off a screen that has their data and onto one
-       that says it has none. A pole pointing at a 404 is the defect this file
-       shipped once against /ledger; pointing one at a working route's unwired
-       replacement is the same defect with a 200 behind it.
+       WHAT MADE IT TRUE. `src/lib/watch-data.ts` reads the reader's own
+       watchlist rows, the articles behind each entry, and their follows, and
+       `/watch` renders that. A phone reader tapping this pole now lands on a
+       screen with their data on it. The unwired notice is gone from the
+       screen entirely.
 
-       `owns` already lists /watch, so the pole lights when a reader reaches it
-       by any other route. Move the href when /watch reads a loader, not when
-       /watch merely answers.
+       WHAT SHIPPED AND WHAT DID NOT, because a reader of this file in six
+       months must not have to guess:
 
-       One consequence, stated rather than discovered later: standing ON /watch
-       the pole renders lit and still navigates to /radar/watchlist, so tapping
-       the pole you are already on moves you. A lit pole is normally a no-op.
-       That is the honest cost of pointing at the screen with the data instead
-       of the screen with the design, and it goes away when the href moves. */
+         watchlist  SHIPS. Rows scoped by user, articles per entry, quiet
+                    names, and a per-entry read that faulted named as an
+                    omission rather than counted quiet.
+         following  SHIPS. `matchFollow` called directly. Coverage, quiet and
+                    MUTED are three separate counts; the desktop folds muted
+                    into quiet and that conflation was not ported. Theme
+                    headings are omitted: cluster labels are null until a lazy
+                    model pass writes them.
+         hero       OMITTED. The design promotes one entity to pinned espresso
+                    carrying "today's strongest story". No column ranks a
+                    reader's names, and a winner derived from `published_at`
+                    is a timestamp dressed up as a judgement.
+         tracked
+         views      OMITTED, and this is the one that would restore a whole
+                    tier. `TrackedView` needs the headline a note was written
+                    against. `user_claims` has no article foreign key, no
+                    article_id and no title column, so that headline has no
+                    source at all. Rendering a note without its story strips
+                    the tier of its meaning, and inventing a plausible headline
+                    beside a real note is the `/ledger` invented-brief defect
+                    (see #670) with a different table under it.
+
+       WHAT WOULD HAVE TO BE TRUE TO RESTORE TIER 1: either an article foreign
+       key on `user_claims` plus a backfill of what can be recovered, or an
+       amendment to the `TrackedView` contract dropping `headline` and
+       redrawing the tier around note and date alone. Both need a migration and
+       an owner. Neither is written. Until one lands the tier stays absent
+       rather than approximated, and this pole points at a two-tier screen.
+
+       The consequence the old comment recorded is now gone: standing ON /watch
+       the pole is lit AND its href is the route the reader is on, so tapping a
+       lit pole is the no-op it should always have been.
+
+       /radar/watchlist and /radar/following stay in `owns` and stay reachable.
+       They are not deleted, they are not edited by this change, and the empty
+       states on /watch link to them by name because /watch has no add
+       affordance. */
     label: "Watch",
-    href: "/radar/watchlist",
+    href: "/watch",
     icon: IconWatch,
     owns: ["/radar/watchlist", "/radar/following", "/watch"],
   },
