@@ -161,7 +161,7 @@ const POLES: Pole[] = [
        They are not deleted, they are not edited by this change, and the empty
        states on /watch link to them by name because /watch has no add
        affordance. */
-    label: "Watch",
+    label: "Radar",
     href: "/watch",
     icon: IconWatch,
     owns: ["/radar/watchlist", "/radar/following", "/watch"],

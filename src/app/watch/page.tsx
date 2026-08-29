@@ -76,7 +76,7 @@ export default async function WatchPage({
   const stage: WatchStage = (sampleAllowed ? named : null) ?? loaded?.stage ?? "ready";
 
   return (
-    <AppShell pageTitle="Watch" mobileFullBleed>
+    <AppShell pageTitle="Radar" mobileFullBleed>
       {/* The mobile layout is gated on the same breakpoint the shell uses to
           swap the sidebar for the tab bar. Gating lives in classes, never in an
           inline style: an inline display beats the class at every breakpoint. */}

@@ -535,7 +535,7 @@ function WatchMasthead() {
           color: "var(--c-ink)",
         }}
       >
-        Watch
+        Radar
       </h1>
       <p
         style={{
