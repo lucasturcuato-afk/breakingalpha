@@ -11,8 +11,13 @@
  *  - Bucketing goes through RESOLUTION_BY_STATE and scoredCallProps, the same
  *    decision path the desk record uses, so the two can never disagree about
  *    what "supported" means.
- *  - A claim with no own outcome row is AWAITING. It is never counted as
- *    anything else and never borrows a result.
+ *  - A GRADEABLE claim with no own outcome row is AWAITING. It is never
+ *    counted as anything else and never borrows a result.
+ *  - A claim with `gradeable: false` is a CONTEXT entry, counted outside both
+ *    the four buckets and the awaiting count. Nothing grades it: the write
+ *    path stamps `resolution_method.method = "none"`, and the grader gates on
+ *    both that and the flag, so there is no verdict on the way. Calling it
+ *    awaiting asked the reader to wait for something nobody is producing.
  *  - With zero resolved claims the model says so explicitly (`hasResolved`
  *    is false) so the surface can render an honest empty state instead of a
  *    zeroed scoreboard.
@@ -45,8 +50,15 @@ export interface YourRecord {
   totalClaims: number;
   /** Claims with their OWN outcome row, whatever it said. */
   resolved: number;
-  /** Claims with no own outcome row yet. */
+  /** Claims with no own outcome row yet, and a verdict genuinely on the way. */
   awaiting: number;
+  /**
+   * Context entries: `gradeable: false`, never price-checked, no verdict
+   * coming. Counted OUTSIDE `byResolution` and outside `awaiting`, because it
+   * is neither a resolution nor a wait. `resolved + awaiting + context` sums
+   * to `totalClaims`.
+   */
+  context: number;
   /** Bucket counts over resolved claims only. Sums to `resolved`. */
   byResolution: Record<Resolution, number>;
   /** False when nothing of the user's has ever been graded. */
@@ -71,6 +83,13 @@ export const YOUR_RECORD_COPY = {
   heading: "Your record",
   bucketLabel: DESK_RECORD_COPY.bucketLabel,
   awaitingLabel: "Awaiting",
+  /**
+   * NOT a fifth outcome word. The four states are fixed (supported,
+   * challenged, no clean read, not graded) and this is not one of them: it is
+   * a category of ENTRY, counted beside the record rather than inside it. It
+   * is a count, and a count is not a ratio.
+   */
+  contextLabel: "Context",
   /** Rendered when the user holds claims but none has resolved. */
   noneResolvedTitle: "None of your calls has resolved yet.",
   noneResolvedBody:
@@ -80,8 +99,18 @@ export const YOUR_RECORD_COPY = {
   noClaimsBody:
     "Commit one in Radar. It is graded on its own window and the result stands, supported or challenged.",
   cta: "Make a call →",
-  /** Rendered under the buckets once something has resolved. */
+  /**
+   * Rendered under the buckets once something has resolved.
+   *
+   * This sentence was false until context entries stopped being counted as
+   * awaiting: a claim nothing will ever grade sat under it with its window 57
+   * days closed. It is now true as written, and the line below says plainly
+   * where those entries went.
+   */
   awaitingNote: "Claims still inside their window are awaiting a grade.",
+  /** Rendered wherever the context count is shown, never on its own. */
+  contextNote:
+    "Context entries are not price-checked. They stay on the record and no verdict is written for them.",
   unavailable: "Your calls are not available right now. Nothing is estimated in their place.",
 } as const;
 
@@ -138,21 +167,32 @@ export function buildYourRecord(
   const byResolution: Record<Resolution, number> = { ...EMPTY };
   let resolved = 0;
   let awaiting = 0;
+  let context = 0;
 
   for (const claim of claims) {
     const resolution = resolutionForClaim(claim, ownOutcomes, todayIso);
-    if (!resolution) {
-      awaiting += 1;
+    // A verdict that exists is shown, whatever the flag says. One legacy row
+    // carries `gradeable: false` beside `method: "price_attribution"`, and
+    // hiding a real outcome row behind a category would be the same class of
+    // lie in the other direction.
+    if (resolution) {
+      resolved += 1;
+      byResolution[resolution] += 1;
       continue;
     }
-    resolved += 1;
-    byResolution[resolution] += 1;
+    // Not awaiting: no grader will ever look at it. See isAwaitingOwnVerdict.
+    if (!claim.gradeable) {
+      context += 1;
+      continue;
+    }
+    awaiting += 1;
   }
 
   return {
     totalClaims: claims.length,
     resolved,
     awaiting,
+    context,
     byResolution,
     hasResolved: resolved > 0,
   };
@@ -176,6 +216,8 @@ export function yourRecordAuthoredStrings(record: YourRecord | null): string[] {
     copy.noClaimsBody,
     copy.cta,
     copy.awaitingNote,
+    copy.contextLabel,
+    copy.contextNote,
     copy.unavailable,
     ...Object.values(copy.bucketLabel),
   ];
@@ -184,6 +226,7 @@ export function yourRecordAuthoredStrings(record: YourRecord | null): string[] {
       out.push(String(record.byResolution[r]));
     }
     out.push(String(record.awaiting));
+    out.push(String(record.context));
   }
   return out;
 }

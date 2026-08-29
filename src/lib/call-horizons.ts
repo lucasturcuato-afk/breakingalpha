@@ -261,6 +261,19 @@ export function adoptWindowOptions(current: AdoptWindow): AdoptWindowOption[] {
   return options;
 }
 
+/**
+ * The day count a window spans.
+ *
+ * The commit sheet draws its date line from this and the adopt route resolves
+ * the stored window from `resolveAdoptWindow`; both live here so the sentence
+ * a reader agrees to and the row that is written cannot come apart. That is
+ * the promise `src/components/commit/commit-target.ts` makes in prose, and
+ * `call-horizons.test.ts` asserts it over every horizon.
+ */
+export function adoptWindowDays(w: AdoptWindow): number {
+  return w.kind === "as-called" ? w.days : HORIZON_DAYS[w.type];
+}
+
 /** The stable select value for a window. Pairs with adoptWindowOptions. */
 export function adoptWindowValue(w: AdoptWindow): string {
   return w.kind === "as-called" ? `as-called:${w.days}` : `bucket:${w.type}`;
@@ -313,6 +326,37 @@ export function addCalendarDays(isoDate: string, days: number): string {
   return new Date(t + days * 86_400_000).toISOString().slice(0, 10);
 }
 
+/**
+ * How much of a stored window has elapsed, 0 to 1, for a progress ring or bar.
+ *
+ * A SAME-SESSION WINDOW HAS NO SPAN TO DIVIDE BY: it opens and closes on one
+ * date, which is what "resolves at today's close" means. The caller this was
+ * lifted out of answered 1 for that case, so a window that had not run yet drew
+ * a completed ring. Unreachable while resolveAdoptWindow floored every window
+ * at one day forward; removing that floor is what exposes it.
+ *
+ * On the session's own date the window is live and nothing of it has measurably
+ * elapsed, so this is 0. Once that date is behind the reader it is 1. No
+ * fraction is invented in between: there is no intraday clock here, only
+ * session dates.
+ *
+ * 0 when any of the three dates is absent or unparseable, so a caller draws an
+ * empty ring rather than a wrong one.
+ */
+export function windowElapsed(
+  startIso: string | null | undefined,
+  endIso: string | null | undefined,
+  todayIso: string | null | undefined,
+): number {
+  if (!startIso || !endIso || !todayIso) return 0;
+  const start = Date.parse(`${startIso.slice(0, 10)}T00:00:00Z`);
+  const end = Date.parse(`${endIso.slice(0, 10)}T00:00:00Z`);
+  const now = Date.parse(`${todayIso.slice(0, 10)}T00:00:00Z`);
+  if (Number.isNaN(start) || Number.isNaN(end) || Number.isNaN(now)) return 0;
+  if (end <= start) return now > end ? 1 : 0;
+  return Math.min(1, Math.max(0, (now - start) / (end - start)));
+}
+
 /** Whole calendar days between two ISO dates (b - a). Negative if b precedes a. */
 export function daysBetween(aIso: string, bIso: string): number | null {
   const a = Date.parse(`${aIso.slice(0, 10)}T00:00:00Z`);
@@ -325,10 +369,27 @@ export function daysBetween(aIso: string, bIso: string): number | null {
  * The window end for an adopted claim.
  *
  * `explicitDays` (an optional raw override) wins when it is a positive finite
- * number; it is clamped to [1, MAX_WINDOW_DAYS]. Otherwise the horizon bucket
- * decides. A session bucket still yields at least one day forward, because a
- * zero-length adopted window is precisely the bug being fixed: a claim that can
- * never stay open.
+ * number, capped at MAX_WINDOW_DAYS. Otherwise the horizon bucket decides, and
+ * the session bucket is a ZERO-day window: it opens and closes on the same
+ * session, which is exactly what the sheet already tells the reader when it
+ * says "resolves at today's close".
+ *
+ * THE ONE-DAY FLOOR THAT USED TO SIT HERE WAS THE DEFECT. It made the sheet
+ * and the stored row disagree about a single commitment: the reader agreed to
+ * today's close, the row was written for tomorrow, and the card read that back
+ * as "resolves tomorrow". Three strings, one claim.
+ *
+ * A zero-day window grades. backend/grading/price_attribution.py's
+ * `_grading_window` collapses an equal window_start onto window_end and grades
+ * that one session open to close, the same branch every brief call already
+ * takes, with `candle_count: 1` and no bar scaling. The floor was introduced
+ * beside a backdated anchor and a fixed `gradeable: false`; both of those were
+ * repaired on their own, and the floor was the only part still doing harm.
+ *
+ * A zero-day window also makes `windowEnd > todayIso` false, which is why
+ * /api/radar/claims/adopt compares with `>=`. Change one of the two without
+ * the other and every same-session adopt is written ungradeable and nothing
+ * ever closes it.
  */
 export function resolveAdoptWindow(
   todayIso: string,
@@ -339,8 +400,54 @@ export function resolveAdoptWindow(
   if (typeof explicitDays === "number" && Number.isFinite(explicitDays) && explicitDays > 0) {
     days = Math.floor(explicitDays);
   }
-  days = Math.min(Math.max(days, 1), MAX_WINDOW_DAYS);
+  // Floor of ZERO, ceiling unchanged. The ceiling is a separate rule (the
+  // server-enforced MAX_WINDOW_DAYS) and is not what was lying to the reader.
+  days = Math.min(Math.max(days, 0), MAX_WINDOW_DAYS);
   return addCalendarDays(todayIso, days);
+}
+
+/** The fields the adopt gradeability rule reads off a brief call. */
+export interface AdoptGradeableCall {
+  target_symbol?: unknown;
+  expected_direction?: unknown;
+  claim_type?: unknown;
+}
+
+/**
+ * Whether an adopted claim can be price-graded. THE rule, not a copy of it.
+ *
+ * /api/radar/claims/adopt calls this and nothing else, so there is no second
+ * implementation to drift from. It used to be inline in the route, and
+ * call-horizons.test.ts carried a hand-written mirror of it under a comment
+ * claiming to be "the exact predicate the route applies". The mirror went stale
+ * the moment the route's compare changed, and the suite stayed green because
+ * its cases only exercised `week`. That is the exact failure this PR exists to
+ * close, so the mirror is deleted rather than repaired.
+ *
+ * `windowEndIso >= todayIso`, not `>`. A same-session adopt is a real claim:
+ * the window opens and closes on today's session and the grader resolves it
+ * open to close. See resolveAdoptWindow for why, and for what a strict compare
+ * costs.
+ *
+ * The AUTHORING path (claims/route.ts, author/route.ts) deliberately keeps a
+ * strict compare and does NOT call this. Its prompt requires a window end
+ * strictly after today and compose-data.ts filters `session` out of the offered
+ * set, so a zero-day window is unreachable there. Widening it would be a
+ * different decision than this one.
+ */
+export function isAdoptGradeable(
+  call: AdoptGradeableCall,
+  todayIso: string,
+  windowEndIso: string,
+): boolean {
+  const symbol = typeof call.target_symbol === "string" ? call.target_symbol.trim() : "";
+  if (!symbol) return false;
+  if (!call.expected_direction) return false;
+  if (!isPriceableClaimType(call.claim_type)) return false;
+  if (windowEndIso < todayIso) return false;
+  const span = daysBetween(todayIso, windowEndIso);
+  if (span === null || span > MAX_WINDOW_DAYS) return false;
+  return true;
 }
 
 /** Claim types the price-attribution grader can actually resolve. */

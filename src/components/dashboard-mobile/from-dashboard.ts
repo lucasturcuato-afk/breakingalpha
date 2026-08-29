@@ -90,7 +90,12 @@ export interface DashboardSources {
   watchlistTickers: string[];
   profileSectors: string[];
   /** The reader's own record. Null when it has not been read. */
-  yourRecord: { byResolution: Record<Resolution, number>; awaiting: number } | null;
+  yourRecord: {
+    byResolution: Record<Resolution, number>;
+    awaiting: number;
+    /** Context entries: never price-checked, no verdict coming. Not a bucket. */
+    context: number;
+  } | null;
   /** The desk's record. Null when it has not been read. */
   deskRecord: { byResolution: Record<Resolution, number>; total: number } | null;
   /**

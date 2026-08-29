@@ -93,6 +93,13 @@ export interface DashRecordCounts {
    * reason.
    */
   awaiting: number;
+  /**
+   * Context entries: `gradeable: false`, never price-checked, and no verdict
+   * on the way. Outside the four buckets AND outside `awaiting`, because it is
+   * neither a resolution nor a wait. Not a fifth outcome word: a count of
+   * entries, drawn beside the record rather than inside it.
+   */
+  context: number;
 }
 
 export interface DashboardData {
@@ -196,6 +203,7 @@ export const DASH_FIXTURE: DashboardData = {
     intro: DASH_YOUR_RECORD_INTRO,
     byResolution: { supported: 17, challenged: 12, noCleanRead: 5, notGraded: 0 },
     awaiting: 7,
+    context: 2,
   },
   deskRecord: {
     intro: deskRecordIntro(true),
@@ -257,6 +265,7 @@ export const DASH_FIXTURE_EMPTY: DashboardData = {
     intro: DASH_YOUR_RECORD_INTRO,
     byResolution: { supported: 0, challenged: 0, noCleanRead: 0, notGraded: 0 },
     awaiting: 0,
+    context: 0,
   },
   deskRecord: {
     /* Day one, so no bars and no bars clause. Composed through the same

@@ -2,13 +2,13 @@
 
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import {
+  adoptWindowDays,
   adoptWindowForCall,
   adoptWindowOptions,
   adoptWindowPhrase,
   adoptWindowRequest,
   adoptWindowValue,
   addCalendarDays,
-  HORIZON_DAYS,
   type AdoptWindow,
 } from "@/lib/call-horizons";
 import { COMMIT_NOTE_MAX, COMMIT_NOTE_MIN, type CommitTarget } from "./commit-target";
@@ -90,11 +90,6 @@ function checkedOnLabel(iso: string): string | null {
     day: "numeric",
     year: "numeric",
   }).format(d);
-}
-
-/** Day count a window spans, for the line under the date. */
-function windowDays(w: AdoptWindow): number {
-  return w.kind === "as-called" ? w.days : HORIZON_DAYS[w.type];
 }
 
 export function CommitSheet({ target, onDismiss, onCommitted }: CommitSheetProps) {
@@ -238,7 +233,7 @@ export function CommitSheet({ target, onDismiss, onCommitted }: CommitSheetProps
     };
   }, []);
 
-  const spanDays = windowDays(span);
+  const spanDays = adoptWindowDays(span);
   const endIso = addCalendarDays(target.sessionIso, spanDays);
   const checkedOn = checkedOnLabel(endIso);
   const trimmed = note.trim().length;

@@ -41,6 +41,17 @@ export interface ClaimLike {
   id: string;
   source?: string | null;
   adopted_from_call_id?: string | null;
+  /**
+   * REQUIRED, and deliberately not optional and not defaulted.
+   *
+   * `user_claims.gradeable` is `boolean NOT NULL DEFAULT false` (sql/0012), so
+   * every row that exists carries one. Making it optional here, or reading it
+   * through a `??`, would let a caller that forgot to select the column look
+   * exactly like a caller whose claim IS gradeable, which is the shape of the
+   * defect this field exists to close. A caller that cannot supply it is a
+   * caller that has not read the row yet.
+   */
+  gradeable: boolean;
 }
 
 /**
@@ -65,16 +76,35 @@ export function resolveClaimOutcome(
 /**
  * Is this claim still awaiting its own verdict?
  *
- * True for every claim with no own outcome row, including legacy adopted claims
- * created before independent grading existed. Those will never receive one (the
- * grader is live-forward and does not backfill), so they read as unresolved
- * permanently. That is the honest state: the user's claim, over the user's
- * window, was never graded. Showing the brief's verdict instead would be
+ * True for a GRADEABLE claim with no own outcome row, including legacy adopted
+ * claims created before independent grading existed. Those will never receive
+ * one (the grader is live-forward and does not backfill), so they read as
+ * unresolved permanently. That is the honest state: the user's claim, over the
+ * user's window, was never graded. Showing the brief's verdict instead would be
  * asserting a result nobody produced for that claim.
+ *
+ * FALSE for a context claim, and that is the fix. A `gradeable: false` row is
+ * written with `resolution_method.method = "none"`, and the grader gates twice
+ * on the other value: `fetch_due_claims` filters `.eq("gradeable", True)` and
+ * `is_price_gradeable` requires `method == "price_attribution"`. Nothing else
+ * in the pipeline writes `user_claims.status` after insert. So there is no
+ * verdict on the way and no process that will ever produce one, and calling
+ * that "awaiting" told the reader to wait for something that is not coming.
+ * A row whose window closed 57 days ago sat under copy reading "Claims still
+ * inside their window are awaiting a grade."
+ *
+ * A context claim is not awaiting, and it is not any of the four outcome
+ * states either. Its own category belongs OUTSIDE that set; see
+ * `buildYourRecord` in your-record.ts, which is where it is counted.
+ *
+ * The claim's status is not consulted and is not written anywhere by this
+ * change. `gradeable: false` + `method: "none"` + `status: "open"` already
+ * describes reality accurately; the read side was the part that was wrong.
  */
 export function isAwaitingOwnVerdict(
   claim: ClaimLike,
   ownOutcomes: Record<string, ClaimOutcomeRow | undefined>,
 ): boolean {
+  if (!claim.gradeable) return false;
   return !ownOutcomes[claim.id];
 }

@@ -266,6 +266,7 @@ export function DashboardScreen({
             <SectionRule label="your record" delayMs={D.yourRecord} />
             <Explainer text={d.yourRecord.intro} />
             {d.yourRecord.awaiting === 0 &&
+            d.yourRecord.context === 0 &&
             Object.values(d.yourRecord.byResolution).every((n) => n === 0) ? (
               /* The prototype draws populated counts in every state, so day
                  one is undepicted. The copy for it is already written,
@@ -292,6 +293,22 @@ export function DashboardScreen({
                 >
                   Awaiting means the window has not closed yet, not that the call was missed.
                 </p>
+                {/* Outside the four cells and outside awaiting, because it is
+                    neither. Drawn only when the reader has one, and never as a
+                    zero. */}
+                {d.yourRecord.context > 0 ? (
+                  <p
+                    style={{
+                      margin: "8px 0 0",
+                      font: `400 italic 11px/1.5 ${FONT_DISPLAY}`,
+                      color: "var(--c-muted)",
+                      textWrap: "pretty",
+                    }}
+                  >
+                    {YOUR_RECORD_COPY.contextLabel} {d.yourRecord.context}.{" "}
+                    {YOUR_RECORD_COPY.contextNote}
+                  </p>
+                ) : null}
               </>
             )}
             {/* TODO: point at the Prepared record once step 6 lands. Held on

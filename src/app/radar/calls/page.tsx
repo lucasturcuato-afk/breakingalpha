@@ -25,13 +25,10 @@ import { createBrowserClient } from "@supabase/ssr";
 import { AppShell } from "@/components/shell";
 import { RadarTabs } from "@/components/radar/RadarTabs";
 import { ScoredObject } from "@/components/scored-object/ScoredObject";
-import {
-  scoredCallProps,
-  type CallOutcomeRow,
-  type OpenCallInput,
-} from "@/lib/scored-object-map";
+import { scoredCallProps, type CallOutcomeRow } from "@/lib/scored-object-map";
 import { matchFollow, type FollowRow } from "@/lib/radar-following";
 import { resolveClaimOutcome } from "@/lib/claim-outcome";
+import { claimCardProps } from "@/lib/claim-card";
 import { ClaimEvidenceStrip } from "@/components/calls/ClaimEvidenceStrip";
 import type { RawEvidenceRow } from "@/lib/claim-evidence";
 import { TrackedViews } from "@/components/thesis/TrackedViews";
@@ -53,6 +50,7 @@ import {
   horizonFromDates,
   horizonPhraseForDays,
   daysBetween,
+  windowElapsed,
   type AdoptWindow,
 } from "@/lib/call-horizons";
 
@@ -196,16 +194,10 @@ function briefResolutionSentence(c: BriefCallRow): string {
 
 // HorizonChip moved to @/components/calls/HorizonChip so BriefCallsSection
 // renders the identical chip instead of a second copy. Imported above.
-
-function claimToCallInput(c: UserClaim): OpenCallInput {
-  return {
-    claim_text: c.user_claim,
-    target_symbol: c.target_symbol,
-    claim_type: c.claim_type,
-    created_at: c.created_at,
-    brief_date: c.resolution_window_end ?? c.created_at?.slice(0, 10) ?? null,
-  };
-}
+//
+// claimToCallInput moved to src/lib/claim-card.ts together with the
+// context-only decision it fed, so that decision is testable without a
+// browser. See claimCardProps.
 
 export default function CallsPage() {
   const motionSettled = useMotionSettled();
@@ -474,7 +466,13 @@ export default function CallsPage() {
     for (const c of claims) {
       const o = outcomeForClaim(c);
       if (!o) {
-        if (!c.gradeable && c.source === "authored") notGraded += 1;
+        // No source branch. An ADOPTED context claim is exactly as ungraded as
+        // an authored one: the adopt route derives gradeable from the same
+        // server-side rules, and the grader gates on the flag, not the source.
+        // While this read `source === "authored"`, an adopted context claim
+        // fell through and was counted open, so the hero advertised a
+        // resolution for a row nothing will ever resolve.
+        if (!c.gradeable) notGraded += 1;
         else open += 1;
         continue;
       }
@@ -581,17 +579,11 @@ export default function CallsPage() {
                 <div className="motion-stagger grid gap-3 md:grid-cols-2">
                   {claims.map((c) => {
                     const outcome = outcomeForClaim(c);
-                    let props = scoredCallProps(claimToCallInput(c), outcome, today);
-                    if (!outcome && !c.gradeable && c.source === "authored") {
-                      // Context-only: never gets a verdict; say so instead of
-                      // rendering an eternal Open.
-                      props = {
-                        ...props,
-                        state: "notGraded",
-                        notGradedReason:
-                          c.gradeability_note ?? "Tracked as context only.",
-                      };
-                    }
+                    // One decision, in one pure module, asserted by
+                    // src/lib/claim-card.test.ts against a rendered card. The
+                    // `source === "authored"` branch that used to live here let
+                    // an ADOPTED context claim render the open card.
+                    const props = claimCardProps(c, outcome, today);
                     return (
                       <div key={c.id} className="group">
                         <div className="mb-1 flex items-baseline justify-between px-1 font-sans text-[11px] text-text-faint">
@@ -837,13 +829,14 @@ function RecordHero({
   );
 }
 
+/**
+ * How much of a claim's window has elapsed, for the ring and the bar.
+ *
+ * The arithmetic lives in src/lib/call-horizons.ts beside every other window
+ * rule, so the ring and the stored window cannot drift apart.
+ */
 function windowProgress(c: UserClaim, today: string): number {
-  if (!c.resolution_window_start || !c.resolution_window_end) return 0;
-  const start = new Date(c.resolution_window_start).getTime();
-  const end = new Date(c.resolution_window_end).getTime();
-  const now = new Date(today).getTime();
-  if (end <= start) return 1;
-  return Math.min(1, Math.max(0, (now - start) / (end - start)));
+  return windowElapsed(c.resolution_window_start, c.resolution_window_end, today);
 }
 
 function PinnedHero({
@@ -888,9 +881,14 @@ function PinnedHero({
                 />
               </svg>
               <span className="font-sans text-[11px] text-text-faint">
+                {/* The same rule the card below uses. A context claim carrying
+                    a window end used to read "Resolves <date>" up here, which
+                    is the identical assertion the card was making, on a second
+                    surface. A window end is not a promise that anything will
+                    read it. */}
                 {o
                   ? "Resolved"
-                  : c.resolution_window_end
+                  : c.gradeable && c.resolution_window_end
                     ? `Resolves ${c.resolution_window_end}`
                     : "Context only"}
               </span>
@@ -1045,9 +1043,9 @@ function AuthorClaim({
             </button>
           </form>
           <p className="mt-2 font-sans text-[11px] text-text-faint">
-            Your words stay the headline. We only standardize how it resolves;
-            if it cannot be graded honestly, it is tracked as context and says
-            so.
+            Your words stay the headline. We only standardize how it resolves.
+            Name a company or a ticker and it becomes a call. Leave it as it is
+            and it goes on as context, which is never graded.
           </p>
         </>
       ) : (

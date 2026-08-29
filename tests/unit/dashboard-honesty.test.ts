@@ -38,7 +38,7 @@ import {
   type UserClaimLike,
 } from "../../src/lib/your-record.ts";
 import { shouldShowLearningBadge } from "../../src/lib/learning-badge.ts";
-import type { ClaimOutcomeRow } from "../../src/lib/claim-outcome.ts";
+import { isAwaitingOwnVerdict, type ClaimOutcomeRow } from "../../src/lib/claim-outcome.ts";
 
 const TODAY = "2026-08-02";
 
@@ -54,7 +54,13 @@ function claim(id: string, symbol = "NVDA"): UserClaimLike {
     source: "authored",
     adopted_from_call_id: null,
     status: "open",
+    gradeable: true,
   };
+}
+
+/** A context entry: never price-checked, and no verdict on the way. */
+function contextClaim(id: string, source = "authored"): UserClaimLike {
+  return { ...claim(id), source, gradeable: false };
 }
 
 function outcome(
@@ -264,6 +270,75 @@ test("a user with outcomes renders their own numbers, never the desk's", () => {
   const borrowed = buildYourRecord([claim("c9")], desk, TODAY);
   assert.equal(borrowed.resolved, 0);
   assert.equal(borrowed.awaiting, 1);
+});
+
+// ── 4b. context entries are outside the record, not inside "awaiting" ──────
+
+test("a context claim lands in context, in neither awaiting nor resolved", () => {
+  const record = buildYourRecord(
+    [claim("c1"), contextClaim("x1"), contextClaim("x2", "adopted")],
+    {},
+    TODAY,
+  );
+  assert.equal(record.totalClaims, 3);
+  assert.equal(record.context, 2, "both context entries are counted as such");
+  assert.equal(record.awaiting, 1, "only the gradeable claim is awaiting");
+  assert.equal(record.resolved, 0);
+  for (const r of RESOLUTION_ORDER) {
+    assert.equal(record.byResolution[r], 0, `${r} must stay empty`);
+  }
+  // The three counts account for every claim and nothing is counted twice.
+  assert.equal(record.resolved + record.awaiting + record.context, record.totalClaims);
+});
+
+test("the shared predicate answers false for a context claim, both sources", () => {
+  assert.equal(isAwaitingOwnVerdict(contextClaim("x1"), {}), false);
+  assert.equal(isAwaitingOwnVerdict(contextClaim("x2", "adopted"), {}), false);
+  assert.equal(isAwaitingOwnVerdict(claim("c1"), {}), true);
+});
+
+test("the awaiting note is true as written once context is counted apart", () => {
+  // "Claims still inside their window are awaiting a grade." was false while a
+  // row whose window closed 57 days ago was counted awaiting.
+  const record = buildYourRecord([contextClaim("x1")], {}, TODAY);
+  assert.equal(record.awaiting, 0);
+  assert.match(YOUR_RECORD_COPY.awaitingNote, /still inside their window/i);
+  assert.match(YOUR_RECORD_COPY.contextNote, /not price-checked/i);
+  assert.match(YOUR_RECORD_COPY.contextNote, /no verdict is written/i);
+});
+
+test("context is not a fifth outcome word", () => {
+  // The four states are fixed. The context label must not appear among them,
+  // and must not be a verdict word.
+  assert.equal(
+    Object.values(DESK_RECORD_COPY.bucketLabel).includes(YOUR_RECORD_COPY.contextLabel),
+    false,
+  );
+  assert.deepEqual(RESOLUTION_ORDER, [
+    "supported",
+    "challenged",
+    "noCleanRead",
+    "notGraded",
+  ]);
+});
+
+test("a context count carries no rate and no percentage", () => {
+  const record = buildYourRecord([claim("c1"), contextClaim("x1")], {}, TODAY);
+  for (const str of yourRecordAuthoredStrings(record)) {
+    assert.equal(ANY_PERCENT.test(str), false, `percentage in: ${str}`);
+    assert.equal(SPORTS_WORDS.test(str), false, `sports vocabulary in: ${str}`);
+    assert.equal(WL_SHORTHAND.test(str), false, `W/L shorthand in: ${str}`);
+  }
+  // Exact keys, not a denylist: a ratio cannot be added to the model without
+  // this failing, whatever it is named.
+  assert.deepEqual(Object.keys(record).sort(), [
+    "awaiting",
+    "byResolution",
+    "context",
+    "hasResolved",
+    "resolved",
+    "totalClaims",
+  ]);
 });
 
 // ── 5. the learning badge ──────────────────────────────────────────────────

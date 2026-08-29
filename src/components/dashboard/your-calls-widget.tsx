@@ -56,7 +56,7 @@ interface UserClaim {
   claim_type: string;
   target_symbol: string | null;
   expected_direction: string | null;
-  gradeable: boolean | null;
+  gradeable: boolean;
   gradeability_note: string | null;
   status: string;
   source: string | null;
@@ -114,7 +114,13 @@ function YourRecordSummary({ record }: { record: YourRecord }) {
         </p>
         <p className="font-data text-[9.5px] text-text-faint tabular-nums mt-1.5 m-0">
           {COPY.awaitingLabel} {record.awaiting}
+          {record.context > 0 ? ` · ${COPY.contextLabel} ${record.context}` : ""}
         </p>
+        {record.context > 0 && (
+          <p className="font-sans text-[10px] text-text-faint italic leading-snug mt-1 m-0">
+            {COPY.contextNote}
+          </p>
+        )}
       </div>
     );
   }
@@ -143,6 +149,18 @@ function YourRecordSummary({ record }: { record: YourRecord }) {
         <p className="font-sans text-[9.5px] text-text-faint italic leading-snug mt-0.5 m-0">
           {COPY.awaitingNote}
         </p>
+        {/* Outside the four buckets and outside the awaiting count, because it
+            is neither. Drawn only when the reader actually has one. */}
+        {record.context > 0 && (
+          <>
+            <span className="font-data text-[10px] text-text-faint tabular-nums mt-1.5 inline-block">
+              {COPY.contextLabel} {record.context}
+            </span>
+            <p className="font-sans text-[10px] text-text-faint italic leading-snug mt-0.5 m-0">
+              {COPY.contextNote}
+            </p>
+          </>
+        )}
       </div>
     </div>
   );
@@ -229,6 +247,10 @@ export function YourCallsWidget() {
           const chip = resolution
             ? { label: COPY.bucketLabel[resolution], cls: RESOLUTION_CLS[resolution] }
             : null;
+          // Three states, and they do not overlap: a verdict, a wait, or a
+          // context entry. isAwaitingOwnVerdict is false for a context claim,
+          // so this is the row that used to read "awaiting" forever.
+          const context = !chip && !awaiting;
           return (
             <Link
               key={c.id}
@@ -250,7 +272,11 @@ export function YourCallsWidget() {
                   <span className="font-data text-[9.5px] text-text-muted">{c.target_symbol}</span>
                 )}
                 <span className="font-data text-[9px] text-text-faint ml-auto">
-                  {awaiting ? COPY.awaitingLabel.toLowerCase() : chip?.label}
+                  {chip
+                    ? chip.label
+                    : awaiting
+                      ? COPY.awaitingLabel.toLowerCase()
+                      : COPY.contextLabel.toLowerCase()}
                 </span>
               </div>
               <p className="font-sans text-[11.5px] text-text-primary leading-snug line-clamp-2 group-hover:text-gold-dark transition-colors m-0">
@@ -266,9 +292,15 @@ export function YourCallsWidget() {
                   )}
                 </span>
               )}
-              {awaiting && c.gradeable === false && c.gradeability_note && (
+              {/* The marker no longer depends on the note existing. A null
+                  gradeability_note used to hide the entire marker, so a
+                  context row was indistinguishable from a live one. The note
+                  is the REASON and is rendered beside the marker when the row
+                  carries one; the API already selects it. */}
+              {context && (
                 <span className="font-sans text-[9.5px] text-text-faint italic mt-0.5 inline-block">
-                  context only
+                  {COPY.contextLabel.toLowerCase()}
+                  {c.gradeability_note ? ` · ${c.gradeability_note}` : ""}
                 </span>
               )}
             </Link>

@@ -4,8 +4,7 @@ import { todayPt } from "@/lib/session-date";
 import { COMMIT_NOTE_MAX } from "@/components/commit/commit-target";
 import {
   DEFAULT_ADOPT_HORIZON,
-  MAX_WINDOW_DAYS,
-  isPriceableClaimType,
+  isAdoptGradeable,
   normalizeAdoptHorizon,
   resolveAdoptWindow,
 } from "@/lib/call-horizons";
@@ -137,19 +136,11 @@ export async function POST(request: NextRequest) {
   const horizon = normalizeAdoptHorizon(body.horizon, DEFAULT_ADOPT_HORIZON);
   const windowEnd = resolveAdoptWindow(todayIso, horizon, body.window_days);
 
-  // Server-side gradeability, mirroring src/app/api/radar/claims/author/route.ts.
-  const symbol = typeof call.target_symbol === "string" ? call.target_symbol.trim() : "";
-  const direction = call.expected_direction;
-  const endsAfterToday = windowEnd > todayIso;
-  const withinMax =
-    (new Date(windowEnd).getTime() - new Date(todayIso).getTime()) / 86_400_000 <=
-    MAX_WINDOW_DAYS;
-  const gradeable =
-    !!symbol &&
-    !!direction &&
-    endsAfterToday &&
-    withinMax &&
-    isPriceableClaimType(call.claim_type);
+  // Server-side gradeability, never trusted from the client. The rule itself
+  // lives in call-horizons.isAdoptGradeable beside the window arithmetic it
+  // depends on, so there is exactly one implementation and a test can assert
+  // against THIS predicate rather than a hand-written copy of it.
+  const gradeable = isAdoptGradeable(call, todayIso, windowEnd);
 
   const { data, error } = await supabase
     .from("user_claims")
@@ -160,7 +151,15 @@ export async function POST(request: NextRequest) {
       target_symbol: call.target_symbol,
       expected_direction: call.expected_direction,
       resolution_method: {
-        method: "price_attribution",
+        // DERIVED, mirroring the insert route (claims/route.ts). This route
+        // stamped "price_attribution" unconditionally, so an adopt whose
+        // gradeable computed false wrote a pair that contradicts itself: a
+        // method naming a grader beside a flag saying no grader will run.
+        // Behaviourally inert today (the grader gates on the flag first, and
+        // no current-route row exhibits it), but the read side now leans on
+        // gradeable, and a row advertising a grader it will never see is
+        // exactly what made the "authored only" guards look defensible.
+        method: gradeable ? "price_attribution" : "none",
         version: 1,
         adopted: true,
         adopted_horizon: horizon,
