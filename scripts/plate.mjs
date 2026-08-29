@@ -204,6 +204,22 @@ async function main() {
   const width = parseInt(arg("width", "390"), 10);
   const height = parseInt(arg("height", "844"), 10);
   const theme = arg("theme", "light");
+  /* `networkidle` is the default and stays the default, because a plate taken
+     before the data lands is evidence of nothing.
+     
+     IT IS NOT ALWAYS REACHABLE. `/company/[id]` renders its desktop tree and
+     its mobile tree in the same document, and the desktop tree's client
+     components fetch `/api/company-kpis`, `/api/company-trend` and
+     `/api/stock-chart` on mount whichever tree is visible. Two of those reach
+     Yahoo, and measured on this route they can stay in flight past 30s, so the
+     capture times out and writes nothing. This flag is an explicit opt out,
+     named in the run log, rather than a silent fallback that would let a plate
+     be taken early without anyone knowing. */
+  const wait = arg("wait", "networkidle");
+  if (!["load", "domcontentloaded", "networkidle", "commit"].includes(wait)) {
+    console.error(`plate.mjs: --wait must be load, domcontentloaded, networkidle or commit.`);
+    process.exit(2);
+  }
 
   if (!url || !out) {
     console.error("plate.mjs: --url and --out are required.");
@@ -234,7 +250,8 @@ async function main() {
     hasTouch: width < 768,
   });
   const page = await ctx.newPage();
-  await page.goto(url, { waitUntil: "networkidle" });
+  await page.goto(url, { waitUntil: wait });
+  if (wait !== "networkidle") await page.waitForTimeout(1200);
 
   // Theme is driven by localStorage plus the `dark` class on documentElement.
   // prefers-color-scheme does nothing in this app, and emulateMedia silently
@@ -313,7 +330,7 @@ async function main() {
 
   const shape = fullPage ? `FULL PAGE (justified: ${justify})` : `crop ${selector}`;
   console.log(`plate.mjs wrote ${out}`);
-  console.log(`  ${shape} at ${width}x${height}, theme ${theme}, ${buf.length} bytes`);
+  console.log(`  ${shape} at ${width}x${height}, theme ${theme}, wait ${wait}, ${buf.length} bytes`);
   console.log(`  guard: ${DETECTORS.length} detectors clear, no account initial in frame`);
 
   await browser.close();

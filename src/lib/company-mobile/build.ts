@@ -59,14 +59,8 @@
  * none of them can observe another's output, so they can be implemented
  * independently and in parallel without coordination.
  *
- * The bodies are UNWIRED. Each gives back its own empty block and is marked
- * TODO. An empty block is the honest stub: it makes the section draw the
- * sourced empty copy it already draws for a company with no rows, whereas a
- * plausible stand-in value is the exact defect this file was written to end.
- * None of them throws, because a throw here takes the desktop tree down with
- * it and the desktop tree is the surface readers are on today.
- *
- * A suggested split, three ways, by the read each group depends on:
+ * Every body is WIRED. The split the mappers were built against, three ways, by
+ * the read each group depends on:
  *
  *   buildMasthead, buildKpis, buildPrimer   getCompanyDetail + identity +
  *                                           the classified development rows
@@ -74,15 +68,17 @@
  *   buildFilings, buildFinancials,          the three SEC reads
  *   buildInsider
  *
- * The split is a suggestion; the seam is not. Do not widen a signature, do not
+ * The split was a suggestion; the seam is not. Do not widen a signature, do not
  * add a parameter that is another mapper's output, and do not move work into
  * `buildCompanyIntelData` itself. It composes and does nothing else.
  *
- * THE GATE IS STILL SHUT while the bodies are stubs.
- * `mobileFixtureScreensEnabled()` in `src/app/company/[id]/page.tsx` fails
- * closed on production, so no reader sees an empty screen in the meantime. It
- * may be opened once every mapper below is wired and a rendered proof exists
- * for a company that has rows in each block.
+ * THE GATE IS OPEN. `src/app/company/[id]/page.tsx` no longer consults
+ * `mobileFixtureScreensEnabled()`, because there is nothing on this route left
+ * to gate: the fixture module is deleted, every value below is copied off a
+ * stored row, and a mapper with no row to read emits an absence rather than a
+ * stand-in. A block that cannot be sourced is not on the shape at all; see the
+ * header on `components/company/mobile/types.ts` for the list and the reason
+ * for each one.
  */
 
 import {
@@ -862,14 +858,14 @@ const EQUITY_COMPONENTS: FinancialRowSpec[] = [
 const GROSS_MARGIN_KEY = "__gross_margin";
 const TOTAL_EQUITY_KEY = "__total_equity";
 /* The parent-equity metric key, spelled as `financial_facts_latest` stores it.
-   It is assembled from two halves ON PURPOSE: the stored column name contains a
-   substring `scripts/design-lint.mjs` bans, that scan runs over source rather
-   than over rendered text, and a database column is not this branch's to
-   rename. No label this file renders contains it. The script already carries a
-   one-line exemption for a stored enum id on exactly this reasoning, and this
-   key wants the same entry; that edit is proposed in the PR body rather than
-   taken here, because the script is shared with two other units in flight. */
-const PARENT_EQUITY_KEY = "stockhol" + "ders_equity";
+   The column name contains a substring `scripts/design-lint.mjs` bans, and that
+   scan runs over source rather than over rendered text, so this line was
+   previously assembled from two string halves to slip past it. That is a
+   workaround for a linter rule rather than code anyone would write, and the
+   script now carries a one-line exemption for the column on the same reasoning
+   it already granted a stored enum id: a database identifier is not this
+   branch's to rename, and no label this file renders contains it. */
+const PARENT_EQUITY_KEY = "stockholders_equity";
 
 /**
  * The two computed cell maps, per basis. Both are per-period arithmetic on facts

@@ -61,6 +61,13 @@ const BANNED_ALLOW = [
   // line that also contains one of these ids downgrades to WARN rather than
   // ERROR. It still prints, so it is visible, not silenced.
   { pattern: /\b(buy|sell)_side\b/, why: 'stored enum id, never rendered, ruling 5' },
+  // A real column on `financial_facts_latest`, granted on the same reasoning as
+  // the enum ids above: it is a database identifier, it is never rendered, and
+  // renaming it is a migration plus a backfill for no compliance gain. Without
+  // this entry the only way to name the column was to assemble it from two
+  // string halves at the read site, which is a workaround for a linter rule
+  // rather than code anyone would write.
+  { pattern: /\bstockholders_equity\b/, why: 'stored column name, never rendered' },
   // Ordinary words that contain a banned substring and carry no claim.
   { pattern: /\bthreshold(s)?\b/i, why: 'contains hold, no claim about a position' },
   { pattern: /\bhousehold(s)?\b/i, why: 'contains hold' },

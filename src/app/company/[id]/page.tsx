@@ -37,10 +37,7 @@ import {
 import { fetchCompanyArticles } from "@/app/api/companies/[id]/articles/route";
 import { CompanyIntelScreen } from "@/components/company/mobile";
 import { buildCompanyIntelData } from "@/lib/company-mobile/build";
-import {
-  mobileFixtureAuthBypass,
-  mobileFixtureScreensEnabled,
-} from "@/lib/mobile-fixture-gate";
+import { mobileFixtureAuthBypass } from "@/lib/mobile-fixture-gate";
 
 /**
  * MOBILE REDESIGN, step 9, screen 15.
@@ -50,18 +47,27 @@ import {
  * and invented validated XBRL, all attributed to a real issuer this page serves
  * the real versions of. `src/components/company/mobile/fixture.ts` is deleted
  * and `src/lib/company-mobile/build.ts` assembles the screen from the same four
- * reads the desktop tree below already uses, so there is no invented data left
- * on this route to gate.
+ * reads the desktop tree below already uses.
  *
- * THE GATE STAYS SHUT ANYWAY, for a different reason than before. The mappers
- * in `build.ts` are stubs: every one gives back its own empty block, so the screen
- * would draw honest but empty sections. `mobileFixtureScreensEnabled()` fails
- * closed on production, which keeps that off a reader's phone while the mappers
- * are filled in, and leaves it open on a development server so the wiring can
- * be seen. Open it once every mapper is wired and a rendered proof exists.
+ * THE GATE IS OPEN, AND IT IS GONE RATHER THAN SET TO TRUE. This route no
+ * longer calls `mobileFixtureScreensEnabled()` at all, because a gate is a
+ * statement that there is something behind it that must not reach a reader and
+ * there is not: there is no fixture module, no default and no `??` that can
+ * supply a value, and every mapper emits an absence where a row is missing. A
+ * `const mobileScreen = true` would leave the reader of this file looking for
+ * the invented data it was protecting them from. The other five screens that
+ * still draw fixtures keep the gate; this one has nothing to gate.
  *
- * With the gate shut, nothing below `md` changes: the desktop tree renders
- * exactly the element it renders today, with no extra wrapper, at every width.
+ * WHAT THE FLIP CHANGES ON PRODUCTION, both of which used to ride on
+ * `mobileScreen` and are now unconditional. `mobileFullBleed` drops the shell
+ * chrome below `md`, which the screen replaces with its own header bar. And the
+ * desk header steps to `h2`, because both trees are now in every document and
+ * only one of them is ever in the accessibility tree: `md:hidden` and
+ * `hidden md:block` are `display:none`, which removes the other outright. The
+ * mobile screen keeps the `h1` because below `md` it is the reachable one.
+ * Logged for a human, not fixed here: at `md` and above that leaves this route
+ * with no `h1` at all, which is a heading-order finding the gated-shut build
+ * did not have.
  */
 
 // Convert a URL slug to a canonical company name.
@@ -111,7 +117,6 @@ export default async function CompanyDetailPage({
      company: `?stage=empty` would draw an empty screen over a name that has
      filings, insider rows and financials on file, from a link anyone can send.
      The screen's own lifecycle is derived from whether the data resolved. */
-  const mobileScreen = mobileFixtureScreensEnabled();
 
   // Auth gate -- middleware also enforces, but page must call to get a client.
   const { supabase, user } = await getSupabaseWithUser();
@@ -130,10 +135,12 @@ export default async function CompanyDetailPage({
      and the public-read policies on companies, articles, sec_filings and
      insider_transactions answer them.
 
-     Order still matters for the build, not just for the read. The bypass is the
-     NODE_ENV-only test, so a production build folds the condition to a bare
-     `!user` and the redirect is unconditional there. */
-  if (!user && !(mobileFixtureAuthBypass() && mobileScreen)) {
+     The bypass is the NODE_ENV-only test, so a production build folds the
+     condition to a bare `!user` and the redirect is unconditional there. It no
+     longer carries the screen gate beside it: that gate is off this route, and
+     an auth bypass is a development affordance in its own right rather than
+     something the mobile screen earns. */
+  if (!user && !mobileFixtureAuthBypass()) {
     redirect("/auth");
   }
 
@@ -295,21 +302,17 @@ export default async function CompanyDetailPage({
     comps: <ComingSoonTab tabId="comps" />,
   };
 
-  // The desktop surface, unchanged. Held in a const so the gate can place it
-  // without the shut branch acquiring a wrapper element it does not have today.
+  // The desktop surface, unchanged.
   //
-  // titleAs is the ONE difference between the two placements, and it exists
-  // because the gate open means both trees are in the same document. Only one
-  // is visible, so assistive tech already sees a single heading, but the
-  // document outline sees two h1s. The mobile screen keeps h1 because that is
-  // the reachable one below `md`; this steps to h2 on the gated path. With the
-  // gate shut, `mobileScreen` is false and this renders h1 exactly as today.
+  // titleAs is the ONE difference from what this rendered before the gate
+  // opened. Both trees are in the same document now, so the outline would carry
+  // two h1s; the mobile screen keeps its h1 because below `md` it is the
+  // reachable one, and this steps to h2. See the heading-order note in the file
+  // header for what that costs at `md` and above.
   const desk = (
     <CompanyDetailLayout
       tabContent={tabContent}
-      header={
-        <CompanyDetailHeader detail={companyDetail} titleAs={mobileScreen ? "h2" : "h1"} />
-      }
+      header={<CompanyDetailHeader detail={companyDetail} titleAs="h2" />}
       aliasRibbon={
         <CompanyAliasRibbon
           canonical={companyDetail.canonical}
@@ -329,46 +332,51 @@ export default async function CompanyDetailPage({
   );
 
   return (
-    <LiveMoodShell pageTitle="Company Intel" mobileFullBleed={mobileScreen}>
-      {mobileScreen ? (
-        <>
-          {/* Gating lives in a CLASS, never in an inline style: an inline
-              display beats the class at every breakpoint, which is the defect
-              that shipped the tab bar to desktop once already. */}
-          {/* The screen paints its own ground. Without it the shell's parchment
-              shows below a short state, and the loading and error states are
-              exactly the short ones. backgroundColor is not a property any
-              responsive class here sets, so the inline value cannot defeat the
-              breakpoint. */}
-          <div className="md:hidden" style={{ backgroundColor: "var(--c-bg)", minHeight: "100%" }}>
-            {/* NO TRUTH STRIP. The amber "every figure below is invented" band
-                used to render unconditionally inside both branches, because
-                every figure below WAS invented. The screen reads this company's
-                own rows now, so the band would be the false statement on the
-                page. */}
-            {/* `hasCik` is passed explicitly and the prop carries no default,
-                so leaving it off is a build failure rather than a silent true.
-                It picks which sourced empty copy the Filings, Financials and
-                Insider sections use, and claiming an SEC identity a company
-                does not have puts "no filings on file" where "not an SEC
-                filer" belongs. */}
-            <CompanyIntelScreen
-              data={buildCompanyIntelData({
-                detail: companyDetail,
-                filings: filingsResult,
-                insider: insiderResult,
-                financials: financialsResult,
-                identity,
-                developments: developmentArticles,
-              })}
-              hasCik={filingsResult.cik != null}
-            />
-          </div>
-          <div className="hidden md:block">{desk}</div>
-        </>
-      ) : (
-        desk
-      )}
+    <LiveMoodShell pageTitle="Company Intel" mobileFullBleed>
+      {/* Which tree is drawn lives in a CLASS, never in an inline style: an
+          inline display beats the class at every breakpoint, which is the
+          defect that shipped the tab bar to desktop once already. */}
+      {/* The screen paints its own ground. Without it the shell's parchment
+          shows below a short state, and the loading and error states are
+          exactly the short ones. backgroundColor is not a property any
+          responsive class here sets, so the inline value cannot defeat the
+          breakpoint. */}
+      {/* `flex flex-col` are CLASSES, like `md:hidden` beside them, and never an
+          inline display: an inline display beats a responsive class at every
+          breakpoint and would put this tree on desktop. Tailwind emits variant
+          utilities after base ones, so `md:hidden` still wins at `md` and above.
+          The column is what lets the screen inside grow to this box: a
+          percentage `min-height` on the screen resolves against this element's
+          HEIGHT, which is auto, so it resolved to zero and the screen stopped at
+          its content while this box was a full 785px tall. */}
+      <div
+        className="md:hidden flex flex-col"
+        style={{ backgroundColor: "var(--c-bg)", minHeight: "100%" }}
+      >
+        {/* NO TRUTH STRIP. The amber "every figure below is invented" band
+            used to render unconditionally inside both branches, because
+            every figure below WAS invented. The screen reads this company's
+            own rows now, so the band would be the false statement on the
+            page. */}
+        {/* `hasCik` is passed explicitly and the prop carries no default,
+            so leaving it off is a build failure rather than a silent true.
+            It picks which sourced empty copy the Filings, Financials and
+            Insider sections use, and claiming an SEC identity a company
+            does not have puts "no filings on file" where "not an SEC
+            filer" belongs. */}
+        <CompanyIntelScreen
+          data={buildCompanyIntelData({
+            detail: companyDetail,
+            filings: filingsResult,
+            insider: insiderResult,
+            financials: financialsResult,
+            identity,
+            developments: developmentArticles,
+          })}
+          hasCik={filingsResult.cik != null}
+        />
+      </div>
+      <div className="hidden md:block">{desk}</div>
       <CompanyMemoModalListener
         companyName={canonical}
         memoContent={memoContent}
