@@ -39,6 +39,7 @@ import {
 } from "../../src/lib/your-record.ts";
 import { shouldShowLearningBadge } from "../../src/lib/learning-badge.ts";
 import { isAwaitingOwnVerdict, type ClaimOutcomeRow } from "../../src/lib/claim-outcome.ts";
+import { WL_SHORTHAND, ANY_PERCENT, SPORTS_WORDS } from "./honesty-detectors.ts";
 
 const TODAY = "2026-08-02";
 
@@ -195,10 +196,9 @@ test("desk block shows misses and no-clean-reads beside supported", () => {
 
 // ── 3. no W/L shorthand and no hit-rate percentage in either block ──────────
 
-const WL_SHORTHAND = /\b\d+\s*[WL]\b|\b[WL]\s*\/\s*[WL]\b|\bW\/L\b/;
-const ANY_PERCENT = /\d\s*%|percent\b/i;
-const SPORTS_WORDS =
-  /\b(win rate|hit rate|wins|losses|record of wins|winning|hit-rate)\b/i;
+// The detectors moved to ./honesty-detectors.ts so the rendered-output
+// assertions in reader-output-honesty.test.ts share them verbatim. Scoping
+// them to this file is what let /morning-brief author the banned format.
 
 test("neither block authors W/L shorthand, a percentage, or sports vocabulary", () => {
   const desk = buildDeskRecord(deskRows(), TODAY, 40);
