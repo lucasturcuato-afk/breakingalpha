@@ -107,6 +107,7 @@ export function CommitSheet({ target, onDismiss, onCommitted }: CommitSheetProps
 
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const noteRef = useRef<HTMLTextAreaElement | null>(null);
+  const rootRef = useRef<HTMLDivElement | null>(null);
   const headingId = useId();
   const hintId = useId();
 
@@ -187,6 +188,56 @@ export function CommitSheet({ target, onDismiss, onCommitted }: CommitSheetProps
     return () => document.removeEventListener("keydown", onKey);
   }, [onDismiss]);
 
+  /* FOCUS CONTAINMENT, AND WHY IT IS `inert` RATHER THAN A TAB LOOP.
+     `aria-modal="true"` names this a modal to assistive technology and does
+     nothing else: it is a label, not a behaviour. Measured from the open
+     sheet at 390 light, twenty Tab presses produced sixteen stops OUTSIDE
+     it, among them the skip link, the tab bar's four destinations and the
+     "Track this call" trigger that opened the sheet, so a keyboard reader
+     could re-fire `open()` on an already-open sheet
+     (`commit-sheet-provider.tsx:118` flags exactly that as latent). All five
+     background body children measured `inert=false`, `aria-hidden=null` and
+     `pointer-events: auto`.
+
+     `inert` removes the Tab stop, the pointer target AND the screen reader's
+     virtual cursor in one attribute. A Tab loop fixes only the first, which
+     is why the loop at `waitlist-modal.tsx:155-174` is not the precedent
+     followed here, and `aria-hidden` plus `pointer-events` does not stop Tab
+     at all. Native `<dialog>` would fix this and the stacking together via
+     the top layer, but its backdrop is the `::backdrop` pseudo-element and
+     the scrim above has to stay a real `<button>` carrying its own
+     accessible name, so that route is closed.
+
+     THE PORTAL DOES NOT OBSTRUCT THIS: `commit-sheet-provider.tsx` portals
+     to `document.body`, so this component's root is itself a body child and
+     the background is exactly its siblings. The `contains` test is the
+     depth-robust form of that, so a future host that nests the root deeper
+     cannot make this effect switch off the sheet it is protecting.
+
+     TWO COSTS, BOTH DELIBERATE. This mutates DOM nodes it does not own, so
+     it must restore on unmount, including an unmount mid-animation and a
+     strict-mode double invoke; the cleanup below is unconditional and
+     restores only what this effect set. A sibling already carrying `inert`
+     is left alone and left out of `marked`, so if a second overlay is ever
+     open at the same time the two do not fight over the attribute and
+     neither clears the other's. In dev this also inerts Next's own overlay
+     portals, which is harmless. */
+  useEffect(() => {
+    const root = rootRef.current;
+    if (root === null) return;
+    const marked: HTMLElement[] = [];
+    for (const sibling of Array.from(root.ownerDocument.body.children)) {
+      if (!(sibling instanceof HTMLElement)) continue;
+      if (sibling === root || sibling.contains(root)) continue;
+      if (sibling.hasAttribute("inert")) continue;
+      sibling.setAttribute("inert", "");
+      marked.push(sibling);
+    }
+    return () => {
+      for (const sibling of marked) sibling.removeAttribute("inert");
+    };
+  }, []);
+
   const spanDays = windowDays(span);
   const endIso = addCalendarDays(target.sessionIso, spanDays);
   const checkedOn = checkedOnLabel(endIso);
@@ -223,11 +274,33 @@ export function CommitSheet({ target, onDismiss, onCommitted }: CommitSheetProps
 
   return (
     <div
+      ref={rootRef}
       data-parity="commit"
       style={{
         position: "fixed",
         inset: 0,
-        zIndex: 9,
+        /* 50 IS ABOVE THE APP CHROME, AND IT HAS TO BE. DO NOT LOWER IT.
+           At 9 this overlay painted UNDER `MobileTabBar`, which is
+           `position: fixed`, z-40, and `backgroundColor: var(--c-bg)`, so
+           opaque. Measured at 375/390/430 in both themes: "Not this one"
+           occupies y 778..822 and the bar occupies y 785..844, so 37 of the
+           control's 44px sat under it and only a 7px band was live.
+           `document.elementFromPoint` at the control's own centre returned
+           the bar's "Watch" link, and a real tap there navigated to
+           /radar/watchlist, which signed out redirects to /auth. The
+           designed dismiss control did not merely fail to dismiss: it threw
+           the reader off the Ledger and took the unsaved note with it, which
+           is the header's "silently fails to save" reached by another route.
+
+           There is no z-index token scale in this repo, so this is a
+           literal. 50 clears everything between: the only things that exist
+           in 10..49 are `#dash-cursor-glow` (z-30, `pointer-events: none`
+           decoration) and the z-40 pair of `MobileTabBar` and the desktop
+           sidebar, all of which are chrome a modal must cover. It stays
+           BELOW the memo modals (9999), the sidebar drawer (9000/9001), the
+           tour (8000), the export dialog (100) and the briefing intro (60),
+           so nothing that should outrank a sheet stops doing so. */
+        zIndex: 50,
         display: "flex",
         flexDirection: "column",
         justifyContent: "flex-end",
