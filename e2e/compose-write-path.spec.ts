@@ -56,6 +56,16 @@ function todayPt(): string {
   return new Date().toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
 }
 
+/** ISO date as the screen states it. Mirrors `longDate` in compose-data.ts. */
+function longDateOf(iso: string): string {
+  return new Date(Date.parse(`${iso}T00:00:00Z`)).toLocaleDateString("en-US", {
+    timeZone: "UTC",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
 /** An ISO date n calendar days after another. UTC arithmetic, no local drift. */
 function plusDays(iso: string, days: number): string {
   return new Date(Date.parse(`${iso}T00:00:00Z`) + days * 86_400_000)
@@ -69,7 +79,7 @@ function plusDays(iso: string, days: number): string {
  * route proposed. Its window is exactly a week, so the RESOLVES chip
  * preselects `week` and the screen has a bucket to resolve from.
  */
-function cannedProposal() {
+function cannedProposal(days = 7) {
   const today = todayPt();
   return {
     user_claim: DRAFT,
@@ -78,7 +88,7 @@ function cannedProposal() {
       target_symbol: "NVDA",
       expected_direction: "bearish",
       resolution_window_start: today,
-      resolution_window_end: plusDays(today, 7),
+      resolution_window_end: plusDays(today, days),
       evidence_entities: ["NVDA"],
       confidence_in_reduction: 0.7,
       gradeable: true,
@@ -435,5 +445,169 @@ test.describe("an acknowledged write", () => {
     // The reader's words stay on screen and stop being editable.
     await expect(c.draft).toHaveValue(DRAFT);
     await expect(c.draft).toHaveAttribute("readonly", "");
+  });
+});
+
+/* ════════════════════════════════════════════════════════════════════════
+   6. THE DESK'S INFERRED WINDOW SURVIVES TO THE ROW.
+
+   `/api/radar/claims/author` instructs the model to INFER a span from the
+   claim: 1 to 3 days for a dated event, 5 to 10 for single-name news flow, 14
+   to 30 for a rotation, 45 to 90 for a structural thesis, and in the prompt's
+   own words "do not compress a long-dated thesis into a short window just to
+   resolve it sooner". Most of those numbers are not bucket day counts.
+
+   The first wiring of this screen held the selection as a bare `HorizonType`
+   derived with `horizonTypeFromDates`, which is exact-match. Off-bucket spans
+   answered null, fell back to the mount default, and were WRITTEN as one week:
+   seven of the eleven spans below, including every structural one. The READ AS
+   card said "resolves in about a week" over a sixty day claim.
+
+   This is the table that proves it is fixed. Every span the prompt can produce
+   must arrive on the wire as itself.
+   ════════════════════════════════════════════════════════════════════════ */
+
+/** Every span the author prompt names, plus the four bucket day counts. */
+const DESK_SPANS = [1, 3, 5, 7, 10, 14, 21, 30, 45, 60, 90];
+
+test.describe("the desk's window", () => {
+  test("every inferred span arrives on the wire as itself", async ({ page, recorder }) => {
+    const today = todayPt();
+    const rows: string[] = [];
+    const wrong: string[] = [];
+
+    for (const days of DESK_SPANS) {
+      // A fresh read-back with THIS span, installed over the fixture's default.
+      await page.route(AUTHOR, (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(cannedProposal(days)),
+        }),
+      );
+      recorder.written = null;
+
+      const c = await readBack(page);
+      await c.submit.click();
+      await expect.poll(() => recorder.written).not.toBeNull();
+
+      const want = plusDays(today, days);
+      const got = recorder.written!.resolution_window_end as string;
+      rows.push(`  ${String(days).padStart(2)} days -> ${got}  want ${want}  ${got === want ? "ok" : "WRONG"}`);
+      if (got !== want) wrong.push(`${days} days: sent ${got}, desk said ${want}`);
+    }
+
+    console.log("\ndesk span -> resolution_window_end (today " + today + ")\n" + rows.join("\n"));
+    expect(wrong).toEqual([]);
+  });
+
+  test("an off-bucket span is READ BACK as itself, not as a bucket", async ({ page }) => {
+    await page.route(AUTHOR, (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(cannedProposal(45)),
+      }),
+    );
+    await readBack(page);
+
+    /* The READ AS line and the settles line are the two places the reader is
+       told what they are committing to. Neither may round the span. */
+    await expect(page.getByText("resolves in 45 days", { exact: true })).toBeVisible();
+    const settles = plusDays(todayPt(), 45);
+    await expect(page.getByText(/^Settles /)).toContainText(longDateOf(settles));
+
+    // And the desk's span leads the chip row, selected.
+    const own = page.getByRole("button", { name: "45 days, resolves in 45 days" });
+    await expect(own).toHaveAttribute("aria-pressed", "true");
+  });
+
+  test("pressing a chip overrides the desk, and the chip wins", async ({ page, recorder }) => {
+    await page.route(AUTHOR, (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(cannedProposal(45)),
+      }),
+    );
+    const c = await readBack(page);
+
+    // The reader disagrees with the desk and says one quarter instead.
+    await c.chip("1 quarter, resolves in about a quarter").click();
+    await c.submit.click();
+    await expect.poll(() => recorder.written).not.toBeNull();
+    expect(recorder.written!.resolution_window_end).toBe(plusDays(todayPt(), 90));
+  });
+});
+
+/* ════════════════════════════════════════════════════════════════════════
+   7. "MAKE IT GRADEABLE" NAMES THE DATE IT WRITES.
+
+   The proxy control is one press from the write with no confirmation in
+   between, so the date on its own label has to be the date the row carries.
+   It used to state the alternative's stored window end, measured from the
+   route's anchor, while the press resolved a window from the reader's session
+   date: the label said Oct 12 and the body carried Sep 4.
+   ════════════════════════════════════════════════════════════════════════ */
+
+/** A context claim with a 45-day priced proxy attached. */
+function cannedAlternative(days = 45) {
+  const today = todayPt();
+  return {
+    user_claim: DRAFT,
+    proposal: {
+      claim_type: "other",
+      target_symbol: null,
+      expected_direction: null,
+      resolution_window_start: null,
+      resolution_window_end: null,
+      evidence_entities: [],
+      confidence_in_reduction: null,
+      gradeable: false,
+      gradeability_note: "Not price-gradeable in v1; tracked as context only.",
+      gradeable_alternative: {
+        claim_type: "sector",
+        target_symbol: "XLU",
+        expected_direction: "bearish",
+        resolution_window_start: today,
+        resolution_window_end: plusDays(today, days),
+        rationale: "Utilities against the market is the closest priceable reading of it.",
+      },
+    },
+  };
+}
+
+test.describe("the gradeable alternative", () => {
+  test("the date on the label is the date on the wire", async ({ page, recorder }) => {
+    await page.route(AUTHOR, (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(cannedAlternative(45)),
+      }),
+    );
+
+    const c = await opened(page);
+    await c.submit.click();
+
+    const proxy = page.getByRole("button", { name: /^Make it gradeable/ });
+    await expect(proxy).toBeVisible();
+    const label = (await proxy.textContent()) ?? "";
+
+    const want = plusDays(todayPt(), 45);
+    // The label names it.
+    expect(label).toContain(longDateOf(want));
+
+    await proxy.click();
+
+    // The settles line agrees with the label.
+    await expect(page.getByText(/^Settles /)).toContainText(longDateOf(want));
+
+    // And so does the row.
+    await c.submit.click();
+    await expect.poll(() => recorder.written).not.toBeNull();
+    expect(recorder.written!.resolution_window_end).toBe(want);
+    expect(recorder.written!.target_symbol).toBe("XLU");
+    expect(recorder.written!.expected_direction).toBe("bearish");
   });
 });

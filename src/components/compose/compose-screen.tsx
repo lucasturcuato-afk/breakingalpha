@@ -2,13 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import {
-  HORIZON_LABEL,
-  HORIZON_PHRASE,
-  horizonTypeFromDates,
-  resolveAdoptWindow,
-  type HorizonType,
-} from "@/lib/call-horizons";
+import type { AdoptWindow } from "@/lib/call-horizons";
 /* `./fixture` is NOT imported here and must never be. This is a client
    component, so a value import from that module is a download of the invented
    draft, the invented note and both invented proposals: the gate stops the
@@ -17,15 +11,18 @@ import {
    `src/app/compose/page.tsx` behind `COMPOSE_FIXTURE_ENABLED`. */
 import { COMPOSE_FIXTURE_ENABLED } from "./fixture-gate";
 import {
-  COMPOSE_DEFAULT_HORIZON,
-  COMPOSE_HORIZONS,
   DRAFT_MIN_CHARS,
   EMPTY_SEED,
   MAX_CLAIM_CHARS,
   MAX_NOTE_CHARS,
   NOTE_MIN_CHARS,
+  composeWindowChoices,
+  composeWindowEnd,
+  composeWindowFor,
+  composeWindowKey,
+  composeWindowLabel,
+  composeWindowPhrase,
   longDate,
-  settlementDate,
   type ComposeProposal,
   type ComposeSeed,
   type ComposeStage,
@@ -235,14 +232,20 @@ export function ComposeScreen({
   const [direction, setDirection] = useState<Direction>(
     opening.proposal?.expected_direction ?? "bullish",
   );
-  /* Derived from the proposal's own window, never transcribed. A chip that is
-     hardcoded agrees with `resolution_window_end` only by coincidence, and
-     stops agreeing the moment the window moves. */
-  const [horizon, setHorizon] = useState<HorizonType>(
-    horizonTypeFromDates(
+  /* THE DESK'S OWN SPAN, derived from the proposal's window and never
+     transcribed. A chip that is hardcoded agrees with `resolution_window_end`
+     only by coincidence, and stops agreeing the moment the window moves.
+
+     An `AdoptWindow`, NOT a bare `HorizonType`. The author route infers spans
+     the four buckets do not name, and a bucket-typed selection silently
+     rounded every one of them to the mount default: measured, seven of eleven
+     spans were written wrong, including every structural claim. See
+     `composeWindowFor`. */
+  const [span, setSpan] = useState<AdoptWindow>(
+    composeWindowFor(
       opening.proposal?.resolution_window_start,
       opening.proposal?.resolution_window_end,
-    ) ?? COMPOSE_DEFAULT_HORIZON,
+    ),
   );
 
   /* REAL LIFECYCLE STATE, driven by the two requests below. `stage` seeds it
@@ -364,15 +367,16 @@ export function ComposeScreen({
       }
       setProposal(read);
       /* The chips PRESELECT from the read-back and are the reader's from then
-         on. Only move them when the route actually said something: a null
-         direction or an off-bucket window leaves the current chip alone rather
-         than snapping it to a default the reader did not choose. */
+         on. Direction only moves when the route actually said something; a
+         null direction leaves the current chip alone rather than snapping it
+         to a value the reader did not choose.
+
+         THE SPAN IS SET UNCONDITIONALLY, and that is the whole repair. The
+         desk inferred a length from the claim, and `composeWindowFor` keeps it
+         verbatim as `as-called` when it is not one of the four buckets. There
+         is no fallback here to fall through to any more. */
       if (read.expected_direction) setDirection(read.expected_direction);
-      const bucket = horizonTypeFromDates(
-        read.resolution_window_start,
-        read.resolution_window_end,
-      );
-      if (bucket) setHorizon(bucket);
+      setSpan(composeWindowFor(read.resolution_window_start, read.resolution_window_end));
       setPhase("idle");
     } catch {
       setPhase("analyze-error");
@@ -383,11 +387,15 @@ export function ComposeScreen({
     PRESS TWO. The write.
 
     THE BODY IS BUILT FROM THE CHIPS, NOT FROM THE PROPOSAL. `direction` and
-    `horizon` are independent state: the two chip rows call setDirection and
-    setHorizon and never touch `proposal`, so sending
-    proposal.expected_direction and proposal.resolution_window_end would
-    discard every edit the reader made to the read-back, silently, on the one
-    press that matters.
+    `span` are independent state: the two chip rows call setDirection and
+    setSpan and never touch `proposal`, so sending proposal.expected_direction
+    and proposal.resolution_window_end would discard every edit the reader made
+    to the read-back, silently, on the one press that matters.
+
+    The other half of that rule is that an UNEDITED chip must still carry the
+    desk's own answer. `span` is seeded from the proposal's real span rather
+    than snapped to a bucket, so "built from the chips" and "the desk's window
+    survives" are the same statement rather than competing ones.
 
     And the window resolves from `sessionIso`, never from the fixture anchor.
     See the prop's own comment for what that costs when it is wrong.
@@ -404,7 +412,7 @@ export function ComposeScreen({
        null direction and no window. */
     const expectedDirection = gradeable ? direction : proposal.expected_direction;
     const windowEnd = gradeable
-      ? resolveAdoptWindow(sessionIso, horizon)
+      ? composeWindowEnd(sessionIso, span)
       : proposal.resolution_window_end;
 
     try {
@@ -700,11 +708,15 @@ export function ComposeScreen({
                       gradeable_alternative: null,
                     });
                     setDirection(alt.expected_direction);
-                    setHorizon(
-                      horizonTypeFromDates(
+                    /* The proxy's OWN span, kept the same way the primary
+                       read-back's is. The alternatives the route offers are
+                       bounded only by MAX_WINDOW_DAYS, so most of them are
+                       off-bucket and a bucket-typed swap rounded them away. */
+                    setSpan(
+                      composeWindowFor(
                         alt.resolution_window_start,
                         alt.resolution_window_end,
-                      ) ?? COMPOSE_DEFAULT_HORIZON,
+                      ),
                     );
                   }}
                   style={{
@@ -724,7 +736,23 @@ export function ComposeScreen({
                     textWrap: "pretty",
                   }}
                 >
-                  {`Make it gradeable: ${proposal.gradeable_alternative.target_symbol} \u00b7 ${DIRECTION_LABEL[proposal.gradeable_alternative.expected_direction]} \u00b7 by ${longDate(proposal.gradeable_alternative.resolution_window_end)}`}
+                  {/* THE DATE THIS CONTROL NAMES IS THE DATE PRESSING IT
+                      WRITES. It used to state the alternative's stored
+                      `resolution_window_end`, which is measured from the
+                      route's own anchor, while the press resolved a window
+                      from the reader's session date. A reader accepted a proxy
+                      labelled Oct 12 and the row carried Sep 4, one press from
+                      the write with nothing in between. Both sides now go
+                      through `composeWindowEnd` from `sessionIso`. */}
+                  {`Make it gradeable: ${proposal.gradeable_alternative.target_symbol} \u00b7 ${DIRECTION_LABEL[proposal.gradeable_alternative.expected_direction]} \u00b7 by ${longDate(
+                    composeWindowEnd(
+                      sessionIso,
+                      composeWindowFor(
+                        proposal.gradeable_alternative.resolution_window_start,
+                        proposal.gradeable_alternative.resolution_window_end,
+                      ),
+                    ),
+                  )}`}
                 </button>
               </>
             ) : null}
@@ -761,7 +789,9 @@ export function ComposeScreen({
                 </span>
                 <Dot />
                 <span style={{ font: `400 12px/1 ${FONT_SANS}`, color: "var(--c-body)" }}>
-                  {HORIZON_PHRASE[horizon]}
+                  {/* The REAL span, not a bucket it was rounded into. A 45-day
+                      structural claim reads "resolves in 45 days" here. */}
+                  {composeWindowPhrase(span)}
                 </span>
               </div>
               <p
@@ -803,14 +833,18 @@ export function ComposeScreen({
               aria-labelledby="compose-resolves"
               style={{ marginTop: "10px", display: "flex", gap: "12px", flexWrap: "wrap" }}
             >
-              {COMPOSE_HORIZONS.map((h) => (
+              {/* The desk's own span leads the row when it is off-bucket, so
+                  the reader can see what was inferred and can still choose
+                  something else. Pressing a chip overrides it, which is the
+                  reader's decision and wins. */}
+              {composeWindowChoices(span).map((w) => (
                 <Chip
-                  key={h}
-                  on={horizon === h}
-                  label={HORIZON_LABEL[h]}
-                  spoken={HORIZON_PHRASE[h]}
+                  key={composeWindowKey(w)}
+                  on={composeWindowKey(w) === composeWindowKey(span)}
+                  label={composeWindowLabel(w)}
+                  spoken={composeWindowPhrase(w)}
                   disabled={committed || busy}
-                  onSelect={() => setHorizon(h)}
+                  onSelect={() => setSpan(w)}
                 />
               ))}
             </div>
@@ -826,7 +860,7 @@ export function ComposeScreen({
                   function the write below resolves `resolution_window_end`
                   with. The date the reader agrees to IS the date the row
                   carries, because there is one anchor and one call. */}
-              Settles {longDate(settlementDate(sessionIso, horizon))}. Fixed at
+              Settles {longDate(composeWindowEnd(sessionIso, span))}. Fixed at
               entry and cannot be moved afterwards.
             </p>
           </>

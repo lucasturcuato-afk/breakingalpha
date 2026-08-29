@@ -1,7 +1,14 @@
 import {
   DEFAULT_ADOPT_HORIZON,
+  HORIZON_LABEL,
+  HORIZON_PHRASE,
   HORIZON_TYPES,
+  adoptWindowForCall,
+  adoptWindowPhrase,
+  adoptWindowValue,
+  horizonLabelForDays,
   resolveAdoptWindow,
+  type AdoptWindow,
   type HorizonType,
 } from "@/lib/call-horizons";
 import { COMMIT_NOTE_MAX, COMMIT_NOTE_MIN } from "@/components/commit/commit-target";
@@ -150,16 +157,94 @@ export const COMPOSE_HORIZONS: HorizonType[] = HORIZON_TYPES.filter(
 export const COMPOSE_DEFAULT_HORIZON: HorizonType = DEFAULT_ADOPT_HORIZON;
 
 /**
- * The settlement date for one horizon, derived rather than transcribed.
+ * THE DESK'S OWN WINDOW, KEPT.
+ *
+ * `/api/radar/claims/author` instructs the model to INFER a span from the
+ * claim: 1 to 3 days for a dated event, 5 to 10 for single-name news flow, 14
+ * to 30 for a rotation, 45 to 90 for a structural thesis, and in the prompt's
+ * own words "do not compress a long-dated thesis into a short window just to
+ * resolve it sooner". Most of those numbers are not bucket day counts.
+ *
+ * The first wiring of this screen held the selection as a bare `HorizonType`
+ * and derived it with `horizonTypeFromDates`, which is exact-match and answers
+ * null for anything off-bucket. Null fell back to the mount default, so a
+ * 60-day structural claim was written as a 7-day window AND read back to its
+ * author as "resolves in about a week". Seven of eleven measured spans were
+ * wrong. `src/app/radar/calls/page.tsx` spreads the proposal verbatim and has
+ * never had this bug; Compose was the only caller that discarded the span.
+ *
+ * `call-horizons.ts` already had the answer and names this exact failure in
+ * its own comment: the selection is a UNION, not a bucket. `as-called` carries
+ * the desk's real day count and is what an off-bucket proposal preselects. A
+ * reader who then presses a chip overrides it, which is their decision and
+ * still wins.
+ *
+ * One coercion of our own: a `session` bucket becomes as-called at one day.
+ * COMPOSE_HORIZONS deliberately drops `session`, so a session selection would
+ * leave the chip row with nothing lit, and the route refuses a same-day window
+ * anyway. The author route cannot currently produce one (it enforces
+ * `windowEnd > todayIso`), so this is a guard rather than a live path.
+ */
+export function composeWindowFor(
+  startIso: string | null | undefined,
+  endIso: string | null | undefined,
+): AdoptWindow {
+  const w = adoptWindowForCall(startIso, endIso);
+  if (w.kind === "bucket" && w.type === "session") return { kind: "as-called", days: 1 };
+  return w;
+}
+
+/**
+ * The settlement date for a window, derived rather than transcribed.
  *
  * THE ANCHOR IS A PARAMETER, not a module constant, and it has to be. This
  * used to close over `COMPOSE_ANCHOR_ISO`, which meant the date the screen
  * showed a reader and the date a write would have resolved to were the same
  * fixed day in the past. The live screen passes its `sessionIso`; the fixture
  * passes `COMPOSE_ANCHOR_ISO`. Both callers say which day they mean.
+ *
+ * ONE function, used by the settles line, by the "Make it gradeable" label,
+ * and by the write. The date a reader agrees to cannot disagree with the date
+ * the row carries, because there is nowhere for a second calculation to live.
  */
+export function composeWindowEnd(anchorIso: string, w: AdoptWindow): string {
+  return w.kind === "bucket"
+    ? resolveAdoptWindow(anchorIso, w.type)
+    : resolveAdoptWindow(anchorIso, COMPOSE_DEFAULT_HORIZON, w.days);
+}
+
+/** The settlement date for one bucket. The fixture's helper. */
 export function settlementDate(anchorIso: string, horizon: HorizonType): string {
-  return resolveAdoptWindow(anchorIso, horizon);
+  return composeWindowEnd(anchorIso, { kind: "bucket", type: horizon });
+}
+
+/**
+ * What the RESOLVES row offers: the desk's own span first when it is
+ * off-bucket, then every named alternative. Mirrors `adoptWindowOptions`,
+ * which cannot be used directly because it includes `session`.
+ */
+export function composeWindowChoices(current: AdoptWindow): AdoptWindow[] {
+  const buckets: AdoptWindow[] = COMPOSE_HORIZONS.map((type) => ({ kind: "bucket", type }));
+  return current.kind === "as-called" ? [current, ...buckets] : buckets;
+}
+
+/** A stable identity for one choice, for keying and for the pressed test. */
+export function composeWindowKey(w: AdoptWindow): string {
+  return adoptWindowValue(w);
+}
+
+/** The chip's visible text. Short, the way the design draws it. */
+export function composeWindowLabel(w: AdoptWindow): string {
+  return w.kind === "bucket" ? HORIZON_LABEL[w.type] : horizonLabelForDays(w.days);
+}
+
+/**
+ * The same window said as a sentence fragment: the READ AS line, and the
+ * accessible name of the chip. An off-bucket span states its real length
+ * ("resolves in 45 days") rather than being rounded into a bucket it is not.
+ */
+export function composeWindowPhrase(w: AdoptWindow): string {
+  return w.kind === "bucket" ? HORIZON_PHRASE[w.type] : adoptWindowPhrase(w);
 }
 
 /** ISO date as the screen states it. Fixed locale so a capture is stable. */
