@@ -119,7 +119,7 @@ export type AskCompaniesStage = "ready" | "error";
  * corpus this size read as a sample rather than as a way in.
  *
  * IT IS NOT A FIT. An earlier version of this comment claimed six was what the
- * scroll region holds at 390 without running past the composer. Measured on the
+ * scroll region fits at 390 without running past the composer. Measured on the
  * running page at 390x844: the region is `clientHeight` 497 against
  * `scrollHeight` 798, and exactly ONE row is fully visible before the reader
  * scrolls. Every count above one is a scroll, so six is a choice about how far
