@@ -7,6 +7,8 @@ import { ASK_FIXTURE_ENABLED } from "@/components/ask/fixture-gate";
    the server unless the gate is open. */
 import { ASK_ANSWER_FIXTURE, ASK_BROWSE_FIXTURE } from "@/components/ask/fixture";
 import { FONT_DISPLAY, FONT_SANS } from "@/components/mobile/fonts";
+import { getSupabaseWithUser } from "@/lib/supabase-server";
+import { loadAskCompanies, type AskCompaniesLoad } from "@/lib/ask-companies-data";
 
 /**
  * Ask. Both halves of the Ask pole's entry layer on one route.
@@ -18,18 +20,41 @@ import { FONT_DISPLAY, FONT_SANS } from "@/components/mobile/fonts";
  * back-stack entry rather than two paths for one screen. `/intelligence` is
  * untouched and still ships the working desktop chat.
  *
- * `?state=` renders a lifecycle state directly. Neither screen has a data
- * source yet, so no state can be reached by reproducing its conditions, and the
- * runtime audit has to be able to reach each one. Outside development and
- * preview the fixture is off and the parameter cannot reach anything invented.
+ * `?state=` renders a lifecycle state directly. The three browse counters and
+ * the whole answer turn still have no source, so their states cannot be reached
+ * by reproducing their conditions and the runtime audit has to be able to reach
+ * each one by URL. Outside development and preview the fixture is off and the
+ * parameter cannot reach anything invented.
  *
- * Server component so it can read the async searchParams, matching /ledger.
+ * THE COMPANY DIRECTORY IS REAL AND IS NOT BEHIND THAT PARAMETER. It is read
+ * here, on the server, before a byte of the screen is sent, and passed down as
+ * data with its own `{ data, stage }`. `?state=` cannot force it, because it
+ * has a source: its states are reached by reproducing its conditions, which is
+ * what a wired block is for. `src/lib/ask-companies-data.ts` carries what it
+ * reads and what it refuses to read.
+ *
+ * Server component so it can read the async searchParams and do that read,
+ * matching /ledger and /watch.
  */
 
 const STAGES: AskStage[] = ["ready", "loading", "error", "empty", "stale"];
 
 function first(v: string | string[] | undefined): string | undefined {
   return Array.isArray(v) ? v[0] : v;
+}
+
+/**
+ * The directory read, and the client it needs.
+ *
+ * A function rather than a value computed above the branch, so it is called on
+ * the browse branch ONLY. The answer screen draws no directory, so reading one
+ * for it would be a query for a block that is not on the screen, and a
+ * `null` threaded through the browse screen's prop would need a `??` at the
+ * render site to become a load again.
+ */
+async function readCompanies(): Promise<AskCompaniesLoad> {
+  const { supabase } = await getSupabaseWithUser();
+  return loadAskCompanies(supabase);
 }
 
 export default async function AskPage({
@@ -55,7 +80,11 @@ export default async function AskPage({
             data={ASK_FIXTURE_ENABLED ? ASK_ANSWER_FIXTURE : null}
           />
         ) : (
-          <AskBrowseScreen stage={stage} data={ASK_FIXTURE_ENABLED ? ASK_BROWSE_FIXTURE : null} />
+          <AskBrowseScreen
+            stage={stage}
+            data={ASK_FIXTURE_ENABLED ? ASK_BROWSE_FIXTURE : null}
+            companies={await readCompanies()}
+          />
         )}
       </div>
 

@@ -1,4 +1,4 @@
-import { SUGGESTED_PROMPTS, type AskAnswerData, type AskBrowseData } from "./ask-data";
+import { CHIP_PROMPTS, SUGGESTED_PROMPTS, type AskAnswerData, type AskBrowseData } from "./ask-data";
 
 /**
  * Ask fixtures. SERVER ONLY.
@@ -16,12 +16,17 @@ import { SUGGESTED_PROMPTS, type AskAnswerData, type AskBrowseData } from "./ask
  * directory and the two pieces of real product copy live in `./ask-data`,
  * which is invented nothing and safe to import anywhere.
  *
- * Neither Ask screen has a data source yet. `briefs/batch-4.md` open questions
- * 4, 5 and 6 record why: nothing in the repo stores which companies a user
- * looked up, the three directory counters have no defined query or interval,
- * and the record citation on the answer screen needs the intelligence route to
- * retrieve the user's own claims, which it does not do today. Until those land,
- * both screens render from here.
+ * WHAT LEFT THIS FILE. The three invented lookup rows are gone, and so is the
+ * question they could not answer. `briefs/batch-4.md` open question 4 records
+ * it: nothing in the repo stores which companies a user looked up. That block
+ * is a company directory now, read live in `src/lib/ask-companies-data.ts`, so
+ * it needs no fixture in any environment and has none.
+ *
+ * WHAT IS STILL INVENTED HERE. The three browse counters and their summaries
+ * (open question 5: no defined query, no defined interval) and the answer
+ * screen's whole turn including the citation (open question 6: the
+ * intelligence route does not retrieve the reader's own claims). Both still
+ * render from here, behind the gate.
  */
 
 export const ASK_BROWSE_FIXTURE: AskBrowseData = {
@@ -41,22 +46,7 @@ export const ASK_BROWSE_FIXTURE: AskBrowseData = {
       summary: "Filtered to your 28 followed names by default.",
     },
   },
-  lookups: [
-    {
-      ticker: "CEG",
-      name: "Constellation Energy",
-      href: "/company/constellation-energy",
-      entries: "2 of your entries",
-    },
-    {
-      ticker: "NVO",
-      name: "Novo Nordisk",
-      href: "/company/novo-nordisk",
-      entries: "1 of your entries",
-    },
-    { ticker: "XYL", name: "Xylem", href: "/company/xylem", entries: "no entries yet" },
-  ],
-  prompts: [SUGGESTED_PROMPTS[0], SUGGESTED_PROMPTS[2]],
+  prompts: CHIP_PROMPTS,
   countedAt: "Counted at 06:52 against yesterday's close.",
 };
 

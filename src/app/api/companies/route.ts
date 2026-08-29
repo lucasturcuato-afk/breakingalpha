@@ -17,7 +17,12 @@ export interface Company {
 
 // Quality filter for noise rows that survive the SQL-level filters.
 // Pure-noise patterns flagged: all-numeric, all-punctuation, all-lowercase short.
-function isNoiseName(name: string): boolean {
+//
+// Exported so `src/lib/ask-companies-data.ts` can apply the SAME filter. That
+// loader reads `companies` directly rather than calling this route, because a
+// server component calling its own HTTP route is a round trip for nothing, and
+// two copies of this predicate would drift into two different directories.
+export function isNoiseName(name: string): boolean {
   const trimmed = name.trim();
   // No alphabetic characters → all-numeric or all-punctuation
   if (!/[A-Za-z]/.test(trimmed)) return true;

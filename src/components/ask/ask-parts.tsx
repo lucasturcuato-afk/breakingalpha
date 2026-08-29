@@ -161,18 +161,35 @@ export function AskDirectoryRow({
   );
 }
 
-/* ── Recent lookup row ─────────────────────────────────────────────── */
+/* ── Company directory row ─────────────────────────────────────────── */
 
 export type AskLookupRowProps = {
   href: string;
-  ticker: string;
+  /**
+   * Null when the company carries no ticker. The chip keeps its 44px so the
+   * names below it stay on one left edge; nothing is drawn inside it. Anthropic
+   * and OpenAI are both in the head of the read this row is built from, so a
+   * missing ticker is a real company rather than a bad row.
+   */
+  ticker: string | null;
   name: string;
-  entries: string;
+  /** The sector. Null when the row has none; nothing stands in for it. */
+  detail: string | null;
   first?: boolean;
   last?: boolean;
 };
 
-export function AskLookupRow({ href, ticker, name, entries, first = false, last = false }: AskLookupRowProps) {
+/**
+ * The row the "company intel" block is built from.
+ *
+ * The NAME is unchanged and the geometry is untouched: this is the same
+ * ticker chip, name, detail line and chevron the design draws, at the same
+ * numbers. What changed is behind it. The block used to list recent lookups,
+ * which nothing in the product records, so the rows now come from the company
+ * directory read in `src/lib/ask-companies-data.ts` and every href is proved to
+ * resolve before it is built.
+ */
+export function AskLookupRow({ href, ticker, name, detail, first = false, last = false }: AskLookupRowProps) {
   return (
     <Link
       href={href}
@@ -199,15 +216,22 @@ export function AskLookupRow({ href, ticker, name, entries, first = false, last 
       </span>
       <div style={{ minWidth: 0, flex: 1 }}>
         <div style={{ font: `500 14px/1.3 ${FONT_SANS}`, color: "var(--c-ink)" }}>{name}</div>
-        <div
-          style={{
-            marginTop: "3px",
-            font: `400 10.5px/1 ${FONT_SANS}`,
-            color: "var(--c-muted)",
-          }}
-        >
-          {entries}
-        </div>
+        {/* No detail, no line. An empty second row would draw the box the
+            design gives a fact and put nothing in it. */}
+        {detail ? (
+          <div
+            style={{
+              marginTop: "3px",
+              font: `400 10.5px/1 ${FONT_SANS}`,
+              color: "var(--c-muted)",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {detail}
+          </div>
+        ) : null}
       </div>
       <Chevron direction="right" />
     </Link>
