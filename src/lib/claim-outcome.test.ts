@@ -41,8 +41,18 @@ const BRIEF: ClaimOutcomeRow = {
   graded_at: "2026-07-03T22:00:00Z",
 };
 
-const adopted = { id: "claim-1", source: "adopted", adopted_from_call_id: "brief-call-99" };
-const authored = { id: "claim-2", source: "authored", adopted_from_call_id: null };
+const adopted = {
+  id: "claim-1",
+  source: "adopted",
+  adopted_from_call_id: "brief-call-99",
+  gradeable: true,
+};
+const authored = {
+  id: "claim-2",
+  source: "authored",
+  adopted_from_call_id: null,
+  gradeable: true,
+};
 
 // ---------------------------------------------------------------------------
 // Adopted claims read their own outcome
@@ -86,7 +96,12 @@ test("a legacy adopted claim stays unresolved permanently", () => {
   // Created before independent grading, so it will never receive its own row
   // (the grader is live-forward and does not backfill). Unresolved is the
   // honest state: nobody ever graded THIS claim over THIS window.
-  const legacy = { id: "legacy-1", source: "adopted", adopted_from_call_id: "brief-call-99" };
+  const legacy = {
+    id: "legacy-1",
+    source: "adopted",
+    adopted_from_call_id: "brief-call-99",
+    gradeable: true,
+  };
   assert.equal(resolveClaimOutcome(legacy, { "brief-call-99": BRIEF }), null);
   assert.equal(isAwaitingOwnVerdict(legacy, {}), true);
 });
@@ -137,4 +152,58 @@ test("the resolved row is a copy, not the stored object", () => {
   const got = resolveClaimOutcome(adopted, store)!;
   got.verdict = "mutated";
   assert.equal(store["claim-1"].verdict, "correct");
+});
+
+// ---------------------------------------------------------------------------
+// Context claims are not awaiting
+//
+// A gradeable:false row is written with resolution_method.method = "none".
+// backend/grading/grade_user_claims.py gates twice on the other value:
+// fetch_due_claims filters .eq("gradeable", True), and is_price_gradeable
+// requires method == "price_attribution". Nothing else writes user_claims
+// .status after insert, so no verdict is coming and none ever will. Calling
+// that "awaiting" told the reader to wait for something nobody is producing:
+// one live row had its window close 57 days ago and still read awaiting.
+// ---------------------------------------------------------------------------
+
+const contextAuthored = {
+  id: "ctx-1",
+  source: "authored",
+  adopted_from_call_id: null,
+  gradeable: false,
+};
+const contextAdopted = {
+  id: "ctx-2",
+  source: "adopted",
+  adopted_from_call_id: "brief-call-99",
+  gradeable: false,
+};
+
+test("a context claim is NOT awaiting, whatever its source", () => {
+  assert.equal(isAwaitingOwnVerdict(contextAuthored, {}), false);
+  assert.equal(isAwaitingOwnVerdict(contextAdopted, {}), false);
+});
+
+test("adopted-and-closed, the worst of the four combinations", () => {
+  // An adopted context claim whose window closed. It rendered a live card
+  // reading "Resolves when the window closes", was counted open on
+  // /radar/calls, read awaiting on the dashboard, and was excluded from
+  // /ledger entirely. Three surfaces, three different wrong answers.
+  assert.equal(isAwaitingOwnVerdict(contextAdopted, {}), false);
+  assert.equal(resolveClaimOutcome(contextAdopted, {}), null, "still no verdict");
+});
+
+test("a gradeable claim with no outcome is still awaiting, both sources", () => {
+  assert.equal(isAwaitingOwnVerdict(adopted, {}), true);
+  assert.equal(isAwaitingOwnVerdict(authored, {}), true);
+});
+
+test("a context claim that somehow carries a verdict still shows it", () => {
+  // One legacy production row carries gradeable:false beside
+  // method: "price_attribution". If an outcome row exists for it, hiding that
+  // outcome behind a category would be the same lie in the other direction.
+  // resolveClaimOutcome never consults the flag.
+  const own: ClaimOutcomeRow = { ...OWN, claim_id: "ctx-1" };
+  const got = resolveClaimOutcome(contextAuthored, { "ctx-1": own });
+  assert.equal(got?.verdict, OWN.verdict);
 });

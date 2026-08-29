@@ -92,7 +92,12 @@ export interface MobileRecords {
    * rather than by a disable directive.
    */
   status: "idle" | "loading" | "done";
-  yourRecord: { byResolution: Record<Resolution, number>; awaiting: number } | null;
+  yourRecord: {
+    byResolution: Record<Resolution, number>;
+    awaiting: number;
+    /** Context entries: never price-checked, no verdict coming. Not a bucket. */
+    context: number;
+  } | null;
   deskRecord: { byResolution: Record<Resolution, number>; total: number } | null;
   gradedInLastDay: number | null;
 }
@@ -182,7 +187,11 @@ export function useMobileRecords(): MobileRecords {
         const outcomes = json.outcomes ?? {};
         const record = buildYourRecord(claims, outcomes, todayPt());
         return {
-          yourRecord: { byResolution: record.byResolution, awaiting: record.awaiting },
+          yourRecord: {
+            byResolution: record.byResolution,
+            awaiting: record.awaiting,
+            context: record.context,
+          },
           gradedInLastDay: countGradedInLastDay(claims, outcomes, Date.now()),
         };
       } catch {

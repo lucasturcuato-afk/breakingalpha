@@ -167,7 +167,15 @@ export async function POST(request: NextRequest) {
       target_symbol: call.target_symbol,
       expected_direction: call.expected_direction,
       resolution_method: {
-        method: "price_attribution",
+        // DERIVED, mirroring the insert route (claims/route.ts). This route
+        // stamped "price_attribution" unconditionally, so an adopt whose
+        // gradeable computed false wrote a pair that contradicts itself: a
+        // method naming a grader beside a flag saying no grader will run.
+        // Behaviourally inert today (the grader gates on the flag first, and
+        // no current-route row exhibits it), but the read side now leans on
+        // gradeable, and a row advertising a grader it will never see is
+        // exactly what made the "authored only" guards look defensible.
+        method: gradeable ? "price_attribution" : "none",
         version: 1,
         adopted: true,
         adopted_horizon: horizon,
