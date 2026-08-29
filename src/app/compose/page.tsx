@@ -12,6 +12,7 @@ import {
    a server component, so from here they stay on the server and the screen only
    ever receives the resolved seed. */
 import { seedFor } from "@/components/compose/fixture";
+import { todayPt } from "@/lib/session-date";
 import { FONT_DISPLAY, FONT_SANS } from "@/components/mobile/fonts";
 
 /**
@@ -23,10 +24,21 @@ import { FONT_DISPLAY, FONT_SANS } from "@/components/mobile/fonts";
  * lands beside that page rather than editing it, which is the same rule the
  * skill sets for Watch, Thesis Tracker and Desk record.
  *
- * Server component so it can read the lifecycle switch off the async
- * searchParams, matching /ledger and /waitlist. The screen has no data source
- * in this unit, so its states cannot be reached by reproducing their
- * conditions and the runtime audit has to be able to reach each one.
+ * Server component for two reasons now.
+ *
+ * It reads the lifecycle SEED off the async searchParams, matching /ledger and
+ * /waitlist. That switch is no longer how the screen moves between states, it
+ * is only how a dev or preview audit OPENS on one: the live states are driven
+ * by the two requests the screen makes. Reproducing `saving` or `save-error`
+ * against a real route means a real row, so the seed stays, gated.
+ *
+ * And it supplies `sessionIso`, which is the reason this page cannot be a
+ * client component. `todayPt()` is the US-Pacific session date, and it is read
+ * ONCE, HERE, then handed down as data, exactly as `src/lib/ledger-data.ts`
+ * supplies it to /ledger and as `commit-target.ts` documents for the commit
+ * sheet: "passed in rather than read off a clock here, so a server render and
+ * a client render cannot disagree." The screen resolves the window it shows
+ * the reader AND the window it writes from this one value.
  *
  * The shell is mounted per page, the way every other page in this repo mounts
  * it. `mobileFullBleed` gates the desk chrome the screen replaces.
@@ -65,6 +77,12 @@ export default async function ComposePage({
      enough on its own. */
   const seed = COMPOSE_FIXTURE_ENABLED ? seedFor(stage) : null;
 
+  /* The reader's session date, read once on the server. Every window on the
+     screen below is measured from it: the settlement date the reader agrees
+     to, and the `resolution_window_end` the write carries. They cannot come
+     apart because there is only one value. */
+  const sessionIso = todayPt();
+
   return (
     <AppShell pageTitle="Write your own call" mobileFullBleed>
       {/* Gating lives in classes, never in an inline style: an inline display
@@ -82,13 +100,14 @@ export default async function ComposePage({
           the control 43px behind it. min-h-full does both, because this
           wrapper's own parent is height-definite. */}
       <div className="md:hidden flex min-h-full flex-col">
-        {/* Keyed on the stage. The screen seeds its draft, note and proposal
-            from the stage on mount, so on a client-side navigation between two
-            ?stage= values React would reuse the instance and keep the previous
-            stage's content: /compose?stage=gradeable then ?stage=empty drew the
-            gradeable draft and its READ AS card under the empty state. A key
-            remounts instead, which a full page load already did. */}
-        <ComposeScreen key={stage} stage={stage} seed={seed} />
+        {/* Keyed on the stage. The screen seeds its draft, note, proposal and
+            opening lifecycle phase from the stage on mount, so on a client-side
+            navigation between two ?stage= values React would reuse the instance
+            and keep the previous stage's content: /compose?stage=gradeable then
+            ?stage=empty drew the gradeable draft and its READ AS card under the
+            empty state. A key remounts instead, which a full page load already
+            did. */}
+        <ComposeScreen key={stage} stage={stage} seed={seed} sessionIso={sessionIso} />
       </div>
 
       {/* Above the breakpoint this route has no layout of its own. The desktop

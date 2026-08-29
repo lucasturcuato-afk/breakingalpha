@@ -2,12 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import {
-  HORIZON_LABEL,
-  HORIZON_PHRASE,
-  horizonTypeFromDates,
-  type HorizonType,
-} from "@/lib/call-horizons";
+import type { AdoptWindow } from "@/lib/call-horizons";
 /* `./fixture` is NOT imported here and must never be. This is a client
    component, so a value import from that module is a download of the invented
    draft, the invented note and both invented proposals: the gate stops the
@@ -16,15 +11,18 @@ import {
    `src/app/compose/page.tsx` behind `COMPOSE_FIXTURE_ENABLED`. */
 import { COMPOSE_FIXTURE_ENABLED } from "./fixture-gate";
 import {
-  COMPOSE_DEFAULT_HORIZON,
-  COMPOSE_HORIZONS,
   DRAFT_MIN_CHARS,
   EMPTY_SEED,
   MAX_CLAIM_CHARS,
   MAX_NOTE_CHARS,
   NOTE_MIN_CHARS,
+  composeWindowChoices,
+  composeWindowEnd,
+  composeWindowFor,
+  composeWindowKey,
+  composeWindowLabel,
+  composeWindowPhrase,
   longDate,
-  settlementDate,
   type ComposeProposal,
   type ComposeSeed,
   type ComposeStage,
@@ -37,29 +35,32 @@ import { FONT_DISPLAY, FONT_MONO, FONT_SANS } from "@/components/mobile/fonts";
  * Compose. "Write your own call": the free-text composer promoted from a
  * section inside /radar/calls to a screen of its own.
  *
- * PRESENTATION UNIT. Nothing here reaches the network. `/api/radar/claims/author`
- * produces its proposal through Gemini and `/api/radar/claims` POST is the
- * authored insert; this screen calls neither, and the two controls that would
- * are inert no-ops carrying a comment saying so. The proposal is a fixture and
- * the stage is a URL parameter, which is how the Ledger unit reached its own
- * lifecycle states before it had a loader.
+ * WIRED. One control, two presses, two requests, in this order and never
+ * folded together:
+ *
+ *   1. "Read it back" POSTs the draft to `/api/radar/claims/author`, which
+ *      runs Gemini and answers with a proposal. This is the LONGEST-LIVED
+ *      state on the screen and it has its own: the route tries gemini-2.5-pro
+ *      and falls back to gemini-2.5-flash inside a catch, with no timeout and
+ *      no abort signal, so a reader waits for pro and, on the fallback path,
+ *      for pro's timeout PLUS a whole flash call. Hiding that inside the
+ *      commit press would be several silent seconds on the press that writes.
+ *   2. "Track it" POSTs to `/api/radar/claims`, which is the authored insert.
  *
  * Gradeability is SERVER-gated. The prototype computes it in the browser from a
  * hardcoded instrument list; reproducing that would put a client-side verdict
  * on a screen whose whole argument is that the desk checks the claim. So no
  * branch below reads the draft text to decide whether a claim can be graded.
- */
-
-/**
- * Whether this screen can write a call.
  *
- * It cannot. `/api/radar/claims/author` runs Gemini and `/api/radar/claims`
- * POST has no column for the note the design gates the control on.
- * Draft PR #643 proposes `user_claims.commit_note` and has not been ruled on.
- * One constant so the day a loader lands, the marker line, the disabled state
- * and the aria wiring all come off together.
+ * WHAT A FAILED WRITE MUST NOT TOUCH: anything. On `save-error` the phase is
+ * the only thing that moves. Two of the values on screen cannot be
+ * reconstructed at any price. The note is the reader's own sentence and exists
+ * nowhere else. The proposal costs another multi-second model call. The fields
+ * stay mounted because `readOnly` rather than a branch keeps them there, so
+ * this survives by construction as long as no handler reaches for a reset.
+ *
+ * AND A FAILED WRITE OFFERS NO RETRY. See `saveFailed` below.
  */
-const WRITE_PATH_WIRED = false;
 
 const PAD = "var(--v3-pad)";
 
@@ -87,6 +88,111 @@ const DIRECTION_LABEL: Record<Direction, string> = {
 
 const DIRECTIONS: Direction[] = ["bullish", "bearish", "neutral"];
 
+/**
+ * Where the screen is in its own lifecycle.
+ *
+ * NOT `ComposeStage`. That type enumerates the nine states a reader can be
+ * SHOWN, and four of them are distinguished by the proposal rather than by the
+ * phase: gradeable and context differ only in `proposal.gradeable`, and so do
+ * committed and committed-context. The phase carries what a request is doing;
+ * the proposal carries what the desk said. Collapsing them is how a screen
+ * ends up with two sources of truth for one pixel.
+ */
+type ComposePhase =
+  | "idle"
+  | "analyzing"
+  | "analyze-error"
+  | "saving"
+  | "save-error"
+  | "committed";
+
+/**
+ * The phase a SEEDED stage opens on. Dev and preview only, behind
+ * COMPOSE_FIXTURE_ENABLED, and the only way a runtime audit can stand in front
+ * of `saving` or `save-error` without a real row and a real refusal.
+ */
+function phaseForStage(stage: ComposeStage): ComposePhase {
+  switch (stage) {
+    case "analyzing":
+      return "analyzing";
+    case "analyze-error":
+      return "analyze-error";
+    case "saving":
+      return "saving";
+    case "save-error":
+      return "save-error";
+    case "committed":
+    case "committed-context":
+      return "committed";
+    default:
+      return "idle";
+  }
+}
+
+/**
+ * A read-back, read off the author route's answer.
+ *
+ * Validated rather than cast. The route already enforces every rule that
+ * matters (gradeability, the window bounds, the alternative's shape), so this
+ * is not a second opinion about the claim: it is the narrow check that the
+ * thing on the wire has the fields this screen branches on. Anything it cannot
+ * read comes back null, and null is drawn as an analyze error rather than as a
+ * half-populated card.
+ */
+function readProposal(payload: unknown): ComposeProposal | null {
+  if (typeof payload !== "object" || payload === null) return null;
+  const raw = (payload as { proposal?: unknown }).proposal;
+  if (typeof raw !== "object" || raw === null) return null;
+  const p = raw as Record<string, unknown>;
+
+  const str = (v: unknown): string | null => (typeof v === "string" && v ? v : null);
+  const dir = (v: unknown): Direction | null =>
+    v === "bullish" || v === "bearish" || v === "neutral" ? v : null;
+
+  return {
+    claim_type: str(p.claim_type) ?? "other",
+    target_symbol: str(p.target_symbol),
+    expected_direction: dir(p.expected_direction),
+    resolution_window_start: str(p.resolution_window_start),
+    resolution_window_end: str(p.resolution_window_end),
+    evidence_entities: Array.isArray(p.evidence_entities)
+      ? p.evidence_entities.filter((e): e is string => typeof e === "string")
+      : [],
+    confidence_in_reduction:
+      typeof p.confidence_in_reduction === "number" ? p.confidence_in_reduction : null,
+    gradeable: p.gradeable === true,
+    gradeability_note: str(p.gradeability_note),
+    gradeable_alternative: readAlternative(p.gradeable_alternative),
+  };
+}
+
+/** The proxy reduction, when the route offered one that survived its own rules. */
+function readAlternative(raw: unknown): ComposeProposal["gradeable_alternative"] {
+  if (typeof raw !== "object" || raw === null) return null;
+  const a = raw as Record<string, unknown>;
+  const symbol = typeof a.target_symbol === "string" ? a.target_symbol : "";
+  const start = typeof a.resolution_window_start === "string" ? a.resolution_window_start : "";
+  const end = typeof a.resolution_window_end === "string" ? a.resolution_window_end : "";
+  const rationale = typeof a.rationale === "string" ? a.rationale : "";
+  const direction =
+    a.expected_direction === "bullish" ||
+    a.expected_direction === "bearish" ||
+    a.expected_direction === "neutral"
+      ? a.expected_direction
+      : null;
+  /* Every field is drawn on the "Make it gradeable" control, so a partial
+     alternative would render a control with a gap in its own label. */
+  if (!symbol || !start || !end || !rationale || !direction) return null;
+  return {
+    claim_type: typeof a.claim_type === "string" ? a.claim_type : "other",
+    target_symbol: symbol,
+    expected_direction: direction,
+    resolution_window_start: start,
+    resolution_window_end: end,
+    rationale,
+  };
+}
+
 export function ComposeScreen({
   stage = "empty",
   /**
@@ -96,42 +202,73 @@ export function ComposeScreen({
    * call in front of a reader.
    */
   seed,
+  /**
+   * The reader's US-Pacific session date, ISO. REQUIRED, and passed in rather
+   * than read off a clock here, so a server render and a client render cannot
+   * disagree about which day it is. `commit-target.ts` states the same rule
+   * for the commit sheet and `src/lib/ledger-data.ts` supplies it to /ledger.
+   *
+   * This is not a display nicety. Every window on this screen resolves from
+   * it: the settlement date the reader agrees to, and the
+   * `resolution_window_end` the write carries. A window resolved off a fixed
+   * anchor in the past is refused by `/api/radar/claims` POST, which requires
+   * `resolution_window_end > todayIso`, and refused SILENTLY: the row is
+   * written with `gradeable: false` and the screen reads as though it worked.
+   */
+  sessionIso,
 }: {
   stage?: ComposeStage;
   seed: ComposeSeed | null;
+  sessionIso: string;
 }) {
   /* Re-checked here, not trusted from the page. `EMPTY_SEED` is two blank
      fields and no proposal, which asserts nothing: it is what a real composer
      opens on and what production draws. */
-  const opening = COMPOSE_FIXTURE_ENABLED && seed !== null ? seed : EMPTY_SEED;
+  const seeded = COMPOSE_FIXTURE_ENABLED && seed !== null;
+  const opening = seeded ? seed : EMPTY_SEED;
   const [draft, setDraft] = useState(opening.draft);
   const [note, setNote] = useState(opening.note);
   const [proposal, setProposal] = useState<ComposeProposal | null>(opening.proposal);
   const [direction, setDirection] = useState<Direction>(
     opening.proposal?.expected_direction ?? "bullish",
   );
-  /* Derived from the proposal's own window, never transcribed. A chip that is
-     hardcoded agrees with `resolution_window_end` only by coincidence, and
-     stops agreeing the moment the window moves. */
-  const [horizon, setHorizon] = useState<HorizonType>(
-    horizonTypeFromDates(
+  /* THE DESK'S OWN SPAN, derived from the proposal's window and never
+     transcribed. A chip that is hardcoded agrees with `resolution_window_end`
+     only by coincidence, and stops agreeing the moment the window moves.
+
+     An `AdoptWindow`, NOT a bare `HorizonType`. The author route infers spans
+     the four buckets do not name, and a bucket-typed selection silently
+     rounded every one of them to the mount default: measured, seven of eleven
+     spans were written wrong, including every structural claim. See
+     `composeWindowFor`. */
+  const [span, setSpan] = useState<AdoptWindow>(
+    composeWindowFor(
       opening.proposal?.resolution_window_start,
       opening.proposal?.resolution_window_end,
-    ) ?? COMPOSE_DEFAULT_HORIZON,
+    ),
   );
 
-  const committed = stage === "committed" || stage === "committed-context";
-  const busy = stage === "saving";
-  const analyzing = stage === "analyzing";
+  /* REAL LIFECYCLE STATE, driven by the two requests below. `stage` seeds it
+     and then never touches it again: the URL is a dev and preview way IN to a
+     state, not the thing that keeps it. Outside the fixture gate the seed is
+     always `idle`, whatever the URL says. */
+  const [phase, setPhase] = useState<ComposePhase>(
+    seeded ? phaseForStage(stage) : "idle",
+  );
+
+  const committed = phase === "committed";
+  const busy = phase === "saving";
+  const analyzing = phase === "analyzing";
+  const saveFailed = phase === "save-error";
   const draftOk = draft.trim().length >= DRAFT_MIN_CHARS;
   const noteOk = note.trim().length >= NOTE_MIN_CHARS;
   const gradeable = proposal?.gradeable === true;
 
   const error =
-    stage === "analyze-error"
+    phase === "analyze-error"
       ? "Could not analyze the claim."
-      : stage === "save-error"
-        ? "Could not save the call."
+      : saveFailed
+        ? "The desk did not acknowledge this call, so it may or may not be on your ledger. Everything you wrote is still here."
         : null;
 
   const hint = analyzing
@@ -146,8 +283,36 @@ export function ComposeScreen({
 
   const count = draft.trim().length ? `${draft.trim().length} characters` : "";
 
-  const readyToCommit = draftOk && noteOk && proposal !== null && !committed && !busy;
-  const readyToRead = draftOk && noteOk && proposal === null && !analyzing;
+  /*
+    NO RETRY AFTER AN UNACKNOWLEDGED WRITE, and this is a ruling rather than an
+    omission.
+
+    The commit sheet can safely offer "Try again" because /api/radar/claims/adopt
+    is IDEMPOTENT: it keys on adopted_from_call_id, finds the existing row, and
+    hands it back. /api/radar/claims POST has no such guard and an authored
+    claim has no natural key to build one from, so a second press after a
+    dropped connection creates a SECOND row on the reader's ledger, describing
+    the same view twice. That is worse than a write the reader has to go and
+    check on, because it is silent and it is permanent.
+
+    So `saveFailed` closes the control for the rest of this mount and the error
+    routes the reader to /ledger instead. Editing the draft does not reopen it:
+    the first write may well have landed, and the reader needs to look before
+    writing anything else.
+
+    IT CLOSES THE READ-BACK TOO, and that conjunct is not decoration. Editing
+    the draft clears `proposal`, which on its own made `readyToRead` true again
+    and handed back an ENABLED control still labelled "Not acknowledged": it
+    would have spent a model call and then dead-ended, because the commit half
+    stays shut. One state, one answer. The e2e spec asserts it.
+
+    THE EVENTUAL FIX is a client-generated idempotency key on the insert, which
+    is a second API change and was scoped out of this one. It is named in the
+    PR body as the known limitation this paragraph describes.
+  */
+  const readyToCommit =
+    draftOk && noteOk && proposal !== null && !committed && !busy && !saveFailed;
+  const readyToRead = draftOk && noteOk && proposal === null && !analyzing && !saveFailed;
 
   const submitLabel = committed
     ? gradeable
@@ -161,7 +326,12 @@ export function ComposeScreen({
            submitted, directly under a hint reading "Analyzing…". */
         analyzing
         ? "Reading it back…"
-        : readyToCommit
+        : saveFailed
+          ? /* Locked, and saying why it is locked. Falling through to "Write
+               the claim and your reasoning" would tell a reader who has just
+               written both to write them again. */
+            "Not acknowledged"
+          : readyToCommit
         ? gradeable
           ? "Track it"
           : "Track as context"
@@ -170,6 +340,133 @@ export function ComposeScreen({
           : "Write the claim and your reasoning";
 
   const unlocked = readyToCommit || readyToRead;
+
+  /*
+    PRESS ONE. The draft goes to the author route and comes back a proposal.
+
+    Nothing is persisted by this request, so a failure is freely retryable:
+    `proposal` is still null afterwards, which puts the control back on "Read
+    it back" with no further branch needed.
+  */
+  async function readItBack() {
+    setPhase("analyzing");
+    try {
+      const res = await fetch("/api/radar/claims/author", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ claim_text: draft.trim() }),
+      });
+      if (!res.ok) {
+        setPhase("analyze-error");
+        return;
+      }
+      const read = readProposal(await res.json().catch(() => null));
+      if (!read) {
+        setPhase("analyze-error");
+        return;
+      }
+      setProposal(read);
+      /* The chips PRESELECT from the read-back and are the reader's from then
+         on. Direction only moves when the route actually said something; a
+         null direction leaves the current chip alone rather than snapping it
+         to a value the reader did not choose.
+
+         THE SPAN IS SET UNCONDITIONALLY, and that is the whole repair. The
+         desk inferred a length from the claim, and `composeWindowFor` keeps it
+         verbatim as `as-called` when it is not one of the four buckets. There
+         is no fallback here to fall through to any more. */
+      if (read.expected_direction) setDirection(read.expected_direction);
+      setSpan(composeWindowFor(read.resolution_window_start, read.resolution_window_end));
+      setPhase("idle");
+    } catch {
+      setPhase("analyze-error");
+    }
+  }
+
+  /*
+    PRESS TWO. The write.
+
+    THE BODY IS BUILT FROM THE CHIPS, NOT FROM THE PROPOSAL. `direction` and
+    `span` are independent state: the two chip rows call setDirection and
+    setSpan and never touch `proposal`, so sending proposal.expected_direction
+    and proposal.resolution_window_end would discard every edit the reader made
+    to the read-back, silently, on the one press that matters.
+
+    The other half of that rule is that an UNEDITED chip must still carry the
+    desk's own answer. `span` is seeded from the proposal's real span rather
+    than snapped to a bucket, so "built from the chips" and "the desk's window
+    survives" are the same statement rather than competing ones.
+
+    And the window resolves from `sessionIso`, never from the fixture anchor.
+    See the prop's own comment for what that costs when it is wrong.
+  */
+  async function commit() {
+    if (!proposal) return;
+    setPhase("saving");
+
+    /* The chip rows render only on a gradeable proposal. On a context claim
+       there is no direction chip and no RESOLVES chip on screen, so `direction`
+       is still its mount default and there is no window the reader agreed to.
+       Sending either would be inventing a decision they were never offered, so
+       the proposal's own values go instead, which for a context claim is a
+       null direction and no window. */
+    const expectedDirection = gradeable ? direction : proposal.expected_direction;
+    const windowEnd = gradeable
+      ? composeWindowEnd(sessionIso, span)
+      : proposal.resolution_window_end;
+
+    try {
+      const res = await fetch("/api/radar/claims", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_claim: draft.trim(),
+          claim_type: proposal.claim_type,
+          target_symbol: proposal.target_symbol,
+          expected_direction: expectedDirection,
+          /* Sent explicitly rather than left to the route's `?? todayIso`
+             fallback. The two agree today; an audit of the request should not
+             have to read the route to know what day the window opened. */
+          resolution_window_start: sessionIso,
+          resolution_window_end: windowEnd,
+          evidence_entities: proposal.evidence_entities,
+          confidence_in_reduction: proposal.confidence_in_reduction,
+          gradeable: proposal.gradeable,
+          gradeability_note: proposal.gradeability_note,
+          /* The reasoning. Trimmed here and trimmed again in the route, which
+             is what the column's own length(btrim(...)) check depends on.
+             `commit_note_at` is deliberately NOT sent: the route stamps the
+             moment, in the same object as the note, so the pair cannot come
+             apart. */
+          commit_note: note.trim(),
+        }),
+      });
+      if (!res.ok) {
+        setPhase("save-error");
+        return;
+      }
+      const body: unknown = await res.json().catch(() => null);
+      const id =
+        body !== null && typeof body === "object" && "id" in body
+          ? (body as { id?: unknown }).id
+          : null;
+      /* A 200 with no row id is not an acknowledgement. Treating it as one is
+         how a write that did not happen becomes a screen that says it did.
+         Copied from commit-sheet.tsx, which is the only surface in the repo
+         that has ever got this right. */
+      if (typeof id !== "string" || !id) {
+        setPhase("save-error");
+        return;
+      }
+      setPhase("committed");
+    } catch {
+      /* A thrown fetch and a non-ok response land in the same place. A dropped
+         connection and a refusal are indistinguishable to a reader and must
+         not be told apart on screen, because neither one proves the row is
+         absent. */
+      setPhase("save-error");
+    }
+  }
 
   return (
     <div
@@ -272,7 +569,16 @@ export function ComposeScreen({
               if (proposal !== null) setProposal(null);
             }}
             maxLength={MAX_CLAIM_CHARS}
-            readOnly={committed || busy}
+            /* `analyzing` locks it too, and that is not tidiness. The read-back
+               describes the sentence it was HANDED, and the author route has no
+               timeout and no abort signal, so an edit made while it is in
+               flight would be answered seconds later by a READ AS card about
+               text the reader had already replaced. The onChange guard below
+               cannot catch that: it clears a proposal that exists, and during
+               the request there is not one yet. The control reads "Reading it
+               back…" and the hint reads "Analyzing…" throughout, so the screen
+               already says why the field is closed. */
+            readOnly={committed || busy || analyzing}
             placeholder="In your own words, e.g. NVDA gives back the ramp hype by earnings"
             style={{
               minHeight: "78px",
@@ -310,18 +616,37 @@ export function ComposeScreen({
         {analyzing ? <AnalyzingCard /> : null}
 
         {error ? (
-          <p
-            role="alert"
-            className={styles.enter}
-            style={{
-              margin: "16px 0 0",
-              font: `400 12.5px/1.55 ${FONT_SANS}`,
-              color: "var(--c-redink)",
-              textWrap: "pretty",
-            }}
-          >
-            {error}
-          </p>
+          <div role="alert" className={styles.enter} style={{ marginTop: "16px" }}>
+            <p
+              style={{
+                margin: 0,
+                font: `400 12.5px/1.55 ${FONT_SANS}`,
+                color: "var(--c-redink)",
+                textWrap: "pretty",
+              }}
+            >
+              {error}
+            </p>
+            {/* The one way forward after an unacknowledged write, and it is a
+                real link rather than a control that would post again. See the
+                ruling beside `readyToCommit`. */}
+            {saveFailed ? (
+              <Link
+                href="/ledger"
+                className={styles.focusable}
+                style={{
+                  marginTop: "4px",
+                  minHeight: "44px",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  font: `600 12.5px/1.4 ${FONT_SANS}`,
+                  color: "var(--c-goldink)",
+                }}
+              >
+                Open your ledger and check
+              </Link>
+            ) : null}
+          </div>
         ) : null}
 
         {proposal && !gradeable ? (
@@ -383,11 +708,15 @@ export function ComposeScreen({
                       gradeable_alternative: null,
                     });
                     setDirection(alt.expected_direction);
-                    setHorizon(
-                      horizonTypeFromDates(
+                    /* The proxy's OWN span, kept the same way the primary
+                       read-back's is. The alternatives the route offers are
+                       bounded only by MAX_WINDOW_DAYS, so most of them are
+                       off-bucket and a bucket-typed swap rounded them away. */
+                    setSpan(
+                      composeWindowFor(
                         alt.resolution_window_start,
                         alt.resolution_window_end,
-                      ) ?? COMPOSE_DEFAULT_HORIZON,
+                      ),
                     );
                   }}
                   style={{
@@ -407,7 +736,23 @@ export function ComposeScreen({
                     textWrap: "pretty",
                   }}
                 >
-                  {`Make it gradeable: ${proposal.gradeable_alternative.target_symbol} \u00b7 ${DIRECTION_LABEL[proposal.gradeable_alternative.expected_direction]} \u00b7 by ${longDate(proposal.gradeable_alternative.resolution_window_end)}`}
+                  {/* THE DATE THIS CONTROL NAMES IS THE DATE PRESSING IT
+                      WRITES. It used to state the alternative's stored
+                      `resolution_window_end`, which is measured from the
+                      route's own anchor, while the press resolved a window
+                      from the reader's session date. A reader accepted a proxy
+                      labelled Oct 12 and the row carried Sep 4, one press from
+                      the write with nothing in between. Both sides now go
+                      through `composeWindowEnd` from `sessionIso`. */}
+                  {`Make it gradeable: ${proposal.gradeable_alternative.target_symbol} \u00b7 ${DIRECTION_LABEL[proposal.gradeable_alternative.expected_direction]} \u00b7 by ${longDate(
+                    composeWindowEnd(
+                      sessionIso,
+                      composeWindowFor(
+                        proposal.gradeable_alternative.resolution_window_start,
+                        proposal.gradeable_alternative.resolution_window_end,
+                      ),
+                    ),
+                  )}`}
                 </button>
               </>
             ) : null}
@@ -444,7 +789,9 @@ export function ComposeScreen({
                 </span>
                 <Dot />
                 <span style={{ font: `400 12px/1 ${FONT_SANS}`, color: "var(--c-body)" }}>
-                  {HORIZON_PHRASE[horizon]}
+                  {/* The REAL span, not a bucket it was rounded into. A 45-day
+                      structural claim reads "resolves in 45 days" here. */}
+                  {composeWindowPhrase(span)}
                 </span>
               </div>
               <p
@@ -486,14 +833,18 @@ export function ComposeScreen({
               aria-labelledby="compose-resolves"
               style={{ marginTop: "10px", display: "flex", gap: "12px", flexWrap: "wrap" }}
             >
-              {COMPOSE_HORIZONS.map((h) => (
+              {/* The desk's own span leads the row when it is off-bucket, so
+                  the reader can see what was inferred and can still choose
+                  something else. Pressing a chip overrides it, which is the
+                  reader's decision and wins. */}
+              {composeWindowChoices(span).map((w) => (
                 <Chip
-                  key={h}
-                  on={horizon === h}
-                  label={HORIZON_LABEL[h]}
-                  spoken={HORIZON_PHRASE[h]}
+                  key={composeWindowKey(w)}
+                  on={composeWindowKey(w) === composeWindowKey(span)}
+                  label={composeWindowLabel(w)}
+                  spoken={composeWindowPhrase(w)}
                   disabled={committed || busy}
-                  onSelect={() => setHorizon(h)}
+                  onSelect={() => setSpan(w)}
                 />
               ))}
             </div>
@@ -505,8 +856,12 @@ export function ComposeScreen({
                 textWrap: "pretty",
               }}
             >
-              Settles {longDate(settlementDate(horizon))}. Fixed at entry and
-              cannot be moved afterwards.
+              {/* Resolved from `sessionIso`, the same value and the same
+                  function the write below resolves `resolution_window_end`
+                  with. The date the reader agrees to IS the date the row
+                  carries, because there is one anchor and one call. */}
+              Settles {longDate(composeWindowEnd(sessionIso, span))}. Fixed at
+              entry and cannot be moved afterwards.
             </p>
           </>
         ) : null}
@@ -523,18 +878,6 @@ export function ComposeScreen({
             backgroundColor: "var(--c-bg)",
           }}
         >
-          {/*
-            TODO(PR #643): wire this to `user_claims.commit_note`.
-
-            The design gates the commit control on this field and there is
-            nowhere to put what it collects. `user_claims` carries no note
-            column and `/api/radar/claims` POST parses no note key. So the
-            field is drawn exactly as the design draws it and is deliberately
-            not wired to a write. Draft PR #643 proposes the column, the parser in
-            `src/lib/commit-note.ts` and the 503 refusal that keeps a user's
-            words from vanishing into a 200. Until it is ruled on, this screen
-            commits nothing at all, so nothing typed here is discarded by it.
-          */}
           <textarea
             id="compose-note"
             className={`${styles.field} ${styles.focusable}`}
@@ -593,18 +936,26 @@ export function ComposeScreen({
       >
         <button
           type="button"
+          data-testid="compose-submit"
           className={styles.focusable}
           /*
-            Disabled, not merely handler-less.
-            `Read it back` would POST to /api/radar/claims/author and `Track it`
-            would POST to /api/radar/claims; this unit calls neither, because
-            the author route runs Gemini and the insert has no column for the
-            note the control is gated on. A control that looks live and answers
-            with nothing is the worse of the two failures, so the write path is
-            visibly closed and the line below says so in words.
+            ONE control, TWO presses. Which request fires is decided by whether
+            a read-back exists, which is the same thing the label says, so the
+            control can never do something other than what it is offering.
+
+            `readyToCommit` is checked FIRST. Both flags cannot be true at once
+            today (one wants `proposal !== null` and the other `=== null`), and
+            ordering them rather than relying on that keeps a future third
+            state from silently choosing the write.
           */
-          disabled={!unlocked || !WRITE_PATH_WIRED}
-          aria-describedby={WRITE_PATH_WIRED ? undefined : "compose-inert"}
+          onClick={() => {
+            if (readyToCommit) {
+              void commit();
+              return;
+            }
+            if (readyToRead) void readItBack();
+          }}
+          disabled={!unlocked}
           style={{
             width: "100%",
             /* 54, not the design's authored 52. The prototype is unreset and
@@ -648,20 +999,6 @@ export function ComposeScreen({
         >
           {submitLabel}
         </button>
-        {WRITE_PATH_WIRED ? null : (
-          <p
-            id="compose-inert"
-            style={{
-              margin: "9px 0 0",
-              textAlign: "center",
-              font: `400 11px/1.4 ${FONT_SANS}`,
-              color: "var(--c-muted)",
-              textWrap: "pretty",
-            }}
-          >
-            Preview of the screen. Nothing written here is kept yet.
-          </p>
-        )}
       </div>
     </div>
   );

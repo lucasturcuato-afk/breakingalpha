@@ -10,14 +10,14 @@
  * prop. The shape, the caps, the horizons and the date helpers live in
  * `./compose-data`, which carries no content and is safe to import anywhere.
  *
- * This screen never reaches the network in this unit. `/api/radar/claims/author`
- * produces its proposal through Gemini and `/api/radar/claims` POST is the
- * authored insert; neither is called here, so the proposal below IS the shape a
- * real loader has to satisfy. It carries every field of `AuthorProposal` in
- * `src/app/api/radar/claims/author/route.ts` that this screen renders or
- * branches on. `evidence_entities` and `confidence_in_reduction` are the two
- * the route sets and this screen does not read, so they are left out rather
- * than invented.
+ * The screen now DOES reach the network: `/api/radar/claims/author` produces
+ * the real proposal and `/api/radar/claims` POST is the real insert. What is
+ * below is the dev and preview SEED, the only way a runtime audit can reach a
+ * lifecycle state without a model call and a row, so the proposals here still
+ * have to be exactly the shape the author route answers with.
+ * `evidence_entities` and `confidence_in_reduction` are on them now: the screen
+ * still does not draw either, but it forwards both to the insert, and a seed
+ * missing them would be a shape the real path never produces.
  *
  * Compliance note on sample content: nothing here is a rate or an aggregate
  * figure. The only numbers are one character count and four calendar dates.
@@ -55,7 +55,9 @@ export const GRADEABLE_PROPOSAL: ComposeProposal = {
   target_symbol: "NVDA",
   expected_direction: "bearish",
   resolution_window_start: COMPOSE_ANCHOR_ISO,
-  resolution_window_end: settlementDate(COMPOSE_DEFAULT_HORIZON),
+  resolution_window_end: settlementDate(COMPOSE_ANCHOR_ISO, COMPOSE_DEFAULT_HORIZON),
+  evidence_entities: ["NVDA"],
+  confidence_in_reduction: null,
   gradeable: true,
   gradeability_note: null,
   gradeable_alternative: null,
@@ -67,6 +69,8 @@ export const CONTEXT_PROPOSAL: ComposeProposal = {
   expected_direction: null,
   resolution_window_start: null,
   resolution_window_end: null,
+  evidence_entities: [],
+  confidence_in_reduction: null,
   gradeable: false,
   gradeability_note: "Not price-gradeable in v1; tracked as context only.",
   /*
@@ -80,7 +84,7 @@ export const CONTEXT_PROPOSAL: ComposeProposal = {
     target_symbol: "XLU",
     expected_direction: "bearish",
     resolution_window_start: COMPOSE_ANCHOR_ISO,
-    resolution_window_end: settlementDate("month"),
+    resolution_window_end: settlementDate(COMPOSE_ANCHOR_ISO, "month"),
     rationale:
       "The regulated book the claim names is the utilities sector, so utilities against the market over a month is the closest priceable reading of it.",
   },
