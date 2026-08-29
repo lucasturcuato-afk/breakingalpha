@@ -207,21 +207,9 @@ export function SectionNote({ children, marginTop = 12 }: { children: ReactNode;
   );
 }
 
-/** A shimmer bar. Width is the only thing that varies between them. */
-export function SkeletonBar({
-  width,
-  height = 13,
-  marginTop = 0,
-}: {
-  width: string;
-  height?: number;
-  marginTop?: number;
-}) {
-  return (
-    <div
-      aria-hidden="true"
-      className={styles.sk}
-      style={{ width, height: `${height}px`, marginTop: `${marginTop}px` }}
-    />
-  );
-}
+/* THE SHIMMER BAR IS GONE WITH THE SKELETON IT BUILT. `/company/[id]` is a
+   server component that awaits all four reads before it renders, so nothing is
+   ever in flight when a reader arrives, and the only thing that raised the
+   skeleton was the `?stage=loading` parameter this PR removed. Its `.sk` class
+   stays in `company-mobile.module.css` and costs nothing; the day this screen
+   grows a read of its own, that is where the bar comes back from. */

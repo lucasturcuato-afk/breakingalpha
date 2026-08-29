@@ -32,7 +32,7 @@ import type {
 } from "@/lib/financial-facts";
 import { formatValue, type Fmt } from "./financials-format";
 import { currencyNote, isNonUsd } from "@/lib/reporting-currency";
-import { financialsEmptyCopy } from "./empty-state-copy";
+import { financialsEmptyCopy, financialsUnreadableCopy } from "./empty-state-copy";
 import { FinancialsCommentary } from "./FinancialsCommentary";
 
 export interface FinancialsTabProps {
@@ -197,8 +197,14 @@ export function FinancialsTab({
         data-testid="financials-tab"
         className="rounded-md border border-border-subtle bg-cream-hi p-6"
       >
+        {/* A FAILED READ IS NOT AN EMPTY TABLE. `fetchCompanyFinancials`
+            answers a Postgres 57014 timeout with the same empty views a company
+            with no facts gets, and this sentence asserts something about the
+            issuer. Measured on /company/salesforce, five years of validated
+            XBRL on file: the empty sentence on one pass, the full table twenty
+            minutes later. Same precedence as the mobile section. */}
         <p data-testid="financials-empty-state" className="text-sm text-text-muted">
-          {financialsEmptyCopy(hasCik)}
+          {financials.readFailed ? financialsUnreadableCopy() : financialsEmptyCopy(hasCik)}
         </p>
       </div>
     );

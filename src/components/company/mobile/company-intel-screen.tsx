@@ -15,7 +15,7 @@ import styles from "./company-mobile.module.css";
    `src/lib/company-mobile/build.ts` from reads
    `src/app/company/[id]/page.tsx` already has in hand. */
 import type { CompanyIntelData } from "./types";
-import { Chip, SkeletonBar } from "./parts";
+import { Chip } from "./parts";
 import {
   FilingsSection,
   FinancialsSection,
@@ -68,7 +68,28 @@ import { FONT_DISPLAY, FONT_MONO, FONT_SANS } from "@/components/mobile/fonts";
  * method, so it carries the defect rather than disproving it.
  */
 
-export type CompanyStage = "ready" | "loading" | "error" | "empty";
+/* THERE IS NO `stage` PROP AND NO `CompanyStage` TYPE ANY MORE.
+ *
+ * It was `stage?: CompanyStage` with a `= "ready"` default, and the only thing
+ * that ever set it was the `?stage=` query parameter this PR removed: a link
+ * anyone could send that drew an empty or error screen over a company with
+ * filings, insider rows and financials on file. With that gone, the prop was a
+ * lever no caller pulled whose default silently asserted "ready", which is the
+ * same defect class as the `hasCik` default this branch already removed.
+ *
+ * WHERE A FAILED READ GOES NOW. To the block that failed, not to the screen.
+ * `financials.readFailed` is carried off `fetchCompanyFinancials`, and the
+ * Financials section and the primer's key-figures well both draw it ahead of
+ * any emptiness. That is the better shape: a Postgres 57014 on
+ * `financial_facts_latest` leaves the other four reads answered, and a
+ * screen-level error would hide four good blocks to report one bad one.
+ *
+ * `data === null` still draws `CompanyError`, because a null payload IS a
+ * failed read: this route is a server component that resolves all four reads
+ * before it renders, so there is no pending state for a skeleton to describe
+ * and a permanent skeleton would tell the reader something is coming when
+ * nothing is.
+ */
 
 const PAD = "var(--v3-pad)";
 
@@ -84,7 +105,6 @@ const SECTIONS: { id: CompanyTabId; label: string }[] = [
 const SECTION_IDS = new Set(SECTIONS.map((s) => s.id));
 
 export function CompanyIntelScreen({
-  stage = "ready",
   /**
    * REQUIRED and NULLABLE, never optional and never defaulted. The caller
    * resolves the gate and passes the fixture or null; leaving the prop off is
@@ -111,16 +131,12 @@ export function CompanyIntelScreen({
    */
   hasCik,
 }: {
-  stage?: CompanyStage;
   data: CompanyIntelData | null;
   hasCik: boolean;
 }) {
   const router = useRouter();
   const { activeTab, setActiveTab } = useCompanyTabState();
 
-  /* No data means no source answered, so the honest drawing is the loader.
-     Nothing below states a fact about the company while `data` is null. */
-  const effective: CompanyStage = data === null ? "loading" : stage;
   /* A desktop deep link can pin a tab this screen has no section for
      (articles, comps, and the three ids with no button). Fall back to the
      first section rather than drawing an empty body under no active chip. */
@@ -129,17 +145,14 @@ export function CompanyIntelScreen({
   /**
    * Retry.
    *
-   * A bare `router.refresh()` is guaranteed inert on this screen: the only
-   * thing that produces the error state is `?stage=error`, and a refresh keeps
-   * the query string, so the retry redraws the same error for ever. Clearing
-   * the lifecycle override first is what makes the control real, and it is a
-   * no-op once a loader supplies the state instead of the URL, because there is
-   * no `stage` to clear then.
+   * A bare `router.refresh()`, and it is not inert any more. The previous
+   * version cleared a `?stage=` parameter first, because that parameter was
+   * the only thing that could produce the error state and a refresh would have
+   * kept it and redrawn the same error for ever. The parameter is gone, so a
+   * refresh re-runs the server reads, which is the only thing that can change
+   * this branch's answer.
    */
   const retry = useCallback(() => {
-    const url = new URL(window.location.href);
-    url.searchParams.delete("stage");
-    router.replace(url.pathname + url.search);
     router.refresh();
   }, [router]);
 
@@ -233,10 +246,16 @@ export function CompanyIntelScreen({
           padding: `22px ${PAD} calc(24px + var(--mobile-tabbar-height) + env(safe-area-inset-bottom))`,
         }}
       >
-        {effective === "loading" ? <CompanySkeleton /> : null}
-        {effective === "error" ? <CompanyError onRetry={retry} /> : null}
+        {/* A NULL PAYLOAD IS A FAILED READ, NOT A PENDING ONE, and that is
+            why this is the error and no longer a skeleton. The route is a
+            server component: all four reads are resolved before this renders,
+            so nothing is in flight by the time a reader sees it, and a skeleton
+            here would promise an arrival that cannot happen. A financials read
+            that failed does NOT come here, because the other four answered; it
+            is drawn by the Financials section off `financials.readFailed`. */}
+        {data === null ? <CompanyError onRetry={retry} /> : null}
 
-        {data !== null && (effective === "ready" || effective === "empty") ? (
+        {data !== null ? (
           <>
             <Masthead data={data} />
             <KpiGrid data={data} />
@@ -533,43 +552,14 @@ function KpiGrid({ data }: { data: CompanyIntelData }) {
   );
 }
 
-/**
- * Loading.
- *
- * The handoff specifies no company lifecycle at all: the prototype's dev strip
- * carries no company jump and README's stage table covers the brief, the wrap,
- * the dashboard and the memo only. So the shape here is derived from the screen
- * it is standing in for, not transcribed. It states nothing about the company,
- * which is the point of preferring a load to an empty state that asserts a
- * fact.
- */
-function CompanySkeleton() {
-  return (
-    <div aria-busy="true" aria-live="polite">
-      <span
-        style={{
-          position: "absolute",
-          width: "1px",
-          height: "1px",
-          overflow: "hidden",
-          clip: "rect(0 0 0 0)",
-          whiteSpace: "nowrap",
-        }}
-      >
-        Reading this company.
-      </span>
-      <SkeletonBar width="42%" height={12} />
-      <SkeletonBar width="72%" height={30} marginTop={11} />
-      <SkeletonBar width="34%" height={17} marginTop={12} />
-      <SkeletonBar width="100%" height={50} marginTop={16} />
-      <SkeletonBar width="100%" height={132} marginTop={18} />
-      <SkeletonBar width="100%" height={44} marginTop={22} />
-      <SkeletonBar width="88%" height={13} marginTop={18} />
-      <SkeletonBar width="96%" height={13} marginTop={10} />
-      <SkeletonBar width="64%" height={13} marginTop={10} />
-    </div>
-  );
-}
+/* THERE IS NO SKELETON ON THIS SCREEN, and its deletion is the point rather
+   than a tidy-up. `/company/[id]` is a server component that awaits
+   getCompanyDetail, fetchCompanyFilings, getInsiderTransactions and
+   fetchCompanyFinancials before it renders, so by the time a byte reaches a
+   reader nothing is in flight and there is no state a skeleton could describe.
+   The only signal that ever raised it was `?stage=loading`, a query parameter
+   this PR removed. A skeleton with no signal behind it is a promise that
+   something is arriving, made on a screen where nothing is. */
 
 /**
  * Error.

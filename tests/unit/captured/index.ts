@@ -60,14 +60,27 @@ export interface CapturedRead {
   financials: CompanyFinancialsResult;
 }
 
-/* The JSON is untyped on the way in, so each capture is asserted to the
+/* The JSON is untyped on the way in, so each capture is adapted to the
    interface the page passes. A structural mismatch here would mean the read
-   shape has moved and the capture is stale, which is worth a compile error. */
-export const GS = goldmanSachs as CapturedRead;
-export const ASML = asml as CapturedRead;
-export const GRAB = grab as CapturedRead;
-export const QNT = quantinuum as CapturedRead;
-export const ALVOTECH = alvotech as CapturedRead;
-export const NO_CIK = mistralAi as CapturedRead;
+   shape has moved and the capture is stale, which is worth a compile error.
+
+   `readFailed: false` IS SET HERE AND NOT IN THE JSON, on purpose. The files
+   are verbatim serialisations of what the database returned and nothing in
+   them was edited afterwards, which is the only reason they are worth having.
+   The flag postdates the captures and is `false` for every one of them by
+   construction: a read that failed gives back empty views, and each capture below
+   carries the rows it was taken from. Editing the JSON to add it would break
+   the one property that makes these files evidence. */
+function captured(raw: unknown): CapturedRead {
+  const r = raw as CapturedRead;
+  return { ...r, financials: { ...r.financials, readFailed: false } };
+}
+
+export const GS = captured(goldmanSachs);
+export const ASML = captured(asml);
+export const GRAB = captured(grab);
+export const QNT = captured(quantinuum);
+export const ALVOTECH = captured(alvotech);
+export const NO_CIK = captured(mistralAi);
 
 export const ALL_CAPTURED: CapturedRead[] = [GS, ASML, GRAB, QNT, ALVOTECH, NO_CIK];

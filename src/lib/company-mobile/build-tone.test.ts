@@ -280,3 +280,53 @@ describe("buildTone: one article per row", () => {
     );
   });
 });
+
+describe("buildTone: the row vocabulary is closed at three", () => {
+  const sufficientTone = computeTone(labels(6, "bullish"), []);
+
+  it("drops a prototype key rather than tinting a row with one", () => {
+    /* ROW_INK was a bare object literal, so a lookup on it answered for keys
+       nobody put there. `sentiment = "constructor"` came back as the Object
+       constructor and rendered direction="function Object() { [native code] }";
+       "__proto__" came back as "[object Object]". Both are strings the column
+       can carry, both cleared the truthiness check, and both put a fourth state
+       into a vocabulary this mapper's own docstring closes at three. */
+    const built = buildTone(
+      detailWith(sufficientTone, [
+        article({ id: "ctor", sentiment: "constructor", sentimentReason: "Prototype key." }),
+        article({ id: "proto", sentiment: "__proto__", sentimentReason: "Prototype key." }),
+        article({ id: "tostring", sentiment: "toString", sentimentReason: "Prototype key." }),
+        article({ id: "hasown", sentiment: "hasOwnProperty", sentimentReason: "Prototype key." }),
+        article({ id: "real", sentiment: "bearish", sentimentReason: "A real label." }),
+      ]),
+    );
+    assert.deepEqual(
+      built.rows.map((r) => r.reading),
+      ["A real label."],
+    );
+    assert.deepEqual(
+      built.rows.map((r) => r.direction),
+      ["down"],
+    );
+  });
+
+  it("emits only up, mixed and down, whatever the column carries", () => {
+    const built = buildTone(
+      detailWith(sufficientTone, [
+        article({ id: "a", sentiment: "bullish", sentimentReason: "A." }),
+        article({ id: "b", sentiment: "neutral", sentimentReason: "B." }),
+        article({ id: "c", sentiment: "bearish", sentimentReason: "C." }),
+        article({ id: "d", sentiment: "constructor", sentimentReason: "D." }),
+        article({ id: "e", sentiment: "valueOf", sentimentReason: "E." }),
+        article({ id: "f", sentiment: "positive", sentimentReason: "F." }),
+      ]),
+    );
+    for (const row of built.rows) {
+      assert.ok(
+        ["up", "mixed", "down"].includes(row.direction),
+        `${String(row.direction)} is outside the closed row vocabulary`,
+      );
+    }
+    assert.equal(built.rows.length, 3);
+  });
+});

@@ -171,10 +171,18 @@ export interface FinancialsBand {
  * One reporting basis: its period columns and the bands drawn under them.
  *
  * `periods` IS A LIST, NOT A PAIR. It was `[string, string]`, and a 2-tuple
- * cannot represent what the database carries: measured on the live rows, GRAB has
- * exactly one annual period and ASML has exactly one quarterly. A pair type
- * forces such a filer to either lose its only column or gain an invented
- * second one. The header row and the value cells both read this length.
+ * cannot represent what the database carries: measured on the live rows, GRAB
+ * has exactly ONE annual period and no quarterly one at all, while Goldman
+ * Sachs carries five annual and eight quarterly. A pair type forces the first
+ * filer to either lose its only column or gain an invented second one, and
+ * truncates the second. The header row and the value cells both read this
+ * length.
+ *
+ * NOT ASML, which an earlier draft of this comment named and four of its
+ * siblings repeated. ASML's quarterly basis has EIGHT periods, all fiscal
+ * year-end balance sheets; `build.ts`'s own `buildBasis` docstring and
+ * `tests/unit/captured/index.ts` both said eight while these said one. The
+ * argument never needed ASML: GRAB carries it alone.
  */
 export interface FinancialsBasis {
   periods: string[];
@@ -226,6 +234,20 @@ export interface CompanyIntelData {
      */
     overview: string;
     keyFigures: CompanyKeyFigure[];
+    /**
+     * Whether the filer has a periodic report on file at all, on either basis.
+     *
+     * IT IS NOT `keyFigures.length > 0` AND IT IS NOT `hasCik`, and the gap
+     * between the three is the whole reason it is on the shape. `keyFigures` is
+     * pinned to revenue, net income, operating income and gross profit; GRAB's
+     * only validated fact is `cost_of_revenue`, so its list is `[]` while its
+     * FY2022 cost of revenue draws in the Financials section one tab away. The
+     * key-figures empty state read "Financials appear after the first periodic
+     * report" over exactly that screen, which is false and is contradicted by
+     * the figure beside it. This flag is what lets the section state the true
+     * third thing instead of picking the wrong one of two.
+     */
+    hasFiledPeriod: boolean;
     developments: string[];
     footnote: string;
   };
@@ -293,20 +315,41 @@ export interface CompanyIntelData {
      * this repo to convert with.
      */
     note: string;
+    /**
+     * TRUE when the financials READ failed, which is a different fact from
+     * "this company has no financials on file" and must not be drawn as one.
+     *
+     * `financial_facts_latest` intermittently times out with Postgres `57014`
+     * and `fetchCompanyFinancials` answers a failed query with the same empty
+     * views a company with no facts gets. Without this flag the section printed
+     * "Financials appear after the first periodic report" over Salesforce,
+     * which has five years of validated XBRL on file. That sentence is an
+     * assertion about the issuer; a failed read supports no assertion about the
+     * issuer at all.
+     *
+     * IT IS ALSO THE ONLY READ-FAILURE SIGNAL THIS SCREEN HAS. Opening the gate
+     * made `CompanyIntelScreen`'s `stage="error"` unreachable from the only
+     * call site, so a failure has to be expressed by the block that failed
+     * rather than by the screen. That is the better shape anyway: the other
+     * four reads succeeded, and a screen-level error would hide four good
+     * blocks to report one bad one.
+     */
+    readFailed: boolean;
   };
   insider: {
     openMarket: InsiderOpenMarketRow[];
     /**
-     * STRUCTURALLY EMPTY DATABASE-WIDE, and that is a fact about the ingest
-     * rather than about any one issuer. `insider_transactions` carries exactly
-     * two transaction codes across all 5,044 stored rows, S (4,604) and P
-     * (440), and both are open market. Nothing writes an A, M, F, G or C row,
-     * so these two lists have no source to read from and are `[]`.
+     * EMPTY DATABASE-WIDE TODAY, and that is a fact about the ingest rather
+     * than about any one issuer. `insider_transactions` carries exactly two
+     * transaction codes across all 5,052 stored rows, S (4,612) and P (440),
+     * and both are open market, so `groupByCategory` puts nothing here.
      *
-     * They stay on the shape rather than being deleted because the grouping is
-     * the desktop `InsiderTab`'s own model and the sections already self-omit
-     * on `length > 0`, so a reader sees nothing today and sees the correct
-     * groups the day the extractor writes those codes.
+     * MAPPED ANYWAY, never pinned to `[]`. `buildInsider` used to hardcode both
+     * lists AFTER grouping, which discards whatever grouping found; the day the
+     * extractor writes an A, M, F, G or C row that would have dropped it, and
+     * `InsiderSection` counts its `total` off these three lists, so the section
+     * would have drawn "no qualifying insider transactions" over a company with
+     * rows on file.
      */
     routine: InsiderCompactRow[];
     other: InsiderCompactRow[];

@@ -354,3 +354,38 @@ test("period labels are unique within a basis, so the header keys cannot collide
     }
   }
 });
+
+/* ── a read that failed is not a company with nothing on file ────────── */
+
+test("a successful read is never marked as failed, across every capture", () => {
+  for (const c of ALL_CAPTURED) {
+    assert.equal(buildFinancials(c.financials).readFailed, false, c.slug);
+  }
+});
+
+test("readFailed is carried off the read, not derived from the emptiness", () => {
+  /* This is the whole point. `fetchCompanyFinancials` answers a Postgres 57014
+     statement timeout with the SAME empty views a company with no facts gets,
+     so the bands cannot tell the two apart. Measured on
+     /company/salesforce?tab=financials twenty minutes apart in one session: the
+     empty sentence on one pass and the full FY2022 to FY2026 table on the next,
+     over a filer whose net_income FY2026 is on file at 7,457,000,000.
+
+     ALVOTECH is the honest empty: a resolved CIK with no validated facts. The
+     timeout below is byte-identical to it apart from this flag, which is
+     exactly why the flag has to exist. */
+  const honestlyEmpty = buildFinancials(ALVOTECH.financials);
+  const timedOut = buildFinancials({ ...ALVOTECH.financials, readFailed: true });
+
+  assert.equal(honestlyEmpty.readFailed, false);
+  assert.equal(timedOut.readFailed, true);
+  // Identical in every other respect, which is the trap.
+  assert.deepEqual({ ...timedOut, readFailed: false }, honestlyEmpty);
+});
+
+test("a filer WITH figures still reports a failed read as failed", () => {
+  // The flag is the read's answer, not a summary of the rows.
+  const built = buildFinancials({ ...GS.financials, readFailed: true });
+  assert.equal(built.readFailed, true);
+  assert.ok(built.annual.periods.length > 0);
+});

@@ -12,6 +12,8 @@ import {
   filingsEmptyCopy,
   financialsEmptyCopy,
   insiderEmptyCopy,
+  financialsUnreadableCopy,
+  primerKeyFiguresEmptyCopy,
 } from "./empty-state-copy";
 
 test("filings copy differs by CIK and only the no-CIK branch says private", () => {
@@ -76,4 +78,59 @@ test("copy carries no em-dashes", () => {
     financialsEmptyCopy(false),
   ];
   for (const s of all) assert.equal(s.includes("—"), false);
+});
+
+/* ── the mobile primer's third state ─────────────────────────────────── */
+
+test("primer key figures: a filed period gets its OWN sentence, not the two-state one", () => {
+  /* GRAB. It has a CIK, it has a filed FY2022 period, and its only validated
+     fact is `cost_of_revenue`, which is not one of the four the primer names.
+     The two-state copy drew "Financials appear after the first periodic report"
+     over a screen whose Financials section draws that filer's FY2022 cost of
+     revenue one tab away. */
+  const copy = primerKeyFiguresEmptyCopy(true, true);
+  assert.notEqual(copy, financialsEmptyCopy(true));
+  assert.doesNotMatch(copy, /appear after the first periodic report/);
+  assert.match(copy, /Financials/);
+});
+
+test("primer key figures falls back to the shared copy when no period is filed", () => {
+  assert.equal(primerKeyFiguresEmptyCopy(true, false), financialsEmptyCopy(true));
+  assert.equal(primerKeyFiguresEmptyCopy(false, false), financialsEmptyCopy(false));
+});
+
+test("primer key figures: three distinct sentences, never two", () => {
+  const seen = new Set([
+    primerKeyFiguresEmptyCopy(false, false),
+    primerKeyFiguresEmptyCopy(true, false),
+    primerKeyFiguresEmptyCopy(true, true),
+  ]);
+  assert.equal(seen.size, 3);
+});
+
+test("primer key figures copy asserts nothing about a listing, and no em-dash", () => {
+  for (const [cik, filed] of [[true, true], [true, false], [false, false]] as const) {
+    const copy = primerKeyFiguresEmptyCopy(cik, filed);
+    assert.doesNotMatch(copy, /private|pre-IPO|quoted|listed/i);
+    assert.equal(copy.includes("\u2014"), false);
+  }
+});
+
+/* ── a failed read says so, and asserts nothing about the company ────── */
+
+test("the unreadable sentence is distinct from every emptiness sentence", () => {
+  const copy = financialsUnreadableCopy();
+  assert.notEqual(copy, financialsEmptyCopy(true));
+  assert.notEqual(copy, financialsEmptyCopy(false));
+  assert.notEqual(copy, primerKeyFiguresEmptyCopy(true, true));
+});
+
+test("the unreadable sentence claims nothing about the issuer", () => {
+  const copy = financialsUnreadableCopy();
+  /* The sentence it replaces, "Financials appear after the first periodic
+     report", is a claim about the company's filing history, and it printed over
+     Salesforce, which has five years of validated XBRL on file. */
+  assert.doesNotMatch(copy, /periodic report|private|pre-IPO|quoted|no filings|not a filer/i);
+  assert.match(copy, /could not be read/i);
+  assert.equal(copy.includes("\u2014"), false);
 });

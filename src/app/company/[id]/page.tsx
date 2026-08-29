@@ -12,6 +12,7 @@ import { CompanyAliasRibbon } from "@/components/company/CompanyAliasRibbon";
 import { CompanyKPIStrip } from "@/components/company/CompanyKPIStrip";
 import { CompanyTrendCard } from "@/components/company/CompanyTrendCard";
 import { CompanyMemoModalListener } from "@/components/company/CompanyMemoModalListener";
+import { DesktopTreeGate } from "@/components/company/DesktopTreeGate";
 import { BriefTab } from "@/components/company/tabs/BriefTab";
 import { PrimerTab } from "@/components/company/tabs/PrimerTab";
 import { ArticlesTab } from "@/components/company/tabs/ArticlesTab";
@@ -61,13 +62,30 @@ import { mobileFixtureAuthBypass } from "@/lib/mobile-fixture-gate";
  * WHAT THE FLIP CHANGES ON PRODUCTION, both of which used to ride on
  * `mobileScreen` and are now unconditional. `mobileFullBleed` drops the shell
  * chrome below `md`, which the screen replaces with its own header bar. And the
- * desk header steps to `h2`, because both trees are now in every document and
- * only one of them is ever in the accessibility tree: `md:hidden` and
- * `hidden md:block` are `display:none`, which removes the other outright. The
- * mobile screen keeps the `h1` because below `md` it is the reachable one.
- * Logged for a human, not fixed here: at `md` and above that leaves this route
- * with no `h1` at all, which is a heading-order finding the gated-shut build
- * did not have.
+ * desk header steps to `h2`, because at `md` and above both trees are in the
+ * document and only one of them is ever in the accessibility tree: `md:hidden`
+ * is `display:none`, which removes the mobile screen outright there. The mobile
+ * screen keeps the `h1` because below `md` it is the reachable one.
+ *
+ * AND THE ROUTE HAS AN `h1` AT EVERY WIDTH. An earlier draft of this header
+ * said the flip left `md` and above with no `h1` at all. Measured on the
+ * running page at 390, 1024 and 1440, enumerating every `h1` and `h2` with its
+ * `offsetParent`: two `h1` elements are in the document at `md` and above and
+ * exactly one is shown, the shell's "Company Intel"; the screen's "Broadcom"
+ * `h1` is the one inside `display:none`. Below `md` the pair swaps, because
+ * `mobileFullBleed` drops the shell chrome. One visible `h1` at every width,
+ * and at `md` and above the desk header sits under it as an `h2`, which is the
+ * order that was wanted. There is no heading-order finding here.
+ *
+ * BELOW `md` THE DESK TREE IS NOT IN THE DOCUMENT AT ALL, and that is newer
+ * than the flip. `display:none` hides a subtree and mounts it: measured at
+ * 390px signed in with zero interaction, the desk tree was firing
+ * POST /api/company-overview on every phone load, a route that reaches
+ * gemini-2.5-flash on a cache miss, plus `/api/company-kpis`,
+ * `/api/company-trend`, `/api/stock-chart`, `/api/memo-cache` and
+ * `/api/watchlist`. `DesktopTreeGate` decides the mount on the same pixel the
+ * class decides visibility. The class is unchanged and still the only thing
+ * that says which tree is SHOWN.
  */
 
 // Convert a URL slug to a canonical company name.
@@ -376,7 +394,16 @@ export default async function CompanyDetailPage({
           hasCik={filingsResult.cik != null}
         />
       </div>
-      <div className="hidden md:block">{desk}</div>
+      {/* MOUNTED, not merely shown, and that was the defect. `hidden md:block`
+          is `display:none` below `md`, which removes a subtree from the
+          accessibility tree and from layout and unmounts nothing: measured at
+          390px signed in with zero interaction, the desk tree inside was firing
+          POST /api/company-overview, which reaches gemini-2.5-flash on a cache
+          miss, plus five GETs, two of which leave for Yahoo and are the same
+          requests this PR logged against itself as still in flight past 30
+          seconds. The class still decides VISIBILITY and is unchanged; the gate
+          decides the MOUNT, on the same pixel. See DesktopTreeGate. */}
+      <DesktopTreeGate>{desk}</DesktopTreeGate>
       <CompanyMemoModalListener
         companyName={canonical}
         memoContent={memoContent}

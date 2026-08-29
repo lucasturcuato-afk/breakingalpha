@@ -27,6 +27,12 @@ const eslintConfig = defineConfig([
     // code: a static prototype export plus its support bundle. It is read by
     // scripts/screen-audit.mjs, never built. design-lint.mjs excludes it too.
     "design_handoff_signalera_mobile/**",
+    // Agent scratch. It is gitignored, so nothing in it is reviewed, shipped or
+    // owned, and eslint was crawling it anyway: three agents measured three
+    // different lint floors on this repo (79, 80, 81) and every deviation
+    // traced to a stray .ts or .mjs one of them had left here. The floor is 79
+    // and this line is what keeps it 79.
+    "scratchpad/**",
   ]),
   // React Compiler readiness debt. eslint-plugin-react-hooks v6 (pulled in by
   // eslint-config-next/core-web-vitals on Next 16) ships these rules as ERRORS.

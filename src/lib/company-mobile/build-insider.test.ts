@@ -127,7 +127,7 @@ describe("buildInsider: the open-market rows", () => {
   });
 });
 
-describe("buildInsider: the two structurally empty groups", () => {
+describe("buildInsider: the two groups with no rows in them today", () => {
   it("gives back no routine and no other rows for real stored data", () => {
     const built = buildInsider(result([tx(), ACQUISITION, NOISY]));
     assert.deepEqual(built.routine, []);
@@ -146,5 +146,71 @@ describe("buildInsider: the two structurally empty groups", () => {
     const built = buildInsider(result([tx({ id: "grant", transactionCode: "A" }), tx()]));
     assert.equal(built.openMarket.length, 1);
     assert.equal(built.openMarket[0].code, "S · Open-market sale");
+  });
+
+  it("KEEPS a routine row instead of discarding it, which the pinned [] did not", () => {
+    /* `routine` and `other` used to be hardcoded `[]` AFTER groupByCategory had
+       already filled them, so a row outside P and S was grouped and then thrown
+       away. Unreachable on today's corpus (5,052 rows, S 4,612 and P 440, every
+       other code zero) and one ingest change from reachable. It matters because
+       `InsiderSection` counts its `total` off the three emitted lists: a company
+       whose only Section 16 activity was a grant would have drawn "No qualifying
+       insider transactions are on file for this company" with its rows on file. */
+    const built = buildInsider(
+      result([tx({ id: "grant", transactionCode: "A", insiderTitle: "Director" })]),
+    );
+    assert.equal(built.openMarket.length, 0);
+    assert.equal(built.routine.length, 1);
+    assert.deepEqual(built.routine[0], {
+      date: "AUG 27, 2026",
+      code: "A",
+      name: "Le Peuch Olivier",
+      detail: "Director · 5,000 shares at $55.00",
+    });
+    // The section's own total, which is what decides the empty state.
+    assert.equal(
+      built.openMarket.length + built.routine.length + built.other.length,
+      1,
+    );
+  });
+
+  it("routes a gift to other and an unknown code to other, never to routine", () => {
+    const built = buildInsider(
+      result([
+        tx({ id: "gift", transactionCode: "G", shares: 100, pricePerShare: null }),
+        tx({ id: "unknown", transactionCode: "Z", shares: null, pricePerShare: null }),
+      ]),
+    );
+    assert.equal(built.routine.length, 0);
+    assert.equal(built.other.length, 2);
+    assert.deepEqual(
+      built.other.map((r) => r.code),
+      ["G", "Z"],
+    );
+    // A blank figure is left OUT of the sentence rather than printed as "n/a":
+    // on the open-market card "n/a" sits under its own label and says which
+    // field was blank, and in a sentence it would not.
+    assert.equal(built.other[0].detail, "Chief Executive Officer · 100 shares");
+    assert.equal(built.other[1].detail, "Chief Executive Officer");
+  });
+
+  it("marks an absent name and an absent code rather than inventing either", () => {
+    const built = buildInsider(
+      result([
+        tx({ id: "blank", transactionCode: "G", insiderName: null, insiderTitle: null }),
+        tx({ id: "nocode", transactionCode: null }),
+      ]),
+    );
+    assert.equal(built.other[0].name, "Not stated");
+    assert.equal(built.other[0].detail.startsWith("Not stated"), true);
+    // The 60px rail carries the code as filed; a blank one says so.
+    assert.equal(built.other[1].code, "n/a");
+  });
+
+  it("never renders the float noise on a compact row either", () => {
+    const built = buildInsider(result([{ ...NOISY, transactionCode: "A" }]));
+    assert.equal(built.routine.length, 1);
+    assert.doesNotMatch(JSON.stringify(built), /319999999/);
+    assert.equal(built.routine[0].detail, "Not stated · 24,363 shares at $228.64");
   });
 });

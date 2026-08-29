@@ -14,11 +14,14 @@ import {
   filingsEmptyCopy,
   financialsEmptyCopy,
   insiderEmptyCopy,
+  financialsUnreadableCopy,
+  primerKeyFiguresEmptyCopy,
 } from "@/components/company/tabs/empty-state-copy";
 
 import type { CompanyIntelData, ToneDirection, ToneRowDirection } from "./types";
 import { Chip, EmptyWell, RuledRow, SECTION_FILL, SectionNote, SectionRule } from "./parts";
 import { FONT_DISPLAY, FONT_MONO, FONT_SANS } from "@/components/mobile/fonts";
+import styles from "./company-mobile.module.css";
 
 /**
  * Ink for a tone reading. ink tokens are text, base tokens are fills, and this
@@ -242,11 +245,31 @@ export function PrimerSection({
            data. The sentence here used to be PrimerKeyStats' market-data one,
            "private, pre-IPO, or not currently quoted", which is a claim about a
            listing and was false for any company that has a CIK and has not
-           filed a periodic report yet. `financialsEmptyCopy` is the pure module both
-           desktop tabs already share and it splits on exactly this flag, so the
-           two surfaces cannot drift and neither one asserts a listing status
-           nothing on this page reads. */
-        <EmptyWell headline={financialsEmptyCopy(hasCik)} />
+           filed a periodic report yet. `primerKeyFiguresEmptyCopy` sits on the
+           pure module both desktop tabs already share, so the two surfaces
+           cannot drift and neither one asserts a listing status nothing on this
+           page reads.
+
+           THREE STATES, NOT TWO, and the third is why this is not
+           `financialsEmptyCopy` directly. The four keys the Primer names are
+           not every fact a filer states: GRAB's only validated fact is
+           `cost_of_revenue`, so it lands here with a periodic report ON FILE
+           and the two-state copy drew "Financials appear after the first
+           periodic report" over a screen whose Financials section draws that
+           filer's FY2022 cost of revenue feet away. `primer.hasFiledPeriod` is
+           the flag that separates them. */
+        <EmptyWell
+          headline={
+            /* SAME PRECEDENCE AS THE FINANCIALS SECTION, and for the same
+               reason: a failed read leaves `keyFigures` empty and
+               `hasFiledPeriod` false, so without this the well would print
+               "Financials appear after the first periodic report" over a filer
+               whose report is on file and whose read merely timed out. */
+            data.financials.readFailed
+              ? financialsUnreadableCopy()
+              : primerKeyFiguresEmptyCopy(hasCik, primer.hasFiledPeriod)
+          }
+        />
       )}
 
       <SectionRule marginTop={20}>recent developments</SectionRule>
@@ -291,7 +314,11 @@ export function ToneSection({ data }: { data: CompanyIntelData }) {
      which exited ahead of the rule below and threw away rows the mapper had
      already produced: `buildTone` fills `rows` on both branches, and a company
      whose seven-day window is too thin to state a LEVEL can still have articles
-     in it that carry a stored reading. `/company/quantinuum` is that company.
+     in it that carry a stored reading. `/company/grab` is that company, and not
+     `/company/quantinuum`, which an earlier draft named: measured on all eight,
+     grab reads insufficient WITH one article row and quantinuum reads
+     insufficient with zero, so the fix is a no-op for quantinuum. The committed
+     `tone-insufficient-with-rows-390-*` plates are grab's data.
      An absent level is a statement about the level. It is not a statement that
      the articles do not exist. */
   /* THE SHORT STATE CENTRES, the full one does not. With no level AND no rows
@@ -565,10 +592,11 @@ export function FilingsSection({
  * The metric column, then one column per period.
  *
  * NOT a fixed three. `periods` is a list because the data is: measured on the
- * live rows, GRAB has exactly one annual period and ASML exactly one quarterly.
- * A hardcoded third track drew an empty column under a blank header for those
- * filers, which reads as a period whose figures are missing rather than as a
- * period that was never filed.
+ * live rows, GRAB has exactly ONE annual period and no quarterly one, while
+ * Goldman Sachs has five annual and eight quarterly. A hardcoded third track
+ * drew an empty column under a blank header for the first, which reads as a
+ * period whose figures are missing rather than as a period that was never
+ * filed. (Not ASML: its quarterly basis carries eight periods, not one.)
  *
  * `minmax(auto, Nfr)` AND NOT A BARE `Nfr`. A bare fr resolves against the
  * container width, so every extra period made every column narrower and the
@@ -603,6 +631,16 @@ const STICKY_LABEL = {
   position: "sticky",
   left: 0,
   zIndex: 1,
+  /* THE EDGE IS NOT DECORATION. Without it the scrolled figures are cut at the
+     sticky cell's right edge with nothing marking the cut, so the fragment
+     reads as the whole value. Measured at scrollLeft 400 on Goldman Sachs
+     quarterly, screenshot opened and read: `$4.10B` showed as `10B`,
+     `$1807.98B` as `98B`, `$122.78B` as `78B` and the header `Q3 FY2025` as
+     `2025`. On a financials surface `98B` standing in for `$1807.98B` is the
+     dangerous kind of wrong, because it is legible, plausible and off by four
+     orders of magnitude. The rule plus the shadow make the cut a cut. */
+  borderRight: "1px solid var(--c-border)",
+  boxShadow: "4px 0 6px -4px rgba(0, 0, 0, 0.28)",
 } as const;
 
 /**
@@ -667,6 +705,19 @@ export function FinancialsSection({
   const otherBands = data.financials[basis === "annual" ? "quarterly" : "annual"].bands;
   const hasAnyData = hasBasisData || otherBands.some((b) => b.rows.length > 0);
 
+  /* THE FAILED READ IS CHECKED FIRST, and that order is the whole fix.
+     `fetchCompanyFinancials` answers a query error with the same empty views a
+     company with no facts gets, so `!hasAnyData` is true in both cases and the
+     sentence under it, "Financials appear after the first periodic report", is
+     an assertion about the issuer. Measured on `/company/salesforce`, which has
+     five years of validated XBRL on file: that sentence on one pass and the
+     full FY2022 to FY2026 table twenty minutes later. `financial_facts_latest`
+     times out with Postgres 57014 and the mapper cannot see it; `readFailed`
+     is the read telling us, and it outranks every emptiness below. */
+  if (data.financials.readFailed) {
+    return <EmptyWell fill headline={financialsUnreadableCopy()} />;
+  }
+
   /* No table under either basis means no basis to pick between, so the period
      toggle does not render over an empty well. FinancialsTab draws its empty
      state alone for the same reason. */
@@ -705,6 +756,10 @@ export function FinancialsSection({
             role="group"
             aria-label={`${basis === "annual" ? "Annual" : "Quarterly"} financials, scrolls sideways`}
             tabIndex={0}
+            /* The visible scrollbar. A screen reader gets the label above; a
+               sighted reader used to get nothing at all when the second column
+               landed entirely outside the clip. See `.hscroll`. */
+            className={styles.hscroll}
             style={{
               marginTop: "12px",
               border: "1px solid var(--c-border)",

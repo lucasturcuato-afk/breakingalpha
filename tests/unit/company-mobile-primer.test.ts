@@ -107,6 +107,7 @@ const EMPTY_FINANCIALS: CompanyFinancialsResult = {
   annual: { periods: [], grid: {} },
   quarterly: { periods: [], grid: {} },
   reportingCurrency: null,
+    readFailed: false,
 };
 
 function financials(over: Partial<CompanyFinancialsResult> = {}): CompanyFinancialsResult {
@@ -241,6 +242,68 @@ test("sources counts distinct non-empty publishers and carries no meta line", ()
   assert.equal(sources.tone, undefined);
 });
 
+test("sources counts PUBLISHERS, not the publisher-plus-query column", () => {
+  /* `articles.source` is not a publisher column. The Google News ingest writes
+     one string per feed it polled, so one aggregator arrives as many strings:
+     measured over 1,000 rows, 411 distinct values of which 377 are
+     `Google News (TICKER)` variants. Counting the column raw printed SOURCES 27
+     for Goldman Sachs against 10 real publishers, beside a cell reading
+     `MENTIONS · 7D 20`, which is both inflated and arithmetically impossible.
+
+     The strings below are the real shape, copied off the column. */
+  const feeds = detail({
+    articles: [
+      article({ id: "1", source: "Google News (GS)" }),
+      article({ id: "2", source: "Google News (AVGO)" }),
+      article({ id: "3", source: "Google News (CRM)" }),
+      article({ id: "4", source: "Google News" }),
+      article({ id: "5", source: "Reuters" }),
+      article({ id: "6", source: "Reuters" }),
+      article({ id: "7", source: "Bloomberg" }),
+    ],
+  });
+  const sources = buildKpis(feeds).find((c) => c.label === "SOURCES");
+  assert.ok(sources);
+  // Google News, Reuters, Bloomberg. Not five, and not seven.
+  assert.equal(sources.value, "3");
+});
+
+test("sources never prints more publishers than the mentions cell beside it", () => {
+  /* The two cells sit side by side, so "20 articles from 27 sources" is a pair
+     a reader can see is wrong without leaving the screen. Measured shape:
+     Goldman Sachs, 20 mentions in 7 days, 17 Google News ticker feeds and 10
+     real publishers in the article list. */
+  const gs = detail({
+    attention: computeAttention(20, 40),
+    articles: [
+      ...Array.from({ length: 17 }, (_, i) =>
+        article({ id: `feed-${i}`, source: `Google News (TICK${i})` }),
+      ),
+      ...["Reuters", "Bloomberg", "CNBC", "WSJ", "FT", "Barron's", "Yahoo Finance", "MarketWatch", "Investing.com", "Seeking Alpha"].map(
+        (name, i) => article({ id: `pub-${i}`, source: name }),
+      ),
+    ],
+  });
+  const cells = buildKpis(gs);
+  const mentions = cells.find((c) => c.label === "MENTIONS · 7D");
+  const sources = cells.find((c) => c.label === "SOURCES");
+  assert.ok(mentions && sources);
+  assert.equal(sources.value, "11");
+  assert.ok(
+    Number(sources.value) <= Number(mentions.value),
+    `SOURCES ${sources.value} exceeds MENTIONS ${mentions.value}`,
+  );
+});
+
+test("a parenthetical that is the whole string is not a publisher", () => {
+  const odd = detail({
+    articles: [article({ id: "1", source: "(AVGO)" }), article({ id: "2", source: "Reuters" })],
+  });
+  const sources = buildKpis(odd).find((c) => c.label === "SOURCES");
+  assert.ok(sources);
+  assert.equal(sources.value, "1");
+});
+
 test("tone cell carries the closed label, the evidence line and a read tint", () => {
   const cells = buildKpis(FULL);
   const tone = cells.find((c) => c.label === "ARTICLE TONE");
@@ -360,6 +423,7 @@ test("key figures come off the newest annual period and name it", () => {
     financials({
       cik: 1730168,
       reportingCurrency: "USD",
+    readFailed: false,
       annual: view("FY-2025", "FY2025", { revenue: 51_574_000_000, net_income: 5_895_000_000 }),
     }),
   );
@@ -377,6 +441,7 @@ test("a filer with only a quarterly basis still draws its own period", () => {
     financials({
       cik: 937966,
       reportingCurrency: "EUR",
+    readFailed: false,
       quarterly: view("Q2-2026", "Q2 FY2026", { revenue: 7_742_000_000 }),
     }),
   );
@@ -398,6 +463,7 @@ test("the grid fills its row from whichever facts the filer reported", () => {
     financials({
       cik: 1730168,
       reportingCurrency: "USD",
+    readFailed: false,
       annual: view("FY-2025", "FY2025", {
         revenue: 63_890_000_000,
         operating_income: 15_000_000_000,
@@ -419,6 +485,7 @@ test("the grid never draws more than the two the contract names", () => {
     financials({
       cik: 1730168,
       reportingCurrency: "USD",
+    readFailed: false,
       annual: view("FY-2025", "FY2025", {
         revenue: 1,
         net_income: 2,
@@ -443,6 +510,7 @@ test("the design's four figures are not producible and none of them appears", ()
     financials({
       cik: 1730168,
       reportingCurrency: "USD",
+    readFailed: false,
       annual: view("FY-2025", "FY2025", { revenue: 51_574_000_000, net_income: 5_895_000_000 }),
     }),
   );
@@ -473,6 +541,7 @@ test("no mapper makes a network call", async () => {
       financials({
         cik: 1730168,
         reportingCurrency: "USD",
+    readFailed: false,
         annual: view("FY-2025", "FY2025", { revenue: 1, net_income: 2 }),
       }),
     );
@@ -501,6 +570,7 @@ test("no string a mapper AUTHORS carries an em dash", () => {
       financials({
         cik: 1730168,
         reportingCurrency: "USD",
+    readFailed: false,
         annual: view("FY-2025", "FY2025", { revenue: 1_000_000, net_income: 2_000_000 }),
       }),
     );
@@ -509,4 +579,50 @@ test("no string a mapper AUTHORS carries an em dash", () => {
     for (const f of p.keyFigures) authored.push(f.label, f.value);
   }
   for (const line of authored) assert.equal(line.includes(EM_DASH), false, line);
+});
+
+/* ── the key-figures empty state, which needs a third answer ─────────── */
+
+test("hasFiledPeriod is false for a company with no filed period at all", () => {
+  const p = buildPrimer(SPARSE, null, [], EMPTY_FINANCIALS);
+  assert.deepEqual(p.keyFigures, []);
+  assert.equal(p.hasFiledPeriod, false);
+});
+
+test("hasFiledPeriod is TRUE with an empty key-figures list: the GRAB case", () => {
+  /* GRAB, cik 1855612. Its single validated fact in the whole view is
+     `cost_of_revenue` for FY2022, which is not one of the four keys the primer
+     names, so `keyFigures` is [] while the Financials section on the SAME
+     screen draws "FY2022 / INCOME STATEMENT / Cost of revenue $68.0M". Without
+     this flag the section drew "Financials appear after the first periodic
+     report" over a company whose periodic report is on file. */
+  const p = buildPrimer(
+    FULL,
+    null,
+    [],
+    financials({
+      cik: 1855612,
+      reportingCurrency: "USD",
+    readFailed: false,
+      annual: view("FY-2022", "FY2022", { cost_of_revenue: 68_000_000 }),
+    }),
+  );
+  assert.deepEqual(p.keyFigures, []);
+  assert.equal(p.hasFiledPeriod, true);
+});
+
+test("hasFiledPeriod reads the period, not the key list, when both are there", () => {
+  const p = buildPrimer(
+    FULL,
+    IDENTITY,
+    [],
+    financials({
+      cik: 1730168,
+      reportingCurrency: "USD",
+    readFailed: false,
+      annual: view("FY-2025", "FY2025", { revenue: 51_574_000_000 }),
+    }),
+  );
+  assert.equal(p.keyFigures.length, 1);
+  assert.equal(p.hasFiledPeriod, true);
 });

@@ -33,6 +33,17 @@
  * page has already classified. If a block ever appears to need a model call,
  * that is a different sprint: stop and say so rather than adding one.
  *
+ *   AND THAT IS A CLAIM ABOUT THIS FILE, WHICH IS NOT THE SAME AS A CLAIM
+ *   ABOUT THE SCREEN. It was read as the second and it was false as the second.
+ *   Measured at 390px signed in with zero interaction: the route was firing
+ *   POST /api/company-overview on every phone load. Not from here. The DESKTOP
+ *   tree was mounted behind `hidden md:block`, `display:none` hides a subtree
+ *   and mounts it, and `PrimerTab`'s effect runs at every viewport. The fix is
+ *   `DesktopTreeGate`, which decides the mount rather than the visibility, and
+ *   it is in `page.tsx` and not here because the mapper never had the defect.
+ *   The rule for a future reader: this file staying clean does not make the
+ *   screen clean, and the screen is what a reader pays for.
+ *
  * NO QUOTE. Price, day change, market capitalisation, P/E and the 52-week range
  * are not on any read above. The desktop surface gets them from a CLIENT fetch
  * to `/api/company-kpis`, which reaches Yahoo and carries its own loading,
@@ -46,8 +57,10 @@
  * the count and the filter cannot disagree.
  *
  * NO INVENTED PERIOD. A basis renders as many columns as it has periods. GRAB
- * has one annual period and ASML has one quarterly, and padding either to a
- * fixed pair would draw a dash under a period that was never filed.
+ * has exactly ONE annual period and no quarterly one, and padding it to a fixed
+ * pair would draw a dash under a period that was never filed. (Not ASML, which
+ * an earlier draft of this claim named: its quarterly basis carries EIGHT
+ * periods, all fiscal year-end balance sheets.)
  *
  * Nothing here is averaged, divided or scored. Every figure it produces is a
  * count of real rows or a value copied off one.
@@ -215,6 +228,26 @@ const POLARITY_INK: Record<TonePolarity, ToneDirection> = {
 };
 
 /**
+ * The publisher inside an `articles.source` string.
+ *
+ * `source` IS NOT A PUBLISHER COLUMN. It is publisher-plus-query: the Google
+ * News ingest writes one string per feed it polled, so the same aggregator
+ * arrives as `Google News (AVGO)`, `Google News (GS)` and so on. Measured over
+ * 1,000 rows: 411 distinct strings, 377 of them `Google News (TICKER)` variants
+ * of one another. Counting that column raw printed SOURCES 27 for Goldman
+ * Sachs, 17 for Salesforce and 12 for Broadcom against 10, 7 and 6 real
+ * publishers, and on screen the 27 sat beside `MENTIONS · 7D 20`.
+ *
+ * The trailing parenthetical is the query and nothing else on this column uses
+ * one, so stripping an anchored `(...)` is the whole normalisation. A string
+ * that is only a parenthetical normalises to "" and is not a publisher, which
+ * is the same answer a null gets.
+ */
+export function publisherOf(source: string | null): string {
+  return (source ?? "").replace(/\s*\([^)]*\)\s*$/, "").trim();
+}
+
+/**
  * The KPI grid.
  *
  * TWO CELLS, NOT FOUR. `MARKET CAP` and `P / E` are omitted with the rest of
@@ -228,9 +261,16 @@ const POLARITY_INK: Record<TonePolarity, ToneDirection> = {
  * label over a number measured across a different window.
  *
  * SOURCES. The design's `primary + tier-1` meta line has no source: nothing
- * tiers a publisher on this path. The count itself is real and derivable as
- * `new Set(detail.articles.map(a => a.source)).size`. Emit the count with NO
- * meta line rather than a meta line nothing supports.
+ * tiers a publisher on this path. Emit the count with NO meta line rather than
+ * a meta line nothing supports.
+ *
+ * AND THE COUNT IS OVER `publisherOf(a.source)`, NEVER OVER `a.source`.
+ * `articles.source` is publisher-plus-query, not a publisher: measured over
+ * 1,000 rows it carries 411 distinct strings of which 377 are
+ * `Google News (TICKER)` variants of one another. Counting the raw column
+ * printed 27 for Goldman Sachs against 10 real publishers, beside a cell
+ * reading `MENTIONS · 7D 20`, so the pair read as "20 articles from 27
+ * sources", which is both inflated and arithmetically impossible.
  *
  * ARTICLE TONE. `detail.tone.levelLabel` for the value, one of the closed five,
  * and `formatEvidence(detail.tone.evidence)` for the meta. `tone` on the cell
@@ -278,11 +318,14 @@ export function buildKpis(detail: CompanyDetail): CompanyKpiCell[] {
      the primer counts, and NO meta line. The design's `primary + tier-1` has no
      source: nothing on this path tiers a publisher, and there is no primary
      flag on `articles`, so the second line would be a claim with nothing
-     under it. `source` is nullable on the row, so a null is not a publisher. */
+     under it. `source` is nullable on the row, so a null is not a publisher,
+     and the string is normalised through `publisherOf` first because the raw
+     column is publisher-plus-query and counting it raw overstated the cell by
+     two to nearly three times. */
   const publishers = new Set(
     detail.articles
-      .map((a) => a.source)
-      .filter((name): name is string => typeof name === "string" && name.trim() !== ""),
+      .map((a) => publisherOf(a.source))
+      .filter((name) => name !== ""),
   );
   if (publishers.size > 0) {
     cells.push({ label: "SOURCES", value: String(publishers.size) });
@@ -349,10 +392,12 @@ const PRIMER_FIGURE_COUNT = 2;
  * The newest period the filer actually filed, on whichever basis carries one.
  *
  * ANNUAL FIRST, QUARTERLY ONLY IF THERE IS NO ANNUAL. Measured on the live
- * table, GRAB carries exactly one annual period and ASML exactly one quarterly,
- * so a mapper that read `annual.periods[0]` alone would draw nothing for a real
+ * table, Quantinuum carries ZERO annual periods and five quarterly ones, so a
+ * mapper that read `annual.periods[0]` alone would draw nothing for a real
  * filer with real facts on file. Null when neither basis carries a period,
- * which is every company with no CIK.
+ * which is every company with no CIK. (An earlier draft named ASML here; its
+ * quarterly basis has eight periods and its annual has five, so it was never
+ * the case this branch exists for.)
  */
 function latestFiledPeriod(
   financials: CompanyFinancialsResult,
@@ -479,6 +524,14 @@ export function buildPrimer(
     identity: identityRows,
     overview: identity?.brief ?? "",
     keyFigures,
+    /* THE THIRD STATE, and it is `filed` and not `keyFigures.length`. A filer
+       can have a periodic report on file and still contribute nothing to the
+       four keys above: GRAB's single validated fact is `cost_of_revenue`, so it
+       lands here with `keyFigures` empty and a real FY2022 figure drawing in
+       the Financials section one tab away. Without this flag the section could
+       only choose between "no SEC identity" and "no periodic report yet", and
+       it drew the second over a company whose report is on file. */
+    hasFiledPeriod: filed !== null,
     developments: developments
       .map((article) => {
         const summary = article.summary?.trim();
@@ -514,16 +567,38 @@ const LEVEL_INK: Record<TonePolarity, LevelInk> = {
  * A label outside these three is not a state this vocabulary can express, so
  * the row is dropped rather than tinted as "mixed". Tinting an unlabelled
  * article amber would assert a balanced reading nothing recorded.
+ *
+ * A `Map` AND NOT AN OBJECT LITERAL, and the difference is reachable from the
+ * database. A bare object inherits `Object.prototype`, so a lookup on it
+ * answers for keys nobody put there: `sentiment = "constructor"` came back as
+ * the `Object` constructor and rendered `direction="function Object() { [native
+ * code] }"`, and `"__proto__"` came back as `[object Object]`. Both are strings
+ * `articles.sentiment` can carry, both cleared the truthiness check below, and
+ * both put a fourth direction into a vocabulary this file's own docstring
+ * closes at three. A `Map` has no prototype keys to leak.
  */
-const ROW_INK: Record<string, RowInk> = {
-  bullish: "up",
-  neutral: "mixed",
-  bearish: "down",
-};
+const ROW_INK = new Map<string, RowInk>([
+  ["bullish", "up"],
+  ["neutral", "mixed"],
+  ["bearish", "down"],
+]);
 
 /**
- * Trailing 7-day window the evidence rows are drawn from, so the rows under the
- * level are from the same window the level was computed over.
+ * Trailing 7-day window the evidence rows are drawn from.
+ *
+ * THE SAME DURATION AS THE LEVEL'S WINDOW, AND NOT THE SAME WINDOW. This
+ * comment used to claim the rows were from the window the level was computed
+ * over, and that is false in three ways at once. The level and the evidence
+ * sentence come from `company_mentions`, keyed on `company_id` and windowed on
+ * `created_at`. The rows below come from `articles`, matched by name-variant
+ * `contains` and windowed on `published_at`. Different table, different clock,
+ * different population, and only the seven days are shared.
+ *
+ * That gap is a KNOWN, LOGGED DEFECT and it is visible: `/company/broadcom`
+ * draws Marvell, NVDA, AMD and Forrester readings under a level computed from
+ * Broadcom mentions alone, because the `contains` match is wider than the
+ * mention key. Nothing here narrows it, and a comment that asserts the opposite
+ * is worse than no comment: the next reader stops looking.
  *
  * MIRRORED, not imported. `TONE_WINDOW_MS` in `getCompanyDetail.ts` is not
  * exported, and `WINDOW_MS` in `tone/ToneEvidenceList.tsx` sits inside a
@@ -585,7 +660,7 @@ function toneRows(articles: CompanyDetailArticle[]): CompanyIntelData["tone"]["r
     const reading = (article.sentimentReason ?? "").trim();
     if (!reading) continue;
 
-    const direction = ROW_INK[(article.sentiment ?? "").toLowerCase()];
+    const direction = ROW_INK.get((article.sentiment ?? "").toLowerCase());
     if (!direction) continue;
 
     rows.push({ reading, meta: toneRowMeta(article), direction });
@@ -690,7 +765,9 @@ export function buildTone(detail: CompanyDetail): CompanyIntelData["tone"] {
  * WHAT THE CHIP ROW WILL LOOK LIKE, measured on the live table so a future
  * reader does not file a bug against a chip that is working. `sec_filings`
  * carries 4,575 rows and exactly EIGHT distinct form types across all of them:
- * 8-K 2,330, 4 1,545, 10-Q 599, 8-K/A 43, 10-K 31, 4/A 9, 10-K/A 7, 10-Q/A 5.
+ * approximately 8-K 2,332, 4 1,549, 10-Q 599, 8-K/A 43, 10-K 31, 4/A 9,
+ * 10-K/A 7, 10-Q/A 5. The counts drift with every ingest and are quoted as of
+ * 2026-08-29; the claim that rests on them does not drift.
  * `categorizeForm()` routes every one of those to annual, quarterly, events or
  * insider, so the `Other` chip counts 0 for every company on the platform and
  * `FilingsSection` renders it disabled. That is the classifier agreeing with
@@ -758,10 +835,11 @@ export function formatFilingDate(filingDate: string | null): string {
  * The financials table, both bases.
  *
  * PERIODS ARE A LIST. Emit exactly the periods the basis has, newest first, and
- * exactly as many `values` entries per row as there are periods. GRAB has one
- * annual period and ASML has one quarterly; padding either to a pair draws a
- * dash under a period that does not exist, which reads as a missing figure
- * rather than as an unfiled period.
+ * exactly as many `values` entries per row as there are periods. GRAB has ONE
+ * annual period and Goldman Sachs has eight quarterly ones; padding the first
+ * to a pair draws a dash under a period that does not exist, which reads as a
+ * missing figure rather than as an unfiled period, and capping the second at a
+ * pair hides six real columns. (Not ASML: eight quarterly periods, not one.)
  *
  * THE CURRENCY NOTE COMES FROM `currencyNote(financials.reportingCurrency)` in
  * `lib/reporting-currency.ts`, which already exists. It is never the literal
@@ -801,6 +879,12 @@ export function buildFinancials(
        looking at a EUR figure has to be told the number was not converted. ""
        when no monetary fact exists, in which case no band survives anyway. */
     note: isNonUsd(currency) ? `${note} Not converted to USD.` : note,
+    /* CARRIED THROUGH, never derived from the emptiness. `fetchCompanyFinancials`
+       answers a failed query with the same empty views a company with no facts
+       gets, so the bands below cannot tell the two apart and the section would
+       assert "Financials appear after the first periodic report" over a filer
+       with five years on file. Only the read knows, so only the read may say. */
+    readFailed: financials.readFailed,
   };
 }
 
@@ -1029,21 +1113,48 @@ function insiderCodeFact(code: string | null): string {
 }
 
 /**
+ * One routine or other row, as the compact list draws it.
+ *
+ * The compact row is date and code in a 60px rail, then the filer's name, then
+ * one `detail` line. The line carries the role and the two figures the desktop
+ * table puts in its own Shares and Price columns, through the SAME formatters,
+ * so the two surfaces cannot state different numbers for one filing. A figure
+ * the filing left blank is left out of the line rather than printed as "n/a" in
+ * a sentence: on the open-market card "n/a" sits under its own SHARES label and
+ * says which field was blank, and here it would not.
+ */
+function insiderCompactDetail(row: InsiderTransactionsResult["transactions"][number]): string {
+  const parts: string[] = [formatRole(row.insiderTitle)];
+  if (row.shares != null && Number.isFinite(row.shares)) {
+    const price =
+      row.pricePerShare != null && Number.isFinite(row.pricePerShare)
+        ? ` at ${formatPrice(row.pricePerShare)}`
+        : "";
+    parts.push(`${formatShares(row.shares)} shares${price}`);
+  }
+  return parts.join(" · ");
+}
+
+/**
  * The insider record.
  *
- * `routine` AND `other` ARE `[]`, AND THAT IS NOT A STUB. Measured on the live
- * table: `insider_transactions` carries exactly two transaction codes across
- * all 5,044 stored rows, S at 4,604 and P at 440, and every row is open market.
- * Nothing in the ingest writes an A, M, F, G or C row, so those two groups have
- * no source to read from. They are structurally empty database-wide rather than
- * empty for one issuer, and `InsiderSection` self-omits each group on
- * `length > 0`, so a reader sees neither.
+ * `routine` AND `other` HAVE NO ROWS TODAY, AND THEY ARE STILL MAPPED. Measured
+ * on the live table 2026-08-29 through the anon key: `insider_transactions`
+ * carries 5,052 rows and exactly two transaction codes, S at 4,612 and P at
+ * 440, so `groupByCategory` puts everything in `openMarket` and both lists come
+ * back empty. That is a fact about the ingest rather than about any one issuer.
  *
- * They stay in the shape because the grouping is the desktop `InsiderTab`'s own
- * model, and the day the extractor writes those codes the rows land in the
- * right group instead of in a group that had been deleted.
+ * THEY USED TO BE HARDCODED `[]`, AFTER `groupByCategory` had already filled
+ * them, and that is a row-dropping bug waiting on one ingest change rather than
+ * a documented emptiness. `InsiderSection` computes its `total` from the three
+ * emitted lists, so a company whose only Section 16 activity was a grant would
+ * have drawn "No qualifying insider transactions are on file for this company"
+ * with its rows sitting in the table underneath, which is the one thing that
+ * section's own header says it must never do. Mapping them costs one function
+ * and the lists stay empty until the day the extractor writes an A, M, F, G or
+ * C row, at which point they fill instead of vanishing.
  *
- * WIRED, for `openMarket` only, for the reason above.
+ * WIRED, all three groups.
  */
 export function buildInsider(insider: InsiderTransactionsResult): CompanyIntelData["insider"] {
   // The desktop order and the desktop grouping, through the same two exported
@@ -1070,19 +1181,36 @@ export function buildInsider(insider: InsiderTransactionsResult): CompanyIntelDa
       price: formatPrice(row.pricePerShare),
       heldAfter: formatShares(row.sharesOwnedAfter),
     })),
-    // `[]` BY MEASUREMENT, NOT BY OMISSION. Re-measured 2026-08-29 against the
-    // live table through the anon key: 5,052 rows, transaction_code S 4,612 and
-    // P 440, and A, M, F, G and C at zero each. Both stored codes are open
-    // market, so `groupByCategory` cannot put a row in either list below and
-    // there is nothing here to map. `InsiderSection` self-omits each group on
-    // `length > 0`, so a reader sees neither.
+    // EMPTY BY MEASUREMENT, NOT BY OMISSION, and mapped rather than pinned to
+    // `[]`. Re-measured 2026-08-29 against the live table through the anon key:
+    // 5,052 rows, transaction_code S 4,612 and P 440, and A, M, F, G and C at
+    // zero each. Both stored codes are open market, so `groupByCategory` hands
+    // back two empty lists and these two `map`s produce nothing today.
     //
-    // The day `backend/edgar/forms/form_4.py` keeps a code outside P and S,
-    // this is the line that has to change: map `groups.routine` and
-    // `groups.other` into `InsiderCompactRow`, whose `detail` string has no
-    // precedent in this repo yet and needs one written.
-    routine: [],
-    other: [],
+    // They are `map`s and not `[]` because `[]` DISCARDS whatever grouping
+    // produced. The day `backend/edgar/forms/form_4.py` keeps a code outside P
+    // and S, the pinned version would have dropped those rows silently and
+    // `InsiderSection`, which counts its `total` off these three lists, would
+    // have drawn its "no qualifying insider transactions" empty state over a
+    // company that had them.
+    //
+    // The bare code goes in the 60px rail rather than `insiderCodeFact`'s
+    // "S · Open-market sale": the compact row prints the code under the date in
+    // a 60px mono column and the sentence does not fit there. The meaning is
+    // not lost, it is in the group heading, which is the whole point of the
+    // grouping.
+    routine: groups.routine.map(compactRow),
+    other: groups.other.map(compactRow),
+  };
+}
+
+/** One `InsiderTransaction` as an `InsiderCompactRow`. */
+function compactRow(row: InsiderTransactionsResult["transactions"][number]) {
+  return {
+    date: formatDate(row.transactionDate).toUpperCase(),
+    code: (row.transactionCode ?? "").trim().toUpperCase() || "n/a",
+    name: (row.insiderName ?? "").trim() || NOT_STATED,
+    detail: insiderCompactDetail(row),
   };
 }
 

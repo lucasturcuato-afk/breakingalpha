@@ -85,3 +85,71 @@
     animation: none;
   }
 }
+
+/* The sideways scrollport on the financials table, and the ONE affordance that
+ * says so.
+ *
+ * WHY IT IS NOT NOTHING. Measured at 390x844 on Quantinuum quarterly: the
+ * sticky metric column is 185.2px and the first period column 137.2px, which is
+ * 322.4 of a 348px scrollport, so the 25.6px sliver of the second column
+ * carries right-aligned text that sits entirely outside the clip. One data
+ * column is drawn, four more are reachable, and there was no cue of any kind.
+ * Goldman Sachs got one only by accident, because its cut figure happened to be
+ * wide enough to peek. Measured scrollWidth 871 against clientWidth 348.
+ *
+ * A SCROLLING SHADOW, NOT A SCROLLBAR, and the phone is the reason. A styled
+ * scrollbar is an overlay on every touch platform: it paints while a finger is
+ * moving and is invisible the rest of the time, which is exactly the moment the
+ * reader needs to be told there is more. Measured in the harness:
+ * `offsetHeight - clientHeight` is 2px on a table that overflows by 662px, so
+ * the bar reserves no space and cannot be seen at rest.
+ *
+ * HOW IT KNOWS, WITH NO JAVASCRIPT AND NO MEASUREMENT. Two gradients pinned to
+ * the right edge. The shadow is `scroll`-attached, so it stays at the
+ * scrollport's edge. The cover is `local`-attached and paints the ground, so it
+ * travels with the CONTENT and sits at the content's right end. Scrolled to the
+ * end, the cover arrives over the shadow and hides it. Not at the end, the
+ * cover is off to the right and the shadow shows. With no overflow at all the
+ * two coincide permanently, so GRAB's single column never draws one. There is
+ * no state to disagree with the layout, and nothing re-renders.
+ *
+ * The scrollbar rules stay for the pointer platforms, where a real bar is the
+ * better cue and also says how much more there is.
+ */
+.hscroll {
+  background-image:
+    linear-gradient(to left, var(--c-bg) 45%, transparent),
+    linear-gradient(to left, rgba(0, 0, 0, 0.22), transparent);
+  background-position: right center, right center;
+  background-size:
+    26px 100%,
+    20px 100%;
+  background-repeat: no-repeat;
+  background-attachment: local, scroll;
+  scrollbar-width: thin;
+  scrollbar-color: var(--c-border) transparent;
+}
+
+.hscroll::-webkit-scrollbar {
+  height: 8px;
+}
+
+.hscroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.hscroll::-webkit-scrollbar-thumb {
+  background-color: var(--c-border);
+  border-radius: 4px;
+}
+
+/* A BLACK SHADOW ON A NEAR-BLACK GROUND IS NOT A CUE. Dark mode measures
+ * `--c-bg` at rgb(20, 16, 10), so the light-mode gradient darkens 20 to 15 and
+ * nothing reads. The dark theme gets the same shape in the other direction, a
+ * light edge on a dark ground, at the strength that measured equivalent.
+ * `html.dark` is this app's own theme switch, set from `signalera_theme`. */
+:global(html.dark) .hscroll {
+  background-image:
+    linear-gradient(to left, var(--c-bg) 45%, transparent),
+    linear-gradient(to left, rgba(255, 255, 255, 0.16), transparent);
+}

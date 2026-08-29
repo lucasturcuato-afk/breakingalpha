@@ -9,6 +9,15 @@
  *
  * Run: npx tsx --test tests/unit/company-mobile-filings.test.ts
  */
+/* PINNED BEFORE ANYTHING IMPORTS, and it is load-bearing rather than tidy.
+   The date guard below exists to kill `new Date(iso).toLocaleDateString()`,
+   which renders "2026-01-01" as DEC 31 in any Americas zone and as JAN 01 in
+   UTC. Mutation-tested: the `new Date` mutant SURVIVES under `TZ=UTC` at 10 of
+   10 passing, and dies only in an Americas zone. No workflow runs `test:unit`,
+   so without this line the guard depended on whatever zone the developer's
+   laptop happened to be in. */
+process.env.TZ = "America/Los_Angeles";
+
 import test from "node:test";
 import assert from "node:assert/strict";
 
@@ -118,8 +127,9 @@ test("the date is parsed off the string, so it never drifts a day by time zone",
   /* `filing_date` is a DATE column and arrives as a bare "YYYY-MM-DD".
      `new Date("2026-01-01")` is midnight UTC, and `toLocaleDateString` in any
      Americas zone renders it as the 31st of December. That is a wrong date on a
-     legal document, and it is invisible to anyone testing from UTC. This
-     assertion is true in every zone. */
+     legal document, and it is invisible to anyone testing from UTC. The
+     assertion is true in every zone; its ability to KILL the mutant is not,
+     which is why the file pins TZ at the top. */
   assert.equal(formatFilingDate("2026-01-01"), "JAN 01");
   assert.equal(formatFilingDate("2026-12-31"), "DEC 31");
   assert.equal(formatFilingDate("2026-05-09"), "MAY 09");
