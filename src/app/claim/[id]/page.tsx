@@ -73,8 +73,16 @@ export default async function ClaimPage({ params }: { params: Promise<{ id: stri
         {/* The mobile layout is gated on the same breakpoint the shell uses to
             swap the sidebar for the tab bar. Gating lives in classes, never in
             an inline style: an inline display beats the class at every
-            breakpoint. */}
-        <div className="md:hidden">
+            breakpoint.
+
+            `h-full` is load bearing and not cosmetic, for the reason
+            `src/app/ledger/page.tsx:114-123` records at length: `main` gives
+            this subtree a definite height and `PageTransition` passes it
+            through, but a shrink-wrapping gate div ends that chain and makes
+            the screen's own `minHeight: 100%` inert. Here that would leave a
+            short claim painting `--c-bg` over only part of a `bg-parchment`
+            page, which is a visible two-tone seam across the phone. */}
+        <div className="md:hidden h-full">
           <ClaimScreen stage={stage} data={data} />
         </div>
 

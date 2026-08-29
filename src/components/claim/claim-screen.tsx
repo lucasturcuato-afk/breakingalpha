@@ -38,15 +38,31 @@ import styles from "./claim.module.css";
 
 const PAD = "var(--v3-pad)";
 
-/* The prototype is a fixed 844px phone and scrolls inside its own body. Here
-   the screen lives in the app shell's scrollport, which is already 100dvh with
-   the tab bar's height reserved at its foot, so a second scroller nested in it
-   would give the screen two scrollbars and hide the action bar behind the tab
-   bar. The screen fills that box instead and lets the shell do the scrolling:
-   the action bar is the last block either way, and on a claim short enough to
-   fit it lands exactly where the design pins it. */
-const SCREEN_HEIGHT =
-  "calc(100dvh - var(--mobile-tabbar-height) - env(safe-area-inset-bottom))";
+/* THE SCREEN ENDS WHERE ITS CONTENT ENDS, and this is a correction that came
+   out of a measurement.
+ *
+ * The first build pinned the action bar to the foot of a column stretched to
+ * the full viewport, which is what the prototype draws, because the prototype
+ * is a fixed 844px phone whose claim block fills it. Here the same layout
+ * turned every block correctly omitted for having no column into ONE
+ * CONTIGUOUS EMPTY REGION between the last line of the claim and the bar:
+ * measured at 390x844, 415px on an open call, 49.1% of the viewport, and 595px
+ * where the row carries no resolve_on. Half an empty phone under four short
+ * lines does not read as restraint, it reads as content that failed to arrive.
+ * Deleting a block and then reserving its space is deleting nothing.
+ *
+ * So the body no longer flexes and the bar sits directly under it. What is
+ * left below is page background, which is what the foot of any short screen
+ * looks like, rather than a gap framed by a rule.
+ *
+ * `minHeight: 100%` STILL PAINTS THE WHOLE BOX, and that part is load bearing:
+ * `main#main-content` is `bg-parchment` (#faf7f2 light, #0f0f0f dark) and this
+ * screen is `--c-bg` (#fffdf9, #14100a), so a screen that shrink-wrapped its
+ * content would draw a visible two-tone seam across the phone. It resolves
+ * against the definite height `main` gives the subtree, which is why the page's
+ * gate div carries `h-full`; see the comment there and the longer one at
+ * `src/app/ledger/page.tsx:114-123`. */
+const SCREEN_MIN_HEIGHT = "100%";
 
 /**
  * `data` is REQUIRED and NULLABLE, and it has no default. Defaulting it would
@@ -95,7 +111,7 @@ export function ClaimScreen({
       className={styles.enter}
       style={{
         backgroundColor: "var(--c-bg)",
-        minHeight: SCREEN_HEIGHT,
+        minHeight: SCREEN_MIN_HEIGHT,
         display: "flex",
         flexDirection: "column",
       }}
@@ -130,7 +146,9 @@ export function ClaimScreen({
         </Link>
       </div>
 
-      <div style={{ flex: 1, padding: `22px ${PAD} 24px` }}>
+      {/* `flex: none`. The bar follows the content instead of being pushed to
+          the bottom of the viewport; see SCREEN_MIN_HEIGHT above. */}
+      <div style={{ flex: "none", padding: `22px ${PAD} 24px` }}>
         {/* One chain, so exactly one of these draws. A stage that says there is
             a claim with no claim to draw falls to missing rather than to
             nothing: unreachable from the loader, where `ready` and
@@ -244,25 +262,52 @@ function SettlementRow({ label, value }: { label: string; value: string }) {
  * So it is a plain div with the design's geometry and no role, no tabindex, no
  * handler and no `cursor: pointer`. The prototype does draw the pointer on it;
  * a pointer over an element with no control behind it is the defect
- * `README.md:309` names, and it is the one drawn value not carried over. The
- * geometry is: square 54x54 including its border, the primary flexing to fill,
- * 9px between them, an 85px bar.
+ * `README.md:309` names, and it is the one drawn value not carried over.
+ *
+ * GEOMETRY, MEASURED ON THE RUNNING BUILD rather than claimed. The square is
+ * 54x54 and the bar is 85px tall, and the `boxSizing: "content-box"` on the
+ * square is what makes that true. The prototype writes
+ * `min-width:52px;min-height:52px;border:1px` with no CSS reset, so the
+ * designer saw 52 of content plus 2 of border. Under Tailwind preflight's
+ * global `border-box` the same declarations render 52 including the border,
+ * which is the trap `ledger-claim-card.tsx:135` writes `content-box` for by
+ * name. This file did not, and drew 52x52 in an 83px bar while its own comment
+ * claimed 54 and 85. The bar has no `align-items`, so the primary stretches to
+ * the square's height the way the prototype's does.
  *
  * THE PRIMARY IS LIVE. It opens the commit sheet, which is a global overlay
  * mounted by the provider on the route, so this screen adds a trigger and
  * inherits the note gate, the press, the write and the failure path. Nothing in
  * `src/components/commit/` changed to make that work.
  *
- * WHEN THE BAR DRAWS NOTHING AT ALL. A call the desk has already graded, and a
- * call whose window has closed, both arrive as `variant: "closed"` and get no
- * bar. The design has no graded state and this screen has no slot for an
- * outcome word, so inventing one would be a new design rather than a wiring;
- * the desk's verdict also answers a different question from the reader's own,
- * which `src/lib/claim-outcome.ts` enforces by construction. And adopting a
- * closed-window call is worse than useless: the adopt route silently writes
- * `gradeable: false` (adopt/route.ts:141-149), a commitment that can never
- * settle.
+ * WHY THE BAR ALWAYS SAYS SOMETHING. Four conditions remove the control, and
+ * the first build explained one of them and swallowed three. A reader who saw
+ * Track on one call and nothing on the next could not tell a settled call from
+ * a broken screen, and that INCONSISTENCY is the defect: the missing verdict is
+ * not. So each condition states its reason in the register `UNGRADEABLE_REASON`
+ * set, and none of them states an outcome. There is still no verdict on this
+ * screen: the design has no slot for one, and the desk's verdict answers a
+ * different question from the reader's own, which `src/lib/claim-outcome.ts`
+ * enforces by construction.
+ *
+ * Adopting a closed call is worse than useless, which is why none of the four
+ * keeps the control: the adopt route silently writes `gradeable: false`
+ * (adopt/route.ts:141-149), a commitment that can never settle.
  */
+
+/**
+ * Why the commitment is not on offer. One line per condition, in the register
+ * `UNGRADEABLE_REASON` set, and no outcome word in any of them.
+ *
+ * `noWindow` is the one that matters most by volume: 305 of 416 rows carry no
+ * resolve_on, so on any address older than about five weeks this is the line
+ * the screen ends on.
+ */
+const NO_COMMITMENT_REASON: Record<"graded" | "windowClosed" | "noWindow", string> = {
+  graded: "The desk has already checked this call, so there is nothing left to commit to.",
+  windowClosed: "This call's window has closed, so there is nothing left to commit to.",
+  noWindow: "This call has no review date on record, so there is no window to commit to.",
+};
 function ActionBar({
   variant,
   ungradeable,
@@ -273,7 +318,12 @@ function ActionBar({
   onTrack?: () => void;
 }) {
   const onLedger = variant === "onLedger";
-  if (!onLedger && !ungradeable && !onTrack) return null;
+  /* The one case with no bar at all: an open call on a screen with no provider
+     above it, which is a wiring mistake rather than a state a reader reaches.
+     Every other path below draws either a control or a sentence. */
+  const reason =
+    !onLedger && !ungradeable && variant !== "open" ? NO_COMMITMENT_REASON[variant] : null;
+  if (!onLedger && !ungradeable && reason === null && !onTrack) return null;
 
   return (
     <div
@@ -282,7 +332,6 @@ function ActionBar({
         padding: `14px ${PAD} 16px`,
         borderTop: "1px solid var(--c-border)",
         display: "flex",
-        alignItems: "center",
         gap: "9px",
       }}
     >
@@ -308,7 +357,7 @@ function ActionBar({
           </span>
           On your ledger
         </div>
-      ) : ungradeable ? (
+      ) : ungradeable || reason !== null ? (
         <p
           style={{
             margin: 0,
@@ -316,12 +365,16 @@ function ActionBar({
             color: "var(--c-muted)",
           }}
         >
-          {UNGRADEABLE_REASON}
+          {ungradeable ? UNGRADEABLE_REASON : reason}
         </p>
       ) : (
         <>
           <div
             style={{
+              /* See the geometry note above. 52 of content plus 2 of border is
+                 the 54 the design draws, and preflight's global border-box
+                 would otherwise make the same numbers mean 52. */
+              boxSizing: "content-box",
               flex: "none",
               minWidth: "52px",
               minHeight: "52px",
@@ -420,12 +473,20 @@ function ClaimError() {
 }
 
 /**
- * The read came back and there is no such claim.
+ * The read came back and no desk call has this id.
  *
- * This is also where an id belonging to the SIBLING route lands. /entry takes a
- * user_claims id, both are uuids, and nothing in the string distinguishes them,
- * so the loader does not guess: it looks the id up in morning_brief_calls, and
- * a user_claims id is not there.
+ * THE SECOND SENTENCE USED TO BE FALSE IN THE ONE CASE THIS SCREEN'S OWN HEADER
+ * ANTICIPATES. It read "A claim is never removed once it is written, so this
+ * one was never here", which is a true premise carried to a conclusion about
+ * the reader's own data that this screen never established. Paste a real
+ * `user_claims` id in here, which is the case the routing exists to handle, and
+ * the row it names WAS written, DOES exist, and lives one route over. The
+ * screen was telling a reader their own claim had never existed.
+ *
+ * What is left says only what the read established: this address reads a desk
+ * call, and no desk call has this id. It deliberately does not name /entry,
+ * because that route is still fixture-gated and sending a reader to a screen
+ * that draws nothing in production would be a second false promise.
  */
 function ClaimMissing() {
   return (
@@ -441,8 +502,8 @@ function ClaimMissing() {
           maxWidth: "32ch",
         }}
       >
-        Nothing failed to load. A claim is never removed once it is written, so this one was
-        never here.
+        Nothing failed to load. This address reads a call from a morning brief, and no call
+        has this id.
       </p>
     </div>
   );

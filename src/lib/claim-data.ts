@@ -66,12 +66,25 @@ export type ClaimStage = "ready" | "loading" | "error" | "missing" | "ungradeabl
  * Whether this reader can act on this call, resolved HERE rather than on the
  * screen, the way `loadLedger` resolves the card's own variant.
  *
- *   open      not on the reader's record, still inside its window, not graded
- *   onLedger  already on the reader's record
- *   closed    no action is offered: the window has passed or the desk has
- *             already graded it
+ *   open          not on the reader's record, inside its window, not graded
+ *   onLedger      already on the reader's record
+ *   graded        the desk has already checked it
+ *   windowClosed  resolve_on is in the past
+ *   noWindow      the row carries no resolve_on at all
+ *
+ * IT IS A SUPERSET OF THE CARD'S THREE, and the three extra values are the
+ * whole point. A card lives in today's brief, where every call is open by
+ * construction, so it never has to say why an action is absent. This screen is
+ * reachable by a bookmark long after that, and a control that vanishes with no
+ * sentence leaves a reader unable to tell a settled call from a broken one. So
+ * the loader names the reason and the screen states it.
+ *
+ * `noWindow` is not an edge case. 305 of 416 rows, every call written on or
+ * before 2026-07-22, carry no resolve_on: the column arrived in migration 0014
+ * and nothing backfilled it. It is the COMMON case on any address older than
+ * about five weeks, which is exactly what a bookmark is.
  */
-export type ClaimVariant = "open" | "onLedger" | "closed";
+export type ClaimVariant = "open" | "onLedger" | "graded" | "windowClosed" | "noWindow";
 
 export interface ClaimSettlement {
   /**
@@ -254,11 +267,22 @@ export async function loadClaim(
 
   const span = briefDate && resolveOn ? daysBetween(briefDate, resolveOn) : null;
 
+  /* Ordered, and the order is a ruling about which fact matters most. Being on
+     the reader's own record outranks everything: it is true whatever the desk
+     later did. A desk grade outranks a closed window because it is the stronger
+     statement, and a graded call is past its window in almost every case
+     anyway. An absent resolve_on is distinguished from a passed one, because
+     "this call has no review date on record" and "this call's window has
+     closed" are different sentences and only one of them is true. */
   const variant: ClaimVariant = adopted
     ? "onLedger"
-    : graded === true || !windowOpen
-      ? "closed"
-      : "open";
+    : graded === true
+      ? "graded"
+      : resolveOn === null
+        ? "noWindow"
+        : windowOpen
+          ? "open"
+          : "windowClosed";
 
   return {
     data: {

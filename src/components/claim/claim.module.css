@@ -52,6 +52,32 @@
   transform: scale(0.98);
 }
 
+/* DARK ONLY: an edge on the live primary.
+ *
+ * Measured on the running build: the button fills with `--c-inverse` (#0c0906)
+ * and sits on `--c-bg` (#14100a), which is about 1.05:1. The LABEL is fine,
+ * `--c-oninv` against that fill is the pair `commit-sheet.tsx:204-217` already
+ * corrected to and measures 17.34:1, so a reader can read the words. They just
+ * cannot see the button: there is no figure and ground, only a sentence
+ * floating on the page. That was tolerable while this was one of two inert
+ * shapes and is not now that it is the only live action on the screen. The
+ * Ledger's own Track control avoids it by being outlined rather than filled.
+ *
+ * An inset shadow rather than a border, so the box model does not move: the
+ * geometry note in `claim-screen.tsx` is measured, and a border would make it
+ * wrong by 2px. `--c-border` is the same token the square beside it and the
+ * bar's own top rule already draw with, so this adds no colour to the screen.
+ *
+ * Both selectors, because both flip this app: `html.dark` is what
+ * `theme-provider.tsx` sets and `html[data-theme="dark"]` is what the prototype
+ * and `scripts/screen-audit.mjs` use. There is no `prefers-color-scheme` rule
+ * anywhere in `tokens.css`, so a media query here would fire on a page that is
+ * still drawing light. */
+:global(html.dark) .press,
+:global(html[data-theme="dark"]) .press {
+  box-shadow: inset 0 0 0 1px var(--c-border);
+}
+
 /* Loading. The shimmer is the design's own, at its own duration. */
 .sk {
   border-radius: 4px;
