@@ -25,7 +25,7 @@
 //                                             (radar/following/page.tsx:196).
 //
 // Getting the first one wrong makes quietNames a false claim about the
-// reader's own list, in prose, which is worse than the false zero #698 fixed.
+// reader's own list, in prose, which is worse than the false zero fixed in PR #698.
 //
 // Run: npm run test:unit
 import { test } from "node:test";
@@ -210,7 +210,7 @@ test("the kind predicate matches the desk's, and industries read the articles ta
   assert.ok(data);
   assert.equal(data.watchlist.find((i) => i.identifier === "CEG")?.kind, "public");
   const re = data.watchlist.find((i) => i.identifier === "Real Estate");
-  assert.ok(re, "an industry entry must be readable at all; watchlist_articles never holds one");
+  assert.ok(re, "an industry entry must be readable at all; watchlist_articles never carries one");
   assert.equal(re.kind, "industry");
   assert.equal(re.qualifier, "Industry · 1 today");
 });
