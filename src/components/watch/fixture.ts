@@ -90,6 +90,22 @@ export interface WatchlistItem {
   headline: string;
   /** "Reuters / 2 more today". Attribution, not a claim. */
   source: string;
+  /**
+   * Where the card opens, or NULL when it opens nothing.
+   *
+   * DECIDED BY THE LOADER, not by the card, and PROVED before it is set. A
+   * public name resolves to `/company/<identifier>` only when
+   * `src/lib/watch-links.ts` has established that the route's own
+   * reconstruction lands on a real company; a private company and an industry
+   * are always null. The card renders this value and never derives one, so a
+   * destination cannot be invented in a client component that has no way to
+   * check it.
+   *
+   * Null is not a bug and not an absence to paper over. `/company/BRK.B` is a
+   * 200 that says Berkshire Hathaway is not on Signalera, and a card with no
+   * link is better than a link that says that.
+   */
+  href: string | null;
 }
 
 export interface FollowRow {
@@ -179,6 +195,7 @@ export const WATCH_FIXTURE: WatchData = {
       headline:
         "Constellation lifts contracted volume guidance after fourth data centre agreement",
       source: "Reuters · 2 more today",
+      href: "/company/CEG",
     },
     {
       id: "wl-nvda",
@@ -188,6 +205,7 @@ export const WATCH_FIXTURE: WatchData = {
       qualifier: "Nvidia",
       headline: "Blackwell output guidance lifted for the January quarter",
       source: "Bloomberg · 4 more today",
+      href: "/company/NVDA",
     },
     {
       id: "wl-anthropic",
@@ -197,6 +215,7 @@ export const WATCH_FIXTURE: WatchData = {
       qualifier: "Private",
       headline: "Second debt package sounded for the chip financing",
       source: "Financial Times",
+      href: null,
     },
     {
       id: "wl-grid",
@@ -206,6 +225,7 @@ export const WATCH_FIXTURE: WatchData = {
       qualifier: "Industry · 6 today",
       headline: "Contracting accelerates across four utilities in eleven days",
       source: "Reuters · 5 more today",
+      href: null,
     },
     {
       id: "wl-glp1",
@@ -215,6 +235,7 @@ export const WATCH_FIXTURE: WatchData = {
       qualifier: "Industry · 1 today",
       headline: "Three plants clear qualification as constraints ease",
       source: "Bloomberg",
+      href: null,
     },
   ],
   watchlistRead: "ok",

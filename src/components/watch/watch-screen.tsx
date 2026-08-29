@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, Fragment } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { SectionRule } from "./section-rule";
 import { WatchNotice, WatchSkeleton } from "./watch-notice";
@@ -58,6 +59,22 @@ import { FONT_DISPLAY, FONT_MONO, FONT_SANS } from "@/components/mobile/fonts";
 export type WatchStage = "ready" | "loading" | "error" | "stale";
 
 const PAD = "var(--v3-pad)";
+
+/**
+ * How a short screen's free space is divided, as flex-grow weights on the
+ * `Slack` blocks. Three at the root, and the middle one is the body, which
+ * splits its own share equally between its two seams.
+ *
+ * Read them as sixteenths of the free space once the body's split is unrolled:
+ * 3 above the masthead, 4 above the first section rule, 4 between the tiers, 1
+ * below the last notice. The tail is smallest because it is the only seam that
+ * starts with a structural floor under it, 83px of tab-bar clearance and
+ * padding that no layout here can remove. The arithmetic against the 844px
+ * viewport is in the block comment on the body.
+ */
+const SLACK_LEAD = 3;
+const SLACK_BODY = 8;
+const SLACK_TAIL = 1;
 
 /** Where a reader adds names and follows. `/watch` has no add affordance. */
 const WATCHLIST_DESK = "/radar/watchlist";
@@ -220,10 +237,26 @@ export function WatchScreen({
         }}
       >
         <WatchMasthead />
-        {/* Centred rather than left dangling under the masthead. A short state
-            that keeps the tall layout's top alignment leaves half the viewport
-            as dead screen, which is the defect PR #710 shipped on `/claim`
-            (415px, 49.1% of the viewport). Measurements in the PR body. */}
+        {/* STILL CENTRED, and this is the one branch that is. The block below
+            distributes its free space across the seams the layout already has,
+            which is what stops a short screen reading as a hole under the
+            masthead. This branch has no seams: one notice, nothing above it and
+            nothing below it, so there is nothing to distribute into and a
+            weighted split would collapse into the same two lumps. A single
+            block centred in the free space is a composition; the same block
+            left dangling under the masthead is the defect PR #710 shipped on
+            `/claim` (415px, 49.1% of the viewport).
+
+            IT IS ALSO NOT REACHABLE ON A DEVELOPMENT SERVER, so nothing about
+            it is stated here as measured. It needs a signed-out PRODUCTION
+            build, and `src/proxy.ts` redirects that request to `/auth` before
+            this component runs. What can be said from the code is that it draws
+            one notice under the masthead and nothing else, which is the
+            shortest body on this screen by a distance and leaves far more free
+            space than any weighting could place inside the 15% gate. The
+            per-entry failure branch is unreachable for its own reason: it needs
+            a database error, and the sample content's `watchlistCouldNotRead`
+            is empty. Both are named rather than tabulated. */}
         <div
           style={{
             flex: 1,
@@ -299,32 +332,57 @@ export function WatchScreen({
         flexDirection: "column",
       }}
     >
+      <Slack grow={SLACK_LEAD} />
       <WatchMasthead />
 
-      {/* THE SHORT STATE IS CENTRED, and it is centred unconditionally.
-          Omitting a whole tier plus a hero without reflowing is how PR #710
-          shipped 415px of dead screen on `/claim`, 49.1% of the viewport.
-          `justifyContent: center` is safe on every state rather than only the
-          short ones: `flex: 1` leaves `min-height: auto` on a column flex
-          item, so a body taller than the free space has no free space to
-          distribute and centring is a no-op. Measured both ways; the numbers
-          are in the PR body.
+      {/* THE SLACK IS SPREAD ACROSS THE LAYOUT'S OWN SEAMS, not dumped in one
+          place. This replaces `justifyContent: center` on this block, and the
+          reason centring was here in the first place still stands: omitting a
+          whole tier plus a hero without reflowing is how PR #710 shipped 415px
+          of dead screen on `/claim`, 49.1% of the viewport. So the short states
+          still absorb their free space rather than piling it under the last
+          notice. What changed is WHERE.
 
-          What centring CANNOT remove is the floor. `#main-content` already
-          carries `padding-bottom: var(--mobile-tabbar-height)`, measured at
-          59px, and the fixed bar sits at top 785 in a 844 viewport, so the
-          59px clearance block below plus this block's own 24px is 83px of
-          structural gap under every state, short or tall. 83px is 9.8% of the
-          viewport and it is the floor the 15% gate is measured against. */}
+          Centring has two lumps and only two, and the masthead is in neither.
+          Measured on the empty state at 390x844: 785px root, 548px of content,
+          237px of free space, split into a 134px hole between the masthead and
+          the first section rule and a 204px tail. The masthead stayed pinned to
+          the top while the rules floated in the middle, which is the part that
+          read as unfinished. Both lumps also sat over the 15% gate on their own.
+
+          Four weighted `Slack` blocks take that free space instead: above the
+          masthead, above the first section rule, between the two tiers, and
+          below the last notice. The weights are the arithmetic. 237px at
+          3:8:1 across the root gives the lead 59px, this block 158px and the
+          tail 20px, and this block splits its 158px equally between its two
+          seams. Against the 844px viewport that is 7.7% lead, 11.5% and 12.4%
+          interior, 12.2% trailing, every one of them inside the gate, where
+          centring measured 15.9% and 24.1%. Re-measured numbers for all four
+          states are in the PR body.
+
+          THE TAIL WEIGHT IS THE SMALLEST ON PURPOSE, because the tail is the
+          only gap that starts in a hole. `#main-content` already carries
+          `padding-bottom: var(--mobile-tabbar-height)`, measured at 59px, and
+          the fixed bar sits at top 785 in an 844 viewport, so the 59px
+          clearance block below plus this block's own 24px is 83px of structural
+          gap under every state, short or tall. 83px is 9.8% of the viewport and
+          it is the floor the 15% gate is measured against, which leaves the
+          tail 43px of headroom where every other seam has over 100.
+
+          A TALL STATE IS UNTOUCHED, for the same reason centring was safe on
+          one: a `Slack` is `flex-basis: 0`, so with no free space to distribute
+          it is 0px high and the block lays out exactly as it did. Measured on
+          the populated state, whose root is 1319px: lead, both seams and the
+          tail are unchanged from before this edit. */}
       <div
         style={{
-          flex: 1,
+          flex: `${SLACK_BODY} 1 auto`,
           display: "flex",
           flexDirection: "column",
-          justifyContent: "center",
           padding: `18px ${PAD} 24px`,
         }}
       >
+        <Slack grow={1} />
         {stale ? (
           <WatchNotice
             body={`Last checked ${data.lastCheckedLabel}. Today's pass has not run yet, so everything below is the last reading rather than this morning's.`}
@@ -419,6 +477,10 @@ export function WatchScreen({
         ) : null}
 
         {/* ── following ──────────────────────────────────────────────── */}
+        {/* The second seam. It sits between the tiers rather than inside
+            either, so a short screen opens the gap the two sections already
+            have between them instead of inventing a new one. */}
+        <Slack grow={1} />
         <SectionRule
           label="following"
           count={
@@ -457,9 +519,28 @@ export function WatchScreen({
         ) : null}
       </div>
 
+      <Slack grow={SLACK_TAIL} />
       <TabBarClearance />
     </div>
   );
+}
+
+/**
+ * Free space, taken deliberately rather than left over.
+ *
+ * `flex-basis: 0` with an explicit grow is the whole of it: with free space to
+ * distribute the block takes its weighted share, and with none it is 0px high
+ * and the layout is exactly what it was. That is what lets one set of weights
+ * serve a 785px empty screen and a 1319px populated one without a branch.
+ *
+ * `flex-shrink: 0` because a `Slack` has nothing to shrink and must never be
+ * asked to absorb an overflow that belongs to the content.
+ *
+ * Empty and `aria-hidden`, so a screen reader walks from the masthead to the
+ * first section rule with nothing between them.
+ */
+function Slack({ grow }: { grow: number }) {
+  return <div aria-hidden="true" style={{ flex: `${grow} 0 0`, minHeight: 0 }} />;
 }
 
 /**
@@ -659,22 +740,42 @@ function WatchlistCard({ item, quote }: { item: WatchlistItem; quote?: WatchQuot
     </>
   );
 
-  /* The private card is drawn without a handler in the design and stays a plain
-     container here. A card that looks tappable and is not is worse than one
-     that does not, and there is no private-company surface to open. */
-  if (item.kind === "private") return <div style={shape}>{body}</div>;
+  /* WHERE THE CARD GOES IS NOT DECIDED HERE, and that is the whole design of
+     it. `item.href` arrives from the loader, which PROVED it against
+     `companies` before setting it (`src/lib/watch-links.ts`). This component
+     runs in the browser and cannot check anything, so it renders a destination
+     rather than inventing one.
+
+     WHAT CHANGED. Every card was a `<button>` with `onClick={() => {}}`, on the
+     stated grounds that neither destination existed. Half of that expired:
+     `/company/[id]` shipped in PR #721. This was also the only path from a
+     phone reader's own watchlist to Company Intel, and it was not connected.
+
+     WHY IT IS PROVED RATHER THAN BUILT. The obvious version, `/company/` plus
+     the identifier, tells a reader with BRK.B on their list that Berkshire
+     Hathaway is not on Signalera, over a company with 540 corpus mentions. The
+     resolver's ticker regex rejects the dot. So a card links only when the
+     route's own reconstruction has been shown to land, and draws as a plain
+     card otherwise. An unlinked card is a card; a card that lands on the miss
+     surface is a false claim about the reader's own list, which is the thing
+     `watch-data.ts` spends its header refusing to make.
+
+     TODO, see #643: open the industry signal. `/signal` is step 10 and still
+     does not exist, so an industry never carries an href.
+
+     A REAL ANCHOR, never a button with a router push. It gives back long press,
+     open in a new tab and the status-bar preview, and it is what
+     `watch-notice.tsx` already does for the two desk links on this screen.
+     Nothing is lost with the `<button>`: the card carried no handler, no
+     `aria-pressed` and no disabled state, so `styles.bare` is the whole of what
+     it was, and the same class resets the anchor. `text-decoration` is the one
+     thing that reset does not cover, so the anchor turns it off inline. */
+  if (item.href === null) return <div style={shape}>{body}</div>;
 
   return (
-    <button
-      type="button"
-      // TODO, see #643: open the company or the industry signal. /company/[id] is
-      // step 9 and /signal is step 10; neither exists, so this is a no-op.
-      onClick={() => {}}
-      className={styles.bare}
-      style={shape}
-    >
+    <Link href={item.href} prefetch={false} className={styles.bare} style={{ ...shape, textDecoration: "none" }}>
       {body}
-    </button>
+    </Link>
   );
 }
 

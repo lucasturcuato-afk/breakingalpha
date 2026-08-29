@@ -46,9 +46,20 @@ export type ResolveAliasResult = {
 const RESOLVER_COLS =
   "id, name, ticker, sector, mention_count, key_themes, first_seen, last_updated, sec_cik";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const TICKER_RE = /^[A-Z]{1,5}$/;
+/**
+ * The ticker branch's own gate, exported so a caller can decide in advance
+ * whether a slug will take that branch instead of guessing at it. A ticker
+ * outside this shape (BRK.B) falls through to the name match, where it matches
+ * nothing, so a link built from one lands on the empty state.
+ */
+export const TICKER_RE = /^[A-Z]{1,5}$/;
 
-function slugToCompanyName(slug: string): string {
+/**
+ * Exported for the same reason. `src/lib/ask-companies-data.ts` builds links
+ * into this route and proves each one lands by running the route's own
+ * reconstruction rather than a second version of it.
+ */
+export function slugToCompanyName(slug: string): string {
   const decoded = decodeURIComponent(slug).replace(/-/g, " ");
   const lower = decoded.toLowerCase();
   if (CANONICAL[lower]) return CANONICAL[lower];
