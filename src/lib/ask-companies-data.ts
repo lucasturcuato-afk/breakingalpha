@@ -22,7 +22,7 @@
  * NO PER-READER FIGURE. The design's third column reads "2 of your entries",
  * which needs a count of the reader's own claims against each company. This
  * read does not carry one and no second query is made for it here. The column
- * carries the SECTOR instead, which the same rows already hold, and the count
+ * carries the SECTOR instead, a fact the same read already carries, and the count
  * that actually ordered the list is stated once in the block's own copy rather
  * than repeated as a figure on every row.
  *
@@ -88,7 +88,7 @@ export type AskCompaniesStage = "ready" | "error";
  * function of depth, and this block is the head of the list, not the list.
  * SHOWN is six rather than the prototype's three because three rows out of a
  * corpus this size read as a sample rather than as a way in, and six is what
- * the scroll region holds at 390 without the block running past the composer.
+ * the scroll region fits at 390 without the block running past the composer.
  */
 const READ_LIMIT = 50;
 const SHOWN = 6;
