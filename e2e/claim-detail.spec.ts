@@ -37,6 +37,16 @@
  * is created here, because creating one is a write. Each skips with a stated
  * reason when the day does not carry it, which is a fact about the brief and
  * not a failure of the screen.
+ *
+ * AND THE SECOND OF THOSE IS A REAL LIMITATION OF THIS SUITE, not just a quiet
+ * day. Every route into the screen here starts at /ledger, which draws TODAY's
+ * brief, so the only adopted calls this file can reach are calls adopted from
+ * today. An independent measurement of this branch found an adopted call on an
+ * OLDER brief and reached its screen by address; that is the state /claim
+ * exists for, because a call adopted while its window is open has no /entry
+ * page, and this suite structurally cannot navigate to it. Covering it needs an
+ * entry point that lists a reader's open commitments, or a fixture target, and
+ * neither exists today. Recorded rather than papered over.
  */
 import { test as base, expect, type Page, type Route } from "@playwright/test";
 import { signIn } from "./auth-helper";

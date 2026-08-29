@@ -56,9 +56,10 @@ const PAD = "var(--v3-pad)";
  * looks like, rather than a gap framed by a rule.
  *
  * `minHeight: 100%` STILL PAINTS THE WHOLE BOX, and that part is load bearing:
- * `main#main-content` is `bg-parchment` (#faf7f2 light, #0f0f0f dark) and this
- * screen is `--c-bg` (#fffdf9, #14100a), so a screen that shrink-wrapped its
- * content would draw a visible two-tone seam across the phone. It resolves
+ * `main#main-content` fills with `bg-parchment` and this screen fills with
+ * `--c-bg`, and those two are not the same value in EITHER theme, so a screen
+ * that shrink-wrapped its content would draw a visible two-tone seam across the
+ * phone. Measured 785px of screen inside an 844px viewport. It resolves
  * against the definite height `main` gives the subtree, which is why the page's
  * gate div carries `h-full`; see the comment there and the longer one at
  * `src/app/ledger/page.tsx:114-123`. */

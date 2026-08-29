@@ -54,8 +54,9 @@
 
 /* DARK ONLY: an edge on the live primary.
  *
- * Measured on the running build: the button fills with `--c-inverse` (#0c0906)
- * and sits on `--c-bg` (#14100a), which is about 1.05:1. The LABEL is fine,
+ * Measured on the running build: in dark the button fills with `--c-inverse`
+ * and sits on `--c-bg`, and those two resolve about 1.05:1 apart. The LABEL is
+ * fine,
  * `--c-oninv` against that fill is the pair `commit-sheet.tsx:204-217` already
  * corrected to and measures 17.34:1, so a reader can read the words. They just
  * cannot see the button: there is no figure and ground, only a sentence
