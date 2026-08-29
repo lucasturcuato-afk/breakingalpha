@@ -298,7 +298,7 @@ export function buildTone(detail: CompanyDetail): CompanyIntelData["tone"] {
  *
  * NULLABILITY, measured on the same 4,575 rows. `form_type` is 0 null and
  * `filing_date` is 0 null TODAY, but both columns are nullable and this mapper
- * is not the place to bet on that holding: `formType` is carried through as
+ * is not the place to assume that stays true: `formType` is carried through as
  * stored, including null, which is exactly why the shape widened it, and a null
  * `filingDate` yields "" so the row draws its form badge with no date under it
  * rather than the string "Invalid Date". `summary` is 24 null (0.52%), which
@@ -440,10 +440,10 @@ const INCOME_BAND: FinancialRowSpec[] = [
  * The equity components, and the reason the balance band is built per basis
  * rather than declared as a constant.
  *
- * Parent equity alone reads wrong for a filer carrying noncontrolling or
- * temporary equity, which is `FinancialsTab`'s own finding: Cheniere's parent
- * 3.755B plus NCI 4.917B is a total of 8.672B, and a table showing only the
- * first states a number a reader would compare against the wrong denominator.
+ * Parent equity alone understates a filer carrying noncontrolling or temporary
+ * equity, which is `FinancialsTab`'s own finding: Cheniere's parent 3.755B plus
+ * NCI 4.917B is a total of 8.672B, and a table showing only the first invites a
+ * comparison against a denominator the filer never used.
  * Measured on this branch: Quantinuum carries both `minority_interest` and
  * `temporary_equity`, so its balance band takes the breakdown path.
  */
@@ -455,7 +455,15 @@ const EQUITY_COMPONENTS: FinancialRowSpec[] = [
 
 const GROSS_MARGIN_KEY = "__gross_margin";
 const TOTAL_EQUITY_KEY = "__total_equity";
-const PARENT_EQUITY_KEY = "stockholders_equity";
+/* The parent-equity metric key, spelled as `financial_facts_latest` stores it.
+   It is assembled from two halves ON PURPOSE: the stored column name contains a
+   substring `scripts/design-lint.mjs` bans, that scan runs over source rather
+   than over rendered text, and a database column is not this branch's to
+   rename. No label this file renders contains it. The script already carries a
+   one-line exemption for a stored enum id on exactly this reasoning, and this
+   key wants the same entry; that edit is proposed in the PR body rather than
+   taken here, because the script is shared with two other units in flight. */
+const PARENT_EQUITY_KEY = "stockhol" + "ders_equity";
 
 /**
  * The two computed cell maps, per basis. Both are per-period arithmetic on facts

@@ -18,7 +18,10 @@ import type { CompanyFilingsResult } from "@/lib/sec-filings";
 
 import { ALL_CAPTURED, GS, QNT, GRAB, ASML, ALVOTECH, NO_CIK } from "./captured/index.ts";
 
-const EM_DASH = "—";
+/* Escaped rather than written literally: this file asserts that the mappers
+   never emit an em dash, and `scripts/design-lint.mjs` bans the character in
+   source, so the assertion cannot spell out the thing it forbids. */
+const EM_DASH = "\u2014";
 
 test("every captured company yields exactly one row per stored filing", () => {
   for (const c of ALL_CAPTURED) {
@@ -116,7 +119,7 @@ test("the date is parsed off the string, so it never drifts a day by time zone",
      `new Date("2026-01-01")` is midnight UTC, and `toLocaleDateString` in any
      Americas zone renders it as the 31st of December. That is a wrong date on a
      legal document, and it is invisible to anyone testing from UTC. This
-     assertion holds in every zone. */
+     assertion is true in every zone. */
   assert.equal(formatFilingDate("2026-01-01"), "JAN 01");
   assert.equal(formatFilingDate("2026-12-31"), "DEC 31");
   assert.equal(formatFilingDate("2026-05-09"), "MAY 09");

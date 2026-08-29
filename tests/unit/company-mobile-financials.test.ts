@@ -20,7 +20,10 @@ import type { FinancialsBasis, FinancialsRow } from "@/components/company/mobile
 
 import { ALL_CAPTURED, GS, ASML, GRAB, QNT, ALVOTECH, NO_CIK } from "./captured/index.ts";
 
-const EM_DASH = "—";
+/* Escaped rather than written literally: this file asserts that the mappers
+   never emit an em dash, and `scripts/design-lint.mjs` bans the character in
+   source, so the assertion cannot spell out the thing it forbids. */
+const EM_DASH = "\u2014";
 const BASES = ["annual", "quarterly"] as const;
 
 function allRows(basis: FinancialsBasis): FinancialsRow[] {
@@ -220,14 +223,14 @@ test("gross margin is gross profit over revenue for that same period", () => {
   const gm = row(built.annual, "Gross margin");
   assert.equal(gm.derived, true, "a derived line sits one indent in, at the muted scale");
 
-  const periods = ASML.financials.annual.periods;
-  const expected = periods.map((p) => {
-    const rev = ASML.financials.annual.grid.revenue[p.key].value;
-    const gp = ASML.financials.annual.grid.gross_profit[p.key].value;
-    return `${((gp / rev) * 100).toFixed(1)}%`;
-  });
-  assert.deepEqual(gm.values, expected);
-  assert.equal(gm.values[0], "52.8%");
+  /* Written out rather than recomputed from the same grid the mapper reads. A
+     test that redoes the arithmetic passes whatever the arithmetic does, so the
+     expected values are stated instead: ASML's stored revenue and gross profit,
+     divided once by hand. */
+  assert.deepEqual(gm.values, ["52.8%", "51.3%", "51.3%", "50.5%", "52.7%"]);
+  assert.deepEqual(built.annual.periods, ["FY2025", "FY2024", "FY2023", "FY2022", "FY2021"]);
+  assert.equal(ASML.financials.annual.grid.revenue["FY-2025"].value, 32667300000);
+  assert.equal(ASML.financials.annual.grid.gross_profit["FY-2025"].value, 17258000000);
 });
 
 test("gross margin needs both facts, so a period with only one gets no ratio", () => {
