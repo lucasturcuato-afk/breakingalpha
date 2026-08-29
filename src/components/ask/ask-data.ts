@@ -78,6 +78,25 @@ export const CHIP_PROMPTS: readonly [string, string] = [
   SUGGESTED_PROMPTS[2],
 ];
 
+/**
+ * The answer screen's pair, and it matters MORE than the browse pair does.
+ *
+ * Same defect, same fix, one screen later. It was reachable only through
+ * `ASK_ANSWER_FIXTURE.prompts`, so with the gate closed the answer screen drew
+ * no chips at all. Measured on a production build, `/ask?q=test` renders "This
+ * surface does not answer yet" with ZERO visible links to `/intelligence` on
+ * it. That is the worst screen in the product to strand someone on: they typed
+ * a question, they were told nothing answers it, and the surface that does
+ * answer it was one tap away with no control pointing at it.
+ *
+ * A different two from the browse pair because the design draws a different
+ * two at prototype line 2569. Both pairs are the live chat's own strings.
+ */
+export const ANSWER_CHIP_PROMPTS: readonly [string, string] = [
+  SUGGESTED_PROMPTS[1],
+  SUGGESTED_PROMPTS[2],
+];
+
 export type DirectoryDetail = {
   /** Reads as a count, never as a rate. */
   counter: string;

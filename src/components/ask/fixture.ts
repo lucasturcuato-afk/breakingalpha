@@ -1,4 +1,9 @@
-import { CHIP_PROMPTS, SUGGESTED_PROMPTS, type AskAnswerData, type AskBrowseData } from "./ask-data";
+import {
+  ANSWER_CHIP_PROMPTS,
+  CHIP_PROMPTS,
+  type AskAnswerData,
+  type AskBrowseData,
+} from "./ask-data";
 
 /**
  * Ask fixtures. SERVER ONLY.
@@ -83,6 +88,6 @@ export const ASK_ANSWER_FIXTURE: AskAnswerData = {
        its own, and neither is reproduced. */
     meta: "Entered Jul 22, supported, settles Sep 12.",
   },
-  prompts: [SUGGESTED_PROMPTS[1], SUGGESTED_PROMPTS[2]],
+  prompts: ANSWER_CHIP_PROMPTS,
   answeredAt: "Answered from intelligence gathered before 12:45.",
 };

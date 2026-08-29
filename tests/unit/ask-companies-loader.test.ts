@@ -169,3 +169,34 @@ test("resolvesTo follows a canonical redirect onto the row it redirects to", () 
 test("resolvesTo refuses a slug whose reconstruction names no row that was read", () => {
   assert.equal(resolvesTo("alpha-beta-systems", new Set<string>(), new Set(["alpha-beta systems"])), false);
 });
+
+/* ── the throw that would have escaped the contract ──────────────────── */
+
+test("a name containing a percent sign omits its row instead of throwing", () => {
+  /* `slugToCompanyName` opens with `decodeURIComponent`, which raises
+     `URIError: URI malformed` on a lone `%`. This slug is derived from a
+     company NAME, not from a URL, so nothing has escaped it on the way in.
+     `loadAskCompanies` catches the PostgREST error object and nothing else, so
+     an uncaught throw here would escape `{ data, stage }` and fail the whole
+     server render of /ask rather than omitting one row. */
+  assert.doesNotThrow(() => buildAskCompanies([{ id: "p", name: "100% Corp", ticker: null, sector: null }], 6));
+  assert.deepEqual(buildAskCompanies([{ id: "p", name: "100% Corp", ticker: null, sector: null }], 6), []);
+  assert.equal(resolvesTo("100%-corp", new Set<string>(), new Set(["100% corp"])), false);
+});
+
+test("a ticker the route cannot resolve is REPAIRED by the name branch, not dropped", () => {
+  /* /company/BRK.B reaches TICKER_RE, which rejects the dot, then falls to a
+     name match on "Brk.B" that nothing carries, so the shipped route answers
+     with the empty state. The ticker slug proves false here and the name slug
+     proves true, so the row ships as a link that works. */
+  const tickers = new Set(["BRK.B"]);
+  const names = new Set(["berkshire hathaway"]);
+  assert.equal(resolvesTo("brk.b", tickers, names), false);
+  assert.equal(resolvesTo("berkshire-hathaway", tickers, names), true);
+  const [row] = buildAskCompanies(
+    [{ id: "b", name: "Berkshire Hathaway", ticker: "BRK.B", sector: "Financial Services" }],
+    6,
+  );
+  assert.equal(row.href, "/company/berkshire-hathaway");
+  assert.equal(row.ticker, "BRK.B");
+});

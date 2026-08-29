@@ -15,7 +15,18 @@
  * directly rather than calling that route: `/ask` is a server component and a
  * server component calling its own HTTP route is a round trip for nothing,
  * which is the shape `src/lib/watch-data.ts` set. The noise predicate is
- * IMPORTED from the route rather than copied, so the two cannot drift.
+ * IMPORTED from the route rather than copied, and so are `TICKER_RE` and
+ * `slugToCompanyName`.
+ *
+ * TWO OF THE THREE HOPS ARE IMMUNE TO DRIFT, NOT ALL THREE, and the residual
+ * is named here rather than left as an implied guarantee.
+ * `src/app/company/[id]/page.tsx:89` carries its OWN private copy of
+ * `slugToCompanyName` and does not import the one this file uses. So hop 1 of
+ * the route runs that copy while the mirror below runs `aliasResolver`'s. The
+ * two are byte identical today, checked, so nothing is wrong now; an edit to
+ * one and not the other would make the proof below quietly wrong about the
+ * route it is proving against. That page is not this unit's to refactor. The
+ * fix, when someone takes it, is one import.
  *
  * WHAT IT REFUSES TO DO
  *
@@ -37,8 +48,23 @@
  * Measured on the live head of this read, 60 rows deep: 56 carry a ticker, 59
  * of 60 prove out (54 through the ticker branch, 5 through the name branch),
  * and the single omission is a row whose alias target sat outside the window
- * that was read. Ticker coverage falls away with depth, which is why the read
- * is shallow: it is a directory, and a directory only ever shows the head.
+ * that was read.
+ *
+ * PROVE-OUT DOES NOT DECAY WITH DEPTH, and an earlier version of this comment
+ * said it did and used that as the reason the read is shallow. Measured at four
+ * depths against the live corpus:
+ *
+ *   depth   ticker coverage   prove-out   ticker branch / name branch / omitted
+ *      50            92.0%       98.0%              44 /  5 /  1
+ *     100            96.0%      100.0%              94 /  6 /  0
+ *     200            91.0%       99.0%             180 / 18 /  2
+ *     500            83.2%       98.0%             413 / 77 / 10
+ *
+ * Ticker coverage does fall, 92% to 83%, and THE NAME BRANCH ABSORBS IT
+ * EXACTLY: 5 rows at depth 50, 77 at depth 500. Prove-out is flat. So depth is
+ * not a correctness constraint here and the read could go deeper safely.
+ * It is shallow for the ordinary reason instead: the block draws six rows, and
+ * a 500 row read to render six is 494 rows fetched to be thrown away.
  *
  * NO STALENESS AND NO CLOCK. Nothing here records when the corpus last moved,
  * and "as of" over a `last_updated` column would be a claim about the pipeline
@@ -84,11 +110,21 @@ export type AskCompaniesStage = "ready" | "error";
 /**
  * How deep the read goes, and how many rows the block draws.
  *
- * The window is shallow on purpose. Ticker coverage on this ordering is a
- * function of depth, and this block is the head of the list, not the list.
+ * READ_LIMIT is the smallest window that keeps the proof honest with room to
+ * spare, not a correctness floor: prove-out is flat at 98% to 100% from depth
+ * 50 to depth 500 (the table in the header), so this could be deeper and is
+ * not, because six rendered rows do not justify five hundred fetched ones.
+ *
  * SHOWN is six rather than the prototype's three because three rows out of a
- * corpus this size read as a sample rather than as a way in, and six is what
- * the scroll region fits at 390 without the block running past the composer.
+ * corpus this size read as a sample rather than as a way in.
+ *
+ * IT IS NOT A FIT. An earlier version of this comment claimed six was what the
+ * scroll region holds at 390 without running past the composer. Measured on the
+ * running page at 390x844: the region is `clientHeight` 497 against
+ * `scrollHeight` 798, and exactly ONE row is fully visible before the reader
+ * scrolls. Every count above one is a scroll, so six is a choice about how far
+ * the list goes, not about what fits, and the number should be argued on that
+ * ground or moved.
  */
 const READ_LIMIT = 50;
 const SHOWN = 6;
@@ -129,17 +165,42 @@ function nameSlug(name: string): string {
  * known to exist. A false answer may be a row that would in fact resolve
  * against something outside the window; the check errs toward omitting a row
  * rather than toward a link that lands nowhere.
+ *
+ * IT ALSO REPAIRS SOME ROWS RATHER THAN ONLY OMITTING THEM, and that is worth
+ * naming because it is the reason the two branches are tried in this order.
+ * `/company/BRK.B` reaches the ticker branch's own gate, `TICKER_RE`, which
+ * rejects the dot, then falls through to a name match on "Brk.B" that nothing
+ * carries, so the shipped route answers for Berkshire Hathaway with the empty
+ * state. Here the ticker slug proves false and the NAME slug proves true, so
+ * the row is emitted as `/company/berkshire-hathaway`, which renders. A ticker
+ * the route cannot resolve becomes a link that works rather than a row that
+ * disappears.
+ *
+ * IT CANNOT THROW, and the try/catch is not defensive habit. `slugToCompanyName`
+ * opens with `decodeURIComponent`, which raises `URIError: URI malformed` on a
+ * lone `%`, and this is called on a slug derived from a company NAME rather
+ * than from a URL, so a stored name like "100% Corp" reaches it unescaped.
+ * `loadAskCompanies` catches the PostgREST `error` object and nothing else, so
+ * an uncaught throw here would escape the `{ data, stage }` contract entirely
+ * and fail the whole server render of /ask rather than omitting one row. No
+ * such name is in the corpus today, which makes it latent rather than absent.
+ * A slug that cannot be decoded has not been proved, so it is `false`, which is
+ * the same answer every other unprovable slug gets.
  */
 export function resolvesTo(
   slug: string,
   tickers: ReadonlySet<string>,
   names: ReadonlySet<string>,
 ): boolean {
-  const first = canonicalize(slugToCompanyName(slug)).trim();
-  if (!first) return false;
-  if (TICKER_RE.test(first.toUpperCase()) && tickers.has(first.toUpperCase())) return true;
-  const second = canonicalize(slugToCompanyName(first)).trim();
-  return second.length > 0 && names.has(second.toLowerCase());
+  try {
+    const first = canonicalize(slugToCompanyName(slug)).trim();
+    if (!first) return false;
+    if (TICKER_RE.test(first.toUpperCase()) && tickers.has(first.toUpperCase())) return true;
+    const second = canonicalize(slugToCompanyName(first)).trim();
+    return second.length > 0 && names.has(second.toLowerCase());
+  } catch {
+    return false;
+  }
 }
 
 function provedHref(
