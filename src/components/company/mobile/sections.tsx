@@ -104,7 +104,7 @@ export function PrimerSection({
    * IT WAS NOT PASSED, and the key-figures empty state asserted "private,
    * pre-IPO, or not currently quoted" for every company with no XBRL on file.
    * That is true for Mistral AI and FALSE for a public filer that has a CIK and
-   * has not filed a periodic report yet, which is a wrong statement about a real
+   * has not filed a periodic report yet, which is a false claim about a real
    * company printed under its own name. The screen has had the flag in hand the
    * whole time.
    */
@@ -241,8 +241,8 @@ export function PrimerSection({
            same table the Financials section reads, and none of them is quote
            data. The sentence here used to be PrimerKeyStats' market-data one,
            "private, pre-IPO, or not currently quoted", which is a claim about a
-           listing and was false for any CIK holder that has not filed a
-           periodic report yet. `financialsEmptyCopy` is the pure module both
+           listing and was false for any company that has a CIK and has not
+           filed a periodic report yet. `financialsEmptyCopy` is the pure module both
            desktop tabs already share and it splits on exactly this flag, so the
            two surfaces cannot drift and neither one asserts a listing status
            nothing on this page reads. */

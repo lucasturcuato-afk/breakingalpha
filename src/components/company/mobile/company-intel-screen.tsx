@@ -286,7 +286,8 @@ export function CompanyIntelScreen({
               {/* `hasCik` reaches the primer too now. Its key-figures empty
                   state used to assert "private, pre-IPO, or not currently
                   quoted" for every company with no XBRL, which is false for a
-                  CIK holder that has not filed a periodic report yet. */}
+                  company that has a CIK and has not filed a periodic report
+                  yet. */}
               {active === "brief" ? <PrimerSection data={data} hasCik={hasCik} /> : null}
               {active === "trend" ? <ToneSection data={data} /> : null}
               {active === "filings" ? (
