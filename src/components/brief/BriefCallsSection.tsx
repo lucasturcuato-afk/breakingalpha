@@ -8,9 +8,11 @@
  *             first, each with the one-tap track control. This is the
  *             actionable layer; a resolved call never appears here and never
  *             carries a track affordance.
- *   RECORD    the desk's graded accuracy, computed from ALL real outcome rows
- *             and shown ONCE at section level as a trust signal, not as a
- *             scoreboard of stale calls mixed into today's action.
+ *   RECORD    the desk's graded record, counted from ALL real outcome rows and
+ *             shown ONCE at section level as a trust signal, not as a
+ *             scoreboard of stale calls mixed into today's action. Counts
+ *             only: the line is rendered by DeskRecordLine, which carries the
+ *             shared outcome vocabulary and no aggregate figure.
  *   THIS BRIEF the brief's own calls that have resolved, each shown with its
  *             real outcome and then a forward hook: the most specific REAL
  *             related object that already exists (an open desk call on the
@@ -62,6 +64,10 @@ import {
   type EmergingCluster,
   type RelatedNext,
 } from "@/lib/brief-call-related";
+import {
+  DeskRecordLine,
+  type DeskVerdictCounts,
+} from "@/components/brief/DeskRecordLine";
 import { trackClientEvent } from "@/lib/track-event";
 import { notifyRadarLanded } from "@/lib/radar-landed";
 import { buildTrackProvenance } from "@/lib/call-track-provenance";
@@ -102,13 +108,10 @@ const LIVE_MAX = 5;
 const POOL_LOOKBACK_DAYS = 14;
 const CLUSTER_LOOKBACK_DAYS = 7;
 
-/** The desk's graded record, computed from real outcome rows only. */
-interface DeskRecord {
-  correct: number;
-  wrong: number;
-  partial: number;
-  ungradable: number;
-}
+/** The desk's graded record, counted from real outcome rows only. The shape
+ *  and the line that renders it live in DeskRecordLine, so the copy can be
+ *  rendered and asserted over without this component's Supabase effect. */
+type DeskRecord = DeskVerdictCounts;
 
 /** What a surface needs to observe one rendered call card. Identity included,
  *  so the observer never has to read it back out of the DOM. */
@@ -691,7 +694,6 @@ export default function BriefCallsSection({
     );
   };
 
-  const gradedTotal = record ? record.correct + record.wrong + record.partial : 0;
 
   return (
     <section>
@@ -738,16 +740,7 @@ export default function BriefCallsSection({
             Desk record unavailable.
           </p>
         ) : (
-          <p className="font-sans text-[11px] text-text-muted">
-            <span className="font-data text-[10px] tracking-[0.12em] uppercase text-text-faint mr-2">
-              Desk record
-            </span>
-            {record.correct}W · {record.wrong}L · {record.partial} partial
-            {gradedTotal > 0
-              ? ` · ${Math.round((100 * record.correct) / gradedTotal)}% hit rate across ${gradedTotal} graded calls`
-              : ""}
-            {" · "}graded by price attribution
-          </p>
+          <DeskRecordLine record={record} />
         )}
       </div>
 
