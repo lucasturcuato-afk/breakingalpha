@@ -154,6 +154,72 @@ const AVATAR_PROBE = `(() => {
   return out;
 })()`;
 
+/* Does the guard judge the RECTANGLE, or only the subtree?
+ *
+ * This is the regression test for the hole that cleared four captures a human
+ * then caught by opening the file. It builds a page whose crop subtree is
+ * innocuous and whose FIXED chrome carries account data sitting on top of the
+ * crop, which is exactly the shape that used to pass. The old guard read the
+ * subtree and wrote the file. The new one must refuse.
+ *
+ * The specimen is synthetic on purpose: no real address, no real reader. A
+ * script whose job is catching published account data must not itself carry
+ * any, which this file already learned once. */
+async function selfTestRectangle() {
+  const { chromium } = await import("playwright");
+  const browser = await chromium.launch();
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  await page.setContent(`
+    <body style="margin:0">
+      <div id="crop" style="height:600px;padding:12px">
+        Watchlist feed. 25 articles. Nothing here names a reader.
+      </div>
+      <div id="chrome" style="position:fixed;top:200px;left:0;right:0;padding:8px">
+        Good morning, Firstname
+      </div>
+    </body>`);
+  const res = await page.evaluate(() => {
+    const root = document.querySelector("#crop");
+    const cr = root.getBoundingClientRect();
+    const out = [];
+    for (const el of document.querySelectorAll("*")) {
+      if (el === root || root.contains(el) || el.contains(root)) continue;
+      const cs = getComputedStyle(el);
+      if (cs.position !== "fixed" && cs.position !== "sticky") continue;
+      const r = el.getBoundingClientRect();
+      if (r.width === 0 || r.height === 0) continue;
+      if (r.left < cr.right && r.right > cr.left && r.top < cr.bottom && r.bottom > cr.top) {
+        out.push(el.innerText || "");
+      }
+    }
+    return { cropText: root.innerText || "", intruders: out };
+  });
+  await browser.close();
+
+  const subtreeOnly = res.cropText;
+  const wholeFrame = [res.cropText, ...res.intruders].join("\n");
+  const missedBefore = DETECTORS.filter((d) => d.test.test(subtreeOnly));
+  const caughtNow = DETECTORS.filter((d) => d.test.test(wholeFrame));
+
+  if (res.intruders.length !== 1) {
+    console.error(`plate.mjs rectangle self test FAILED: expected 1 intruder, saw ${res.intruders.length}`);
+    process.exit(2);
+  }
+  if (missedBefore.length !== 0) {
+    console.error("plate.mjs rectangle self test FAILED: the subtree specimen is not innocuous");
+    process.exit(2);
+  }
+  if (caughtNow.length === 0) {
+    console.error("plate.mjs rectangle self test FAILED: chrome over the crop did NOT trip a detector");
+    process.exit(2);
+  }
+  console.log(
+    `plate.mjs rectangle self test: chrome over the crop is judged. ` +
+    `subtree alone trips 0 detectors, the frame trips ${caughtNow.length} ` +
+    `(${caughtNow.map((d) => d.id).join(", ")}).`
+  );
+}
+
 function selfTest() {
   const failures = [];
   for (const d of DETECTORS) {
@@ -189,7 +255,10 @@ function arg(name, fallback) {
 }
 
 async function main() {
-  if (process.argv.includes("--self-test")) return selfTest();
+  if (process.argv.includes("--self-test")) {
+    selfTest();
+    return selfTestRectangle();
+  }
 
   // The self test runs on EVERY invocation, before a browser is opened.
   // A detector that has quietly stopped matching must not be discovered
@@ -298,18 +367,85 @@ async function main() {
   }
 
   /* ---- THE GUARD, before anything is written ---- */
+
+  /* Scroll the crop into view FIRST. `locator.screenshot()` scrolls before it
+     captures, so the rectangle judged below has to be the rectangle captured.
+     Reading rects at the old scroll position judges a frame nobody writes. */
+  if (selector && !fullPage) {
+    await page.locator(selector).first().scrollIntoViewIfNeeded().catch(() => {});
+    await page.waitForTimeout(120);
+  }
+
   const pageText = await page.evaluate(() => document.body.innerText || "");
-  const cropText = selector
-    ? await page.evaluate(
-        (s) => (document.querySelector(s)?.innerText || ""),
-        selector
-      )
-    : pageText;
+
+  /* THE SUBTREE IS NOT THE FRAME, AND THAT WAS THE HOLE.
+   *
+   * This read `document.querySelector(sel).innerText`, which is the crop's
+   * SUBTREE, while the capture below is `locator.screenshot()`, which is the
+   * crop's RECTANGLE. Anything painted over that rectangle from outside the
+   * subtree was in the image and invisible to every detector.
+   *
+   * Not theoretical. It cleared four separate captures that a human then
+   * caught by opening the file: the Next dev-tools badge over a Company Intel
+   * crop, the fixed tab bar over a commit-sheet crop, and two more on a Watch
+   * plate. Three findings this year were caught by looking rather than by this
+   * script, which is the opposite of what a guard is for.
+   *
+   * So the subject is now the subtree PLUS every fixed or sticky box whose own
+   * rectangle intersects the crop. That is what the camera sees.
+   *
+   * WHY FIXED AND STICKY AND NOT EVERYTHING. Those are the boxes that escape
+   * their place in the flow and land on top of an unrelated region. An
+   * absolutely positioned box scrolls with its container, so if it overlaps the
+   * crop it is almost always inside it and already read. The boundary is stated
+   * here rather than left implicit: if a plate ever ships chrome that is
+   * neither fixed nor sticky, this is the line to widen.
+   *
+   * OPACITY IS DELIBERATELY IGNORED. `--hide` paints an element out with
+   * `opacity: 0` and the file's existing stance is that the guard still reads
+   * it, so the flag cannot launder a frame. An intruder is judged whether or
+   * not it paints, for the same reason. */
+  const crop = selector
+    ? await page.evaluate((s) => {
+        const root = document.querySelector(s);
+        if (!root) return { text: "", intruders: [] };
+        const cr = root.getBoundingClientRect();
+        const intruders = [];
+        const taken = [];
+        for (const el of document.querySelectorAll("*")) {
+          if (el === root || root.contains(el) || el.contains(root)) continue;
+          const cs = getComputedStyle(el);
+          if (cs.position !== "fixed" && cs.position !== "sticky") continue;
+          const r = el.getBoundingClientRect();
+          if (r.width === 0 || r.height === 0) continue;
+          const overlaps =
+            r.left < cr.right && r.right > cr.left &&
+            r.top < cr.bottom && r.bottom > cr.top;
+          if (!overlaps) continue;
+          if (taken.some((a) => a.contains(el))) continue;
+          taken.push(el);
+          const name =
+            el.tagName.toLowerCase() +
+            (el.id ? `#${el.id}` : "") +
+            (typeof el.className === "string" && el.className.trim()
+              ? `.${el.className.trim().split(/\s+/)[0]}`
+              : "");
+          intruders.push({ name, text: el.innerText || "" });
+        }
+        return { text: root.innerText || "", intruders };
+      }, selector)
+    : { text: pageText, intruders: [] };
+
+  const cropText = crop.text;
+  const intruders = crop.intruders;
 
   // The frame that will actually be written is what gets judged. A crop that
   // excludes the account card is honest evidence, not a loophole, which is
-  // why this reads the crop rather than the page.
-  const subject = fullPage ? pageText : cropText;
+  // why this reads the crop rather than the page. It now also reads what is
+  // painted OVER the crop, which is equally part of the frame.
+  const subject = fullPage
+    ? pageText
+    : [cropText, ...intruders.map((i) => i.text)].join("\n");
 
   const hits = DETECTORS.filter((d) => d.test.test(subject));
   const avatars = await page.evaluate(AVATAR_PROBE);
@@ -343,6 +479,13 @@ async function main() {
       console.error(`  [avatar] an account initial is rendered: ${JSON.stringify(avatarHit)}`);
       console.error(`      the brand "S" is the only glyph that is provably signed out`);
     }
+    if (intruders.length) {
+      console.error(
+        `  note: ${intruders.length} fixed or sticky box(es) paint over this crop and were judged with it:`
+      );
+      for (const i of intruders) console.error(`      ${i.name}`);
+      console.error(`      if the hit came from one of those, --hide it or crop clear of it`);
+    }
     console.error(
       "\n  Nothing was written. Three ways forward, in order of preference:\n" +
       "    1. Crop tighter. The region that is evidence usually is not the region\n" +
@@ -367,6 +510,13 @@ async function main() {
   console.log(`plate.mjs wrote ${out}`);
   console.log(`  ${shape} at ${width}x${height}, theme ${theme}, wait ${wait}, ${buf.length} bytes`);
   console.log(`  guard: ${DETECTORS.length} detectors clear, no account initial in frame`);
+  if (!fullPage) {
+    console.log(
+      intruders.length
+        ? `  in frame from outside the crop, judged: ${intruders.map((i) => i.name).join(", ")}`
+        : "  nothing fixed or sticky paints over this crop"
+    );
+  }
   if (hidden.length) console.log(`  hidden (opacity 0, still read by the guard): ${hidden.join(", ")}`);
 
   await browser.close();
