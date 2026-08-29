@@ -122,16 +122,28 @@ test.describe("Watch, signed in", () => {
     await expect(screen.getByText("following", { exact: true })).toBeVisible();
   });
 
-  test("the omitted tier is absent, not drawn empty", async ({ page }) => {
+  test("the omitted tier is absent, not drawn empty, and states its reason", async ({
+    page,
+  }) => {
     await page.goto("/watch");
     const screen = page.locator('[data-parity="watch"]');
     await expect(screen).toBeVisible({ timeout: 20_000 });
     // No rule, and no empty-tier notice standing in for one. "No tracked views
-    // yet" is a claim about the reader and `user_claims` has no headline column
-    // to make it from.
+    // yet" is a claim about the reader and needs a read behind it.
+    //
+    // The comment that stood here said `user_claims` has no headline column.
+    // That was measured wrong and is retracted: `user_claim` IS the headline
+    // (sql/0012:10-11). The tier is absent because no row is a tracked view,
+    // which is a claim about the product. See `src/components/watch/omissions.ts`.
     await expect(screen.getByText("tracked views", { exact: true })).toHaveCount(0);
     await expect(screen).not.toContainText("No tracked views yet");
     await expect(screen).not.toContainText("NO DIRECTION, NO WINDOW");
+    // But the reason IS on screen, which is what changed. Unconditional, so it
+    // does not matter what this account's read came back with.
+    await expect(screen).toContainText("NOT SHOWN HERE");
+    await expect(screen).toContainText(
+      "The tier draws claims that carry no direction and no window.",
+    );
   });
 
   test("an empty watchlist is a read answering empty, and names a destination", async ({

@@ -28,19 +28,30 @@
  *
  * WHAT IT REFUSES TO DO
  *
- * TRACKED VIEWS ARE NOT LOADED, and the tier is not drawn. `TrackedView` needs
- * `{ id, note, headline, date }`. `note` and `date` are readable off
- * `user_claims`; `headline` is not. That table (`sql/0012_radar_user_claims.sql`)
- * carries no article foreign key, no article_id and no title column, so the
- * headline a note was written against is not recoverable from it. A note
- * rendered without the story it answers has lost the thing that made it a
- * tracked view, and synthesising a plausible headline beside a real note is the
- * invented-brief defect (see #670) with a different table under it. Two ways out,
- * both needing an owner and a migration this unit will not write:
- *   1. add an article FK to `user_claims` and backfill what can be recovered;
- *   2. amend the `TrackedView` contract to drop `headline`, and redraw the tier
- *      around note plus date alone.
- * Until one of those lands the tier is absent rather than approximated.
+ * TRACKED VIEWS ARE NOT LOADED, and the tier is not drawn. The reason is now
+ * stated on screen as well as here, out of `src/components/watch/omissions.ts`,
+ * which carries the measurement.
+ *
+ * THE REASON THAT USED TO STAND HERE IS RETRACTED. It said `headline` had no
+ * source because `user_claims` carries no article foreign key. `user_claim` IS
+ * the headline: `sql/0012_radar_user_claims.sql:10-11` says so verbatim,
+ * `/radar/calls` renders it as one, and `src/lib/review-data.ts` already reads
+ * `user_claim` alongside `commit_note` and `commit_note_at`. The mapping
+ * `{ id, note: commit_note, headline: user_claim, date: commit_note_at }` needs
+ * no migration and no backfill, and both note columns are live in production
+ * (0033, applied by hand 2026-08-25; confirmed by read on 2026-08-29).
+ *
+ * WHAT IS MISSING IS THE ROW SET. A tracked view is defined, by this repo and
+ * by the design it came from, as a claim with no direction and no window on it,
+ * and therefore one that is never graded. Measured read-only against production
+ * on 2026-08-29, whole table, every account: 18 rows, 1 carrying a commit_note,
+ * 0 with a null `expected_direction`, 0 with a null `resolution_window_end`.
+ * The one row with a note is bullish over a two-day window and already carries
+ * a verdict. Loading it would draw a graded directional call under a rule that
+ * says it has neither, on a screen whose masthead says nothing here is ever
+ * graded, and would put the reader's own record under the Radar pole that
+ * ruling 17 places under Ledger. The tier is absent rather than approximated,
+ * and the predicate was NOT widened to make it non-empty.
  *
  * NO THEME CLUSTERING on following. Cluster labels come from
  * `POST /api/radar/clusters` and are `null` until a lazy model pass names them

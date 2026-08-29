@@ -19,12 +19,24 @@ import { FONT_DISPLAY, FONT_SANS } from "@/components/mobile/fonts";
  * `WatchScreen` already consumed. That file's header lists what it refuses to
  * read and why.
  *
- * TWO OF THE DESIGN'S THREE TIERS SHIP. Tracked views do not: `TrackedView`
- * needs the headline a note was written against, and `user_claims` carries no
- * article foreign key, no article_id and no title column. `fixture.ts` records
- * the two ways out; both need an owner and a migration, and this route does not
- * draw an empty-tier notice in the meantime because "No tracked views yet" is a
- * claim about the reader with no read behind it.
+ * TWO OF THE DESIGN'S THREE TIERS SHIP. Tracked views still do not, and the
+ * reason recorded here was wrong. It said `user_claims` has no headline column;
+ * `sql/0012_radar_user_claims.sql:10-11` says `user_claim` IS the headline, and
+ * `src/lib/review-data.ts` already reads it beside `commit_note` and
+ * `commit_note_at`. The mapping works and needs no migration.
+ *
+ * The real reason is the rows. A tracked view is a claim with no direction and
+ * no window on it; measured read-only on 2026-08-29, across the whole table and
+ * every account, no such row exists, and the one row carrying a note is a
+ * bullish two-day call the grader has already resolved. Drawing it would state
+ * three things that are false about it. `src/components/watch/omissions.ts`
+ * carries the measurement.
+ *
+ * WHAT IS DIFFERENT NOW: the omission is stated on screen instead of only in
+ * comments like this one. Still NOT as an empty-tier notice. "No tracked views
+ * yet" is a claim about the reader and needs a read behind it; "this tier draws
+ * claims carrying no direction and no window, and none has been written that
+ * way" is a claim about the product and needs none.
  *
  * The tiers live at two separate desktop routes today (/radar/watchlist,
  * /radar/following). Neither is edited to get here: the design dismantles
