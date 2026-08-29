@@ -244,6 +244,50 @@ under the old name. Recorded here so the ruling lives in the repo rather than in
 a prompt that can be rewritten again.
 
 
+### Ruling 20: the Ask answer is a client fetch behind a submit, never a server read of `?q=`
+
+**The rule.** `/ask`'s answer block fetches from the client, after an explicit
+submit, the way `IntelligenceChat` already does. It must never be wired as a
+server render that reads `?q=` from `searchParams`.
+
+**Why the wrong way looks right.** `/ask` is a server component and `?q=` is a
+`searchParams` read, so wiring the answer to it is the obvious move, matches
+every other loader in the mobile build, and passes review. It is still wrong,
+and the reason is not visible in the code.
+
+**The measurement.** Preview build, signed in, landing on `/ask`, **zero user
+interaction**:
+
+```
+GET /ask?q=Which sectors show the most momentum?&_rsc=1odgr
+GET /ask?q=What are the strongest theses this week?&_rsc=1odgr
+GET /ask?q=Which sectors show the most momentum?&_rsc=seerg
+GET /ask?q=What are the strongest theses this week?&_rsc=seerg
+```
+
+`next/link` prefetched **four full RSC renders of the answer screen before a
+finger touched the screen**. The prompt chips at `ask-composer.tsx:38-63` carry
+no `prefetch` prop, so they take the framework default. Next 16.2.2.
+
+Wired as a server read, opening the Ask tab would therefore fire two answers'
+worth of `gemini-embedding-001` plus `gemini-2.5-flash` unprompted, and burn 2
+of the reader's 15 daily messages. The limit is consumed **before** the cache is
+checked (`api/intelligence/route.ts:99` then `:114-117`), so a prefetch costs
+the reader budget even on a cache hit.
+
+**`prefetch={false}` does not close it.** A shared `/ask?q=` URL, a reload, or a
+hardware back press all server-render the same route. The only fix that holds is
+that the render path never calls the model.
+
+**The shape this belongs to.** This is PR #721's defect by a different
+mechanism. There, `hidden md:block` hid a subtree and still mounted it, so a
+phone load POSTed to `gemini-2.5-flash` for a tree the reader could not see, and
+nobody noticed for weeks because nobody could see it. Here it is not a hidden
+subtree that still mounts, it is a hidden navigation that still renders. **The
+general rule both cases point at: a model call belongs behind a deliberate tap,
+never on a path the framework can walk on its own.**
+
+
 ## Open items
 
 Logged 2026-08-16 from a DOM read of `design_handoff_signalera_mobile/Signalera
