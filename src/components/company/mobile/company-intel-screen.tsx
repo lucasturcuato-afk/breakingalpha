@@ -3,18 +3,19 @@
 import { useCallback } from "react";
 import { useRouter } from "next/navigation";
 
-import { ClaimAnatomy, OutcomeLead, OUTCOME_TOKENS } from "@/components/ledger";
 import { useCompanyTabState, type CompanyTabId } from "@/hooks/useCompanyTabState";
 
 import styles from "./company-mobile.module.css";
-/* `./fixture` is NOT imported here and must never be. This is a client
-   component, so a value import from that module is a download of the invented
-   company: the gate stops the render and not the download. The shape lives in
-   `./types` and erases; the fixture arrives as the `data` prop, built behind
-   `mobileFixtureScreensEnabled()` on the server by
-   `src/app/company/[id]/page.tsx`. */
+/* There is no fixture module to import any more, and nothing here may grow
+   one. This is a client component, so a value import of invented data is a
+   DOWNLOAD of it: a gate stops the render and not the download, which is how
+   invented financials reached `.next/static` on a production build where they
+   could never paint. The shape lives in `./types` and erases; the data arrives
+   as the `data` prop, assembled on the server by
+   `src/lib/company-mobile/build.ts` from reads
+   `src/app/company/[id]/page.tsx` already has in hand. */
 import type { CompanyIntelData } from "./types";
-import { Chip, EmptyWell, SkeletonBar } from "./parts";
+import { Chip, SkeletonBar } from "./parts";
 import {
   FilingsSection,
   FinancialsSection,
@@ -101,12 +102,17 @@ export function CompanyIntelScreen({
    * True when the company resolved to a SEC CIK. Drives which sourced empty
    * copy the Filings, Financials and Insider sections use, exactly as it does
    * on the desktop tabs.
+   *
+   * REQUIRED, WITH NO DEFAULT. It used to default to `true`, so a call site
+   * that forgot the prop asserted an SEC identity for a company that may not
+   * have one, and the sections then said "no filings on file" where "not an
+   * SEC filer" was the truth. Absence must not silently become true.
    */
-  hasCik = true,
+  hasCik,
 }: {
   stage?: CompanyStage;
   data: CompanyIntelData | null;
-  hasCik?: boolean;
+  hasCik: boolean;
 }) {
   const router = useRouter();
   const { activeTab, setActiveTab } = useCompanyTabState();
@@ -137,9 +143,12 @@ export function CompanyIntelScreen({
   }, [router]);
 
   return (
+    /* No `data-fixture` attribute on this root. The screen reads the company's
+       own rows now, so announcing itself as a fixture to every audit script
+       would be false, and it is not conditional either: there is no branch left
+       that draws invented data. */
     <div
       data-parity="company"
-      data-fixture="true"
       className={styles.screenIn}
       style={{
         backgroundColor: "var(--c-bg)",
@@ -214,7 +223,10 @@ export function CompanyIntelScreen({
           <>
             <Masthead data={data} />
             <KpiGrid data={data} />
-            <YourEntries data={data} />
+            {/* NO "your entries on this name" BLOCK. `theses`, `user_claims`
+                and `watchlist` all carry real rows, but this route resolves none
+                of them, so there is nothing to draw. A new read, not a rewire.
+                See the header on `./types`. */}
 
             <div
               style={{
@@ -271,7 +283,7 @@ function Masthead({ data }: { data: CompanyIntelData }) {
             color: "var(--c-muted)",
           }}
         >
-          {data.ticker} · {data.exchange}
+          {data.ticker}
         </span>
         <span style={{ font: `600 11px/1 ${FONT_SANS}`, color: "var(--c-secondary)" }}>
           {data.sector}
@@ -289,29 +301,12 @@ function Masthead({ data }: { data: CompanyIntelData }) {
         {data.name}
       </h1>
 
-      <p
-        style={{
-          margin: "12px 0 0",
-          font: `500 17px/1 ${FONT_MONO}`,
-          color: "var(--c-ink)",
-        }}
-      >
-        {data.price}{" "}
-        {/* Tinted off the SIGN, never pinned green. The design draws a company
-            that happened to be up; a hardcoded green would paint a down day as
-            a gain the moment this reads a real quote. */}
-        <span
-          style={{
-            fontSize: "13px",
-            color: data.change.trimStart().startsWith("-")
-              ? "var(--c-redink)"
-              : "var(--c-greenink)",
-          }}
-        >
-          {data.change}
-        </span>
-      </p>
-
+      {/* NO PRICE LINE. The design draws a last price and a day change, and
+          neither is on any read this page resolves. Both come from a CLIENT
+          fetch to `/api/company-kpis`, which reaches Yahoo and carries its own
+          loading, error and staleness states. A quote drawn from a server shape
+          with no quote behind it can only be stale or invented, so the line is
+          absent rather than approximated. */}
       <MemoControl corpus={data.memoCorpus} />
     </>
   );
@@ -459,135 +454,6 @@ function KpiGrid({ data }: { data: CompanyIntelData }) {
           ) : null}
         </div>
       ))}
-    </div>
-  );
-}
-
-/**
- * The user's own record on this name.
- *
- * Fresh in the design: github.md maps no repo component to it, and the company
- * page carries no counterpart today. The claim object inside it is not fresh,
- * so it is composed from the shared anatomy through the slots that anatomy
- * already exposes rather than by giving that anatomy a third scale. The design
- * draws the reading in italic Playfair, which the row scale does not carry, so
- * it goes through the `meta` slot instead of the `prose` slot.
- */
-function YourEntries({ data }: { data: CompanyIntelData }) {
-  if (!data.entry && !data.following) {
-    return (
-      <>
-        <EntriesRule />
-        <EmptyWell headline="You have no entries on this name yet." />
-      </>
-    );
-  }
-
-  return (
-    <>
-      <EntriesRule />
-
-      {data.entry ? (
-        <div
-          style={{
-            marginTop: "12px",
-            border: "1px solid var(--c-border)",
-            borderRadius: "12px",
-            backgroundColor: "var(--c-card)",
-            overflow: "hidden",
-          }}
-        >
-          {/* State is a 2px TOP edge plus a dot and the state word. Never a
-              coloured left rule, and a challenged entry is never buried.
-
-              Edge and lead both read data.entry.state, and the edge takes the
-              same OUTCOME_TOKENS dot the lead does, so the two cannot drift. A
-              hardcoded red here labelled every entry Challenged. */}
-          <div
-            style={{
-              height: "2px",
-              backgroundColor: OUTCOME_TOKENS[data.entry.state].dot,
-            }}
-          />
-          <div style={{ padding: "13px 15px" }}>
-            <ClaimAnatomy
-              scale="row"
-              lead={
-                <div style={{ marginBottom: "9px" }}>
-                  <OutcomeLead state={data.entry.state} instrument={data.entry.date} />
-                </div>
-              }
-              claim={data.entry.claim}
-              meta={
-                <p
-                  style={{
-                    margin: "8px 0 0",
-                    font: `400 italic 13px/1.55 ${FONT_DISPLAY}`,
-                    color: "var(--c-body)",
-                    textWrap: "pretty",
-                  }}
-                >
-                  {data.entry.reading}
-                </p>
-              }
-            />
-          </div>
-        </div>
-      ) : null}
-
-      {data.following ? (
-        <div
-          style={{
-            marginTop: data.entry ? "10px" : "12px",
-            padding: "13px 15px",
-            border: "1px solid var(--c-border)",
-            borderRadius: "12px",
-            backgroundColor: "var(--c-surface)",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <span
-              aria-hidden="true"
-              style={{
-                flex: "none",
-                display: "inline-block",
-                width: "9px",
-                height: "9px",
-                border: "1.5px solid var(--c-secondary)",
-                borderRadius: "50%",
-              }}
-            />
-            <span style={{ font: `600 11px/1 ${FONT_SANS}`, color: "var(--c-secondary)" }}>
-              {data.following.since}
-            </span>
-          </div>
-          <p
-            style={{
-              margin: "8px 0 0",
-              font: `400 12.5px/1.5 ${FONT_SANS}`,
-              color: "var(--c-body)",
-            }}
-          >
-            {data.following.note}
-          </p>
-        </div>
-      ) : null}
-    </>
-  );
-}
-
-function EntriesRule() {
-  return (
-    <div style={{ marginTop: "24px", display: "flex", alignItems: "center", gap: "11px" }}>
-      <span
-        style={{
-          font: `400 italic 12.5px/1 ${FONT_DISPLAY}`,
-          color: "var(--c-secondary)",
-        }}
-      >
-        your entries on this name
-      </span>
-      <span aria-hidden="true" style={{ flex: 1, height: "1px", backgroundColor: "var(--c-border)" }} />
     </div>
   );
 }

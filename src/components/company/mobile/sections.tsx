@@ -16,7 +16,7 @@ import {
   insiderEmptyCopy,
 } from "@/components/company/tabs/empty-state-copy";
 
-import type { CompanyIntelData, ToneDirection } from "./types";
+import type { CompanyIntelData, ToneDirection, ToneRowDirection } from "./types";
 import { Chip, EmptyWell, RuledRow, SectionNote, SectionRule } from "./parts";
 import { FONT_DISPLAY, FONT_MONO, FONT_SANS } from "@/components/mobile/fonts";
 
@@ -31,6 +31,23 @@ export const TONE_INK: Record<ToneDirection, string> = {
   up: "var(--c-greenink)",
   down: "var(--c-redink)",
   flat: "var(--c-secondary)",
+};
+
+/**
+ * Fill for the dot beside one article's contribution to the reading.
+ *
+ * Base tokens, not ink tokens, because this is a fill and not text.
+ *
+ * THREE ENTRIES, and the third is the point. This was a two-way ternary,
+ * `direction === "up" ? green : amber`, over a type that could only be "up" or
+ * "mixed". A bearish article therefore drew amber, which reads as balanced
+ * coverage rather than as negative coverage, and it did so silently on exactly
+ * the rows a reader most needs to be right.
+ */
+const TONE_ROW_FILL: Record<ToneRowDirection, string> = {
+  up: "var(--c-green)",
+  mixed: "var(--c-amber)",
+  down: "var(--c-red)",
 };
 
 /**
@@ -302,7 +319,7 @@ export function ToneSection({ data }: { data: CompanyIntelData }) {
                 width: "7px",
                 height: "7px",
                 borderRadius: "50%",
-                backgroundColor: row.direction === "up" ? "var(--c-green)" : "var(--c-amber)",
+                backgroundColor: TONE_ROW_FILL[row.direction],
               }}
             />
             <div style={{ minWidth: 0, flex: 1 }}>
@@ -463,7 +480,18 @@ export function FilingsSection({
 /* Financials                                                          */
 /* ------------------------------------------------------------------ */
 
-const GRID = "1.35fr 1fr 1fr";
+/**
+ * The metric column, then one column per period.
+ *
+ * NOT a fixed three. `periods` is a list because the data is: measured on the
+ * live rows, GRAB has exactly one annual period and ASML exactly one quarterly.
+ * A hardcoded third track drew an empty column under a blank header for those
+ * filers, which reads as a period whose figures are missing rather than as a
+ * period that was never filed.
+ */
+function gridFor(periodCount: number): string {
+  return `1.35fr ${"1fr ".repeat(Math.max(periodCount, 1)).trim()}`;
+}
 const HEAD_FONT = `600 10px/1 ${FONT_SANS}`;
 
 /**
@@ -555,7 +583,7 @@ export function FinancialsSection({
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: GRID,
+                gridTemplateColumns: gridFor(periods.length),
                 backgroundColor: "var(--c-surface)",
                 borderBottom: "1px solid var(--c-border)",
               }}
@@ -563,26 +591,19 @@ export function FinancialsSection({
               <div style={{ padding: "9px 12px", font: HEAD_FONT, color: "var(--c-secondary)" }}>
                 METRIC
               </div>
-              <div
-                style={{
-                  padding: "9px 8px",
-                  textAlign: "right",
-                  font: HEAD_FONT,
-                  color: "var(--c-secondary)",
-                }}
-              >
-                {periods[0]}
-              </div>
-              <div
-                style={{
-                  padding: "9px 12px 9px 8px",
-                  textAlign: "right",
-                  font: HEAD_FONT,
-                  color: "var(--c-secondary)",
-                }}
-              >
-                {periods[1]}
-              </div>
+              {periods.map((period, i) => (
+                <div
+                  key={period}
+                  style={{
+                    padding: i === periods.length - 1 ? "9px 12px 9px 8px" : "9px 8px",
+                    textAlign: "right",
+                    font: HEAD_FONT,
+                    color: "var(--c-secondary)",
+                  }}
+                >
+                  {period}
+                </div>
+              ))}
             </div>
 
             {bands.map((band, bandIndex) => (
@@ -603,7 +624,7 @@ export function FinancialsSection({
                     key={row.label}
                     style={{
                       display: "grid",
-                      gridTemplateColumns: GRID,
+                      gridTemplateColumns: gridFor(periods.length),
                       borderTop: "1px solid var(--c-hair)",
                     }}
                   >
@@ -622,7 +643,10 @@ export function FinancialsSection({
                       <div
                         key={`${row.label}-${i}`}
                         style={{
-                          padding: i === 0 ? "10px 8px" : "10px 12px 10px 8px",
+                          padding:
+                            i === row.values.length - 1
+                              ? "10px 12px 10px 8px"
+                              : "10px 8px",
                           textAlign: "right",
                           font: `400 12px/1.3 ${FONT_MONO}`,
                           color: row.derived ? "var(--c-secondary)" : "var(--c-body)",
