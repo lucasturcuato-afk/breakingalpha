@@ -106,6 +106,14 @@ const OUTCOME_CONTEXT = /(outcome|verdict|status|state|grade|graded|result|resol
 const RATE_SHAPES = [
   /\baccuracy\b/i,
   /\bhit[_\s-]?rate\b/i,
+  /* `win rate` and `success rate` are the same claim in different words, and
+     both escaped rule 4 entirely. src/lib/article-signal.tsx renders
+     `Source: {N}% win rate` to a reader and was flagged by nothing: rule 3
+     needs an outcome keyword that line does not carry, and rule 4 had no shape
+     for it. A rule that names one synonym of a banned figure is a rule the
+     figure walks around. */
+  /\bwin[_\s-]?rate\b/i,
+  /\bsuccess[_\s-]?rate\b/i,
   /\bwilson\b/i,
   /\*\s*100\s*\)\s*\.toFixed/,          // (x * 100).toFixed(n)
   /\b(pct|percent)(age)?[_A-Za-z]*\s*=/i,
@@ -794,6 +802,53 @@ if (sinceIdx !== -1 && (!sinceRef || sinceRef.startsWith('--'))) {
   process.exit(2);
 }
 
+/* --only <rule-ids> and --path <prefixes>. Both take a comma-separated list.
+ *
+ * Rule 4 has detected the /radar/calls rate since it was written. It was never
+ * a gate for two reasons. The default is the ratchet, so a pre-existing line is
+ * invisible, and `--all` answers with thousands of findings across every rule,
+ * where the rate hits are buried. Unusable output is the same as no rule.
+ *
+ * These two flags are the difference between a detector and a check somebody
+ * can run: `--all --only aggregate-rate,outcome-vocabulary --path src/app,src/components`
+ * is the reader-facing rate question and nothing else. See the design:rates
+ * npm script.
+ *
+ * Neither flag changes what is DETECTED. Every file is still linted by every
+ * rule; these narrow only what is printed and counted, so a filtered run can
+ * never be quieter than the truth about the slice it names. */
+function listArg(flag) {
+  const i = args.indexOf(flag);
+  if (i === -1) return null;
+  const v = args[i + 1];
+  if (!v || v.startsWith('--')) {
+    console.error(`design-lint: ${flag} needs a comma-separated list, e.g. ${flag} aggregate-rate`);
+    process.exit(2);
+  }
+  return v.split(',').map(x => x.trim()).filter(Boolean);
+}
+
+/* Every rule id this script can emit. A typo in --only would otherwise report
+ * zero findings, which reads in a terminal and in a PR body as a clean slice.
+ * That is the one failure mode a filter must not have. */
+const KNOWN_RULES = new Set([
+  'aggregate-rate', 'all-caps', 'banned-allowlisted', 'banned-substring',
+  'bare-vh', 'coloured-left-border', 'em-dash', 'frosted-glass', 'gradient',
+  'hardcoded-hex', 'outcome-vocabulary', 'token-role', 'unreadable',
+]);
+
+const onlyRules = listArg('--only');
+const onlyPaths = listArg('--path');
+if (onlyRules) {
+  const unknown = onlyRules.filter(r => !KNOWN_RULES.has(r));
+  if (unknown.length) {
+    console.error(`design-lint: --only names ${unknown.length} rule id(s) this script never emits:`);
+    for (const u of unknown) console.error(`  ${u}`);
+    console.error(`  Known ids: ${[...KNOWN_RULES].sort().join(' ')}`);
+    process.exit(2);
+  }
+}
+
 /* Say so, on stderr so it cannot be mistaken for a finding. A reader who
  * pastes this output into a PR body should be able to see which ref the
  * numbers below are measured against without knowing the default. */
@@ -826,6 +881,13 @@ if (sinceRef) {
   files = walk(SRC);
 } else {
   files = args.filter(f => EXT.has(extname(f)) && !isExcluded(f));
+}
+
+/* Applied to whichever file set the mode produced, so --path composes with
+ * --all, --since and an explicit list alike. Prefix match on the repo-relative
+ * path, which is what walk() and the diff both produce. */
+if (onlyPaths) {
+  files = files.filter(f => onlyPaths.some(prefix => f.startsWith(prefix)));
 }
 
 if (!files.length) {
@@ -869,12 +931,26 @@ const reported = sinceRef
   ? findings.filter(f => f.line === 0 || addedByFile.get(f.file)?.has(f.line))
   : findings;
 
-const errors = reported.filter(f => f.level === 'ERROR');
-const warns = reported.filter(f => f.level === 'WARN');
+/* `unreadable` is exempt from --only on purpose. It means a file this run
+ * claimed to check was never read, and a slice that hides that is reporting on
+ * files it did not open. */
+const shown = onlyRules
+  ? reported.filter(f => onlyRules.includes(f.rule) || f.rule === 'unreadable')
+  : reported;
+
+const errors = shown.filter(f => f.level === 'ERROR');
+const warns = shown.filter(f => f.level === 'WARN');
 
 for (const f of [...errors, ...warns]) {
   console.log(`${f.level}  ${f.file}:${f.line}  [${f.rule}]  ${f.detail}`);
 }
+
+/* The filters go in the summary, not just in the caller's shell history. A
+ * number pasted into a PR body has to carry the slice it measured. */
+const slice = [
+  onlyRules ? `rules: ${onlyRules.join(',')}` : null,
+  onlyPaths ? `paths: ${onlyPaths.join(',')}` : null,
+].filter(Boolean).join('  ');
 
 if (sinceRef) {
   const preExisting = findings.length - reported.length;
@@ -883,6 +959,10 @@ if (sinceRef) {
   console.log(`new: ${errors.length} errors, ${warns.length} warnings`);
 } else {
   console.log(`\ndesign-lint: ${files.length} files, ${errors.length} errors, ${warns.length} warnings`);
+}
+if (slice) {
+  console.log(`filtered slice, ${slice}`);
+  console.log(`${findings.length} findings exist across every rule in this run; ${shown.length} are in the slice.`);
 }
 
 if (warns.length) {
