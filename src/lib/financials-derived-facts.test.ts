@@ -35,7 +35,13 @@ function annualView(years: number[], rows: Record<string, Array<number | null>>)
 }
 
 function company(annual: FinancialView): CompanyFinancialsResult {
-  return { cik: 1, annual, quarterly: { periods: [], grid: {} }, reportingCurrency: "USD" };
+  return {
+    cik: 1,
+    annual,
+    quarterly: { periods: [], grid: {} },
+    reportingCurrency: "USD",
+    readFailed: false,
+  };
 }
 
 // Caterpillar, the real FY2021-FY2025 table. Operating cash flow fell in FY2024
@@ -133,6 +139,7 @@ test("empty views produce no facts and an empty block", () => {
     annual: { periods: [], grid: {} },
     quarterly: { periods: [], grid: {} },
     reportingCurrency: null,
+    readFailed: false,
   };
   assert.deepEqual(computeDerivedFacts(none), []);
   assert.equal(formatDerivedFactsBlock([]), "");

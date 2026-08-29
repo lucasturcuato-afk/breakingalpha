@@ -1,0 +1,21 @@
+{
+ "slug": "alvotech",
+ "name": "Alvotech",
+ "filings": {
+  "cik": 1898416,
+  "companyId": "8ed43ba9-d008-4e40-b774-604565f38e6e",
+  "filings": []
+ },
+ "financials": {
+  "cik": 1898416,
+  "annual": {
+   "periods": [],
+   "grid": {}
+  },
+  "quarterly": {
+   "periods": [],
+   "grid": {}
+  },
+  "reportingCurrency": null
+ }
+}

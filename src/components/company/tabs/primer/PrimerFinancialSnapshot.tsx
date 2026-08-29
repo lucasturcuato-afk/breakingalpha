@@ -15,7 +15,7 @@
 
 import type { CompanyFinancialsResult } from "@/lib/financial-facts";
 import { formatValue, type Fmt } from "../financials-format";
-import { financialsEmptyCopy } from "../empty-state-copy";
+import { financialsEmptyCopy, financialsUnreadableCopy } from "../empty-state-copy";
 
 interface PrimerFinancialSnapshotProps {
   financials: CompanyFinancialsResult;
@@ -99,7 +99,8 @@ export function PrimerFinancialSnapshot({ financials }: PrimerFinancialSnapshotP
           data-testid="primer-financial-snapshot-empty"
           className="font-sans text-[12px] text-text-faint italic leading-relaxed"
         >
-          {financialsEmptyCopy(hasCik)}
+          {/* A failed read is not an absent filing. See financialsUnreadableCopy. */}
+          {financials.readFailed ? financialsUnreadableCopy() : financialsEmptyCopy(hasCik)}
         </p>
       )}
 

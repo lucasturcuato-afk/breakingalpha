@@ -204,6 +204,25 @@ async function main() {
   const width = parseInt(arg("width", "390"), 10);
   const height = parseInt(arg("height", "844"), 10);
   const theme = arg("theme", "light");
+  /* `networkidle` is the default and stays the default, because a plate taken
+     before the data lands is evidence of nothing.
+     
+     IT IS NOT ALWAYS REACHABLE. `/company/[id]` renders its desktop tree and
+     its mobile tree in the same document, and the desktop tree's client
+     components fetch `/api/company-kpis`, `/api/company-trend` and
+     `/api/stock-chart` on mount whichever tree is visible. Two of those reach
+     Yahoo, and measured on this route they can stay in flight past 30s, so the
+     capture times out and writes nothing. This flag is an explicit opt out,
+     named in the run log, rather than a silent fallback that would let a plate
+     be taken early without anyone knowing. */
+  const wait = arg("wait", "networkidle");
+  /* Comma-separated selectors to make invisible before the capture. See the
+     block below for what it is for and why it cannot hide account data. */
+  const hide = arg("hide", "");
+  if (!["load", "domcontentloaded", "networkidle", "commit"].includes(wait)) {
+    console.error(`plate.mjs: --wait must be load, domcontentloaded, networkidle or commit.`);
+    process.exit(2);
+  }
 
   if (!url || !out) {
     console.error("plate.mjs: --url and --out are required.");
@@ -234,7 +253,8 @@ async function main() {
     hasTouch: width < 768,
   });
   const page = await ctx.newPage();
-  await page.goto(url, { waitUntil: "networkidle" });
+  await page.goto(url, { waitUntil: wait });
+  if (wait !== "networkidle") await page.waitForTimeout(1200);
 
   // Theme is driven by localStorage plus the `dark` class on documentElement.
   // prefers-color-scheme does nothing in this app, and emulateMedia silently
@@ -244,6 +264,38 @@ async function main() {
     document.documentElement.classList.toggle("dark", t === "dark");
   }, theme);
   await page.waitForTimeout(400);
+
+  /* ---- FIXED CHROME THAT PAINTS INTO A CROP FROM OUTSIDE IT ----
+   *
+   * An element crop is a rectangle, and anything `position: fixed` that
+   * overlaps that rectangle is inside it. On the mobile screens the section
+   * body is taller than 844px, so the shell's tab bar and the Next dev overlay
+   * badge both land in the middle of the frame and the plate shows chrome the
+   * section does not own. The previous answer was to capture at a taller
+   * viewport, and that changed the LAYOUT: `primer-no-cik-390-*` shipped at
+   * 350x926 with 453px of blank tail, 49% of the image, against 350x473 at a
+   * real 390x844. A plate named 390 has to be 390x844.
+   *
+   * `opacity: 0`, NEVER `display: none` AND NEVER `visibility: hidden`, and the
+   * reason is the guard rather than the layout. Both of those remove an element
+   * from `innerText`, so a `--hide` could be used to hide account data from the
+   * detectors below. `opacity: 0` leaves every string exactly where the guard
+   * reads it and only stops it painting, so this flag cannot launder a frame.
+   *
+   * `--hide` is logged in the run line so a reviewer sees what was suppressed. */
+  const hideList = hide === true ? "" : String(hide || "");
+  const hidden = hideList.split(",").map((x) => x.trim()).filter(Boolean);
+  if (hidden.length) {
+    await page.evaluate((sels) => {
+      for (const sel of sels) {
+        for (const el of document.querySelectorAll(sel)) {
+          el.style.opacity = "0";
+          el.style.pointerEvents = "none";
+        }
+      }
+    }, hidden);
+    await page.waitForTimeout(150);
+  }
 
   /* ---- THE GUARD, before anything is written ---- */
   const pageText = await page.evaluate(() => document.body.innerText || "");
@@ -313,8 +365,9 @@ async function main() {
 
   const shape = fullPage ? `FULL PAGE (justified: ${justify})` : `crop ${selector}`;
   console.log(`plate.mjs wrote ${out}`);
-  console.log(`  ${shape} at ${width}x${height}, theme ${theme}, ${buf.length} bytes`);
+  console.log(`  ${shape} at ${width}x${height}, theme ${theme}, wait ${wait}, ${buf.length} bytes`);
   console.log(`  guard: ${DETECTORS.length} detectors clear, no account initial in frame`);
+  if (hidden.length) console.log(`  hidden (opacity 0, still read by the guard): ${hidden.join(", ")}`);
 
   await browser.close();
 }

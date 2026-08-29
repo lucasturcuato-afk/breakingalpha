@@ -69,6 +69,26 @@ export interface CompanyFinancialsResult {
    * Every value in the views is denominated in THIS currency and no other.
    */
   reportingCurrency: string | null;
+  /**
+   * TRUE when the read itself failed, which is NOT the same fact as "this
+   * company has nothing on file" and must never be collapsed into it.
+   *
+   * WHY IT EXISTS. `financial_facts_latest` intermittently times out with
+   * Postgres `57014`, and both failure paths below used to return the same
+   * empty views a company with no facts gets. Every consumer then rendered
+   * `financialsEmptyCopy(true)`, "Financials appear after the first periodic
+   * report", which is an ASSERTION ABOUT THE ISSUER. Measured on
+   * `/company/salesforce?tab=financials` twenty minutes apart in one session:
+   * the empty sentence on one pass, the full FY2022 to FY2026 table on the
+   * next. Salesforce (cik 1108524) has validated XBRL on file, `net_income`
+   * FY2026 7,457,000,000, so the sentence was false about a real company.
+   *
+   * An empty view answers "we have nothing to draw". This flag answers WHY,
+   * and only a failed read sets it. A caller that ignores it is back to the
+   * old behaviour, which is why every consumer of an empty view on this
+   * surface reads it.
+   */
+  readFailed: boolean;
 }
 
 const EMPTY_VIEW: FinancialView = { periods: [], grid: {} };
@@ -275,8 +295,14 @@ function upgradeFilingUrls(view: FinancialView, docByAccession: Record<string, s
 }
 
 /**
- * Read-only financials for a company, resolved via resolveCompanyCik. Returns
- * empty views (not an error) when the company has no CIK or no validated rows.
+ * Read-only financials for a company, resolved via resolveCompanyCik.
+ *
+ * NEVER THROWS. A company with no CIK, or with a CIK and no validated rows,
+ * comes back as empty views. A READ THAT FAILED also comes back as empty views,
+ * and the two are told apart by `readFailed` and by nothing else. Collapsing
+ * them is how a Postgres statement timeout became the printed sentence
+ * "Financials appear after the first periodic report" over an issuer with five
+ * years of validated XBRL on file.
  */
 export async function fetchCompanyFinancials(
   supabase: SupabaseClient,
@@ -284,7 +310,15 @@ export async function fetchCompanyFinancials(
 ): Promise<CompanyFinancialsResult> {
   const res = await resolveCompanyCik(supabase, ref);
   if (res.cik == null) {
-    return { cik: null, annual: EMPTY_VIEW, quarterly: EMPTY_VIEW, reportingCurrency: null };
+    /* NOT a read failure. There is no CIK to read facts for, which is a fact
+       about the company and not about the query. */
+    return {
+      cik: null,
+      annual: EMPTY_VIEW,
+      quarterly: EMPTY_VIEW,
+      reportingCurrency: null,
+      readFailed: false,
+    };
   }
   try {
     // Newest-first with an explicit cap: PostgREST returns at most 1000 rows
@@ -298,7 +332,16 @@ export async function fetchCompanyFinancials(
       .limit(1000);
     if (error) {
       console.error("[financial-facts] fetch failed:", error.message);
-      return { cik: res.cik, annual: EMPTY_VIEW, quarterly: EMPTY_VIEW, reportingCurrency: null };
+      /* `readFailed`, not a bare empty view. The 57014 statement timeout lands
+         here, and the caller that cannot tell it from an empty table renders a
+         sentence about the issuer. */
+      return {
+        cik: res.cik,
+        annual: EMPTY_VIEW,
+        quarterly: EMPTY_VIEW,
+        reportingCurrency: null,
+        readFailed: true,
+      };
     }
     // Currency is READ, not assumed. The old check was
     // `UNIT_BY_METRIC[r.metric_key] === r.unit`, which hardcoded USD and
@@ -343,9 +386,15 @@ export async function fetchCompanyFinancials(
     upgradeFilingUrls(annual, docByAccession);
     upgradeFilingUrls(quarterly, docByAccession);
 
-    return { cik: res.cik, annual, quarterly, reportingCurrency };
+    return { cik: res.cik, annual, quarterly, reportingCurrency, readFailed: false };
   } catch (e) {
     console.error("[financial-facts] fetchCompanyFinancials exception:", e);
-    return { cik: res.cik, annual: EMPTY_VIEW, quarterly: EMPTY_VIEW, reportingCurrency: null };
+    return {
+      cik: res.cik,
+      annual: EMPTY_VIEW,
+      quarterly: EMPTY_VIEW,
+      reportingCurrency: null,
+      readFailed: true,
+    };
   }
 }

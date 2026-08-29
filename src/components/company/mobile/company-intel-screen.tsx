@@ -3,18 +3,19 @@
 import { useCallback } from "react";
 import { useRouter } from "next/navigation";
 
-import { ClaimAnatomy, OutcomeLead, OUTCOME_TOKENS } from "@/components/ledger";
 import { useCompanyTabState, type CompanyTabId } from "@/hooks/useCompanyTabState";
 
 import styles from "./company-mobile.module.css";
-/* `./fixture` is NOT imported here and must never be. This is a client
-   component, so a value import from that module is a download of the invented
-   company: the gate stops the render and not the download. The shape lives in
-   `./types` and erases; the fixture arrives as the `data` prop, built behind
-   `mobileFixtureScreensEnabled()` on the server by
-   `src/app/company/[id]/page.tsx`. */
+/* There is no fixture module to import any more, and nothing here may grow
+   one. This is a client component, so a value import of invented data is a
+   DOWNLOAD of it: a gate stops the render and not the download, which is how
+   invented financials reached `.next/static` on a production build where they
+   could never paint. The shape lives in `./types` and erases; the data arrives
+   as the `data` prop, assembled on the server by
+   `src/lib/company-mobile/build.ts` from reads
+   `src/app/company/[id]/page.tsx` already has in hand. */
 import type { CompanyIntelData } from "./types";
-import { Chip, EmptyWell, SkeletonBar } from "./parts";
+import { Chip } from "./parts";
 import {
   FilingsSection,
   FinancialsSection,
@@ -22,6 +23,7 @@ import {
   PrimerSection,
   TONE_INK,
   ToneSection,
+  spanWhenLastOfOdd,
 } from "./sections";
 import { FONT_DISPLAY, FONT_MONO, FONT_SANS } from "@/components/mobile/fonts";
 
@@ -66,7 +68,28 @@ import { FONT_DISPLAY, FONT_MONO, FONT_SANS } from "@/components/mobile/fonts";
  * method, so it carries the defect rather than disproving it.
  */
 
-export type CompanyStage = "ready" | "loading" | "error" | "empty";
+/* THERE IS NO `stage` PROP AND NO `CompanyStage` TYPE ANY MORE.
+ *
+ * It was `stage?: CompanyStage` with a `= "ready"` default, and the only thing
+ * that ever set it was the `?stage=` query parameter this PR removed: a link
+ * anyone could send that drew an empty or error screen over a company with
+ * filings, insider rows and financials on file. With that gone, the prop was a
+ * lever no caller pulled whose default silently asserted "ready", which is the
+ * same defect class as the `hasCik` default this branch already removed.
+ *
+ * WHERE A FAILED READ GOES NOW. To the block that failed, not to the screen.
+ * `financials.readFailed` is carried off `fetchCompanyFinancials`, and the
+ * Financials section and the primer's key-figures well both draw it ahead of
+ * any emptiness. That is the better shape: a Postgres 57014 on
+ * `financial_facts_latest` leaves the other four reads answered, and a
+ * screen-level error would hide four good blocks to report one bad one.
+ *
+ * `data === null` still draws `CompanyError`, because a null payload IS a
+ * failed read: this route is a server component that resolves all four reads
+ * before it renders, so there is no pending state for a skeleton to describe
+ * and a permanent skeleton would tell the reader something is coming when
+ * nothing is.
+ */
 
 const PAD = "var(--v3-pad)";
 
@@ -82,7 +105,6 @@ const SECTIONS: { id: CompanyTabId; label: string }[] = [
 const SECTION_IDS = new Set(SECTIONS.map((s) => s.id));
 
 export function CompanyIntelScreen({
-  stage = "ready",
   /**
    * REQUIRED and NULLABLE, never optional and never defaulted. The caller
    * resolves the gate and passes the fixture or null; leaving the prop off is
@@ -101,19 +123,20 @@ export function CompanyIntelScreen({
    * True when the company resolved to a SEC CIK. Drives which sourced empty
    * copy the Filings, Financials and Insider sections use, exactly as it does
    * on the desktop tabs.
+   *
+   * REQUIRED, WITH NO DEFAULT. It used to default to `true`, so a call site
+   * that forgot the prop asserted an SEC identity for a company that may not
+   * have one, and the sections then said "no filings on file" where "not an
+   * SEC filer" was the truth. Absence must not silently become true.
    */
-  hasCik = true,
+  hasCik,
 }: {
-  stage?: CompanyStage;
   data: CompanyIntelData | null;
-  hasCik?: boolean;
+  hasCik: boolean;
 }) {
   const router = useRouter();
   const { activeTab, setActiveTab } = useCompanyTabState();
 
-  /* No data means no source answered, so the honest drawing is the loader.
-     Nothing below states a fact about the company while `data` is null. */
-  const effective: CompanyStage = data === null ? "loading" : stage;
   /* A desktop deep link can pin a tab this screen has no section for
      (articles, comps, and the three ids with no button). Fall back to the
      first section rather than drawing an empty body under no active chip. */
@@ -122,30 +145,40 @@ export function CompanyIntelScreen({
   /**
    * Retry.
    *
-   * A bare `router.refresh()` is guaranteed inert on this screen: the only
-   * thing that produces the error state is `?stage=error`, and a refresh keeps
-   * the query string, so the retry redraws the same error for ever. Clearing
-   * the lifecycle override first is what makes the control real, and it is a
-   * no-op once a loader supplies the state instead of the URL, because there is
-   * no `stage` to clear then.
+   * A bare `router.refresh()`, and it is not inert any more. The previous
+   * version cleared a `?stage=` parameter first, because that parameter was
+   * the only thing that could produce the error state and a refresh would have
+   * kept it and redrawn the same error for ever. The parameter is gone, so a
+   * refresh re-runs the server reads, which is the only thing that can change
+   * this branch's answer.
    */
   const retry = useCallback(() => {
-    const url = new URL(window.location.href);
-    url.searchParams.delete("stage");
-    router.replace(url.pathname + url.search);
     router.refresh();
   }, [router]);
 
   return (
+    /* No `data-fixture` attribute on this root. The screen reads the company's
+       own rows now, so announcing itself as a fixture to every audit script
+       would be false, and it is not conditional either: there is no branch left
+       that draws invented data. */
     <div
       data-parity="company"
-      data-fixture="true"
       className={styles.screenIn}
       style={{
         backgroundColor: "var(--c-bg)",
         minHeight: "100%",
         display: "flex",
         flexDirection: "column",
+        /* The wrapper in `page.tsx` is a column flex container with its own
+           `min-height: 100%`, and this grows into it. Without the grow, a
+           percentage `min-height` against a wrapper whose HEIGHT is auto
+           resolves to zero, so this box stopped at its content: measured at
+           390x844 on `/company/mistral-ai`, the wrapper was 785px and this was
+           617px. The wrapper paints the same ground, so nothing showed through,
+           but every section below was laid out inside a box 168px shorter than
+           the space it had, which is the space a short section needs to centre
+           in. */
+        flexGrow: 1,
       }}
     >
       <div
@@ -201,20 +234,35 @@ export function CompanyIntelScreen({
         style={{
           flex: 1,
           minWidth: 0,
+          /* A COLUMN, so the active section can take the height nothing above
+             it used. Masthead, KPI card and the chip row are all content-sized;
+             the section below them is the one thing on this screen that has a
+             short state and a long one, so it is the one that grows. */
+          display: "flex",
+          flexDirection: "column",
           /* The design's 24px, plus the bar the shell does not reserve for.
              The measurement that settles which of those two is true is at the
              top of this file. */
           padding: `22px ${PAD} calc(24px + var(--mobile-tabbar-height) + env(safe-area-inset-bottom))`,
         }}
       >
-        {effective === "loading" ? <CompanySkeleton /> : null}
-        {effective === "error" ? <CompanyError onRetry={retry} /> : null}
+        {/* A NULL PAYLOAD IS A FAILED READ, NOT A PENDING ONE, and that is
+            why this is the error and no longer a skeleton. The route is a
+            server component: all four reads are resolved before this renders,
+            so nothing is in flight by the time a reader sees it, and a skeleton
+            here would promise an arrival that cannot happen. A financials read
+            that failed does NOT come here, because the other four answered; it
+            is drawn by the Financials section off `financials.readFailed`. */}
+        {data === null ? <CompanyError onRetry={retry} /> : null}
 
-        {data !== null && (effective === "ready" || effective === "empty") ? (
+        {data !== null ? (
           <>
             <Masthead data={data} />
             <KpiGrid data={data} />
-            <YourEntries data={data} />
+            {/* NO "your entries on this name" BLOCK. `theses`, `user_claims`
+                and `watchlist` all carry real rows, but this route resolves none
+                of them, so there is nothing to draw. A new read, not a rewire.
+                See the header on `./types`. */}
 
             <div
               style={{
@@ -239,8 +287,27 @@ export function CompanyIntelScreen({
 
             {/* Keyed on the section so the 200ms fade replays on every swap,
                 which is what the prototype's `sc-if` gives for free. */}
-            <div key={active} className={styles.sectionIn} style={{ marginTop: "18px" }}>
-              {active === "brief" ? <PrimerSection data={data} /> : null}
+            {/* `1 0 auto` and never `1`. Grow into whatever the blocks above
+                left over, so a short section can centre in it, and NEVER shrink:
+                a shrinkable basis-zero item compresses a long section below its
+                own content. */}
+            <div
+              key={active}
+              data-section-body=""
+              className={styles.sectionIn}
+              style={{
+                marginTop: "18px",
+                flex: "1 0 auto",
+                display: "flex",
+                flexDirection: "column",
+              }}
+            >
+              {/* `hasCik` reaches the primer too now. Its key-figures empty
+                  state used to assert "private, pre-IPO, or not currently
+                  quoted" for every company with no XBRL, which is false for a
+                  company that has a CIK and has not filed a periodic report
+                  yet. */}
+              {active === "brief" ? <PrimerSection data={data} hasCik={hasCik} /> : null}
               {active === "trend" ? <ToneSection data={data} /> : null}
               {active === "filings" ? (
                 <FilingsSection data={data} hasCik={hasCik} />
@@ -271,7 +338,7 @@ function Masthead({ data }: { data: CompanyIntelData }) {
             color: "var(--c-muted)",
           }}
         >
-          {data.ticker} · {data.exchange}
+          {data.ticker}
         </span>
         <span style={{ font: `600 11px/1 ${FONT_SANS}`, color: "var(--c-secondary)" }}>
           {data.sector}
@@ -289,29 +356,12 @@ function Masthead({ data }: { data: CompanyIntelData }) {
         {data.name}
       </h1>
 
-      <p
-        style={{
-          margin: "12px 0 0",
-          font: `500 17px/1 ${FONT_MONO}`,
-          color: "var(--c-ink)",
-        }}
-      >
-        {data.price}{" "}
-        {/* Tinted off the SIGN, never pinned green. The design draws a company
-            that happened to be up; a hardcoded green would paint a down day as
-            a gain the moment this reads a real quote. */}
-        <span
-          style={{
-            fontSize: "13px",
-            color: data.change.trimStart().startsWith("-")
-              ? "var(--c-redink)"
-              : "var(--c-greenink)",
-          }}
-        >
-          {data.change}
-        </span>
-      </p>
-
+      {/* NO PRICE LINE. The design draws a last price and a day change, and
+          neither is on any read this page resolves. Both come from a CLIENT
+          fetch to `/api/company-kpis`, which reaches Yahoo and carries its own
+          loading, error and staleness states. A quote drawn from a server shape
+          with no quote behind it can only be stale or invented, so the line is
+          absent rather than approximated. */}
       <MemoControl corpus={data.memoCorpus} />
     </>
   );
@@ -406,9 +456,41 @@ function MemoControl({ corpus }: { corpus: string }) {
   );
 }
 
+/**
+ * The KPI card.
+ *
+ * IT IS A VARIABLE-LENGTH LIST, and the grid has to survive both ends of that.
+ * `buildKpis` emits one cell per read that answered: the seven-day mention
+ * count always, the article tone only when the window carried enough scored
+ * coverage to state a level, and the source count only when a publisher name
+ * was on a row. So one, two or three cells arrive, and a cell is never invented
+ * to round the count.
+ *
+ * ODD COUNTS. The container paints `--c-border` and each cell paints
+ * `--c-surface` over it, so the hairline is the container showing through the
+ * 1px gap. With an odd count the last slot has no cell in it and draws as a
+ * filled block of border colour about 57px tall, in both themes, exactly where
+ * a figure would be. Measured on `/company/mistral-ai` at one cell and on
+ * `/company/broadcom` and `/company/salesforce` at three. The lone trailing
+ * cell spans the row instead, through the same helper the primer's key-figures
+ * grid uses.
+ *
+ * ZERO CELLS. The whole card is omitted. A bordered, rounded, border-filled box
+ * with nothing inside it is not an empty state, it is a container that failed
+ * to be filled. Unreachable on today's mapper, because the mention count is
+ * always emitted, and it is guarded rather than assumed: the emptiness of a
+ * read is not this component's to predict.
+ */
 function KpiGrid({ data }: { data: CompanyIntelData }) {
+  if (data.kpis.length === 0) return null;
+
   return (
     <div
+      /* Named so a plate can crop to exactly this card. The empty half of an
+         odd row is the defect it is evidence of, and it is 57px of the same
+         colour as the hairline beside it, so a whole-screen plate cannot show
+         it. */
+      data-kpi-grid=""
       style={{
         marginTop: "18px",
         display: "grid",
@@ -420,8 +502,15 @@ function KpiGrid({ data }: { data: CompanyIntelData }) {
         overflow: "hidden",
       }}
     >
-      {data.kpis.map((cell) => (
-        <div key={cell.label} style={{ backgroundColor: "var(--c-surface)", padding: "11px 13px" }}>
+      {data.kpis.map((cell, i) => (
+        <div
+          key={cell.label}
+          style={{
+            ...spanWhenLastOfOdd(i, data.kpis.length),
+            backgroundColor: "var(--c-surface)",
+            padding: "11px 13px",
+          }}
+        >
           <div
             style={{
               font: `400 10px/1 ${FONT_MONO}`,
@@ -463,172 +552,14 @@ function KpiGrid({ data }: { data: CompanyIntelData }) {
   );
 }
 
-/**
- * The user's own record on this name.
- *
- * Fresh in the design: github.md maps no repo component to it, and the company
- * page carries no counterpart today. The claim object inside it is not fresh,
- * so it is composed from the shared anatomy through the slots that anatomy
- * already exposes rather than by giving that anatomy a third scale. The design
- * draws the reading in italic Playfair, which the row scale does not carry, so
- * it goes through the `meta` slot instead of the `prose` slot.
- */
-function YourEntries({ data }: { data: CompanyIntelData }) {
-  if (!data.entry && !data.following) {
-    return (
-      <>
-        <EntriesRule />
-        <EmptyWell headline="You have no entries on this name yet." />
-      </>
-    );
-  }
-
-  return (
-    <>
-      <EntriesRule />
-
-      {data.entry ? (
-        <div
-          style={{
-            marginTop: "12px",
-            border: "1px solid var(--c-border)",
-            borderRadius: "12px",
-            backgroundColor: "var(--c-card)",
-            overflow: "hidden",
-          }}
-        >
-          {/* State is a 2px TOP edge plus a dot and the state word. Never a
-              coloured left rule, and a challenged entry is never buried.
-
-              Edge and lead both read data.entry.state, and the edge takes the
-              same OUTCOME_TOKENS dot the lead does, so the two cannot drift. A
-              hardcoded red here labelled every entry Challenged. */}
-          <div
-            style={{
-              height: "2px",
-              backgroundColor: OUTCOME_TOKENS[data.entry.state].dot,
-            }}
-          />
-          <div style={{ padding: "13px 15px" }}>
-            <ClaimAnatomy
-              scale="row"
-              lead={
-                <div style={{ marginBottom: "9px" }}>
-                  <OutcomeLead state={data.entry.state} instrument={data.entry.date} />
-                </div>
-              }
-              claim={data.entry.claim}
-              meta={
-                <p
-                  style={{
-                    margin: "8px 0 0",
-                    font: `400 italic 13px/1.55 ${FONT_DISPLAY}`,
-                    color: "var(--c-body)",
-                    textWrap: "pretty",
-                  }}
-                >
-                  {data.entry.reading}
-                </p>
-              }
-            />
-          </div>
-        </div>
-      ) : null}
-
-      {data.following ? (
-        <div
-          style={{
-            marginTop: data.entry ? "10px" : "12px",
-            padding: "13px 15px",
-            border: "1px solid var(--c-border)",
-            borderRadius: "12px",
-            backgroundColor: "var(--c-surface)",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <span
-              aria-hidden="true"
-              style={{
-                flex: "none",
-                display: "inline-block",
-                width: "9px",
-                height: "9px",
-                border: "1.5px solid var(--c-secondary)",
-                borderRadius: "50%",
-              }}
-            />
-            <span style={{ font: `600 11px/1 ${FONT_SANS}`, color: "var(--c-secondary)" }}>
-              {data.following.since}
-            </span>
-          </div>
-          <p
-            style={{
-              margin: "8px 0 0",
-              font: `400 12.5px/1.5 ${FONT_SANS}`,
-              color: "var(--c-body)",
-            }}
-          >
-            {data.following.note}
-          </p>
-        </div>
-      ) : null}
-    </>
-  );
-}
-
-function EntriesRule() {
-  return (
-    <div style={{ marginTop: "24px", display: "flex", alignItems: "center", gap: "11px" }}>
-      <span
-        style={{
-          font: `400 italic 12.5px/1 ${FONT_DISPLAY}`,
-          color: "var(--c-secondary)",
-        }}
-      >
-        your entries on this name
-      </span>
-      <span aria-hidden="true" style={{ flex: 1, height: "1px", backgroundColor: "var(--c-border)" }} />
-    </div>
-  );
-}
-
-/**
- * Loading.
- *
- * The handoff specifies no company lifecycle at all: the prototype's dev strip
- * carries no company jump and README's stage table covers the brief, the wrap,
- * the dashboard and the memo only. So the shape here is derived from the screen
- * it is standing in for, not transcribed. It states nothing about the company,
- * which is the point of preferring a load to an empty state that asserts a
- * fact.
- */
-function CompanySkeleton() {
-  return (
-    <div aria-busy="true" aria-live="polite">
-      <span
-        style={{
-          position: "absolute",
-          width: "1px",
-          height: "1px",
-          overflow: "hidden",
-          clip: "rect(0 0 0 0)",
-          whiteSpace: "nowrap",
-        }}
-      >
-        Reading this company.
-      </span>
-      <SkeletonBar width="42%" height={12} />
-      <SkeletonBar width="72%" height={30} marginTop={11} />
-      <SkeletonBar width="34%" height={17} marginTop={12} />
-      <SkeletonBar width="100%" height={50} marginTop={16} />
-      <SkeletonBar width="100%" height={132} marginTop={18} />
-      <SkeletonBar width="100%" height={44} marginTop={22} />
-      <SkeletonBar width="88%" height={13} marginTop={18} />
-      <SkeletonBar width="96%" height={13} marginTop={10} />
-      <SkeletonBar width="64%" height={13} marginTop={10} />
-    </div>
-  );
-}
+/* THERE IS NO SKELETON ON THIS SCREEN, and its deletion is the point rather
+   than a tidy-up. `/company/[id]` is a server component that awaits
+   getCompanyDetail, fetchCompanyFilings, getInsiderTransactions and
+   fetchCompanyFinancials before it renders, so by the time a byte reaches a
+   reader nothing is in flight and there is no state a skeleton could describe.
+   The only signal that ever raised it was `?stage=loading`, a query parameter
+   this PR removed. A skeleton with no signal behind it is a promise that
+   something is arriving, made on a screen where nothing is. */
 
 /**
  * Error.

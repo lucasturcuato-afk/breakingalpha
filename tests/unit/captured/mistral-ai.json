@@ -1,0 +1,21 @@
+{
+ "slug": "mistral-ai",
+ "name": "Mistral Ai",
+ "filings": {
+  "cik": null,
+  "companyId": "f14f05f3-197b-45c5-ad53-ee8dc1c17d25",
+  "filings": []
+ },
+ "financials": {
+  "cik": null,
+  "annual": {
+   "periods": [],
+   "grid": {}
+  },
+  "quarterly": {
+   "periods": [],
+   "grid": {}
+  },
+  "reportingCurrency": null
+ }
+}

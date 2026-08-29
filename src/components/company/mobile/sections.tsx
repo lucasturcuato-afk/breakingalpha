@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 
 import {
   applyFilter,
@@ -14,11 +14,14 @@ import {
   filingsEmptyCopy,
   financialsEmptyCopy,
   insiderEmptyCopy,
+  financialsUnreadableCopy,
+  primerKeyFiguresEmptyCopy,
 } from "@/components/company/tabs/empty-state-copy";
 
-import type { CompanyIntelData, ToneDirection } from "./types";
-import { Chip, EmptyWell, RuledRow, SectionNote, SectionRule } from "./parts";
+import type { CompanyIntelData, ToneDirection, ToneRowDirection } from "./types";
+import { Chip, EmptyWell, RuledRow, SECTION_FILL, SectionNote, SectionRule } from "./parts";
 import { FONT_DISPLAY, FONT_MONO, FONT_SANS } from "@/components/mobile/fonts";
+import styles from "./company-mobile.module.css";
 
 /**
  * Ink for a tone reading. ink tokens are text, base tokens are fills, and this
@@ -32,6 +35,43 @@ export const TONE_INK: Record<ToneDirection, string> = {
   down: "var(--c-redink)",
   flat: "var(--c-secondary)",
 };
+
+/**
+ * Fill for the dot beside one article's contribution to the reading.
+ *
+ * Base tokens, not ink tokens, because this is a fill and not text.
+ *
+ * THREE ENTRIES, and the third is the point. This was a two-way ternary,
+ * `direction === "up" ? green : amber`, over a type that could only be "up" or
+ * "mixed". A bearish article therefore drew amber, which reads as balanced
+ * coverage rather than as negative coverage, and it did so silently on exactly
+ * the rows a reader most needs to be right.
+ */
+const TONE_ROW_FILL: Record<ToneRowDirection, string> = {
+  up: "var(--c-green)",
+  mixed: "var(--c-amber)",
+  down: "var(--c-red)",
+};
+
+/**
+ * A lone trailing cell takes the whole row.
+ *
+ * The two-column cards on this screen are painted the way the design draws
+ * them: the CONTAINER carries `--c-border` and a 1px gap, and each CELL paints
+ * its own ground over it, so the hairline between cells is the container
+ * showing through. An odd number of cells leaves the last slot with no cell in
+ * it, and that slot is not empty space, it is a filled block of border colour
+ * about 57px tall sitting where a figure would go. In both themes it reads as a
+ * value that failed to arrive.
+ *
+ * Every cell on this screen is a real read and none of them can be dropped to
+ * make the count even, so the last one spans instead. The zero-cell case is a
+ * different fix and belongs at the call site: a bordered container with nothing
+ * in it must not render at all.
+ */
+export function spanWhenLastOfOdd(index: number, count: number): { gridColumn?: string } {
+  return count % 2 === 1 && index === count - 1 ? { gridColumn: "span 2" } : {};
+}
 
 /**
  * The five Company Intel sections, mobile.
@@ -58,7 +98,24 @@ const LABEL_MONO = {
 /* Primer                                                              */
 /* ------------------------------------------------------------------ */
 
-export function PrimerSection({ data }: { data: CompanyIntelData }) {
+export function PrimerSection({
+  data,
+  /**
+   * True when the company resolved to a SEC CIK, and the SAME flag the Filings,
+   * Financials and Insider sections already take.
+   *
+   * IT WAS NOT PASSED, and the key-figures empty state asserted "private,
+   * pre-IPO, or not currently quoted" for every company with no XBRL on file.
+   * That is true for Mistral AI and FALSE for a public filer that has a CIK and
+   * has not filed a periodic report yet, which is a false claim about a real
+   * company printed under its own name. The screen has had the flag in hand the
+   * whole time.
+   */
+  hasCik,
+}: {
+  data: CompanyIntelData;
+  hasCik: boolean;
+}) {
   const { primer } = data;
   return (
     <>
@@ -142,6 +199,9 @@ export function PrimerSection({ data }: { data: CompanyIntelData }) {
       <SectionRule marginTop={20}>key figures</SectionRule>
       {primer.keyFigures.length > 0 ? (
         <div
+          /* Named for the same reason `data-kpi-grid` is: the odd-row artifact
+             is one border-coloured cell and a plate has to crop to it. */
+          data-key-figures=""
           style={{
             marginTop: "10px",
             display: "grid",
@@ -153,8 +213,15 @@ export function PrimerSection({ data }: { data: CompanyIntelData }) {
             overflow: "hidden",
           }}
         >
-          {primer.keyFigures.map((figure) => (
-            <div key={figure.label} style={{ backgroundColor: "var(--c-bg)", padding: "12px 13px" }}>
+          {primer.keyFigures.map((figure, i) => (
+            <div
+              key={figure.label}
+              style={{
+                ...spanWhenLastOfOdd(i, primer.keyFigures.length),
+                backgroundColor: "var(--c-bg)",
+                padding: "12px 13px",
+              }}
+            >
               <div style={LABEL_MONO}>{figure.label}</div>
               <div
                 style={{
@@ -172,9 +239,37 @@ export function PrimerSection({ data }: { data: CompanyIntelData }) {
           ))}
         </div>
       ) : (
-        /* PrimerKeyStats' own empty sentence. Market data absent is a
-           statement about the quote, never about the company. */
-        <EmptyWell headline="Market data not available. This company is private, pre-IPO, or not currently quoted." />
+        /* THE FINANCIALS COPY, because these ARE the financials: every key
+           figure is a validated XBRL fact off `financial_facts_latest`, the
+           same table the Financials section reads, and none of them is quote
+           data. The sentence here used to be PrimerKeyStats' market-data one,
+           "private, pre-IPO, or not currently quoted", which is a claim about a
+           listing and was false for any company that has a CIK and has not
+           filed a periodic report yet. `primerKeyFiguresEmptyCopy` sits on the
+           pure module both desktop tabs already share, so the two surfaces
+           cannot drift and neither one asserts a listing status nothing on this
+           page reads.
+
+           THREE STATES, NOT TWO, and the third is why this is not
+           `financialsEmptyCopy` directly. The four keys the Primer names are
+           not every fact a filer states: GRAB's only validated fact is
+           `cost_of_revenue`, so it lands here with a periodic report ON FILE
+           and the two-state copy drew "Financials appear after the first
+           periodic report" over a screen whose Financials section draws that
+           filer's FY2022 cost of revenue feet away. `primer.hasFiledPeriod` is
+           the flag that separates them. */
+        <EmptyWell
+          headline={
+            /* SAME PRECEDENCE AS THE FINANCIALS SECTION, and for the same
+               reason: a failed read leaves `keyFigures` empty and
+               `hasFiledPeriod` false, so without this the well would print
+               "Financials appear after the first periodic report" over a filer
+               whose report is on file and whose read merely timed out. */
+            data.financials.readFailed
+              ? financialsUnreadableCopy()
+              : primerKeyFiguresEmptyCopy(hasCik, primer.hasFiledPeriod)
+          }
+        />
       )}
 
       <SectionRule marginTop={20}>recent developments</SectionRule>
@@ -212,12 +307,59 @@ export function PrimerSection({ data }: { data: CompanyIntelData }) {
 export function ToneSection({ data }: { data: CompanyIntelData }) {
   const { tone } = data;
 
-  /* ToneReadout keeps the insufficient read on its own render path with its own
-     copy, because "not enough coverage to state a level" and "the level is
-     neutral" are different facts. Carried over rather than collapsed. */
-  if (!tone.level) {
-    return (
-      <>
+  /* THE INSUFFICIENT READ IS A DIFFERENT HEADLINE, NOT A DIFFERENT SECTION.
+     ToneReadout keeps "not enough coverage to state a level" apart from "the
+     level is neutral", because they are different facts, and that much is
+     carried over. What used to be carried over with it was an early RETURN,
+     which exited ahead of the rule below and threw away rows the mapper had
+     already produced: `buildTone` fills `rows` on both branches, and a company
+     whose seven-day window is too thin to state a LEVEL can still have articles
+     in it that carry a stored reading. `/company/grab` is that company, and not
+     `/company/quantinuum`, which an earlier draft named: measured on all eight,
+     grab reads insufficient WITH one article row and quantinuum reads
+     insufficient with zero, so the fix is a no-op for quantinuum. The committed
+     `tone-insufficient-with-rows-390-*` plates are grab's data.
+     An absent level is a statement about the level. It is not a statement that
+     the articles do not exist. */
+  /* THE SHORT STATE CENTRES, the full one does not. With no level AND no rows
+     the whole section is a headline and a caveat, roughly 90px of content in a
+     section box of 300 or more, and a top-anchored 90px reads as a section that
+     stopped rather than one that finished. Centred, the gap above equals the
+     gap below and the difference between the leading gap and the trailing one
+     is exactly the scroll body's bottom padding, which is the signature this
+     screen's sibling wells already carry. A section with rows in it fills its
+     own box and is left alone. */
+  const shortBody = !tone.level && tone.rows.length === 0;
+
+  return (
+    <>
+      <div style={shortBody ? SECTION_FILL : undefined}>
+      {tone.level ? (
+        <div style={{ display: "flex", alignItems: "baseline", gap: "10px", flexWrap: "wrap" }}>
+          <span
+            style={{
+              font: `700 21px/1.1 ${FONT_DISPLAY}`,
+              letterSpacing: "-0.01em",
+              color: TONE_INK[tone.levelTone],
+            }}
+          >
+            {tone.level}
+          </span>
+          {/* `formatDirection` suppresses the phrase outright when there is no
+              prior week to compare against, and an empty span still draws a
+              flex gap beside the level. */}
+          {tone.direction ? (
+            <span
+              style={{
+                font: `600 12.5px/1 ${FONT_DISPLAY}`,
+                color: TONE_INK[tone.levelTone],
+              }}
+            >
+              {tone.direction}
+            </span>
+          ) : null}
+        </div>
+      ) : (
         <div
           style={{
             font: `700 21px/1.1 ${FONT_DISPLAY}`,
@@ -227,6 +369,13 @@ export function ToneSection({ data }: { data: CompanyIntelData }) {
         >
           Not enough recent coverage
         </div>
+      )}
+
+      {/* "" on the insufficient branch, and deliberately: `formatEvidence` over
+          an empty window reads "0 of 0 articles positive", which is a claim
+          about a window that carried nothing, so `buildTone` emits nothing and
+          this draws nothing rather than an empty paragraph. */}
+      {tone.evidence ? (
         <p
           style={{
             margin: "8px 0 0",
@@ -236,42 +385,7 @@ export function ToneSection({ data }: { data: CompanyIntelData }) {
         >
           {tone.evidence}
         </p>
-        <SectionNote>{tone.disclaimer}</SectionNote>
-      </>
-    );
-  }
-
-  return (
-    <>
-      <div style={{ display: "flex", alignItems: "baseline", gap: "10px", flexWrap: "wrap" }}>
-        <span
-          style={{
-            font: `700 21px/1.1 ${FONT_DISPLAY}`,
-            letterSpacing: "-0.01em",
-            color: TONE_INK[tone.levelTone],
-          }}
-        >
-          {tone.level}
-        </span>
-        <span
-          style={{
-            font: `600 12.5px/1 ${FONT_DISPLAY}`,
-            color: TONE_INK[tone.levelTone],
-          }}
-        >
-          {tone.direction}
-        </span>
-      </div>
-
-      <p
-        style={{
-          margin: "8px 0 0",
-          font: `400 11.5px/1.5 ${FONT_SANS}`,
-          color: "var(--c-secondary)",
-        }}
-      >
-        {tone.evidence}
-      </p>
+      ) : null}
 
       <p
         style={{
@@ -283,41 +397,51 @@ export function ToneSection({ data }: { data: CompanyIntelData }) {
       >
         {tone.disclaimer}
       </p>
+      </div>
 
-      <SectionRule marginTop={20}>what moved the reading</SectionRule>
-      {tone.rows.length > 0 ? (
-        tone.rows.map((row, i) => (
-          <RuledRow
-            key={`${i}-${row.meta}`}
-            first={i === 0}
-            last={i === tone.rows.length - 1}
-            style={{ display: "flex", gap: "12px" }}
-          >
-            <span
-              aria-hidden="true"
-              style={{
-                flex: "none",
-                display: "inline-block",
-                marginTop: "5px",
-                width: "7px",
-                height: "7px",
-                borderRadius: "50%",
-                backgroundColor: row.direction === "up" ? "var(--c-green)" : "var(--c-amber)",
-              }}
-            />
-            <div style={{ minWidth: 0, flex: 1 }}>
-              <p style={{ margin: 0, font: `400 13px/1.55 ${FONT_SANS}`, color: "var(--c-body)" }}>
-                {row.reading}
-              </p>
-              <p style={{ margin: "5px 0 0", ...LABEL_MONO }}>{row.meta}</p>
-            </div>
-          </RuledRow>
-        ))
-      ) : (
-        /* ToneEvidenceList gives back null on an empty window, so the level can
-           stand with no evidence under it. Saying so beats drawing nothing. */
-        <EmptyWell headline="No article in the last 7 days moved this reading." />
-      )}
+      {/* Drawn whenever there are rows to draw, on EITHER branch. The one case
+          it stays away from is no rows AND no level: the headline above has
+          already said there was not enough coverage, and a rule over a well
+          repeating it says the same absence twice. */}
+      {tone.rows.length > 0 || tone.level ? (
+        <>
+          <SectionRule marginTop={20}>what moved the reading</SectionRule>
+          {tone.rows.length > 0 ? (
+            tone.rows.map((row, i) => (
+              <RuledRow
+                key={`${i}-${row.meta}`}
+                first={i === 0}
+                last={i === tone.rows.length - 1}
+                style={{ display: "flex", gap: "12px" }}
+              >
+                <span
+                  aria-hidden="true"
+                  style={{
+                    flex: "none",
+                    display: "inline-block",
+                    marginTop: "5px",
+                    width: "7px",
+                    height: "7px",
+                    borderRadius: "50%",
+                    backgroundColor: TONE_ROW_FILL[row.direction],
+                  }}
+                />
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <p style={{ margin: 0, font: `400 13px/1.55 ${FONT_SANS}`, color: "var(--c-body)" }}>
+                    {row.reading}
+                  </p>
+                  <p style={{ margin: "5px 0 0", ...LABEL_MONO }}>{row.meta}</p>
+                </div>
+              </RuledRow>
+            ))
+          ) : (
+            /* ToneEvidenceList gives back null on an empty window, so the level
+               can stand with no evidence under it. Saying so beats drawing
+               nothing. */
+            <EmptyWell fill headline="No article in the last 7 days moved this reading." />
+          )}
+        </>
+      ) : null}
     </>
   );
 }
@@ -348,7 +472,7 @@ export function FilingsSection({
   const { rows } = data.filings;
 
   if (!hasCik || rows.length === 0) {
-    return <EmptyWell headline={filingsEmptyCopy(hasCik)} />;
+    return <EmptyWell fill headline={filingsEmptyCopy(hasCik)} />;
   }
 
   /* DERIVED, never stored. A chip label is a promise about what tapping it
@@ -384,6 +508,7 @@ export function FilingsSection({
 
       {visible.length === 0 ? (
         <EmptyWell
+          fill
           headline={
             filter === null
               ? "No material filings recorded. Every stored filing for this company is an insider form; use the Insider chip or the Insider section."
@@ -463,8 +588,69 @@ export function FilingsSection({
 /* Financials                                                          */
 /* ------------------------------------------------------------------ */
 
-const GRID = "1.35fr 1fr 1fr";
+/**
+ * The metric column, then one column per period.
+ *
+ * NOT a fixed three. `periods` is a list because the data is: measured on the
+ * live rows, GRAB has exactly ONE annual period and no quarterly one, while
+ * Goldman Sachs has five annual and eight quarterly. A hardcoded third track
+ * drew an empty column under a blank header for the first, which reads as a
+ * period whose figures are missing rather than as a period that was never
+ * filed. (Not ASML: its quarterly basis carries eight periods, not one.)
+ *
+ * `minmax(auto, Nfr)` AND NOT A BARE `Nfr`. A bare fr resolves against the
+ * container width, so every extra period made every column narrower and the
+ * table was clipped by the `overflow: hidden` that used to sit on it. Two
+ * period columns fitted; five and eight do not, and 5 and 8 are exactly what
+ * `ANNUAL_PERIODS` and `QUARTERLY_PERIODS` give back. Measured at 390px on a
+ * 348px container: GRAB annual wants 348, ASML annual 375, Quantinuum
+ * quarterly 410 and Goldman Sachs quarterly 714, so 366px of a real filer's
+ * statement had no way to be reached. An `auto` minimum sizes each track to its
+ * own widest figure instead, and the container scrolls sideways.
+ *
+ * THE WHOLE TABLE IS ONE GRID CONTAINER, which is the other half of the fix.
+ * Track sizes are computed per container, so with a grid per row a
+ * content-driven track would size off that row's own cells and the columns
+ * would stop lining up. The header row, the band heads and every data row are
+ * items in this one grid, and the band heads span it with `1 / -1`.
+ */
+function gridFor(periodCount: number): string {
+  return `minmax(auto, 1.35fr) repeat(${Math.max(periodCount, 1)}, minmax(auto, 1fr))`;
+}
 const HEAD_FONT = `600 10px/1 ${FONT_SANS}`;
+
+/**
+ * The metric column stays put while the figures scroll under it.
+ *
+ * A financials row is a label and a set of numbers, and a number whose row
+ * label has scrolled off the screen is a number a reader cannot name. The cell
+ * has to paint an opaque ground of its own or the scrolled values show through
+ * it, so every user of this passes the ground the row sits on.
+ */
+const STICKY_LABEL = {
+  position: "sticky",
+  left: 0,
+  zIndex: 1,
+  /* THE EDGE IS NOT DECORATION. Without it the scrolled figures are cut at the
+     sticky cell's right edge with nothing marking the cut, so the fragment
+     reads as the whole value. Measured at scrollLeft 400 on Goldman Sachs
+     quarterly, screenshot opened and read: `$4.10B` showed as `10B`,
+     `$1807.98B` as `98B`, `$122.78B` as `78B` and the header `Q3 FY2025` as
+     `2025`. On a financials surface `98B` standing in for `$1807.98B` is the
+     dangerous kind of wrong, because it is legible, plausible and off by four
+     orders of magnitude. The rule plus the shadow make the cut a cut. */
+  borderRight: "1px solid var(--c-border)",
+  boxShadow: "4px 0 6px -4px rgba(0, 0, 0, 0.28)",
+} as const;
+
+/**
+ * Digits that sit in a column line up.
+ *
+ * Logged during this sprint as appearing nowhere on this screen, and the
+ * financials table is the case it was written for: proportional digits make a
+ * column of figures ragged down its own decimal point.
+ */
+const TABULAR = { fontVariantNumeric: "tabular-nums" } as const;
 
 /**
  * The missing-cell mark, an EN dash. Named rather than inlined so the one place
@@ -479,12 +665,16 @@ const HEAD_FONT = `600 10px/1 ${FONT_SANS}`;
 const EN_DASH = "–";
 
 /**
- * Two period columns, which is the design's own read and a data decision rather
- * than a restyle: FinancialsTab draws five annual or eight quarterly columns and
- * neither fits a 350px content column. The two shown are the newest pair.
+ * EVERY period column the filer reported, not the newest pair.
+ *
+ * The design draws two, and two was a statement about the width of a phone
+ * rather than about the data. `ANNUAL_PERIODS` and `QUARTERLY_PERIODS` give
+ * back 5 and 8, the mappers return exactly that, and dropping the rest would
+ * hide filed figures with nothing on the screen saying so. The table scrolls
+ * sideways instead, with the metric column pinned; see `gridFor`.
  *
  * A missing cell draws a dash and never a zero, and a row with no value across
- * either shown period is dropped rather than dashed, both matching the desktop.
+ * any shown period is dropped rather than dashed, both matching the desktop.
  * The design's own closing note states the first rule to the reader.
  *
  * The dash is an EN dash. FinancialsTab renders an em dash, which the handoff's
@@ -515,11 +705,24 @@ export function FinancialsSection({
   const otherBands = data.financials[basis === "annual" ? "quarterly" : "annual"].bands;
   const hasAnyData = hasBasisData || otherBands.some((b) => b.rows.length > 0);
 
+  /* THE FAILED READ IS CHECKED FIRST, and that order is the whole fix.
+     `fetchCompanyFinancials` answers a query error with the same empty views a
+     company with no facts gets, so `!hasAnyData` is true in both cases and the
+     sentence under it, "Financials appear after the first periodic report", is
+     an assertion about the issuer. Measured on `/company/salesforce`, which has
+     five years of validated XBRL on file: that sentence on one pass and the
+     full FY2022 to FY2026 table twenty minutes later. `financial_facts_latest`
+     times out with Postgres 57014 and the mapper cannot see it; `readFailed`
+     is the read telling us, and it outranks every emptiness below. */
+  if (data.financials.readFailed) {
+    return <EmptyWell fill headline={financialsUnreadableCopy()} />;
+  }
+
   /* No table under either basis means no basis to pick between, so the period
      toggle does not render over an empty well. FinancialsTab draws its empty
      state alone for the same reason. */
   if (!hasCik || !hasAnyData) {
-    return <EmptyWell headline={financialsEmptyCopy(hasCik)} />;
+    return <EmptyWell fill headline={financialsEmptyCopy(hasCik)} />;
   }
 
   return (
@@ -538,103 +741,148 @@ export function FinancialsSection({
            report" is false here, because the other basis has figures. Name the
            basis that is missing and claim nothing else. */
         <EmptyWell
+          fill
           headline={`No ${basis} figures on file. The ${
             basis === "annual" ? "quarterly" : "annual"
           } basis has figures.`}
         />
       ) : (
         <>
+          {/* THE TABLE SCROLLS SIDEWAYS, INSIDE ITS OWN CONTAINER, and the page
+              body never does. `overflow: hidden` used to sit here, which fitted
+              the deleted fixture's two period columns and does not fit the real
+              ones. See the note on `gridFor` for the measurements. */}
           <div
+            role="group"
+            aria-label={`${basis === "annual" ? "Annual" : "Quarterly"} financials, scrolls sideways`}
+            tabIndex={0}
+            /* The visible scrollbar. A screen reader gets the label above; a
+               sighted reader used to get nothing at all when the second column
+               landed entirely outside the clip. See `.hscroll`. */
+            className={styles.hscroll}
             style={{
               marginTop: "12px",
               border: "1px solid var(--c-border)",
               borderRadius: "12px",
-              overflow: "hidden",
+              overflowX: "auto",
+              overflowY: "hidden",
+              /* A sideways fling stays in the table rather than being handed up
+                 to the page or to the browser's own back gesture. */
+              overscrollBehaviorX: "contain",
             }}
           >
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: GRID,
-                backgroundColor: "var(--c-surface)",
-                borderBottom: "1px solid var(--c-border)",
+                gridTemplateColumns: gridFor(periods.length),
+                /* max-content sizes the tracks to the figures they carry;
+                   minWidth keeps a table narrower than the screen filling its
+                   own border instead of leaving a gap inside it. */
+                width: "max-content",
+                minWidth: "100%",
               }}
             >
-              <div style={{ padding: "9px 12px", font: HEAD_FONT, color: "var(--c-secondary)" }}>
+              <div
+                style={{
+                  ...STICKY_LABEL,
+                  padding: "9px 12px",
+                  font: HEAD_FONT,
+                  color: "var(--c-secondary)",
+                  backgroundColor: "var(--c-surface)",
+                  borderBottom: "1px solid var(--c-border)",
+                }}
+              >
                 METRIC
               </div>
-              <div
-                style={{
-                  padding: "9px 8px",
-                  textAlign: "right",
-                  font: HEAD_FONT,
-                  color: "var(--c-secondary)",
-                }}
-              >
-                {periods[0]}
-              </div>
-              <div
-                style={{
-                  padding: "9px 12px 9px 8px",
-                  textAlign: "right",
-                  font: HEAD_FONT,
-                  color: "var(--c-secondary)",
-                }}
-              >
-                {periods[1]}
-              </div>
-            </div>
-
-            {bands.map((band, bandIndex) => (
-              <div key={band.band}>
+              {periods.map((period, i) => (
+                /* Keyed on POSITION. A period label is not unique: Goldman
+                   Sachs' quarterly view carries both "FY2025" and "Q3 FY2025",
+                   and two fiscal year-end columns can repeat a label outright. */
                 <div
+                  key={`${i}-${period}`}
                   style={{
-                    padding: "9px 12px",
-                    backgroundColor: "var(--c-surface)",
-                    borderTop: bandIndex > 0 ? "1px solid var(--c-border)" : undefined,
+                    padding: i === periods.length - 1 ? "9px 12px 9px 8px" : "9px 8px",
+                    textAlign: "right",
                     font: HEAD_FONT,
-                    color: "var(--c-muted)",
+                    /* AFTER `font`, always. The `font` shorthand resets
+                       `font-variant-numeric` to normal, and React writes inline
+                       properties in key order, so spreading this above the
+                       shorthand silently undoes it. Measured: the cells read
+                       `font-variant-numeric: normal` in the browser until this
+                       moved down. */
+                    ...TABULAR,
+                    color: "var(--c-secondary)",
+                    backgroundColor: "var(--c-surface)",
+                    borderBottom: "1px solid var(--c-border)",
+                    whiteSpace: "nowrap",
                   }}
                 >
-                  {band.band}
+                  {period}
                 </div>
-                {band.rows.map((row) => (
+              ))}
+
+              {bands.map((band, bandIndex) => (
+                <Fragment key={band.band}>
                   <div
-                    key={row.label}
                     style={{
-                      display: "grid",
-                      gridTemplateColumns: GRID,
-                      borderTop: "1px solid var(--c-hair)",
+                      gridColumn: "1 / -1",
+                      padding: "9px 12px",
+                      backgroundColor: "var(--c-surface)",
+                      borderTop: bandIndex > 0 ? "1px solid var(--c-border)" : undefined,
+                      font: HEAD_FONT,
+                      color: "var(--c-muted)",
                     }}
                   >
-                    <div
-                      style={{
-                        padding: row.derived ? "10px 12px 10px 22px" : "10px 12px",
-                        font: row.derived
-                          ? `400 12px/1.3 ${FONT_SANS}`
-                          : `400 12.5px/1.3 ${FONT_SANS}`,
-                        color: row.derived ? "var(--c-secondary)" : "var(--c-ink)",
-                      }}
-                    >
-                      {row.label}
-                    </div>
-                    {row.values.map((value, i) => (
+                    {/* The band name stays put too, for the reason the metric
+                        column does: a band head scrolled off the screen leaves
+                        the rows under it unnamed. */}
+                    <span style={{ position: "sticky", left: "12px", display: "inline-block" }}>
+                      {band.band}
+                    </span>
+                  </div>
+                  {band.rows.map((row) => (
+                    <Fragment key={row.label}>
                       <div
-                        key={`${row.label}-${i}`}
                         style={{
-                          padding: i === 0 ? "10px 8px" : "10px 12px 10px 8px",
-                          textAlign: "right",
-                          font: `400 12px/1.3 ${FONT_MONO}`,
-                          color: row.derived ? "var(--c-secondary)" : "var(--c-body)",
+                          ...STICKY_LABEL,
+                          padding: row.derived ? "10px 12px 10px 22px" : "10px 12px",
+                          font: row.derived
+                            ? `400 12px/1.3 ${FONT_SANS}`
+                            : `400 12.5px/1.3 ${FONT_SANS}`,
+                          color: row.derived ? "var(--c-secondary)" : "var(--c-ink)",
+                          backgroundColor: "var(--c-bg)",
+                          borderTop: "1px solid var(--c-hair)",
                         }}
                       >
-                        {value ?? EN_DASH}
+                        {row.label}
                       </div>
-                    ))}
-                  </div>
-                ))}
-              </div>
-            ))}
+                      {row.values.map((value, i) => (
+                        <div
+                          key={`${row.label}-${i}`}
+                          style={{
+                            padding:
+                              i === row.values.length - 1
+                                ? "10px 12px 10px 8px"
+                                : "10px 8px",
+                            textAlign: "right",
+                            font: `400 12px/1.3 ${FONT_MONO}`,
+                            /* After `font`. See the header cell above. */
+                            ...TABULAR,
+                            color: row.derived ? "var(--c-secondary)" : "var(--c-body)",
+                            borderTop: "1px solid var(--c-hair)",
+                            /* A figure never wraps mid-number. The track is
+                               sized off this, so nothing is cut either. */
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {value ?? EN_DASH}
+                        </div>
+                      ))}
+                    </Fragment>
+                  ))}
+                </Fragment>
+              ))}
+            </div>
           </div>
 
           <SectionNote>{note}</SectionNote>
@@ -676,7 +924,7 @@ export function InsiderSection({
 
   if (total === 0) {
     const copy = insiderEmptyCopy(hasCik);
-    return <EmptyWell headline={copy.headline} note={copy.note} />;
+    return <EmptyWell fill headline={copy.headline} note={copy.note} />;
   }
 
   return (
@@ -863,6 +1111,11 @@ function Fact({ label, value, mono }: { label: string; value: string; mono: bool
         style={{
           marginTop: "5px",
           font: mono ? `500 12px/1 ${FONT_MONO}` : `500 12px/1 ${FONT_SANS}`,
+          /* SHARES sits over PRICE and HELD AFTER in a two-column grid, and one
+             insider's rows stack down the section, so these digits line up in a
+             column exactly as the financials cells do. After `font`, because
+             the shorthand resets it. */
+          ...TABULAR,
           color: "var(--c-ink)",
         }}
       >

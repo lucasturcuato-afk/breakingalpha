@@ -113,20 +113,60 @@ export function Chip({
 }
 
 /**
+ * Grows to fill the section box, and centres what is in it.
+ *
+ * A section whose whole body is one short block is the case this exists for. It
+ * is NOT a spacer: the leading gap and the trailing gap come out equal, which
+ * is the measurable signature of a centred short state and the thing that tells
+ * a reader the section is finished rather than still loading. Measured on this
+ * screen, the trailing gap then exceeds the leading gap by exactly the scroll
+ * body's own bottom padding, 24px of design plus the 59px tab bar the shell
+ * does not reserve for.
+ *
+ * Never used mid-section. A block that grows with content under it pushes that
+ * content down instead of centring anything.
+ */
+export const SECTION_FILL = {
+  flexGrow: 1,
+  display: "flex",
+  flexDirection: "column",
+  justifyContent: "center",
+} as const;
+
+/**
  * The centred well the design uses when a section has nothing to draw.
  *
  * It states what is absent and nothing else. An empty state that asserts a fact
  * about the company is not a safe fallback, so every string passed here comes
  * from src/components/company/tabs/empty-state-copy.ts, the pure module the
  * desktop tabs already share, rather than being written again on this screen.
+ *
+ * `fill` is OPT IN, and it has to be. A well that IS the section's body should
+ * take the height the section was given; a well sitting mid-section, like the
+ * primer's key figures with recent developments under it, must not, because
+ * growing there shoves the rest of the primer down the screen.
  */
-export function EmptyWell({ headline, note }: { headline: string; note?: string | null }) {
+export function EmptyWell({
+  headline,
+  note,
+  fill,
+}: {
+  headline: string;
+  note?: string | null;
+  fill?: boolean;
+}) {
   return (
     <div
+      /* Named so the void harness can measure the gap above the copy against
+         the gap below it. A centred short state is a claim, and this is what
+         makes it a measurable one. */
+      data-empty-well={fill ? "fill" : "inline"}
       style={{
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
+        justifyContent: fill ? "center" : undefined,
+        flexGrow: fill ? 1 : undefined,
         gap: "8px",
         padding: "34px 20px",
       }}
@@ -167,21 +207,9 @@ export function SectionNote({ children, marginTop = 12 }: { children: ReactNode;
   );
 }
 
-/** A shimmer bar. Width is the only thing that varies between them. */
-export function SkeletonBar({
-  width,
-  height = 13,
-  marginTop = 0,
-}: {
-  width: string;
-  height?: number;
-  marginTop?: number;
-}) {
-  return (
-    <div
-      aria-hidden="true"
-      className={styles.sk}
-      style={{ width, height: `${height}px`, marginTop: `${marginTop}px` }}
-    />
-  );
-}
+/* THE SHIMMER BAR IS GONE WITH THE SKELETON IT BUILT. `/company/[id]` is a
+   server component that awaits all four reads before it renders, so nothing is
+   ever in flight when a reader arrives, and the only thing that raised the
+   skeleton was the `?stage=loading` parameter this PR removed. Its `.sk` class
+   stays in `company-mobile.module.css` and costs nothing; the day this screen
+   grows a read of its own, that is where the bar comes back from. */

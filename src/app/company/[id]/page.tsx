@@ -12,6 +12,7 @@ import { CompanyAliasRibbon } from "@/components/company/CompanyAliasRibbon";
 import { CompanyKPIStrip } from "@/components/company/CompanyKPIStrip";
 import { CompanyTrendCard } from "@/components/company/CompanyTrendCard";
 import { CompanyMemoModalListener } from "@/components/company/CompanyMemoModalListener";
+import { DesktopTreeGate } from "@/components/company/DesktopTreeGate";
 import { BriefTab } from "@/components/company/tabs/BriefTab";
 import { PrimerTab } from "@/components/company/tabs/PrimerTab";
 import { ArticlesTab } from "@/components/company/tabs/ArticlesTab";
@@ -35,98 +36,57 @@ import {
   filterAndClassifyArticles,
 } from "@/lib/company-intel";
 import { fetchCompanyArticles } from "@/app/api/companies/[id]/articles/route";
-import {
-  CompanyIntelScreen,
-  type CompanyIntelData,
-  type CompanyStage,
-} from "@/components/company/mobile";
-/* Imported by path, never through the barrel. The barrel is reachable from the
-   client graph through `company-intel-screen`, so pulling the invented company
-   through it would put it back in the browser bundle. This page is a server
-   component, so from here the fixture stays on the server and reaches the
-   screen as data. */
-import {
-  COMPANY_INTEL_EMPTY,
-  COMPANY_INTEL_FIXTURE,
-} from "@/components/company/mobile/fixture";
-import {
-  mobileFixtureAuthBypass,
-  mobileFixtureScreensEnabled,
-} from "@/lib/mobile-fixture-gate";
-import { FONT_DISPLAY, FONT_SANS } from "@/components/mobile/fonts";
+import { CompanyIntelScreen } from "@/components/company/mobile";
+import { buildCompanyIntelData } from "@/lib/company-mobile/build";
+import { mobileFixtureAuthBypass } from "@/lib/mobile-fixture-gate";
 
 /**
  * MOBILE REDESIGN, step 9, screen 15.
  *
- * Below `md` this route draws the redesign's Company Intel screen, and that
- * screen is a FIXTURE: invented filings, invented Form 4 rows and invented
- * validated XBRL. This page serves the real versions of all three for a real
- * ticker in production today, so the fixture is gated behind
- * mobileFixtureScreensEnabled(), which fails closed on production and opens
- * only on a non-production build or an explicit Vercel preview.
+ * Below `md` this route draws the redesign's Company Intel screen. That screen
+ * WAS a fixture: invented filings, invented Form 4 rows naming real executives,
+ * and invented validated XBRL, all attributed to a real issuer this page serves
+ * the real versions of. `src/components/company/mobile/fixture.ts` is deleted
+ * and `src/lib/company-mobile/build.ts` assembles the screen from the same four
+ * reads the desktop tree below already uses.
  *
- * With the gate shut, nothing below `md` changes: the desktop tree renders
- * exactly the element it renders today, with no extra wrapper, at every width.
+ * THE GATE IS OPEN, AND IT IS GONE RATHER THAN SET TO TRUE. This route no
+ * longer calls `mobileFixtureScreensEnabled()` at all, because a gate is a
+ * statement that there is something behind it that must not reach a reader and
+ * there is not: there is no fixture module, no default and no `??` that can
+ * supply a value, and every mapper emits an absence where a row is missing. A
+ * `const mobileScreen = true` would leave the reader of this file looking for
+ * the invented data it was protecting them from. The other five screens that
+ * still draw fixtures keep the gate; this one has nothing to gate.
+ *
+ * WHAT THE FLIP CHANGES ON PRODUCTION, both of which used to ride on
+ * `mobileScreen` and are now unconditional. `mobileFullBleed` drops the shell
+ * chrome below `md`, which the screen replaces with its own header bar. And the
+ * desk header steps to `h2`, because at `md` and above both trees are in the
+ * document and only one of them is ever in the accessibility tree: `md:hidden`
+ * is `display:none`, which removes the mobile screen outright there. The mobile
+ * screen keeps the `h1` because below `md` it is the reachable one.
+ *
+ * AND THE ROUTE HAS AN `h1` AT EVERY WIDTH. An earlier draft of this header
+ * said the flip left `md` and above with no `h1` at all. Measured on the
+ * running page at 390, 1024 and 1440, enumerating every `h1` and `h2` with its
+ * `offsetParent`: two `h1` elements are in the document at `md` and above and
+ * exactly one is shown, the shell's "Company Intel"; the screen's "Broadcom"
+ * `h1` is the one inside `display:none`. Below `md` the pair swaps, because
+ * `mobileFullBleed` drops the shell chrome. One visible `h1` at every width,
+ * and at `md` and above the desk header sits under it as an `h2`, which is the
+ * order that was wanted. There is no heading-order finding here.
+ *
+ * BELOW `md` THE DESK TREE IS NOT IN THE DOCUMENT AT ALL, and that is newer
+ * than the flip. `display:none` hides a subtree and mounts it: measured at
+ * 390px signed in with zero interaction, the desk tree was firing
+ * POST /api/company-overview on every phone load, a route that reaches
+ * gemini-2.5-flash on a cache miss, plus `/api/company-kpis`,
+ * `/api/company-trend`, `/api/stock-chart`, `/api/memo-cache` and
+ * `/api/watchlist`. `DesktopTreeGate` decides the mount on the same pixel the
+ * class decides visibility. The class is unchanged and still the only thing
+ * that says which tree is SHOWN.
  */
-const STAGES: CompanyStage[] = ["ready", "loading", "error", "empty"];
-
-function readStage(raw: string | string[] | undefined): CompanyStage {
-  const value = Array.isArray(raw) ? raw[0] : raw;
-  return STAGES.includes(value as CompanyStage) ? (value as CompanyStage) : "ready";
-}
-
-/**
- * Resolve the gate HERE, on the server, and hand the screen the result.
- *
- * `CompanyIntelScreen` takes `data` as a required, nullable prop and never
- * imports the fixture itself, so the invented company is emitted into no
- * client chunk on any build. The gate is still the thing that decides whether
- * it is drawn; this only makes the gate decide whether it is DOWNLOADED too.
- * `enabled` is always `mobileFixtureScreensEnabled()`, never a local guess.
- *
- * `if (!enabled) return null` IS UNREACHABLE ON THIS ROUTE TODAY, and it is
- * belt-and-braces rather than a live path. Both call sites already sit inside
- * a `mobileFixture ?` branch, and with the gate shut this page renders the
- * desk tree instead of the mobile screen at all, so nothing ever calls this
- * with `enabled` false. The gate above it is what does the work.
- *
- * It stays for two reasons and neither is "it might fire". First, it makes the
- * gate visible AT the call site, which is what stops a third call site being
- * added later without one. Second, it is what keeps `data` honestly typed
- * `| null`, and that type is the thing that turns a forgotten prop into a
- * build failure instead of an invented company.
- *
- * The consequence to be honest about: the screen's own null branch, which
- * draws the loader, therefore never executes in production on this route and
- * nothing exercises it. Do not read it as tested behaviour.
- */
-function companyFixture(enabled: boolean, stage: CompanyStage): CompanyIntelData | null {
-  if (!enabled) return null;
-  return stage === "empty" ? COMPANY_INTEL_EMPTY : COMPANY_INTEL_FIXTURE;
-}
-
-/**
- * The truth strip. Sits ABOVE the screen and OUTSIDE `[data-parity="company"]`,
- * so parity never sees it and a human always does. A reviewer on a preview
- * deployment is looking at a real company's URL, and nothing inside the drawing
- * says the numbers are not that company's.
- */
-function FixtureNotice() {
-  return (
-    <p
-      style={{
-        margin: 0,
-        padding: "9px 20px",
-        backgroundColor: "var(--c-amber-well)",
-        borderBottom: "1px solid var(--c-amber-edge)",
-        font: `500 11px/1.4 ${FONT_SANS}`,
-        color: "var(--c-amberink)",
-      }}
-    >
-      Design fixture. Every figure below is invented and none of it describes this company.
-    </p>
-  );
-}
 
 // Convert a URL slug to a canonical company name.
 // e.g. "nvidia-corporation" -> "NVIDIA", "goldman-sachs" -> "Goldman Sachs",
@@ -164,58 +124,41 @@ export async function generateMetadata({
 
 export default async function CompanyDetailPage({
   params,
-  searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ stage?: string | string[] }>;
 }) {
   const { id } = await params;
   const companyName = slugToCompanyName(id);
-  const stage = readStage((await searchParams).stage);
-  const mobileFixture = mobileFixtureScreensEnabled();
+  /* NO `?stage=` PARAMETER, and this is the one live path a wiring unit could
+     have left behind. It accepted ready|loading|error|empty off the query
+     string, which was harmless over a fixture and is not harmless over a real
+     company: `?stage=empty` would draw an empty screen over a name that has
+     filings, insider rows and financials on file, from a link anyone can send.
+     The screen's own lifecycle is derived from whether the data resolved. */
 
   // Auth gate -- middleware also enforces, but page must call to get a client.
   const { supabase, user } = await getSupabaseWithUser();
-  if (!user) {
-    // This second gate is why src/proxy.ts cannot open the route: the proxy's
-    // MOBILE_REDESIGN_DEV_PATHS list makes the request public and then this
-    // line sends it to /auth anyway, so every parity, audit and smoke run
-    // measures the sign-in page. Opened on a development server only, matching
-    // the proxy's own precedent. A preview deployment keeps its redirect.
-    //
-    // Order matters for the build, not just for the read. The bypass is the
-    // NODE_ENV-only test, so putting it first lets the production build fold
-    // the whole block to nothing rather than keep it as dead bytes behind a
-    // redirect that throws. Verified against a real production build; see the
-    // PR body.
-    if (mobileFixtureAuthBypass() && mobileFixture) {
-      return (
-        <LiveMoodShell pageTitle="Company Intel" mobileFullBleed>
-          {/* The screen paints its own ground. Without it the shell's parchment
-              shows below a short state, and the loading and error states are
-              exactly the short ones. backgroundColor is not a property any
-              responsive class here sets, so the inline value cannot defeat the
-              breakpoint. */}
-          <div className="md:hidden" style={{ backgroundColor: "var(--c-bg)", minHeight: "100%" }}>
-            <FixtureNotice />
-            {/* Stated rather than left to a default. The fixture describes a
-                public filer, so the sourced empty copy this picks is the
-                has-CIK branch. The signed-in path below reads the real
-                resolution instead. */}
-            <CompanyIntelScreen stage={stage} data={companyFixture(mobileFixture, stage)} hasCik />
-          </div>
-          <div className="hidden md:block" style={{ padding: "48px" }}>
-            <p style={{ margin: 0, font: `500 17px/1.4 ${FONT_DISPLAY}`, color: "var(--c-ink)" }}>
-              Sign in to read Company Intel.
-            </p>
-            <p style={{ margin: "10px 0 0", font: `400 13px/1.6 ${FONT_SANS}`, color: "var(--c-secondary)" }}>
-              The desktop surface renders this company&apos;s own filings, insider record and
-              financials, so it is not drawn for a signed-out reader.
-            </p>
-          </div>
-        </LiveMoodShell>
-      );
-    }
+
+  /* This second gate is why src/proxy.ts cannot open the route: the proxy's
+     MOBILE_REDESIGN_DEV_PATHS list makes the request public and then this line
+     sends it to /auth anyway, so every parity, audit and smoke run measures the
+     sign-in page. Opened on a development server only, matching the proxy's own
+     precedent. A preview deployment keeps its redirect.
+
+     IT FALLS THROUGH NOW RATHER THAN RETURNING ITS OWN TREE. The branch that
+     used to sit here rendered the screen with the fixture, because a signed-out
+     request had nothing else to draw. There is no fixture, and a branch that
+     returned early could only draw a loader over a company it had not read, so
+     it lets the normal path run instead: the reads below use the anon client
+     and the public-read policies on companies, articles, sec_filings and
+     insider_transactions answer them.
+
+     The bypass is the NODE_ENV-only test, so a production build folds the
+     condition to a bare `!user` and the redirect is unconditional there. It no
+     longer carries the screen gate beside it: that gate is off this route, and
+     an auth bypass is a development affordance in its own right rather than
+     something the mobile screen earns. */
+  if (!user && !mobileFixtureAuthBypass()) {
     redirect("/auth");
   }
 
@@ -377,21 +320,17 @@ export default async function CompanyDetailPage({
     comps: <ComingSoonTab tabId="comps" />,
   };
 
-  // The desktop surface, unchanged. Held in a const so the gate can place it
-  // without the shut branch acquiring a wrapper element it does not have today.
+  // The desktop surface, unchanged.
   //
-  // titleAs is the ONE difference between the two placements, and it exists
-  // because the gate open means both trees are in the same document. Only one
-  // is visible, so assistive tech already sees a single heading, but the
-  // document outline sees two h1s. The mobile screen keeps h1 because that is
-  // the reachable one below `md`; this steps to h2 on the gated path. With the
-  // gate shut, `mobileFixture` is false and this renders h1 exactly as today.
+  // titleAs is the ONE difference from what this rendered before the gate
+  // opened. Both trees are in the same document now, so the outline would carry
+  // two h1s; the mobile screen keeps its h1 because below `md` it is the
+  // reachable one, and this steps to h2. See the heading-order note in the file
+  // header for what that costs at `md` and above.
   const desk = (
     <CompanyDetailLayout
       tabContent={tabContent}
-      header={
-        <CompanyDetailHeader detail={companyDetail} titleAs={mobileFixture ? "h2" : "h1"} />
-      }
+      header={<CompanyDetailHeader detail={companyDetail} titleAs="h2" />}
       aliasRibbon={
         <CompanyAliasRibbon
           canonical={companyDetail.canonical}
@@ -411,30 +350,60 @@ export default async function CompanyDetailPage({
   );
 
   return (
-    <LiveMoodShell pageTitle="Company Intel" mobileFullBleed={mobileFixture}>
-      {mobileFixture ? (
-        <>
-          {/* Gating lives in a CLASS, never in an inline style: an inline
-              display beats the class at every breakpoint, which is the defect
-              that shipped the tab bar to desktop once already. */}
-          {/* The screen paints its own ground. Without it the shell's parchment
-              shows below a short state, and the loading and error states are
-              exactly the short ones. backgroundColor is not a property any
-              responsive class here sets, so the inline value cannot defeat the
-              breakpoint. */}
-          <div className="md:hidden" style={{ backgroundColor: "var(--c-bg)", minHeight: "100%" }}>
-            <FixtureNotice />
-            <CompanyIntelScreen
-              stage={stage}
-              data={companyFixture(mobileFixture, stage)}
-              hasCik={filingsResult.cik != null}
-            />
-          </div>
-          <div className="hidden md:block">{desk}</div>
-        </>
-      ) : (
-        desk
-      )}
+    <LiveMoodShell pageTitle="Company Intel" mobileFullBleed>
+      {/* Which tree is drawn lives in a CLASS, never in an inline style: an
+          inline display beats the class at every breakpoint, which is the
+          defect that shipped the tab bar to desktop once already. */}
+      {/* The screen paints its own ground. Without it the shell's parchment
+          shows below a short state, and the loading and error states are
+          exactly the short ones. backgroundColor is not a property any
+          responsive class here sets, so the inline value cannot defeat the
+          breakpoint. */}
+      {/* `flex flex-col` are CLASSES, like `md:hidden` beside them, and never an
+          inline display: an inline display beats a responsive class at every
+          breakpoint and would put this tree on desktop. Tailwind emits variant
+          utilities after base ones, so `md:hidden` still wins at `md` and above.
+          The column is what lets the screen inside grow to this box: a
+          percentage `min-height` on the screen resolves against this element's
+          HEIGHT, which is auto, so it resolved to zero and the screen stopped at
+          its content while this box was a full 785px tall. */}
+      <div
+        className="md:hidden flex flex-col"
+        style={{ backgroundColor: "var(--c-bg)", minHeight: "100%" }}
+      >
+        {/* NO TRUTH STRIP. The amber "every figure below is invented" band
+            used to render unconditionally inside both branches, because
+            every figure below WAS invented. The screen reads this company's
+            own rows now, so the band would be the false statement on the
+            page. */}
+        {/* `hasCik` is passed explicitly and the prop carries no default,
+            so leaving it off is a build failure rather than a silent true.
+            It picks which sourced empty copy the Filings, Financials and
+            Insider sections use, and claiming an SEC identity a company
+            does not have puts "no filings on file" where "not an SEC
+            filer" belongs. */}
+        <CompanyIntelScreen
+          data={buildCompanyIntelData({
+            detail: companyDetail,
+            filings: filingsResult,
+            insider: insiderResult,
+            financials: financialsResult,
+            identity,
+            developments: developmentArticles,
+          })}
+          hasCik={filingsResult.cik != null}
+        />
+      </div>
+      {/* MOUNTED, not merely shown, and that was the defect. `hidden md:block`
+          is `display:none` below `md`, which removes a subtree from the
+          accessibility tree and from layout and unmounts nothing: measured at
+          390px signed in with zero interaction, the desk tree inside was firing
+          POST /api/company-overview, which reaches gemini-2.5-flash on a cache
+          miss, plus five GETs, two of which leave for Yahoo and are the same
+          requests this PR logged against itself as still in flight past 30
+          seconds. The class still decides VISIBILITY and is unchanged; the gate
+          decides the MOUNT, on the same pixel. See DesktopTreeGate. */}
+      <DesktopTreeGate>{desk}</DesktopTreeGate>
       <CompanyMemoModalListener
         companyName={canonical}
         memoContent={memoContent}

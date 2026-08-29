@@ -13,9 +13,25 @@
  * misspelled or unexpected environment value, lands on the production branch
  * and gives back false.
  *
- * Both reads are `process.env.<LITERAL>`, which Next inlines at build time, so
- * a production bundle carries the constant and the fixture branch is
- * unreachable rather than merely unvisited.
+ * IT FAILS CLOSED. IT IS NOT ALWAYS FOLDED. An earlier version of this comment
+ * claimed both reads are inlined at build time, so a production bundle carries
+ * the constant and the branch is "unreachable rather than merely unvisited".
+ * That is false as compiled, and the compiled output says so. Next inlines
+ * `process.env.NEXT_PUBLIC_*` only for variables PRESENT AT BUILD TIME. With
+ * `NEXT_PUBLIC_VERCEL_ENV` unset this function survives into the bundle as a
+ * runtime read:
+ *
+ *   "mobileFixtureScreensEnabled",0,function(){return"preview"===process.env.NEXT_PUBLIC_VERCEL_ENV}
+ *
+ * and folds to `function(){return!1}` only when the variable IS present at
+ * build time. `NODE_ENV` is inlined either way, which is why the production
+ * leg still gives back false and the safety is intact. What is not intact is
+ * the mechanism claim: with the variable unset the branch is unvisited, not
+ * unreachable, and a bundler that does not tree-shake an unvisited branch will
+ * still ship the data behind it. That is not a theoretical difference. The
+ * fixture strings for `/company/[id]` sat in the SERVER bundle for exactly this
+ * reason while the gate was shut, and the only thing that made them absent was
+ * deleting the fixture module from the render path.
  *
  * THE PREVIEW LEG IS UNVERIFIED, and nothing should be claimed for it. Two
  * things have to be true for it to open a screen on a preview deployment and
