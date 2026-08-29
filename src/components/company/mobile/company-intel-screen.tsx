@@ -23,6 +23,7 @@ import {
   PrimerSection,
   TONE_INK,
   ToneSection,
+  spanWhenLastOfOdd,
 } from "./sections";
 import { FONT_DISPLAY, FONT_MONO, FONT_SANS } from "@/components/mobile/fonts";
 
@@ -155,6 +156,16 @@ export function CompanyIntelScreen({
         minHeight: "100%",
         display: "flex",
         flexDirection: "column",
+        /* The wrapper in `page.tsx` is a column flex container with its own
+           `min-height: 100%`, and this grows into it. Without the grow, a
+           percentage `min-height` against a wrapper whose HEIGHT is auto
+           resolves to zero, so this box stopped at its content: measured at
+           390x844 on `/company/mistral-ai`, the wrapper was 785px and this was
+           617px. The wrapper paints the same ground, so nothing showed through,
+           but every section below was laid out inside a box 168px shorter than
+           the space it had, which is the space a short section needs to centre
+           in. */
+        flexGrow: 1,
       }}
     >
       <div
@@ -210,6 +221,12 @@ export function CompanyIntelScreen({
         style={{
           flex: 1,
           minWidth: 0,
+          /* A COLUMN, so the active section can take the height nothing above
+             it used. Masthead, KPI card and the chip row are all content-sized;
+             the section below them is the one thing on this screen that has a
+             short state and a long one, so it is the one that grows. */
+          display: "flex",
+          flexDirection: "column",
           /* The design's 24px, plus the bar the shell does not reserve for.
              The measurement that settles which of those two is true is at the
              top of this file. */
@@ -251,8 +268,26 @@ export function CompanyIntelScreen({
 
             {/* Keyed on the section so the 200ms fade replays on every swap,
                 which is what the prototype's `sc-if` gives for free. */}
-            <div key={active} className={styles.sectionIn} style={{ marginTop: "18px" }}>
-              {active === "brief" ? <PrimerSection data={data} /> : null}
+            {/* `1 0 auto` and never `1`. Grow into whatever the blocks above
+                left over, so a short section can centre in it, and NEVER shrink:
+                a shrinkable basis-zero item compresses a long section below its
+                own content. */}
+            <div
+              key={active}
+              data-section-body=""
+              className={styles.sectionIn}
+              style={{
+                marginTop: "18px",
+                flex: "1 0 auto",
+                display: "flex",
+                flexDirection: "column",
+              }}
+            >
+              {/* `hasCik` reaches the primer too now. Its key-figures empty
+                  state used to assert "private, pre-IPO, or not currently
+                  quoted" for every company with no XBRL, which is false for a
+                  CIK holder that has not filed a periodic report yet. */}
+              {active === "brief" ? <PrimerSection data={data} hasCik={hasCik} /> : null}
               {active === "trend" ? <ToneSection data={data} /> : null}
               {active === "filings" ? (
                 <FilingsSection data={data} hasCik={hasCik} />
@@ -401,9 +436,41 @@ function MemoControl({ corpus }: { corpus: string }) {
   );
 }
 
+/**
+ * The KPI card.
+ *
+ * IT IS A VARIABLE-LENGTH LIST, and the grid has to survive both ends of that.
+ * `buildKpis` emits one cell per read that answered: the seven-day mention
+ * count always, the article tone only when the window carried enough scored
+ * coverage to state a level, and the source count only when a publisher name
+ * was on a row. So one, two or three cells arrive, and a cell is never invented
+ * to round the count.
+ *
+ * ODD COUNTS. The container paints `--c-border` and each cell paints
+ * `--c-surface` over it, so the hairline is the container showing through the
+ * 1px gap. With an odd count the last slot has no cell in it and draws as a
+ * filled block of border colour about 57px tall, in both themes, exactly where
+ * a figure would be. Measured on `/company/mistral-ai` at one cell and on
+ * `/company/broadcom` and `/company/salesforce` at three. The lone trailing
+ * cell spans the row instead, through the same helper the primer's key-figures
+ * grid uses.
+ *
+ * ZERO CELLS. The whole card is omitted. A bordered, rounded, border-filled box
+ * with nothing inside it is not an empty state, it is a container that failed
+ * to be filled. Unreachable on today's mapper, because the mention count is
+ * always emitted, and it is guarded rather than assumed: the emptiness of a
+ * read is not this component's to predict.
+ */
 function KpiGrid({ data }: { data: CompanyIntelData }) {
+  if (data.kpis.length === 0) return null;
+
   return (
     <div
+      /* Named so a plate can crop to exactly this card. The empty half of an
+         odd row is the defect it is evidence of, and it is 57px of the same
+         colour as the hairline beside it, so a whole-screen plate cannot show
+         it. */
+      data-kpi-grid=""
       style={{
         marginTop: "18px",
         display: "grid",
@@ -415,8 +482,15 @@ function KpiGrid({ data }: { data: CompanyIntelData }) {
         overflow: "hidden",
       }}
     >
-      {data.kpis.map((cell) => (
-        <div key={cell.label} style={{ backgroundColor: "var(--c-surface)", padding: "11px 13px" }}>
+      {data.kpis.map((cell, i) => (
+        <div
+          key={cell.label}
+          style={{
+            ...spanWhenLastOfOdd(i, data.kpis.length),
+            backgroundColor: "var(--c-surface)",
+            padding: "11px 13px",
+          }}
+        >
           <div
             style={{
               font: `400 10px/1 ${FONT_MONO}`,
