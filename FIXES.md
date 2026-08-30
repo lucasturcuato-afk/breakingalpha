@@ -1,7 +1,7 @@
 # Loop fixes
 
-Status: IN PROGRESS. Written incrementally, one section per item. A section
-reading PENDING was not complete at the time of the last commit.
+Status: COMPLETE. Every item is marked done, PROPOSED, BLOCKED or PARTIAL, and
+carries before-and-after evidence that is not a build result.
 
 Every item records WHAT WAS BROKEN, WHAT CHANGED, PROOF, and RESIDUAL RISK.
 Proof is a query result, a test result, or a rendered value, before and after.
@@ -257,24 +257,464 @@ founders' are adopting. That measurement is still not possible; see ITEM 7.
 
 ## ITEM 3, brief opens
 
-PENDING
+**Status: DONE at the source, MIGRATION WRITTEN AND UNAPPLIED in the read path.**
+
+### WHAT WAS BROKEN
+
+Both ends. At the source, the emit was guarded only by a `useRef` allocated
+inside the component body, which lives exactly as long as one mount. A remount,
+a client route re-entry, a second tab or a reload each reset it to null and the
+effect fired again. In the read path, `brief_opens_7d` was a raw `count(*)`, so
+it counted page mounts and called them opens.
+
+Measured over the window `[2026-08-23T23:39:40Z, 2026-08-30T23:39:40Z)`:
+
+```
+RAW event count (dim_users only)                    : 215
+DEDUPED distinct (user, briefing, date)             : 22
+raw events per opener, descending                   : [195,4,3,3,2,2,1,1,1,1,1,1]
+distinct briefing ids per opener, descending        : [5,4,3,2,1,1,1,1,1,1,1,1]
+inflation factor                                    : 9.77x
+```
+
+One account produced 195 of 215, across 5 distinct briefings. That is not five
+briefs read 195 times; it is one component mounting 195 times.
+
+### WHAT CHANGED
+
+**Source**, shipped and live in this branch. `trackClientEvent` gains a `once`
+option: a once-per-UTC-day guard keyed per caller-supplied string, scoped
+internally by `event_type` so the dotted and legacy names stay paired 1:1.
+Backed by `localStorage`, because `sessionStorage` dies with the tab and would
+still let every reload and every second tab re-fire. Fails OPEN: a throwing
+store emits rather than drops.
+
+Both emit sites now pass `once: briefingId`. The `useRef` stays as a cheap
+same-mount short circuit.
+
+**Read path**, in the unapplied migration. `brief_opens_7d` becomes
+`count(DISTINCT briefing || ':' || utc_date)`. The card
+`brief_opens_per_active` is REMOVED and replaced by
+`brief_open_days_median_7d`, median distinct open-days per opener on a 1 to 7
+scale.
+
+### PROOF
+
+Not a build result.
+
+**Source guard**, seven assertions over the pure layer, run:
+
+```
+✔ the first claim of a key on a day emits, the second does not
+✔ a different key on the same day is independent
+✔ a new UTC day re-opens the same key
+✔ entries older than the retention window are pruned, so the map cannot grow
+✔ a corrupted stored value does not wedge telemetry forever
+✔ the map is written under one namespaced key
+✔ onceDayStamp is UTC, so the key matches the SQL dedupe key
+ℹ pass 7   ℹ fail 0
+```
+
+**Read path, before and after.** Before, from both live views:
+
+```
+internal_kpi_summary       All: brief_opens_7d=215  brief_opens_per_active=15.36
+internal_kpi_summary_by_cohort All: brief_opens_7d=215  brief_opens_per_active=15.36
+```
+
+After, computed from raw data because the migration is deliberately unapplied:
+
+```
+deduped brief_opens_7d                        : 22
+deduped opens per active (22 / 14)            : 1.57
+median brief-open days per opener, 1 to 7     : 1
+days-per-user vector across 12 openers        : [1,1,1,1,1,1,1,1,1,2,3,3]
+```
+
+Nine of twelve openers opened on exactly one day. The card said 15.36; the
+habit is 1 day in 7.
+
+**The invariant that catches this** now fails on the live data and will pass
+after the migration:
+
+```
+FAIL  R9  no single reader exceeds briefs published per day times a refresh factor
+        opens=215 openers=12 top_per_user=[195, 4, 3, 3, 2] max_per_day=27.86
+        bound=5.50 (briefs_per_day=1.83 x refresh_factor=3)
+```
+
+### RESIDUAL RISK
+
+The source guard is per browser. A reader on two devices still produces two
+opens per day, which the read-path dedupe then collapses. That layering is
+deliberate: neither half is sufficient alone.
+
+The guard does not retro-correct the 195 historical rows. Those stay in
+`user_events`; the read-path dedupe is what stops them inflating the card.
+
+A server-side unique index would be the authoritative third layer, and it is
+NOT included. The legacy event names write a NULL `entity_id`, so an index on
+that column would silently miss half the rows until the legacy emits carry it.
+Recorded as a follow-up rather than half-done.
 
 ## ITEM 4, companies researched
 
-PENDING
+**Status: DONE in the unapplied migration. The brief's premise was wrong.**
+
+### WHAT WAS BROKEN
+
+Not capture. **The read expression.**
+
+The card unioned `outputs.source_id` for memo rows with `company_id` from the
+regeneration quota. `source_id` is a `uuid` polymorphic pointer to the ORIGIN
+record an artifact was generated from, qualified by `source_table`. It is not a
+company reference and could never hold one:
+
+```
+q.sh "outputs?select=id&source_id=eq.Swvl&limit=1"
+{"code":"22P02","message":"invalid input syntax for type uuid: \"Swvl\""}
+```
+
+It is NULL on every memo row, so that leg contributed zero and the displayed 5
+came entirely from the 6-row quota table.
+
+Meanwhile the company had been persisted the whole time, one key over. The
+audit checked `content->>'ticker'` (44 of 143) and missed
+`content->>'target_company'`, written by `/api/memo` on every memo it can
+resolve:
+
+```
+memo rows fetched                : 143
+target_company populated         : 89 = 62.2%
+source_id populated              : 0  (0.0%)
+distinct target_company          : 58
+distinct quota company_id        : 5
+quota names already in tc        : 5 of 5
+```
+
+So the audit's "96.3 percent of research actions never register" was wrong.
+Capture is 62.2 percent by row, and the card was reading the wrong column.
+
+### WHAT CHANGED
+
+The card now counts distinct `lower(btrim(content->>'target_company'))` over
+memo rows, unioned with the quota table. The quota leg is kept as belt and
+braces even though it now adds nothing.
+
+### PROOF
+
+The brief asked for a query showing the event landing rather than a diff. The
+honest form of that here is a query showing the DATA landing, because no new
+emit was needed and generating a memo would mean a write and a model call,
+both of which this run is forbidden.
+
+Before, live:
+
+```
+q.sh "internal_kpi_summary?select=distinct_companies_researched&segment_domain=eq.All"
+[{"distinct_companies_researched":5}]
+```
+
+After, computed from the same rows the corrected expression reads:
+
+```
+AFTER, union(target_company, quota) : 58
+AFTER, case-insensitive union       : 57
+```
+
+**5 becomes 57.** The case-normalized figure is the one that ships; the one-name
+gap between 58 and 57 is a casing duplicate that `lower(btrim(...))` merges.
+
+### RESIDUAL RISK
+
+54 of 143 memo rows still carry no company. They are concentrated: all 15
+`brief` rows, which legitimately have no single subject company and arguably
+should be excluded from this card, and 8 of 10 `thesis` rows.
+
+`lower(btrim(...))` cannot merge suffix variants, so "Visa" and "Visa Inc."
+still count as two. Names are stored verbatim on purpose because
+`/api/memo-cache` matches them exactly, so normalizing at write time would
+break the cache.
+
+The `memo_generated` EVENT payload is still inconsistent across its five emit
+sites: the two deal-flow sites send `company`, the trends site sends only
+`signal_id`, and both memo modals send only `memo_type` and `title`. That is a
+real gap but a secondary one, because the event is a behavioral stream and the
+`outputs` row is the canonical record. Follow-up, not done here.
+
+Found in passing and NOT fixed, because it is outside this item: the regenerate
+cache invalidation at `src/app/api/memo/route.ts:465-470` deletes with
+`.eq("source_id", company)`, a company NAME against a uuid column. It has never
+matched a row and its error is never inspected.
 
 ## ITEM 5, remaining card defects
 
-PENDING
+**Status: DONE in the unapplied migration and in the page, for every defect the
+audit recorded that items 3 and 4 did not cover.**
+
+| Defect | Fix | Before | After |
+|---|---|---|---|
+| D3 censoring | `window_closed` and `cohort_size_observed` on both cohort views, plus a `censored` marker in both tables | 2026-08-24 row prints "2% activated", "2.0% retention" as measurement; 0 of its 98 members have a closed window, 96 have never fired an event | marked censored, marker driven off `max(created_at) + 7d <= now()` |
+| D4 populations | `events_all_real_users` and `pct_outside_dim_users` on instrumentation health, global scope KEPT | page prints "Memos generated 160" beside `memo_generated events_all 264` in identical styling | the 104 gap is labelled and reconciles on the row |
+| D5 WAPS denominator | `waps_tenured_pct` and `waps_active_pct`, renamed not redefined | 6.0% over all 199 signups | 10.9% tenured, 85.7% active |
+| D6 `thesis_approved` | `never_fired` flag via a FULL OUTER JOIN against a declared roster | invisible: `GROUP BY` over stored rows cannot emit a row for an event that never fired | appears with `never_fired=true`, 0 rows, 7 code references |
+| D7 orphaned events | `feeds_no_metric` flag | 1109 of 3082 rows (36.0%) feed nothing, rendered identically to those that do | flagged per row |
+| D10 `weeks_since_signup` | measured from `max(created_at)`, the newest member | measured from the Monday of the signup week, overstating up to 199 of 199 depending on the weekday the page loads | cannot overstate |
+| D11 rounding | `, 1` added to both activation percentages | 67.2 printed as 67, 51.7 as 52, 16.7 as 17, 33.3 as 33 twice | one decimal, matching every other percentage |
+| D12 stale copy | referent computed from `window_closed` | hard-coded "the 2026-04-27 cohort is the reliable read", false as a superlative since 2026-08-24 reached n=98 | computed largest CLOSED cohort, still 2026-04-27 at n=58, but it now follows the data |
+| activation lower bound | `first_onb >= created_at` and the `least()` twin | no floor, so a backdated event would count a user as onboarded before they existed | bounded. Latent, 0 violations today, minimum observed gap +31.9 seconds |
+| `days_since_last` clock | elapsed seconds, not a date subtraction | two clocks in adjacent columns: a 0.9-hour event could print "1 day ago", and 5.8-hour and 24.0-hour events could print the same number | one clock |
+
+Three defects (D6, D7, D9) could NOT be fixed by correcting any existing card,
+because the cards they concern were marked DEFECT: NONE and are arithmetically
+right. Each is surfaced as a new column instead. D9 in particular is a
+disagreement between two SOURCES (264 memo events against 143 artifacts,
+1.846x, disagreeing on 45 of 66 days), so changing 160/0/5 would have been
+wrong; it is now an invariant instead, and it fails.
+
+### PROOF: both summary views agree
+
+The brief requires any card change to land in BOTH views and to be proven. The
+post-change values cannot be queried, because the migration is deliberately
+unapplied, so this is proven two ways.
+
+**Baseline, live, before any change.** 17 of 17 shared metrics agree today:
+
+```
+metric                        summary    by_cohort   agree
+total_users                       199          199   YES
+weekly_actives                     14           14   YES
+brief_opens_7d                    215          215   YES
+brief_opens_per_active          15.36        15.36   YES
+waps_pct                            6            6   YES
+watchlist_pct                    20.1         20.1   YES
+retention_4w_pct                   12           12   YES
+... (17 rows total)
+shared metrics compared: 17 | disagreements: 0
+```
+
+**Textual, over the migration itself.** Both view bodies were extracted, their
+grouping keys normalised to one token, and every metric expression compared:
+
+```
+shared metric expressions: 34
+byte-identical after normalising the grouping key: 34
+MISMATCHES: none
+present only in internal_kpi_summary (global, by design): waitlist_count, distinct_companies_researched
+```
+
+### RESIDUAL RISK
+
+The Waitlist card cannot be scoped in SQL at all. `public.waitlist` has no
+`user_id` column, so it is structurally unjoinable to `dim_users`. Its fix is
+rendered copy only, and it remains a genuinely different population rendered in
+the same `Stat` component as user counts.
+
+The instrumentation view keeps its global scope deliberately, because its
+stated job is whether an event fires at all. The scoped counter sits beside it
+rather than replacing it.
 
 ## ITEM 6, invariants
 
-PENDING
+**Status: DONE and RUN.**
+
+### WHAT WAS BROKEN
+
+Nine of the twelve existing invariants were true by construction: both sides
+were `count(*) FILTER (...)` over the same rows, in one statement, under one
+frozen `now()`. No value of any datum could make them fail.
+
+### WHAT CHANGED
+
+`scripts/invariants.mjs`. Thirteen assertions. Every replacement issues its two
+sides as SEPARATE requests, because collapsing an assertion into one SQL
+statement re-freezes `now()` across both sides and reinstates the exact defect
+being removed. Both request timestamps are logged so drift is distinguishable
+from logic. Exit contract copied from `scripts/cohort-selftest.mjs`: 0 pass,
+1 failed, 2 NOT RUN.
+
+### PROOF, full run pasted
+
+```
+13 assertions, 8 passed, 5 failed, 16 HTTP requests
+FAILED: A6, R9, R10, R12, 12b
+KNOWN live defects, shipped failing on purpose: A6, R9, R10, R12, 12b.
+No regressions: every failure above is a known defect.
+```
+
+The two required reconciliations both PASS, and neither is a defect:
+
+```
+PASS  NEW-a  auth.users minus the exclusion list equals dim_users exactly
+        auth_users=206 excluded=7 (by_address=3 by_domain=4) expected=199
+        dim_users=199 | null_email=0 whitespace_padded=0
+
+PASS  NEW-b  cohort roster sums to the cohort summary All row
+        sum(member_count)=199 All.total_users=199 buckets=1 DEGENERATE: one
+        bucket holds every user, so this is equal by circumstance. It becomes a
+        real test on the first attributed signup.
+```
+
+**206 minus 7 equals 199 EXACTLY.** The 7 decompose as 3 explicit addresses plus
+4 domain matches, with zero NULL emails, zero whitespace-padded emails and zero
+soft-deleted rows, so none of the four latent hazards is live.
+
+**One NEW defect, found by this suite and not previously recorded:**
+
+```
+FAIL  R10  every event-active user in 30d also has a sign-in in 30d
+        event_active_30d=18 signed_in_30d=106 active_without_signin=5
+```
+
+Five users emitted events in the last 30 days with no sign-in in the same
+window. The old assertion compared counts (18 <= 106) and had so much headroom
+it would never fire; the set-containment form fires on the first such user.
+
+Assertions that would still be true by construction and are therefore NOT
+shipped in that form: the naive R8 (comparing the USC domain count to the view's
+own CASE expression re-evaluates the very predicate it audits, so only the regex
+form ships), and any replacement collapsed into a single statement.
+
+### RESIDUAL RISK
+
+NEW-b is near-degenerate: one bucket holds all 199 users, so it is equal by
+circumstance rather than by construction. A guard prints DEGENERATE on the row.
+It becomes a real test on the first attributed signup.
+
+R9's refresh factor of 3 is a judgement call, named as a constant rather than
+buried. The verdict is stable for any factor below roughly 9.8.
+
+The suite is wired into no npm script and no CI workflow, matching
+`cohort-selftest.mjs`, which has the same gap. Both should be added to CI or
+they will not run.
 
 ## ITEM 7, loop instrumentation
 
-PENDING
+**Status: PARTIAL. Two of the three required cards are computable and ship. The
+third cannot be computed and deliberately does not ship as a number.**
+
+### WHAT WAS BROKEN
+
+The dashboard measures reach, not the loop. `src/app/internal/page.tsx` and
+`src/lib/internal-kpis.ts` contain zero references to `claim`, `adopt`,
+`outcome` or `record`.
+
+### WHAT CHANGED
+
+**(a) Adoption rate over brief openers.** New view
+`internal_kpi_loop_adoption`. Denominator is distinct brief openers in the
+window, never all-time signups. An `EXISTS` intersection keeps the numerator a
+subset of its denominator, so the card cannot print above 100 percent.
+
+**(b) Resolution view rate. NOT SHIPPED as a view, on purpose.** No event that
+has ever fired is a view of a graded record, and all six surfaces that render
+one contain no tracking import. A view created now would return a NULL rate
+forever, and a card printing 0 percent would be a false statement about reader
+behavior rather than a true one about instrumentation. The SQL is written into
+the migration as a comment, ready to create once rows exist.
+
+**(c) Return after an adopted call moves to challenged.** New view
+`internal_kpi_loop_post_challenge`. CHALLENGED is `verdict = 'wrong'` plus
+`attribution = 'clean'`, verified in `src/lib/scored-object-map.ts` (maps to
+state "wrong") and `src/lib/verdict-vocabulary.ts` (`RESOLUTION_BY_STATE` maps
+"wrong" to "challenged"). No other pair reaches it.
+
+**Denominators that drift downward forever**, both found and both replaced:
+WAPS and percent-with-a-watchlist. See item 5.
+
+**Every new card carries** its denominator label, its window as literal UTC
+instants (`window_start_utc`, `window_end_utc`), its population filter, and
+`computed_at`. The refresh time is `now()` INSIDE the view rather than a
+timestamp taken in the page, because `now()` is transaction start time and is
+therefore the exact instant every ratio on that row was defined against. The
+page makes six separate view reads, so one page-level timestamp would silently
+claim they were all as of one moment.
+
+### PROOF
+
+```
+ADOPTION RATE OVER BRIEF OPENERS (7d window)
+  distinct brief openers (real)  : 12
+  of whom adopted (ever)         : 1
+  rate                           : 8.3%
+  same numerator over all-time signups (the defect this replaces): 0.5%
+
+RETURN AFTER CHALLENGED
+  verdict/attribution            : {"partial/clean":1,"ungradable/null":4,
+                                    "correct/clean":3,"partial/confounded":1,
+                                    "wrong/clean":1}
+  CHALLENGED (wrong+clean)       : 1
+  later distinct sessions        : 9, all on the SAME UTC day as graded_at
+```
+
+### RESIDUAL RISK, and this one matters more than the cards
+
+**Almost every loop card reads n=1.** Only one real user has ever adopted a
+call: 15 adopted rows exist but 12 of them and 2 of the 3 adopting users are
+founder or test accounts that `dim_users` excludes.
+
+The post-challenge card would print **100 percent from a denominator of 1**,
+and all 9 of its "later sessions" fall on the same UTC day as the grading, so
+it is measuring tab churn as much as a return. `session_id` is per tab from
+`sessionStorage`. The view therefore emits `claims_with_a_later_day` beside
+`claims_with_a_later_session`, and the day figure is the honest one.
+
+A rate over a denominator of one is a sentence about one person, and it will be
+quoted in a pilot conversation as if it were a rate. Every such card carries its
+n on the face for that reason.
+
+The commit-sheet emits for loop steps 4 and 5 are NOT added. They would be
+straightforward, but the sheet is reached only by tapping a card on the mobile
+Ledger, and adding the emit without first knowing real usage would produce a
+card that reads 0 and looks like a product fact.
 
 ## NEEDS HUMAN VERIFICATION
 
-PENDING
+Ordered, item 1 first as required.
+
+1. **ITEM 1. That a signed-in reader on PRODUCTION can open the commit sheet
+   and write a row.** I could not do this. `.env.local` and `e2e/.auth/user.json`
+   are both absent from this worktree, so `npm run test:e2e` fails at the `setup`
+   project before any spec runs. My evidence is structural (the provider mounts
+   unconditionally, proven by reading the source and by a mutation test) plus PR
+   #686's own signed-in measurement from 2026-08-26. Neither is a live check
+   today. **This is the top of the list because the audit claimed the opposite
+   and I am asserting the audit was wrong.**
+
+2. **ITEM 2, the ruling conflict.** Someone with authority must decide whether
+   the note gate is restored. I did not implement it, because
+   `decisions/commit-note-optional-when-adopting.md`, ruled today, reverses
+   exactly that and warns against restoring it from the older ruling 11. If the
+   decision is to restore it, the diff is in item 2 above. If the decision is to
+   follow the ruling through, the outstanding work is the OPPOSITE: desktop
+   `/radar/calls` still gates on twelve characters at
+   `TrackCallControl.tsx:84-86` and the ruling says it should not.
+
+3. **The migration has never been parsed by a server.** Every "after" number in
+   this document was computed from raw data in node, not by executing the SQL.
+   Two constructs deserve attention on first run: `count(DISTINCT a || b)`,
+   which is written as text concatenation because `count(DISTINCT (a, b))` does
+   not parse, and `percentile_disc(...) WITHIN GROUP (...) FILTER (...)`, an
+   ordered-set aggregate inside a GROUPING SETS query. Run
+   `node scripts/invariants.mjs` before and after.
+
+4. **That 5 becoming 57 on Companies researched is the number you want.** It is
+   arithmetically right for the expression I wrote, but it includes every memo
+   subject, including the 15 market-brief rows that have no single subject
+   company. Excluding `memo_type = 'brief'` is a product judgement I did not
+   make.
+
+5. **The R10 failure, which is new.** Five users emitted events in 30 days with
+   no sign-in in 30 days. I did not root-cause it. The plausible mechanisms are
+   a long-lived JWT, or events attributed to a user whose session never
+   refreshed. Neither is verified.
+
+6. **Whether the 2026-08-28 batch of 96 users is real signups or an import.**
+   Still unresolved from the prior audit. It is 48 percent of the base and it
+   dominates every window-sensitive card, including several I just changed the
+   denominators of.
+
+7. **That removing `brief_opens_per_active` does not break a consumer I did not
+   find.** I grepped and changed the two views, the type and the page. A
+   dashboard, notebook or saved query outside this repo would not have been
+   found.
