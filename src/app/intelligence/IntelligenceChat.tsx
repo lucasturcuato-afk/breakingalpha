@@ -63,6 +63,29 @@ const SUGGESTED_PROMPTS = [
   "Which sectors show the most momentum?",
 ];
 
+/* What the field says it does, and it is the same string twice on purpose: the
+   label below is the accessible name and the placeholder is the visible one,
+   and a control whose two names disagree reads as two different controls. That
+   is the Ask composer's rule verbatim (ask-composer.tsx:64-73), applied here
+   because this field had NO real name: its only source was the placeholder,
+   which the accessible-name algorithm treats as the last resort and which stops
+   being rendered the moment a character is typed.
+
+   Only the name changes. The 13px size stays: the sub-16px input floor is being
+   scoped across the whole app as its own unit, and a one-screen font-size bump
+   would collide with it.
+
+   Why the string is this short, which predates this change: the gutter narrowed
+   the field, and the old copy stopped fitting. Measured at 320 the input's
+   content box is 198px against a 228.9px prompt string, so it rendered
+   "...market intellige|", and at 360 the headroom was 9.1px, thin enough for a
+   fallback face to clip it too. The Ask composer's verbatim string is not
+   available here either: without the ellipsis it still measures 219.1px and
+   overruns 320 by 21.1px, because that composer gives its field the whole row
+   and puts the send control on its own line. This measures 145px, which is 53px
+   of headroom at 320 and 64.3px in a generic sans fallback. */
+const FIELD_LABEL = "Ask about the market...";
+
 /* ── Per-message feedback wrapper ── */
 
 function ChatMessageFeedback({ outputId, children }: { outputId?: string | null; children: React.ReactNode }) {
@@ -70,8 +93,34 @@ function ChatMessageFeedback({ outputId, children }: { outputId?: string | null;
   return (
     <div ref={ref as React.RefObject<HTMLDivElement>}>
       {children}
+      {/* THE KEYBOARD HALF IS FIXED HERE. THE TOUCH HALF IS DELIBERATELY OPEN.
+
+          These two buttons are 15x15 around an 11px glyph, under the 44px
+          floor, and until this change they were also unreachable: the wrapper
+          is `opacity-0` revealed by `group-hover/msg`, and Tailwind compiles
+          every `hover:` variant inside `@media (hover: hover)`. On a touch
+          context `matchMedia("(hover: hover)")` is false, so the measured
+          opacity was 0 with and without a synthetic hover.
+
+          Two defects, and they are NOT welded together, which is the thing to
+          get right. `focus-within:opacity-100` closes the keyboard one on its
+          own: before it, `b.focus()` succeeded and
+          `document.activeElement === b` while the wrapper sat at opacity 0, so
+          a keyboard user tabbed onto a control they could not see, a 2.4.7
+          failure. Now the wrapper reveals when either button takes focus. That
+          costs no design decision, adds no permanently visible control, and a
+          reader on a touch device sees nothing change.
+
+          WHAT IS STILL OPEN, ON PURPOSE: the 15x15 size and the touch
+          reachability. Those two do move together, because raising a control
+          nobody can see to 44px produces a 44px target nobody can see, which is
+          worse than today. Doing both means two permanently visible 44px
+          buttons under every assistant answer on every touch device, which
+          changes what a message looks like. That is a design decision with an
+          owner and it needs its own measurements at 320 through 430. Not this
+          unit's to make, so it is written down rather than guessed at. */}
       {outputId && (
-        <div className="flex items-center gap-1 mt-1.5 opacity-0 group-hover/msg:opacity-100 transition-opacity">
+        <div className="flex items-center gap-1 mt-1.5 opacity-0 group-hover/msg:opacity-100 focus-within:opacity-100 transition-opacity">
           <button
             type="button"
             onClick={() => setThumbs(thumbs === "up" ? null : "up")}
@@ -270,8 +319,36 @@ export function IntelligenceChat({ userId }: IntelligenceChatProps) {
                     key={prompt}
                     type="button"
                     onClick={() => handlePromptClick(prompt)}
+                    /* 37.19 tall before this, under the 44px floor, and these
+                       are not decoration: a tap calls sendMessage directly and
+                       spends one of the day's fifteen model calls.
+
+                       `box-content` plus `min-h-11` is the Ask chip's exact
+                       construction, spelled out at ask-composer.tsx:96-97 and
+                       justified at ask-parts.tsx:26-56. Reproduced, not
+                       imported. The box model is the whole point: Tailwind's
+                       preflight makes every box border-box, while the design
+                       the sibling was built from ships no reset and is
+                       therefore content-box, so a bare min-height of 44 would
+                       land on 44 exactly with the border eating into it where
+                       the design draws 46. That parity table's "prompt chip"
+                       row is literally this control. The block padding goes
+                       because the min-height now carries the height; leaving
+                       `py-2` on a content-box 44 would make the chip 62.
+
+                       Copied rather than consumed because AskComposer takes
+                       exactly two prompts, hard-wires both of its controls to
+                       navigation with no callback, and is styled in the `--c-*`
+                       family this screen does not use. This is a number and a
+                       box model, not a component.
+
+                       And it is copied rather than tokenised on purpose. There
+                       is no tap-floor SSOT in this repo today, the literal 44px
+                       appears at 17 sites, and migrating them is a separate
+                       change. */
                     className={cn(
-                      "px-3 py-2 rounded-xl border border-border-base bg-parchment",
+                      "box-content min-h-11 inline-flex items-center px-3",
+                      "rounded-xl border border-border-base bg-parchment",
                       "font-sans text-[12px] text-text-secondary",
                       "hover:border-gold/40 hover:text-gold transition-colors cursor-pointer",
                     )}
@@ -347,22 +424,16 @@ export function IntelligenceChat({ userId }: IntelligenceChatProps) {
         onSubmit={handleSubmit}
         className="flex items-center gap-2 pt-3 border-t border-border-base"
       >
+        <label htmlFor="intelligence-composer" className="sr-only">
+          {FIELD_LABEL}
+        </label>
         <input
+          id="intelligence-composer"
           ref={inputRef}
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          /* Shortened because the gutter this PR adds narrowed the field, and
-             the old string stopped fitting: measured at 320 the input's
-             content box is 198px against a 228.9px prompt string, so it rendered
-             "...market intellige|", and at 360 the headroom was 9.1px, thin
-             enough for a fallback face to clip it too. The Ask composer's
-             verbatim string is not available here either: without the ellipsis
-             it still measures 219.1px and overruns 320 by 21.1px, because that
-             composer gives its field the whole row and puts the send control
-             on its own line. This measures 145px, which is 53px of headroom at
-             320 and 64.3px in a generic sans fallback. */
-          placeholder="Ask about the market..."
+          placeholder={FIELD_LABEL}
           disabled={loading}
           className={cn(
             "flex-1 px-4 py-3 border border-border-base rounded-xl bg-parchment",
@@ -374,8 +445,27 @@ export function IntelligenceChat({ userId }: IntelligenceChatProps) {
         <button
           type="submit"
           disabled={loading || !input.trim()}
+          /* THE NAME. This is the only control that sends a message and it had
+             none: its single child is a lucide glyph, lucide-react stamps
+             `aria-hidden="true"` on every one of them, and the aria snapshot
+             read back as a bare `button [disabled]`. So the icon needs no
+             change; the whole defect is the missing string.
+
+             "Send" and not the Ask composer's "Search Signalera". That button
+             is named for a destination because it navigates. This one performs
+             an action and never leaves the screen, so it is named for the
+             action.
+
+             THE SIZE. `p-3` around a 16px glyph computed to 40x40, under the
+             floor. 44 is free here, measured on a production build: the field
+             beside it is 46.8 tall, so it stays the row's tallest item and the
+             form keeps its height, its top and its bottom (59.8 / 711.2 / 771).
+             The composer's bottom edge does not move and the 14px above the tab
+             bar is untouched. Only the flexed field gives up 4px of width.
+             48 would have cost 1.2px of scroll area, so 44. */
+          aria-label="Send"
           className={cn(
-            "flex-shrink-0 p-3 rounded-xl",
+            "flex-shrink-0 w-11 h-11 flex items-center justify-center rounded-xl",
             "bg-gold text-cream hover:bg-gold/90 transition-colors cursor-pointer",
             "disabled:opacity-40 disabled:cursor-not-allowed",
           )}
