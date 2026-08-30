@@ -111,7 +111,7 @@ sensitivity, not ownership.
 <!-- /learn appends new rules here when they do not fit a section above. One specific, verifiable line each. -->
 
 ### Measuring a browser
-Eight traps, each one found the expensive way by an agent that trusted a
+Nine traps, each one found the expensive way by an agent that trusted a
 reading. Every one returns a plausible number rather than an error.
 
 - A dev build serves the mobile fixtures. Measure product data on a
@@ -129,6 +129,11 @@ reading. Every one returns a plausible number rather than an error.
 - `.focus()` called from a script after a mouse click leaves Chromium in
   pointer modality, so `:focus-visible` does not match and the ring reads
   `3px none`. Walk to the control with real Tab presses.
+- `Emulation.setEmulatedMedia` alone does not flip `hover` and `any-hover` to
+  `none`. `hasTouch: true` on the browser context is what does it. A harness
+  that sets only the CDP call reports a coarse-pointer measurement it never
+  took, and the number can still be right for the wrong reason. Assert the
+  emulation landed and throw if it did not.
 - Read a focus ring at t=500ms, not t=0. `transition-colors` includes
   `outline-color` at 150ms, so an immediate read returns the start value and
   looks like a missing ring.
@@ -139,6 +144,34 @@ reading. Every one returns a plausible number rather than an error.
   and then bounces it to `/waitlist`. Adding the row is a DB write. Measure
   signed out with `VERCEL_ENV=preview` (unprefixed, read at runtime, no
   rebuild needed).
+
+### Work pushed to a branch whose PR has closed lands nothing
+Two shapes, one failure. A branch that has been squash-merged is a dead end,
+and git will happily keep accepting commits on it.
+
+**Shape one, a stacked PR.** Merge a PR whose base is another PR's branch,
+after that base has already gone upstream, and the merge succeeds into a branch
+nothing reads any more. GitHub records it as merged. Nothing warns.
+
+**Shape two, a late commit.** Push to a branch after its own PR has merged.
+There is no PR left to carry it, so it sits on the branch forever.
+
+Both happened the same day. Shape one twice, the second time 31 seconds after
+the first. Shape two twice, and the second time it ate the first draft of this
+very entry, so the trunk kept saying eight traps while the branch said ten.
+
+- **`git merge-base --is-ancestor <head> main` cannot detect it.** Squash-merge
+  means a head commit is never an ancestor of the trunk, so ancestry returns a
+  false negative for every squash-merged PR, landed or lost alike. It reported
+  both a landed PR and a lost one as missing.
+- **The only reliable check is content.** Pick something the PR added or
+  removed and look for it on the trunk: a new exported constant, a deleted
+  file, a renamed string. `git show origin/main:<file> | grep`.
+- **Recovering it is cheap and is not a reimplementation.** Diff the PR's base
+  at branch time against its head, apply that to the trunk, open a fresh PR.
+  Both recoveries applied clean with no resolution.
+- **Avoid it by merging a stack bottom-up in one sitting**, or by retargeting
+  the child at the trunk before merging the parent.
 
 ### Two checks that answer a question nobody asked
 - `design:lint --since origin/main` run before committing prints
