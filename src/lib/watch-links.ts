@@ -51,11 +51,21 @@ import type { WatchlistKind } from "@/components/watch/fixture";
  * error has to fall in: an unlinked card is a card, and a linked one that lands
  * on the miss surface tells a reader their own company is not on Signalera.
  *
- * SERVER SIDE ONLY, and that is structural rather than a convention. It imports
- * the resolver and `company-intel`, neither of which belongs in this screen's
- * client chunk, and the proof needs a read. `watch-data.ts` calls it and puts
- * the answer on `WatchlistItem.href`, so the card component renders a value
- * rather than deciding one.
+ * SERVER SIDE FOR RADAR, and that is structural rather than a convention. The
+ * proof needs a read, so `resolvesTo` and `watchlistHref` only have an answer
+ * where a read has happened. `watch-data.ts` calls them and puts the result on
+ * `WatchlistItem.href`, so the card component renders a value rather than
+ * deciding one.
+ *
+ * `linkLookups` IS THE EXCEPTION AND IT IS NOT AN ACCIDENT. It carries no read
+ * and no proof set, only the route's reconstruction, so it is the half a client
+ * can run. `src/app/company/page.tsx` imports it in the directory search box to
+ * decide whether a zero-match query is a slug the route's ticker branch can even
+ * run on, which is how BRK.B stopped routing into the miss surface. That import
+ * puts `aliasResolver` in the directory's client chunk; `company-intel` was
+ * already there for `canonicalize`, and neither module reads `server-only` or
+ * touches a secret. Anything that DOES need a read stays on this side of the
+ * line.
  */
 
 /** A watchlist row reduced to the two fields a destination depends on. */

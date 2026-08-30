@@ -21,6 +21,7 @@ import { getSectorStyle } from "@/lib/sector-colors";
 import { ThemeTags } from "@/components/company/ThemeTags";
 import { SignInModal } from "@/components/auth/sign-in-modal";
 import { canonicalize, timeAgo } from "@/lib/company-intel";
+import { linkLookups } from "@/lib/watch-links";
 import { useLiveMood } from "@/hooks/useLiveMood";
 
 // Shape of /api/companies response items. Locally redeclared to avoid importing
@@ -574,10 +575,48 @@ export default function CompanyIntelPage() {
                   if (target) router.push(`/company/${encodeURIComponent(slugify(target.name))}`);
                   return;
                 }
-                // Zero matches: navigate only for a plausible ticker shape so the
-                // on-demand mint path opens. Non-ticker junk does not navigate.
+                /* Zero matches: navigate only for a slug `/company/[id]` can
+                   actually take its ticker branch on, so the on-demand mint
+                   path opens on a destination that can land.
+
+                   THIS USED TO BE A FOURTH REGEX FOR ONE RULE, and it was the
+                   widest of the four, so it routed readers into a terminal
+                   loop. `/^[A-Z]{1,6}(\.[A-Z]{1,4})?$/` accepts a dot; the
+                   resolver the route uses, `aliasResolver.ts`'s `TICKER_RE`,
+                   is `/^[A-Z]{1,5}$/` and does not. So typing BRK.B pushed
+                   /company/BRK.B, the route's ticker branch never ran, the
+                   name branch missed, and the reader got "BRK.B isn't on
+                   Signalera yet" for a company that renders at
+                   /company/Berkshire-Hathaway. The loop closes rather than
+                   recovers: `CompanyAutoResolve` POSTs /api/company/resolve,
+                   `resolveOrCreateCompany.ts`'s WIDER `/^[A-Z][A-Z.]{0,6}$/`
+                   accepts the dot and finds the row, the client pushes the
+                   row's ticker, which is the identical slug, and the
+                   sessionStorage guard blocks the retry.
+
+                   `linkLookups` IS THE ROUTE'S OWN RECONSTRUCTION, imported
+                   rather than approximated: slugToCompanyName, canonicalize,
+                   then `TICKER_RE` on the result, in that order, which is what
+                   page.tsx and resolveAlias do to this exact string. Reusing
+                   it is the point. `src/lib/watch-links.ts` and
+                   `src/lib/ask-companies-data.ts` already prove links this way
+                   and inventing a third answer here is how the regexes
+                   diverged in the first place.
+
+                   WHAT IT CANNOT CHECK, stated rather than implied. The name
+                   branch needs a read this client does not have, so the gate
+                   only clears the ticker branch. It is sound here because this
+                   is the ZERO-MATCH path: `/api/companies?q=` already searched
+                   name and ticker for the same string and returned nothing, so
+                   the name branch has nothing to find either. INTC still
+                   navigates, and should: it reconstructs through CANONICAL to
+                   "Intel" and lands on the name branch.
+
+                   WIDENING `aliasResolver` IS THE REAL FIX and is issue #738.
+                   It is a shared resolver on every company-resolving route and
+                   wants its own blast-radius check, not a ride on this one. */
                 const upper = q.toUpperCase();
-                if (/^[A-Z]{1,6}(\.[A-Z]{1,4})?$/.test(upper)) {
+                if (linkLookups(upper)?.ticker) {
                   router.push(`/company/${encodeURIComponent(upper)}`);
                 }
               }}
