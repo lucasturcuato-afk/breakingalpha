@@ -63,12 +63,21 @@ const ENUMERATE = () => {
         ["button", "link", "tab", "switch", "checkbox", "radio", "menuitem", "option"].includes(role ?? "");
       const pointer = cs.cursor === "pointer";
       if (!interactiveRole && !pointer && !isTextEntry) continue;
-      /* An element that merely CONTAINS a control is not a control. If a
-         descendant is itself interactive or pointer-cursored, the ancestor is
-         a wrapper and probing it would double-count the child's behaviour. */
-      if (!interactiveRole && pointer) {
-        const inner = el.querySelector("a,button,[role=button],input,textarea,select,summary");
-        if (inner) continue;
+      /* `cursor: pointer` INHERITS, so every span, svg and rect inside a link
+         reports it. None of those is a control: the anchor is. An element that
+         is not interactive in its own right counts only when NOTHING
+         interactive sits above or below it, which is what a genuine
+         "pointer with no handler" looks like. Without both halves of this the
+         walk reports one dead div as eight.
+
+         The svg internals are excluded outright. A <rect> inside an icon is
+         not a tap target under any reading, and it is what made the first run
+         of this harness report the tab bar's icons as four defects each. */
+      if (!interactiveRole) {
+        if (el.closest("svg")) continue;
+        if (!pointer) continue;
+        if (el.closest("a,button,[role=button],label,select,summary")) continue;
+        if (el.querySelector("a,button,[role=button],input,textarea,select,summary")) continue;
       }
       const r = el.getBoundingClientRect();
       const visible = cs.display !== "none" && cs.visibility !== "hidden" && Number(cs.opacity) > 0.01 && r.width > 0 && r.height > 0;

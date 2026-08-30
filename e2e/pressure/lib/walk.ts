@@ -221,6 +221,18 @@ export async function probeScreen(
       continue;
     }
 
+    /* A LINK TO THE SCREEN THE READER IS ALREADY ON IS A NO-OP ON PURPOSE.
+       The lit pole in the tab bar is exactly that, and `mobile-tab-bar.tsx`
+       says so in as many words: "tapping a lit pole is the no-op it should
+       always have been". Reporting it as a dead handler is reporting the
+       intended behaviour. */
+    const selfLink =
+      c.tag === "a" && c.href !== null && normalise(c.href, base) === route;
+    if (inert && selfLink) {
+      controlLog({ route, theme, pass, control: c.path, text: c.text, verdict: "self-link-noop" });
+      continue;
+    }
+
     if (inert) {
       dead += 1;
       finding({
