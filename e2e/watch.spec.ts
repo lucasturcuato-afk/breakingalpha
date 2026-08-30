@@ -147,7 +147,10 @@ test.describe("Watch, signed in", () => {
     // silence: the screen renders dated claims off an undated store.
     await expect(screen).toContainText("NOT SHOWN HERE");
     await expect(screen).toContainText("A staleness line");
-    await expect(screen).toContainText("Nothing records when the last pass ran");
+    await expect(screen).toContainText("Nothing records when these rows were last refreshed");
+    // And the claim stays SCOPED. The product-wide version is false: run times
+    // are recorded (`articles.fetched_at`, `ingest_run_stats.run_started_at`).
+    await expect(screen).not.toContainText("Nothing records when the last pass ran");
   });
 
   test("an empty watchlist is a read answering empty, and names a destination", async ({

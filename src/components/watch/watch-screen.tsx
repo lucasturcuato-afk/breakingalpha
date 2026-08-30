@@ -49,10 +49,13 @@ import { FONT_DISPLAY, FONT_MONO, FONT_SANS } from "@/components/mobile/fonts";
  *
  * Staleness passes it and is kept. This screen renders dated claims off an
  * undated store - "No news today", the with-news and quiet counts, "This
- * week's coverage" - and nothing records when the pass that fills that store
- * last ran. Silence there would let "No news today" read as a check made
- * today. `omissions.ts` carries the full per-entry reasoning; `OmittedNotes`
- * at the foot of this file draws what survives.
+ * week's coverage" - and nothing records when THIS DESK'S rows were last
+ * refreshed. Silence there would let "No news today" read as a check made
+ * today. The scope matters and the copy carries it: run times ARE recorded
+ * (`articles.fetched_at`, `ingest_run_stats.run_started_at`), so the
+ * product-wide version of that sentence would be false. `omissions.ts` carries
+ * the full per-entry reasoning; `OmittedNotes` at the foot of this file draws
+ * what survives.
  *
  * The register is unchanged: a REASON is about the PRODUCT, an EMPTY STATE is
  * about the READER and needs a read behind it.

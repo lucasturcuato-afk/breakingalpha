@@ -50,17 +50,32 @@
  *                        coverage", "an empty week, not a failed load". Every
  *                        one of those is read out of stored article rows
  *                        (`watch-data.ts` filters on `published_at`), and
- *                        nothing records when the pass that fills them last
- *                        ran. Without the note "No news today" reads as "we
- *                        looked today and found nothing", which is a check the
- *                        product did not make. That is the second failure mode
- *                        above, squarely, and it is the same shape as the two
- *                        corrections this screen already protects: the
+ *                        nothing records when THIS DESK'S rows were last
+ *                        refreshed. Without the note "No news today" reads as
+ *                        "we looked today and found nothing", which is a check
+ *                        the product did not make. That is the second failure
+ *                        mode above, squarely, and it is the same shape as the
+ *                        two corrections this screen already protects: the
  *                        per-entry read fault, which withdraws names from the
  *                        quiet count, and `FollowingTail`, which withdraws its
  *                        own "empty week, not a failed load" claim when a
  *                        follow could not be checked. Those correct WHO is in
  *                        the set. This one corrects WHEN it was measured.
+ *
+ *                        THE SCOPE IS LOAD-BEARING AND IT WAS MISSING. The
+ *                        string shipped by PR #731 said "nothing records when
+ *                        the last pass ran", which is a product-wide negative
+ *                        and is false: `articles.fetched_at` is read by this
+ *                        very loader to build `lastCheckedLabel`, and
+ *                        `sql/0028_ingest_observability.sql:82-84` creates
+ *                        `ingest_run_stats.run_started_at`, one row per ingest
+ *                        run. `watch-data.ts:68` had the accurate version all
+ *                        along and scopes it to a given desk. What is missing
+ *                        is a per-desk record of when a reader's rows were
+ *                        last refreshed, not a record of pipeline runs, and
+ *                        the copy now says that. A note kept on honesty
+ *                        grounds does not get to be the loosest claim on the
+ *                        screen.
  *
  * SO THE MECHANISM IS NOT AN EMPTY SHELL. `WATCH_OMISSIONS` carries exactly one
  * entry, `OmittedNotes` draws it, and the list must not become a place nobody
@@ -102,18 +117,25 @@ export interface WatchOmission {
 /**
  * The one absence whose silence would mislead.
  *
- * TWO RENDERED LINES AT 390, down from eight, and that figure is a budget
- * rather than an observation. Measured in the paragraph itself: two lines fit a
- * reason of about 109 characters and three begin at about 113. Re-measure
- * before lengthening it, and re-measure the trailing void with it, because the
- * foot of this screen is the seam that starts with a structural floor already
- * under it.
+ * TWO RENDERED LINES AT 390, down from eight. That is a MEASUREMENT and not an
+ * estimate: the paragraph is 36px over a 17.825px line box, and the whole
+ * `section` including its rule and heading is 81px. Scoping the claim added
+ * eleven characters and did not add a line, so the four-state void table is
+ * unchanged to the pixel.
+ *
+ * The old note in this slot said three lines begin at about 113 characters of
+ * REASON. The rendered paragraph is the reason plus the "A staleness line."
+ * lead-in, 116 characters together, and it still sets in two, so the boundary
+ * is looser than that figure implied. Re-measure before lengthening this
+ * further rather than trusting either number, and re-measure the trailing void
+ * with it, because the foot of this screen is the seam that starts with a
+ * structural floor already under it.
  */
 export const WATCH_OMISSIONS: WatchOmission[] = [
   {
     id: "staleness",
     absent: "A staleness line",
     reason:
-      "Nothing records when the last pass ran, so this screen never dates the readings above.",
+      "Nothing records when these rows were last refreshed, so this screen never dates the readings above.",
   },
 ];
