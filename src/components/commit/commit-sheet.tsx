@@ -11,19 +11,33 @@ import {
   addCalendarDays,
   type AdoptWindow,
 } from "@/lib/call-horizons";
-import { COMMIT_NOTE_MAX, COMMIT_NOTE_MIN, type CommitTarget } from "./commit-target";
+import {
+  ADOPT_NOTE_ARIA_LABEL,
+  ADOPT_NOTE_HINT,
+  ADOPT_NOTE_HINT_WRITTEN,
+  ADOPT_PRESS_LABEL,
+  noteSatisfiesGate,
+} from "./commit-gate";
+import { COMMIT_NOTE_MAX, type CommitTarget } from "./commit-target";
 import styles from "./commit.module.css";
 
 /**
  * The commit sheet. Step 3, and the back half of the core loop.
  *
  * THE FAILURE PATH IS THE POINT OF THIS SCREEN, so it is the first thing below
- * the props and the first thing that was written. A reader types the one
- * sentence that makes their record evidence rather than a list of taps, presses a
- * control for seven tenths of a second, and the sheet closes. If the write was
+ * the props and the first thing that was written. A reader may type the one
+ * sentence that makes their record evidence rather than a list of taps, presses
+ * a control for seven tenths of a second, and the sheet closes. If the write was
  * not acknowledged and the sheet closes anyway, that sentence is gone and
  * nothing on the screen ever said so. README: "A call that silently fails to
  * save is the worst possible bug in this product."
+ *
+ * "MAY TYPE" IS THE RULING, and it is the one thing about this sheet that
+ * changed since it was built. See `decisions/commit-note-optional-when-adopting.md`
+ * and ./commit-gate. The field is unconditional and the press is not gated on
+ * it. Everything below about not losing what was typed matters MORE under that
+ * rule, not less: a note given freely is the only kind there is now, and
+ * dropping one is still the worst bug here.
  *
  * So there is exactly one way out of the press: `commit()` below, which closes
  * the sheet ONLY after the route answers with a row id. Every other outcome,
@@ -49,11 +63,16 @@ import styles from "./commit.module.css";
  * which is the defect measured across 96 of the Ledger's 152 elements.
  */
 
-/* The note gate. Defined in ./commit-target, which is pure and imports
-   nothing, because desktop /radar/calls and both briefs now ask the same
-   line and must not pull this client component in to read it. Re-exported so
-   index.ts and every existing importer keeps working against ONE literal. */
-export { COMMIT_NOTE_MIN };
+/* THE NOTE IS NOT REQUIRED ON THIS PATH. This sheet only ever adopts: it
+   posts to /api/radar/claims/adopt against a `morning_brief_calls.id`, so its
+   origin is `adopted` and `noteSatisfiesGate` always clears. The field stays,
+   and the rule it used to enforce lives in ./commit-gate with the reasoning.
+   Compose is a different component tree on a different route and keeps the
+   twelve-character floor unchanged.
+
+   `COMMIT_NOTE_MIN` is no longer read here, so `index.ts` re-exports it from
+   ./commit-target directly. Same literal, one hop shorter, and no importer
+   moves. */
 
 /** Length of the press, in ms. Matches `v3fill` and `commit.module.css`. */
 export const COMMIT_PRESS_MS = 700;
@@ -106,8 +125,17 @@ export function CommitSheet({ target, onDismiss, onCommitted }: CommitSheetProps
   const headingId = useId();
   const hintId = useId();
 
-  const noteReady = note.trim().length >= COMMIT_NOTE_MIN;
-  const ready = noteReady && phase !== "saving";
+  /* Anything at all in the field, once trimmed. This is NOT a gate: nothing
+     is locked below it. It is what the field's own border and its hint line
+     respond to, so a reader who writes gets an acknowledgement and a reader
+     who does not is never told they failed a check. */
+  const hasNote = note.trim().length > 0;
+
+  /* The only thing that can lock the press is a write already in flight.
+     `noteSatisfiesGate(_, "adopted")` is constantly true and is called anyway,
+     so the sheet names which side of the ruling it is on at the one place the
+     decision is used rather than in a comment that can drift from the code. */
+  const ready = noteSatisfiesGate(note, "adopted") && phase !== "saving";
 
   const clearTimer = useCallback(() => {
     if (timer.current !== null) {
@@ -238,14 +266,15 @@ export function CommitSheet({ target, onDismiss, onCommitted }: CommitSheetProps
   const checkedOn = checkedOnLabel(endIso);
   const trimmed = note.trim().length;
 
+  /* Two in-flight states and one resting state. The fourth branch was the
+     gate's, "Write your reasoning first", and it is gone with the gate: a
+     control that is live has no business naming a step before itself. */
   const pressLabel =
     phase === "saving"
       ? "Entering it on your ledger"
       : phase === "pressing"
         ? "Keep pressing"
-        : noteReady
-          ? "Press to enter this on your ledger"
-          : "Write your reasoning first";
+        : ADOPT_PRESS_LABEL;
 
   /* THE READY BUTTON IS INVISIBLE IN DARK AS THE DESIGN DRAWS IT, and this is
      measured off the running build rather than reasoned about.
@@ -405,7 +434,7 @@ export function CommitSheet({ target, onDismiss, onCommitted }: CommitSheetProps
           style={{
             marginTop: "14px",
             padding: "13px 14px",
-            border: `1px solid ${noteReady ? "var(--c-gold)" : "var(--c-border)"}`,
+            border: `1px solid ${hasNote ? "var(--c-gold)" : "var(--c-border)"}`,
             borderRadius: "12px",
             backgroundColor: "var(--c-bg)",
             transition: "border-color 180ms cubic-bezier(0.16, 1, 0.3, 1)",
@@ -416,7 +445,7 @@ export function CommitSheet({ target, onDismiss, onCommitted }: CommitSheetProps
             value={note}
             onChange={(e) => setNote(e.target.value)}
             maxLength={COMMIT_NOTE_MAX}
-            aria-label="Your reasoning"
+            aria-label={ADOPT_NOTE_ARIA_LABEL}
             aria-describedby={hintId}
             /* The design writes a worked example into this field, an invented
                claim about two named companies. The attribute below is a string
@@ -436,7 +465,19 @@ export function CommitSheet({ target, onDismiss, onCommitted }: CommitSheetProps
               outline: "none",
               resize: "none",
               background: "transparent",
-              font: "400 italic 15px/1.6 var(--font-playfair-display), serif",
+              /* 16px IS THE iOS SAFARI FLOOR, not a type preference. Below it
+                 Safari zooms the viewport on focus, on iPhone and iPad alike,
+                 and this is the field the sheet exists to fill so it is the
+                 field that would zoom. It was drawn at 15 and PR (752) raised
+                 ten other sub-16px fields without reaching this one, because
+                 the sheet is a portalled overlay rather than a screen.
+
+                 The box does not grow with it. `minHeight` below is a fixed
+                 86px and the surrounding well's height is that plus its own
+                 13px padding pair and 1px border, so the sheet's total height
+                 and its gap to the tab bar are unchanged; only the line box
+                 inside grows, 24px to 25.6px. Measured both ways. */
+              font: "400 italic 16px/1.6 var(--font-playfair-display), serif",
               color: "var(--c-ink)",
               padding: 0,
             }}
@@ -456,7 +497,7 @@ export function CommitSheet({ target, onDismiss, onCommitted }: CommitSheetProps
             id={hintId}
             style={{ font: "400 11px/1 var(--font-inter), sans-serif", color: "var(--c-muted)" }}
           >
-            {noteReady ? "Timestamped before the outcome is known." : "A sentence is enough."}
+            {hasNote ? ADOPT_NOTE_HINT_WRITTEN : ADOPT_NOTE_HINT}
           </span>
           <span
             aria-hidden="true"
