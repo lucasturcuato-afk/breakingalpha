@@ -4,23 +4,42 @@
 // WHY A UNIT TEST AND NOT A BROWSER SPEC. `/watch` is a server component and
 // its copy is static, so the only thing a browser could add here is a second
 // place for the same strings to be typed. What needs enforcing is not that the
-// strings render, it is what they are ALLOWED TO SAY, and that is a property of
-// the constant.
+// strings render, it is WHICH absences are allowed to speak and what they are
+// ALLOWED TO SAY, and both are properties of the constant.
 //
-// THE RULE LOCKED HERE:
+// THE RULE LOCKED HERE, given 2026-08-29: "The app must never assert something
+// false, but it does not have to enumerate everything absent. Omit silently
+// unless absence would mislead." That NARROWS the rule this file first shipped
+// under (PR #731: every omitted tier states its reason on screen). The honesty
+// half is untouched; the enumeration half is now conditional.
 //
-//   an omission states WHAT is absent and WHY        -> both halves non-empty
+// Applied per entry, three of the four absences went silent and one stayed:
+//
+//   tracked-views  dropped. No figure counts claims, nothing names a third
+//                  tier, no rendered line becomes wrong without the note.
+//   lead-story     dropped. Every entry renders as the same card, so no rank
+//                  is implied and none is then missing.
+//   theme-names    dropped. `ThemeCluster` already draws no heading where there
+//                  is no label; the rows read as the list they are.
+//   staleness      KEPT. The screen renders dated claims off an undated store,
+//                  so silence would let "No news today" read as a check made
+//                  today, which is a check the product did not make.
+//
+// SO THE SET ITSELF IS THE ASSERTION, in both directions. Deleting the survivor
+// is red, and so is restoring any of the three, because "the notes were dropped
+// by accident" is the mistake the next reader is most likely to make.
+//
+//   the survivor states WHAT is absent and WHY       -> both halves non-empty
 //   a reason is about the PRODUCT, never the READER  -> no second person
-//   the four omitted things each keep a reason       -> deleting one is red
-//   the tracked-views reason does not rest on the
-//   retracted "no headline source" premise           -> named explicitly
+//   the three dropped absences stay silent           -> named individually
+//   the block is drawn, and stands down where it
+//   would contradict the line above it               -> asserted on the element
 //
-// The second one is the whole ruling. "You have no tracked views yet" is an
-// empty state, needs a read behind it, and there is none; "the tier draws
-// claims that carry no direction and no window" is a reason, needs no read, and
-// is true whatever the reader has. Without this test the distinction survives
-// only as care, and it is exactly the distinction three shipped empty states
-// got wrong (see `src/app/watch/page.tsx`).
+// The reader/product distinction is the half of PR #731 that did not move. "You
+// have no tracked views yet" is an empty state, needs a read behind it, and
+// there is none; "nothing records when the last pass ran" is a reason, needs no
+// read, and is true whatever the reader has. It is exactly the distinction
+// three shipped empty states missed (see `src/app/watch/page.tsx`).
 //
 // WHAT IS DELIBERATELY NOT ASSERTED HERE: the closed compliance vocabulary.
 // `npm run design:lint` already reads `src/components/watch/omissions.ts` and
@@ -36,8 +55,11 @@ import { WATCH_OMISSIONS } from "../../src/components/watch/omissions.ts";
 /** Second person, in every form the copy could reach for. */
 const READER = /\b(you|your|yours|yourself)\b/i;
 
+/** Silenced by the narrowed ruling. Restoring one is a regression, not a fix. */
+const DROPPED = ["tracked-views", "lead-story", "theme-names"];
+
 test("every omission states both what is absent and why", () => {
-  assert.ok(WATCH_OMISSIONS.length > 0, "an empty list is a screen that states no reason at all");
+  assert.ok(WATCH_OMISSIONS.length > 0, "an empty list is a mechanism with no consumers");
   for (const o of WATCH_OMISSIONS) {
     assert.ok(o.absent.trim().length > 0, `${o.id}: names nothing`);
     assert.ok(o.reason.trim().length > 0, `${o.id}: gives no reason`);
@@ -59,34 +81,36 @@ test("ids are unique, so one omission cannot quietly shadow another", () => {
   assert.equal(new Set(ids).size, ids.length);
 });
 
-test("each of the four omitted things keeps a stated reason", () => {
-  // Named individually rather than counted, so removing one and adding an
-  // unrelated one is red rather than green.
+test("the surviving set is exactly the one absence whose silence would mislead", () => {
+  // Equality rather than a membership check, so this is red both when the
+  // survivor is deleted and when an unrelated entry is added beside it.
+  assert.deepEqual(
+    WATCH_OMISSIONS.map((o) => o.id),
+    ["staleness"],
+  );
+});
+
+test("the three narrowed-away absences stay silent", () => {
+  // Named individually rather than counted. They were correct copy under the
+  // rule that preceded this one, which is exactly why someone will be tempted
+  // to put them back as a lost-in-a-refactor fix. They were not lost.
   const ids = new Set(WATCH_OMISSIONS.map((o) => o.id));
-  for (const required of ["tracked-views", "lead-story", "theme-names", "staleness"]) {
-    assert.ok(ids.has(required), `${required} is omitted from the screen and states no reason`);
+  for (const gone of DROPPED) {
+    assert.ok(!ids.has(gone), `${gone} was narrowed away by the 2026-08-29 ruling`);
   }
 });
 
-test("the tracked-views reason is the measured one, not the retracted one", () => {
-  const o = WATCH_OMISSIONS.find((x) => x.id === "tracked-views");
-  assert.ok(o);
-  // The reason recorded for two releases was that `TrackedView.headline` had
-  // no source. `sql/0012_radar_user_claims.sql:10-11` says `user_claim` IS the
-  // headline, `/radar/calls` renders it as one, and `src/lib/review-data.ts`
-  // already reads it that way. That premise is retracted and must not come
-  // back through this string.
-  assert.ok(
-    !/headline/i.test(o.reason),
-    "the headline premise was measured wrong and was retracted; see omissions.ts",
-  );
-  // What IS measured: no claim carries a null direction or a null window, so
-  // the row shape this tier is defined around does not exist.
-  assert.match(o.reason, /direction/i);
-  assert.match(o.reason, /window/i);
+test("the staleness reason is about the undated store, not about the reader's day", () => {
+  const o = WATCH_OMISSIONS.find((x) => x.id === "staleness");
+  assert.ok(o, "the survivor is gone; see omissions.ts before restoring anything");
+  // What earns it its place is that the screen renders dated claims off a store
+  // whose fill time nothing records. The copy has to keep saying that, because
+  // a reason that stops naming the undated pass stops correcting anything.
+  assert.match(o.reason, /pass/i);
+  assert.match(o.reason, /date/i);
 });
 
-test("the reasons are rendered by the screen rather than kept as comments", () => {
+test("the surviving reason is rendered by the screen rather than kept as a comment", () => {
   // A reason in a constant that nothing draws is the state this unit was built
   // to end: the reasons lived in comments and PR bodies, and a recon measured
   // no string about any omitted thing anywhere on the rendered screen. If the
@@ -94,8 +118,21 @@ test("the reasons are rendered by the screen rather than kept as comments", () =
   const screen = readFileSync("src/components/watch/watch-screen.tsx", "utf8");
   // BOTH halves, and the first draft asserted only the second. Deleting
   // `<OmittedNotes />` from the tree while leaving the function defined left
-  // `WATCH_OMISSIONS` in the file and this test green, which is a test that
-  // passes both ways. The element is what makes the reasons rendered.
+  // `WATCH_OMISSIONS` in the file and the old test green, which is a test that
+  // passes both ways. The element is what makes the reason rendered.
   assert.match(screen, /<OmittedNotes\s*\/>/, "the block is defined but nothing draws it");
-  assert.match(screen, /WATCH_OMISSIONS/, "the block draws something other than the reasons");
+  assert.match(screen, /WATCH_OMISSIONS/, "the block draws something other than the reason");
+});
+
+test("the block stands down in the one stage that dates the readings", () => {
+  // At `?stage=stale` the screen draws "Last checked <time>" above this block.
+  // A foot note saying it never dates the readings above, under a line that
+  // just dated them, is a false assertion, and the ruling loosened enumeration
+  // rather than honesty. The gate is on the stage, not on the reader's data.
+  const screen = readFileSync("src/components/watch/watch-screen.tsx", "utf8");
+  assert.match(
+    screen,
+    /\{stale \? null : <OmittedNotes \/>\}/,
+    "the omission block is drawn in a stage where the screen contradicts it",
+  );
 });

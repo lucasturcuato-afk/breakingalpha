@@ -122,7 +122,7 @@ test.describe("Watch, signed in", () => {
     await expect(screen.getByText("following", { exact: true })).toBeVisible();
   });
 
-  test("the omitted tier is absent, not drawn empty, and states its reason", async ({
+  test("the omitted tier is absent, not drawn empty, and is absent silently", async ({
     page,
   }) => {
     await page.goto("/watch");
@@ -138,12 +138,16 @@ test.describe("Watch, signed in", () => {
     await expect(screen.getByText("tracked views", { exact: true })).toHaveCount(0);
     await expect(screen).not.toContainText("No tracked views yet");
     await expect(screen).not.toContainText("NO DIRECTION, NO WINDOW");
-    // But the reason IS on screen, which is what changed. Unconditional, so it
-    // does not matter what this account's read came back with.
+    // AND NO EXPLANATION EITHER, which is what changed. PR #731 put the reason
+    // on screen; the ruling of 2026-08-29 narrowed that to absences whose
+    // silence would mislead, and a tier nothing on this screen names is not
+    // one. The finding is unchanged and lives in `omissions.ts`.
+    await expect(screen).not.toContainText("no direction and no window");
+    // The block itself survives, carrying the one absence that does mislead in
+    // silence: the screen renders dated claims off an undated store.
     await expect(screen).toContainText("NOT SHOWN HERE");
-    await expect(screen).toContainText(
-      "The tier draws claims that carry no direction and no window.",
-    );
+    await expect(screen).toContainText("A staleness line");
+    await expect(screen).toContainText("Nothing records when the last pass ran");
   });
 
   test("an empty watchlist is a read answering empty, and names a destination", async ({

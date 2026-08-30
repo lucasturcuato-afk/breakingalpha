@@ -17,10 +17,10 @@ import type {
   WatchQuote,
   WatchQuotes,
 } from "./fixture";
-/* A VALUE import, deliberately. These are the product's own reasons for what
-   it does not draw, they have to reach the browser, and they are not sample
-   content. The rule the import beside it obeys is about `fixture.ts`'s invented
-   prose reaching `.next/static`; this is the opposite of invented. */
+/* A VALUE import, deliberately. This is the product's own reason for something
+   it does not draw, it has to reach the browser, and it is not sample content.
+   The rule the import beside it obeys is about `fixture.ts`'s invented prose
+   reaching `.next/static`; this is the opposite of invented. */
 import { WATCH_OMISSIONS } from "./omissions";
 import styles from "./watch.module.css";
 import { FONT_DISPLAY, FONT_MONO, FONT_SANS } from "@/components/mobile/fonts";
@@ -31,25 +31,31 @@ import { FONT_DISPLAY, FONT_MONO, FONT_SANS } from "@/components/mobile/fonts";
  *
  * WHAT IS DRAWN AND WHAT IS NOT.
  *
- * THE OMITTED THINGS NOW STATE THEIR REASON ON SCREEN, and the reasons live in
- * `omissions.ts` rather than in this comment. That file carries the ruling and
- * the measurement behind each one; `OmittedNotes` at the foot of this file
- * draws them. The rule that decides the copy is that a REASON is about the
- * PRODUCT and needs no read, while an EMPTY STATE is about the READER and does,
- * so none of those strings is conditional on anything the loader hands back.
+ * FOUR THINGS ARE OMITTED AND ONE OF THEM SAYS SO. Tracked views, the
+ * pinned-espresso hero, theme headings over following and staleness are all
+ * absent, and the measurements behind each are unchanged. What changed is how
+ * many of them are stated on screen. The ruling of 2026-08-29 narrowed the
+ * one this screen shipped under: the app must never assert something false,
+ * but it does not have to enumerate everything absent, and four stacked "not
+ * shown here" explanations read as a product apologizing for itself. The test
+ * is whether ABSENCE WOULD MISLEAD, applied per entry.
  *
- * Four things are omitted: tracked views, the pinned-espresso hero, theme
- * headings over following, and staleness. The one that changed is the first.
- * The reason recorded here for two releases was that `user_claims` has no
- * headline column; `sql/0012_radar_user_claims.sql:10-11` says `user_claim`
- * IS the headline, so that premise is retracted. What is measured is a fact
- * about the rows rather than the columns, and `omissions.ts` states it.
+ * Three of the four fail that test and are now silent. Nothing on this screen
+ * names a third tier, no figure counts claims, every entry renders as the same
+ * card so no rank is implied, and `ThemeCluster` already draws no heading where
+ * there is no label, so the rows read as the list they are. A reader has no way
+ * to know any of the three was ever meant to be here, and no rendered line
+ * becomes wrong without the note.
  *
- * The hero and the theme headings are unchanged in substance: nothing in the
- * schema ranks a reader's names against each other, so every entry renders as
- * the same card, and cluster labels come from a lazy model pass and are null
- * until it runs, so the rows ship under one unlabelled rule. Both now say so
- * where a reader can read it.
+ * Staleness passes it and is kept. This screen renders dated claims off an
+ * undated store - "No news today", the with-news and quiet counts, "This
+ * week's coverage" - and nothing records when the pass that fills that store
+ * last ran. Silence there would let "No news today" read as a check made
+ * today. `omissions.ts` carries the full per-entry reasoning; `OmittedNotes`
+ * at the foot of this file draws what survives.
+ *
+ * The register is unchanged: a REASON is about the PRODUCT, an EMPTY STATE is
+ * about the READER and needs a read behind it.
  *
  * Every measurement is taken off the rendered prototype with getComputedStyle.
  * The prototype's sc-if blocks need a runtime that does not resolve over
@@ -526,12 +532,16 @@ export function WatchScreen({
         ) : null}
 
         {/* ── what is not drawn here ─────────────────────────────────── */}
-        {/* UNCONDITIONAL, and that is the point rather than an oversight. A
-            reason is a statement about the product, so it is true in every
-            stage, including loading and including a tier that failed. Gating
-            it on the read would make it behave like an empty state, which is
-            the exact thing `omissions.ts` exists to keep it from being. */}
-        <OmittedNotes />
+        {/* DRAWN IN EVERY STAGE BUT ONE, and the exception is not a read about
+            the reader. A reason is a statement about the product, so it holds
+            while a tier is loading and while a tier has failed, and gating it
+            on either would make it behave like an empty state. The one stage
+            it cannot hold in is `stale`, where the notice above draws "Last
+            checked <time>": a foot note saying this screen never dates the
+            readings above, under a line that just dated them, is the false
+            assertion the ruling did not loosen. So it stands down there and
+            only there. */}
+        {stale ? null : <OmittedNotes />}
       </div>
 
       <Slack grow={SLACK_TAIL} />
@@ -1017,23 +1027,24 @@ function FollowingTail({
 /**
  * What Radar does not draw, and why, at the foot of the screen.
  *
- * THE RULING: omitted tiers must state their reason on screen. A reason is not
- * an empty state. Say what is absent and why, in the register the other
- * omissions use.
+ * THE RULING: omit silently unless absence would mislead. One absence on this
+ * screen clears that bar and the block carries it; the other three are silent.
+ * A reason is still not an empty state, and what is here says what is absent
+ * and why, in the register the rest of this file uses.
  *
- * The register is the one this file already uses well and in two places: the
- * per-entry fault notice names the identifiers and then says "They are not
- * quiet and they are not counted quiet", and `FollowingTail` withdraws its own
- * claim when a follow could not be checked. Flat, specific, about the product.
- * So this block is `tailCopy`, the quieter of the two, because none of these is
- * a fault: the notice surface is for something that went wrong, and nothing
- * here went wrong.
+ * That register is used well in two other places here: the per-entry fault
+ * notice names the identifiers and then says "They are not quiet and they are
+ * not counted quiet", and `FollowingTail` withdraws its own claim when a follow
+ * could not be checked. Both correct a rendered figure, and so does this. Flat,
+ * specific, about the product. So the copy is `tailCopy`, the quieter of the
+ * two surfaces, because nothing here went wrong: the notice surface is for a
+ * fault, and an absence is not one.
  *
- * ONE BLOCK RATHER THAN FOUR NOTICES. Three of the four absences belong to
- * different parts of the screen and one belongs to all of it, and scattering
- * four bordered surfaces through the scroll would read as a wall of apology and
- * would open three empty wells between the tiers. They are collected once,
- * after the last tier, under a heading that says what the block is.
+ * THE BLOCK SURVIVES A SINGLE ENTRY, and the heading with it. "NOT SHOWN HERE"
+ * over one line is a label on a thing rather than a wall of apology, which is
+ * the shape the ruling rules out. If the last entry ever goes, this function
+ * and `omissions.ts` go with it rather than being left as a mechanism with no
+ * consumers.
  *
  * The heading is a heading and not a `SectionRule`: a rule with a label and a
  * hairline is this screen's shape for A TIER, and a tier is the one thing this
