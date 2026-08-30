@@ -115,7 +115,15 @@ export async function enumerateControls(page: Page): Promise<ControlInfo[]> {
   return raw.map((c, i) => ({ ...c, index: i }));
 }
 
-/** A cheap content hash of the rendered body, for before/after comparison. */
+/**
+ * A cheap content hash of the rendered body, for before/after comparison.
+ *
+ * `document.activeElement` is DELIBERATELY NOT IN IT. Clicking any focusable
+ * control moves focus, so a signature that includes the active element differs
+ * after every single click and NOTHING is ever detected as inert. That is the
+ * bug that makes this whole check pass vacuously, and it is why the signature
+ * is structural only.
+ */
 export async function domSignature(page: Page): Promise<string> {
   return page.evaluate(() => {
     const html = document.body.innerHTML;
@@ -124,8 +132,23 @@ export async function domSignature(page: Page): Promise<string> {
       h = (h * 31 + html.charCodeAt(i)) | 0;
     }
     const openDialogs = document.querySelectorAll("[role=dialog],dialog[open],[aria-modal=true]").length;
-    return `${html.length}:${h}:${openDialogs}:${document.activeElement?.tagName ?? ""}`;
+    return `${html.length}:${h}:${openDialogs}`;
   });
+}
+
+/**
+ * Does this screen rewrite itself while nobody touches it?
+ *
+ * A live quote strip changes the DOM every second. On such a screen a "the DOM
+ * changed" reading proves nothing about the control that was just tapped, so
+ * the walk has to know before it starts drawing conclusions. Measured over the
+ * same settle window the taps use.
+ */
+export async function screenIsSelfMutating(page: Page, settleMs = 450): Promise<boolean> {
+  const a = await domSignature(page);
+  await page.waitForTimeout(settleMs);
+  const b = await domSignature(page);
+  return a !== b;
 }
 
 export interface TapOutcome {
@@ -146,7 +169,7 @@ export interface TapOutcome {
 export async function tapAndObserve(
   page: Page,
   path: string,
-  settleMs = 700,
+  settleMs = 450,
 ): Promise<TapOutcome> {
   const requests: string[] = [];
   const onReq = (r: { method: () => string; url: () => string }) => {
@@ -165,8 +188,17 @@ export async function tapAndObserve(
     if (!el) {
       error = "control not found after reload";
     } else {
-      await el.scrollIntoViewIfNeeded({ timeout: 3000 }).catch(() => {});
-      await el.click({ timeout: 4000, noWaitAfter: true });
+      await el.scrollIntoViewIfNeeded({ timeout: 1000 }).catch(() => {});
+      /* Ordinary click first, so actionability is a real signal. A control that
+         cannot be clicked because something covers it is itself worth knowing,
+         but the walk still has to land the tap to judge the handler, so the
+         second attempt forces it and the record says which one it took. */
+      try {
+        await el.click({ timeout: 1200, noWaitAfter: true });
+      } catch {
+        await el.click({ timeout: 900, noWaitAfter: true, force: true });
+        error = "clicked with force (ordinary click was not actionable)";
+      }
     }
   } catch (e) {
     error = String((e as Error).message ?? e).split("\n")[0].slice(0, 200);

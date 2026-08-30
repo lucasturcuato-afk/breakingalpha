@@ -243,12 +243,15 @@ export async function warmGoto(page: Page, route: string): Promise<number | null
     waitUntil: "domcontentloaded",
     timeout: 25_000,
   });
-  let last = "";
-  for (let i = 0; i < 14; i++) {
-    await page.waitForTimeout(350);
-    let now = "";
+  /* Element count, not text length. A live ticker rewrites its own text every
+     second, so a text-length signal never settles and every navigation pays the
+     full timeout. Structure settles; a quote does not. */
+  let last = -1;
+  for (let i = 0; i < 6; i++) {
+    await page.waitForTimeout(250);
+    let now = -1;
     try {
-      now = await page.evaluate(() => ((document.body as HTMLElement).innerText ?? "").length + ":" + document.querySelectorAll("*").length);
+      now = await page.evaluate(() => document.querySelectorAll("*").length);
     } catch {
       continue;
     }

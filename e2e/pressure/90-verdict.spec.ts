@@ -110,7 +110,6 @@ test("verdict: assemble the report", async () => {
   fs.writeFileSync(path.join(REPORT_DIR, "findings-unique.json"), JSON.stringify(unique.map((f) => ({ ...f, themes: [...f.themes], passes: [...f.passes] })), null, 2));
 
   const criticals = unique.filter((f) => f.severity === "critical");
-  // eslint-disable-next-line no-console
   console.log(`\npressure-report/REPORT.md written. ${unique.length} distinct findings, ${criticals.length} critical.`);
   for (const c of criticals) console.log(`  CRITICAL ${c.rule} @ ${c.screen}: ${c.title}`);
 

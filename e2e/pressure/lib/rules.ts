@@ -99,6 +99,10 @@ const BANNED_ALLOW: Array<{ re: RegExp; why: string }> = [
   { re: /\bplaceholders?\b/i, why: "placeholder contains hold" },
   { re: /\bwithhold(s|ing)?\b/i, why: "withhold contains hold" },
   { re: /\bholders?\b/i, why: "holder contains hold" },
+  /* Corporate suffix. "Victory Capital Holdings" is a company name off the
+     wire, not a claim about a position, and it appears in every headline feed
+     this app draws. */
+  { re: /\bholdings?\b/i, why: "Holdings is a corporate suffix in a company name" },
 ];
 
 /** Rule 1. Banned substrings, in rendered text only. */

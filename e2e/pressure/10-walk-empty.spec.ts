@@ -14,7 +14,7 @@
  * having to let it.
  */
 import { expect, test } from "@playwright/test";
-import { installGuards, launch, phoneContext, warmGoto, AUTH_STATE, BASE, type Theme } from "./lib/harness";
+import { installGuards, launch, phoneContext, warmGoto, AUTH_STATE, BASE } from "./lib/harness";
 import { finding, note, routeVisit } from "./lib/report";
 import { walk, POLE_ROUTES } from "./lib/walk";
 import { runRules } from "./lib/walk";

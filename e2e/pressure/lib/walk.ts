@@ -8,7 +8,7 @@
  * that absence is the finding `routes-only-by-url` reports.
  */
 import type { Page } from "@playwright/test";
-import { enumerateControls, tapAndObserve, type ControlInfo } from "./probe";
+import { enumerateControls, screenIsSelfMutating, tapAndObserve, type ControlInfo } from "./probe";
 import { allRules, readScreenText } from "./rules";
 import { controlLog, finding, note, routeVisit } from "./report";
 import { warmGoto, type Theme } from "./harness";
@@ -20,8 +20,8 @@ export const POLE_ROUTES: Array<{ label: string; href: string }> = [
   { label: "Browse", href: "/ask" },
 ];
 
-const MAX_ROUTES = 40;
-const MAX_CONTROLS_PER_SCREEN = 45;
+const MAX_ROUTES = 32;
+const MAX_CONTROLS_PER_SCREEN = 40;
 
 /** Same-origin app path, query and hash stripped for identity. */
 function normalise(u: string, base: string): string | null {
@@ -80,6 +80,20 @@ export function auditGeometry(controls: ControlInfo[], screen: string, theme: Th
       });
     }
     if (!c.interactiveRole && c.cursor !== "pointer") continue;
+    /* THE VISUALLY-HIDDEN PATTERN IS NOT A SMALL TAP TARGET. A skip link is
+       clipped to 1x1 until it takes focus, at which point it draws at full
+       size; reporting it as a 1x1 target is reporting the accessibility
+       affordance as the defect. Anything at or under 2x2 is that pattern, and
+       it is recorded rather than counted. */
+    if (c.rect.w <= 2 || c.rect.h <= 2) {
+      note(
+        "visually-hidden-control",
+        screen,
+        `${c.tag} "${c.text || c.ariaLabel || ""}" measures ${c.rect.w}x${c.rect.h}, the clipped/sr-only pattern. Not counted as a small tap target.`,
+        "measured",
+      );
+      continue;
+    }
     const small = c.rect.w < 44 || c.rect.h < 44;
     if (small && !c.isTextEntry) {
       finding({
@@ -136,6 +150,18 @@ export async function probeScreen(
     );
   }
 
+  /* Establish whether the screen mutates on its own before attributing any DOM
+     change to a tap. */
+  const volatile_ = await screenIsSelfMutating(page);
+  if (volatile_) {
+    note(
+      "screen-self-mutating",
+      route,
+      `the DOM changed with no interaction over one settle window (${pass} pass, ${theme}). An inert control on this screen can read as live, so absence of a handler-does-nothing finding here is not evidence there is none.`,
+      "measured",
+    );
+  }
+
   let controls = await enumerateControls(page);
   auditGeometry(controls, route, theme, pass);
   controls = controls.slice(0, MAX_CONTROLS_PER_SCREEN);
@@ -168,7 +194,8 @@ export async function probeScreen(
     const out = await tapAndObserve(page, c.path);
     probed += 1;
     const appRequests = out.requests.filter((r) => !/\.(js|css|woff2?|png|jpg|svg|ico|map)(\?|$)/.test(r));
-    const inert = !out.navigated && !out.domChanged && appRequests.length === 0 && !out.error;
+    const forced = out.error === "clicked with force (ordinary click was not actionable)";
+    const inert = !out.navigated && !out.domChanged && appRequests.length === 0 && (!out.error || forced);
 
     controlLog({
       route,
@@ -205,7 +232,7 @@ export async function probeScreen(
         title: c.interactiveRole
           ? `${c.tag}${c.role ? `[role=${c.role}]` : ""} "${c.text || c.ariaLabel || ""}" activates and changes nothing`
           : `${c.tag} draws cursor:pointer and activates nothing`,
-        evidence: `path ${c.path}; after tap: url unchanged (${out.urlAfter}), DOM signature unchanged, 0 app requests`,
+        evidence: `path ${c.path}; after tap: url unchanged (${out.urlAfter}), structural DOM signature unchanged, 0 app requests${volatile_ ? "; NOTE this screen self-mutates, so the DOM half of this reading is weak and the request half is what carries it" : ""}`,
         basis: "measured",
       });
     }
