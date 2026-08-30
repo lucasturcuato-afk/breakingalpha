@@ -114,6 +114,38 @@ const IconAsk = (stroke: string) => (
 export const ASK_POLE_HREF = "/ask";
 
 /**
+ * THE POLE'S NAME. One definition for the pole table and for every back
+ * control that means "back to whichever pole this is".
+ *
+ * WHY IT IS BROWSE AND NOT ASK. The pole is named for an action and holds a
+ * place. Behind it sit a company directory, three desks and one link to the
+ * assistant, and the assistant is the smallest of the four. Ask named the
+ * smallest thing on the screen; Browse names the place.
+ *
+ * WHY THE CONSTANT EXISTS AT ALL, and this is the more important half.
+ * `ASK_POLE_HREF` centralised the route and NOTHING centralised the label.
+ * The word sat as a bare JSX text node in three back controls one line under
+ * an `href` that was already reading the constant, and
+ * `tests/unit/ask-pole-href.test.ts` scanned those same three directories for
+ * a stale route while being blind to a stale label directly beneath it. That
+ * is PR 736's failure shape one field over: the comment stays true, the string
+ * goes stale, tsc and lint and the build all pass, and the screen renders
+ * perfectly with the wrong word on it. The test now bans the bare literal in
+ * those three directories exactly as it bans the route.
+ *
+ * IT CARRIES THE SAME CLIENT-BOUNDARY HAZARD AS `ASK_POLE_HREF` ABOVE. This
+ * module is `"use client"`, so on the server this export is a client-reference
+ * function and not a string. `src/app/ask/page.tsx` is a Server Component and
+ * therefore writes "Browse" out as a literal in its `pageTitle`, deliberately,
+ * rather than importing this. Same reason, same silence, same note.
+ *
+ * THE DASHBOARD POLE HAS NO SUCH CONSTANT, and does not need one: its label is
+ * rendered in exactly one place, the table below. A constant with one reader is
+ * indirection, not a defence.
+ */
+export const BROWSE_POLE_LABEL = "Browse";
+
+/**
  * The four poles, in the design's order.
  *
  * `owns` lists only routes whose pole is settled by the handoff's navigation
@@ -127,7 +159,17 @@ export const ASK_POLE_HREF = "/ask";
    app imports this; the bar renders it in place. */
 export const POLES: Pole[] = [
   {
-    label: "Today",
+    /* RULING 17 RULED THIS ON 2026-08-26, together with Watch to Radar, as one
+       decision. Only the Watch half shipped, and the mismatch the ruling cited
+       as its own evidence stayed live for four days: `dashboard/page.tsx`
+       renders `pageTitle="Dashboard"` while the pole under it read Today, so a
+       reader tapped Today and landed on a page headed Dashboard. The other
+       half ships here.
+
+       The icon const below keeps its old spelling. Renaming a module-local
+       identifier is churn with no reader-visible effect, and this file is the
+       one place the label is drawn. */
+    label: "Dashboard",
     href: "/dashboard",
     icon: IconToday,
     owns: ["/dashboard"],
@@ -258,7 +300,7 @@ export const POLES: Pole[] = [
        light Ask rather than nothing. `isActive` reads `owns` alone and never
        `href`, so /company, /deal-flow, /trends and /live-feed all still light
        this pole exactly as before. */
-    label: "Ask",
+    label: BROWSE_POLE_LABEL,
     href: ASK_POLE_HREF,
     icon: IconAsk,
     owns: [
