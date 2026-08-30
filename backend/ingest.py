@@ -79,6 +79,31 @@ FILTER_INPUT_PRICE_PER_TOKEN = FILTER_INPUT_PRICE_PER_1M / 1_000_000
 FILTER_OUTPUT_PRICE_PER_TOKEN = FILTER_OUTPUT_PRICE_PER_1M / 1_000_000
 
 # ---------------------------------------------------------------------------
+# Config coercion. Defined HERE, above every flag that parses an int, because
+# module-level flags are evaluated in source order and a helper defined at the
+# bottom of the file cannot be called at the top of it.
+# ---------------------------------------------------------------------------
+def _int_env(name: str, default: int) -> int:
+    """int() from the environment, safe against the EMPTY STRING.
+
+    An unmapped GitHub repo Variable renders as "" in the workflow env, not as
+    unset, so os.getenv(name, "7") returns "" and int("") raises ValueError at
+    import time, killing the run before ingest starts. schedule.yml documents
+    exactly this trap and lists the int-parsed flags it deliberately does NOT
+    map for that reason. This coercion is what makes mapping safe.
+    """
+    raw = (os.getenv(name) or "").strip()
+    if not raw:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        print(f"  [config] {name}={raw!r} is not an int, using {default}")
+        return default
+
+
+
+# ---------------------------------------------------------------------------
 # RE-ANCHORED RELEVANCE GRADER (RELEVANCE_GRADE_MODE) -- LUCAS-REVIEWED CORE SCORER.
 #
 # The legacy relevance_score (Flash-Lite, FILTER_PROMPT rubric) saturates: 34% of
@@ -123,7 +148,12 @@ RELEVANCE_GRADE_MODEL = os.environ.get("RELEVANCE_GRADE_MODEL", GEMINI_MODEL).st
 # ingest; junk lands low and is sorted down by the synthesis floor, the top-stories
 # ORDER BY relevance_score, and the watchlist boost). Under legacy/shadow this
 # constant is NOT consulted -- the gate stays >=6, hardcoded at the gate site.
-RELEVANCE_NEW_GATE = int(os.environ.get("RELEVANCE_NEW_GATE", "1"))
+# REPO VARIABLE so the gate can be retuned without a merge, exactly like
+# INGEST_FRESHNESS_DAYS. Read through _int_env: an unset repo Variable renders as
+# the EMPTY STRING in the workflow env, and int("") would raise ValueError at
+# import and kill the run before ingest starts. Empty or garbage falls back to 1,
+# which is the value production has run since 2026-06-19.
+RELEVANCE_NEW_GATE = _int_env("RELEVANCE_NEW_GATE", 1)
 
 # Shadow-window sampling: shadow mode pays for BOTH models (legacy Flash-Lite stays
 # authoritative AND the new Flash grade is computed). To bound that cost during the
@@ -1785,25 +1815,6 @@ def fetch_watchlist_finnhub_articles() -> list[dict]:
         f"{len(out)} inserted, {duplicates} duplicates"
     )
     return out
-
-
-def _int_env(name: str, default: int) -> int:
-    """int() from the environment, safe against the EMPTY STRING.
-
-    An unmapped GitHub repo Variable renders as "" in the workflow env, not as
-    unset, so os.getenv(name, "7") returns "" and int("") raises ValueError at
-    import time, killing the run before ingest starts. schedule.yml documents
-    exactly this trap and lists the int-parsed flags it deliberately does NOT
-    map for that reason. This coercion is what makes mapping safe.
-    """
-    raw = (os.getenv(name) or "").strip()
-    if not raw:
-        return default
-    try:
-        return int(raw)
-    except ValueError:
-        print(f"  [config] {name}={raw!r} is not an int, using {default}")
-        return default
 
 
 #: Age cutoff for feed entries, in days. Repo VARIABLE so the threshold can be

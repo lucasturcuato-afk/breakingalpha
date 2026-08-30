@@ -71,6 +71,19 @@ jobs:
           # enable it on the next run.
           TAGGING_PRIMARY_FOLD_ENABLED: ${{ vars.TAGGING_PRIMARY_FOLD_ENABLED }}
           RELEVANCE_GRADE_MODE: ${{ vars.RELEVANCE_GRADE_MODE }}
+          # RELEVANCE_NEW_GATE, read at backend/ingest.py via _int_env. Repo
+          # VARIABLE, not a secret (a small integer). Minimum grader score an
+          # article needs to be STORED, under RELEVANCE_GRADE_MODE=new only.
+          #
+          # SAFE TO MAP as of this change: the read site now goes through
+          # _int_env, so the EMPTY STRING an unset repo Variable renders falls
+          # back to 1 instead of raising ValueError at import. It was on the
+          # do-not-map list below for exactly that reason until now.
+          #
+          # Default 1 keeps only the true-0 junk floor out. Measured on the
+          # 2026-08-25 run, raising it to 3 would drop 362 of 726 stored
+          # articles (49.9%). Retune here, not in a merge.
+          RELEVANCE_NEW_GATE: ${{ vars.RELEVANCE_NEW_GATE }}
           # INGEST_FRESHNESS_DAYS, read at backend/ingest.py via _int_env.
           # Repo VARIABLE, not a secret (a small integer). Feed-entry age cutoff
           # in days; default 7, unchanged from the previous hardcoded constant.
@@ -112,10 +125,11 @@ jobs:
           # MATERIALITY_RANK_MODE and EMAIL_DIGEST_MODE above have rendered
           # empty on every run and the pipeline has stayed green.
           #
-          # Deliberately NOT mapped: RELEVANCE_NEW_GATE,
-          # RELEVANCE_GRADE_SHADOW_SAMPLE_RATE, FILTER_* budgets, STORE_CHUNK_SIZE,
-          # WATCHLIST_BOOST_CHUNK and COST_ABORT_USD are int()/float() parsed at
-          # import, so an empty string would raise ValueError and kill the run.
+          # Deliberately NOT mapped: RELEVANCE_GRADE_SHADOW_SAMPLE_RATE, FILTER_*
+          # budgets, STORE_CHUNK_SIZE, WATCHLIST_BOOST_CHUNK and COST_ABORT_USD
+          # are int()/float() parsed at import, so an empty string would raise
+          # ValueError and kill the run. RELEVANCE_NEW_GATE was on this list and
+          # came off it above: its read site now uses _int_env.
           # RELEVANCE_GRADE_MODEL and SEC_USER_AGENT are used verbatim, so an
           # empty string is NOT their default. Those must stay unmapped until
           # their read sites coerce empty to the default.

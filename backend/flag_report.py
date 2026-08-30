@@ -35,13 +35,16 @@ _TRUTHY = ("1", "true", "yes", "on")
 #   int/float -> numeric parse of the RAW value. An empty string raises
 #                ValueError at import, which is exactly why these flags must
 #                NOT be given a `${{ vars.X }}` mapping in the workflow.
+#   int_env   -> int() via ingest._int_env: empty string or garbage falls back
+#                to the default instead of raising, so these flags ARE safe to
+#                map as repo Variables.
 #   str       -> used verbatim. Empty string is NOT equivalent to the default,
 #                so these must not be mapped either.
 _FLAGS = (
     # name, read site, kind, default, allowed, fallback
     ("RELEVANCE_GRADE_MODE", "ingest.py:86", "enum", "shadow", ("legacy", "shadow", "new"), "shadow"),
     ("RELEVANCE_GRADE_MODEL", "ingest.py:91", "str", "<GEMINI_MODEL>", (), ""),
-    ("RELEVANCE_NEW_GATE", "ingest.py:105", "int", "1", (), ""),
+    ("RELEVANCE_NEW_GATE", "ingest.py:156", "int_env", "1", (), ""),
     ("RELEVANCE_GRADE_SHADOW_SAMPLE_RATE", "ingest.py:114", "float", "0.10", (), ""),
     ("GRADER_SKIP_IRRELEVANT", "ingest.py:126", "truthy", "", (), ""),
     ("FILTER_PARALLEL_WORKERS", "ingest.py:153", "int", "50", (), ""),
@@ -72,6 +75,15 @@ _FLAGS = (
 
 def _resolve(kind: str, raw: str | None, default: str, allowed, fallback: str) -> str:
     """Resolve one flag the way its read site would. Never raises."""
+    if kind == "int_env":
+        # Mirrors ingest._int_env exactly: empty or unparseable -> default.
+        candidate = (raw or "").strip()
+        if not candidate:
+            return f"{default} (default; env empty or unset)"
+        try:
+            return str(int(candidate))
+        except ValueError:
+            return f"{default} (default; {candidate!r} is not an int)"
     if kind in ("int", "float"):
         candidate = default if raw is None else raw
         try:
