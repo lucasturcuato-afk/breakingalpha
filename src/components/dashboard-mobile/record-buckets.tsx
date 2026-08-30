@@ -1,6 +1,7 @@
 import { RESOLUTION_ORDER, DESK_RECORD_COPY, type Resolution } from "@/lib/desk-record";
 import { YOUR_RECORD_COPY } from "@/lib/your-record";
 import styles from "./dashboard.module.css";
+import { BAR_OFFSETS } from "./entrance-ladder";
 import { FONT_MONO } from "@/components/mobile/fonts";
 
 /**
@@ -50,26 +51,6 @@ const DESK_FILL: Record<Resolution, string> = {
   notGraded: "var(--c-secondary)",
 };
 
-/**
- * The stagger under the desk's four bars, in the design's order.
- *
- * ANCHORED TO `D.deskRecord` IN `dashboard-screen.tsx`, not to an absolute
- * clock. These were 360/400/440/480 against a section rule at 340, so +20/+60/
- * +100/+140 after their own heading. The rise ladder moved to a uniform 60ms
- * grid and that rule is now at 480, so the whole sub-ladder shifts by the same
- * 140ms and keeps the offsets it was drawn with. Left where they were, the
- * bars would have swept in BEFORE the heading they belong to.
- *
- * The 40ms internal cadence is deliberately NOT widened with the rise ladder.
- * These are `barSweepIn`, a horizontal scaleX sweep across the bar's own
- * width, not a 22px vertical rise, so the front-loaded-curve problem that
- * forced the rise ladder wider does not apply: there is no small displacement
- * to lose. Four bars reading as one gesture is the drawn intent.
- *
- * The last bar at 620ms + its 400ms duration is spent at 1020ms, inside the
- * rise ladder's 1260ms, so this does not extend the entrance.
- */
-const BAR_DELAY = [500, 540, 580, 620];
 
 function BucketLabel({ text, dot }: { text: string; dot?: string }) {
   return (
@@ -109,6 +90,8 @@ type RecordBucketsProps = {
        *  `notGraded` but the count of calls still inside their window. */
       awaiting: number;
       total?: never;
+      /* No bars on the personal drawing, so no anchor to give one. */
+      barBaseMs?: never;
     }
   | {
       /** The denominator is not optional here. Every desk cell states it, and
@@ -116,11 +99,29 @@ type RecordBucketsProps = {
        *  render four zero-width bars and no denominator rather than fail. */
       variant: "desk";
       total: number;
+      /**
+       * The delay of the section rule that introduces this record, which is
+       * where the four bar sweeps hang off.
+       *
+       * REQUIRED, and required on the desk variant only, because the bars are
+       * the desk drawing and the personal one has none. It used to be absolute
+       * and it cannot be: the entrance ladder's length is a property of which
+       * sections the reader's data produced, so a bar pinned at 500ms sweeps
+       * before its own heading on a short ladder and long after it on a full
+       * one. See `entrance-ladder.ts`.
+       */
+      barBaseMs: number;
       awaiting?: never;
     }
 );
 
-export function RecordBuckets({ variant, byResolution, awaiting = 0, total }: RecordBucketsProps) {
+export function RecordBuckets({
+  variant,
+  byResolution,
+  awaiting = 0,
+  total,
+  barBaseMs = 0,
+}: RecordBucketsProps) {
   const personal = variant === "personal";
   /* The union guarantees a denominator on the desk variant, but the destructure
      loses that narrowing, and a zero denominator would draw NaN-wide bars. */
@@ -137,9 +138,9 @@ export function RecordBuckets({ variant, byResolution, awaiting = 0, total }: Re
       ).toUpperCase(),
       count: fourthIsAwaiting ? awaiting : byResolution[key],
       /* RESOLUTION_ORDER is the source of truth for how many cells there are,
-         so the ladder falls back to its last rung rather than emitting
+         so the sub-ladder falls back to its last offset rather than emitting
          `undefinedms` if a fifth resolution is ever added. */
-      delay: BAR_DELAY[i] ?? BAR_DELAY[BAR_DELAY.length - 1],
+      delay: barBaseMs + (BAR_OFFSETS[i] ?? BAR_OFFSETS[BAR_OFFSETS.length - 1]),
     };
   });
 
