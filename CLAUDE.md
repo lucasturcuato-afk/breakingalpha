@@ -142,6 +142,27 @@ reading. Every one returns a plausible number rather than an error.
   signed out with `VERCEL_ENV=preview` (unprefixed, read at runtime, no
   rebuild needed).
 
+### A stacked PR merged after its base lands nothing
+Merge a PR whose base is another PR's branch, after that base has already gone
+upstream, and the merge succeeds into a branch nothing reads any more. GitHub
+records it as merged. Nothing warns. The content is simply absent.
+
+This happened twice in one day, the second time 31 seconds after the first, and
+both times to work that had already passed review.
+
+- **`git merge-base --is-ancestor <head> main` cannot detect it.** Squash-merge
+  means a head commit is never an ancestor of the trunk, so ancestry returns a
+  false negative for every squash-merged PR, landed or lost alike. It reported
+  both a landed PR and a lost one as missing.
+- **The only reliable check is content.** Pick something the PR added or
+  removed and look for it on the trunk: a new exported constant, a deleted
+  file, a renamed string. `git show origin/main:<file> | grep`.
+- **Recovering it is cheap and is not a reimplementation.** Diff the PR's base
+  at branch time against its head, apply that to the trunk, open a fresh PR.
+  Both recoveries applied clean with no resolution.
+- **Avoid it by merging a stack bottom-up in one sitting**, or by retargeting
+  the child at the trunk before merging the parent.
+
 ### Two checks that answer a question nobody asked
 - `design:lint --since origin/main` run before committing prints
   `no lintable files touched` and exits 0. That is not a pass, it is the tool
