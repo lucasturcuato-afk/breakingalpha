@@ -108,7 +108,7 @@ sensitivity, not ownership.
 <!-- /learn appends new rules here when they do not fit a section above. One specific, verifiable line each. -->
 
 ### Measuring a browser
-Eight traps, each one found the expensive way by an agent that trusted a
+Nine traps, each one found the expensive way by an agent that trusted a
 reading. Every one returns a plausible number rather than an error.
 
 - A dev build serves the mobile fixtures. Measure product data on a
@@ -126,6 +126,11 @@ reading. Every one returns a plausible number rather than an error.
 - `.focus()` called from a script after a mouse click leaves Chromium in
   pointer modality, so `:focus-visible` does not match and the ring reads
   `3px none`. Walk to the control with real Tab presses.
+- `Emulation.setEmulatedMedia` alone does not flip `hover` and `any-hover` to
+  `none`. `hasTouch: true` on the browser context is what does it. A harness
+  that sets only the CDP call reports a coarse-pointer measurement it never
+  took, and the number can still be right for the wrong reason. Assert the
+  emulation landed and throw if it did not.
 - Read a focus ring at t=500ms, not t=0. `transition-colors` includes
   `outline-color` at 150ms, so an immediate read returns the start value and
   looks like a missing ring.
