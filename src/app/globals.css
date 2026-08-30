@@ -613,6 +613,23 @@ html.dark .skeleton-shimmer {
    the visible entrance. */
 
 /* Per-section rise-in; stagger via inline animation-delay at the call site. */
+/* DESKTOP AND MOBILE NOW DIVERGE, AND IT IS DELIBERATE, NOT AN OVERSIGHT.
+ *
+ * The mobile ladder (dashboard-mobile/dashboard.module.css `.rise`) moved to
+ * 22px of travel on a uniform 60ms grid. This one is still 12px, and its
+ * inline delays in src/app/dashboard/page.tsx are still the ~40ms sequence.
+ *
+ * The defect is the same on both: this curve is heavily front-loaded, so 12px
+ * of travel is under four resolvable frames of motion before it becomes a pure
+ * opacity tail. 12 CSS px is if anything a SMALLER visual angle at a 60cm
+ * desk than at 35cm of arm, so desktop is not the milder case.
+ *
+ * It is not changed here because it needs its own before/after at 1440 across
+ * an eleven-tile bento grid, which the mobile unit did not run, and because
+ * the pause rule immediately below (PR 741) landed on this file one commit ago.
+ * Raising travel here on a mobile measurement would be a guess. Match it in a
+ * desktop unit with desktop numbers; do not silently leave it because nobody
+ * noticed. */
 @keyframes dash-rise {
   from { opacity: 0; transform: translateY(12px); }
   to { opacity: 1; transform: translateY(0); }

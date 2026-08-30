@@ -11,7 +11,47 @@
 
 /* The stagger. Rests in the DRAWN state and animates FROM the hidden one, so a
  * section that never animates is still readable. `backwards` carries the
- * hidden frame through the delay, which is what makes the ladder a ladder. */
+ * hidden frame through the delay, which is what makes the ladder a ladder.
+ *
+ * ── WHY 22px AND NOT 12px ────────────────────────────────────────────
+ *
+ * The entrance was correct and unfelt. Nothing was broken: measured on a
+ * production build at 375/390/430, both themes, signed in, 0 of 9 rungs were
+ * finished at the gate and the last `animationend` landed a clean 1150ms after
+ * the gate opened. The ladder played in full, in front of the reader, and did
+ * not register.
+ *
+ * The reason is the curve, not the timing. `cubic-bezier(0.16, 1, 0.3, 1)` is
+ * heavily front-loaded, so on a 12px rise the MEASURED displacement per 60Hz
+ * frame falls below 1px after 63ms and below 0.5px after 133ms. That is under
+ * four frames of motion a reader can resolve, and the remaining 580ms of the
+ * 720ms is an opacity tail with no perceptible travel. 12px is also about 3mm
+ * on a phone, so there is little to see even at frame zero.
+ *
+ * The fix is amplitude, and it is chosen on that same measured number rather
+ * than by taste. Resampling the measured ty(t) curve onto a real 16.7ms frame:
+ *
+ *   travel   step >= 1px until   step >= 0.5px until   px covered by 200ms
+ *     12px          63ms                133ms              10.3 of 12
+ *     20px         115ms                184ms              17.1 of 20
+ *     22px         124ms                194ms              18.8 of 22
+ *     24px         133ms                203ms              20.6 of 24
+ *
+ * 22px is the SMALLEST travel that holds the step above the 1px smooth-motion
+ * floor for at least 120ms, roughly double the 63ms it managed at 12px. 24px
+ * buys another 9ms for 2px more offset, which starts the greeting visibly
+ * lower in a 390px column for no measured gain. 22px is where the perceptual
+ * bar is cleared, so 22px is the pick.
+ *
+ * THE DURATION IS DELIBERATELY UNTOUCHED. More travel over the same 720ms is
+ * faster apparent motion, which is the point. Stretching to 900ms was measured
+ * against too: it moves the 1px floor only from 124ms to 130ms while adding
+ * 180ms to every rung and to the ladder. Tempo is not the defect. The curve is
+ * likewise unchanged, here and everywhere.
+ *
+ * WHAT THIS DOES NOT TOUCH: the gate. `.gateShut` below still holds every rung
+ * at frame zero, so 0 of N are finished before the reader can see them, which
+ * is what PR 741 established and what re-measured 0 of 9 after this change. */
 .rise {
   opacity: 1;
   transform: none;
@@ -21,7 +61,7 @@
 @keyframes dashRise {
   from {
     opacity: 0;
-    transform: translateY(12px);
+    transform: translateY(22px);
   }
   to {
     opacity: 1;
