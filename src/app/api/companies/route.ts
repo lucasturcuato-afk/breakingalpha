@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseWithUser } from "@/lib/supabase-server";
 import { normalizeLookupKey } from "@/lib/normalize";
+import { isNoiseName } from "@/lib/company-noise";
+import { buildHrefProver } from "@/lib/ask-companies-data";
 
 export const dynamic = "force-dynamic";
 
@@ -13,23 +15,39 @@ export interface Company {
   last_updated: string | null;
   key_themes: string[] | null;
   alias_count: number;
+  /**
+   * `/company/<slug>` for this row, PROVED to land, or null when no slug for it
+   * could be proved.
+   *
+   * WHY THE ROUTE CARRIES IT AT ALL. `/ask`'s field searches through this
+   * route, and the Ask screen is a `"use client"` module. Reproducing the proof
+   * in the browser would mean shipping `canonicalize`, `CANONICAL` and
+   * `slugToCompanyName` into the client bundle, or writing a second copy of the
+   * reconstruction that would drift from the route it is proving against. The
+   * proof runs where the data already is, once, and the answer travels as a
+   * field.
+   *
+   * NULL IS A REAL ANSWER AND NOT AN ERROR. Measured against the corpus, 9.5%
+   * of rows do not resolve from their own slug, because `canonicalize` strips a
+   * trailing legal token ("Electronic Arts Inc." -> "Electronic Arts") and the
+   * stripped string is not itself a row. Almost none of those carry a ticker,
+   * so they have no second path. A caller must render such a row WITHOUT a
+   * link; it must never invent one.
+   *
+   * The proof runs over the rows in THIS response. It is monotone in the
+   * window, so a true answer here is true against the table; see
+   * `buildHrefProver`.
+   */
+  href: string | null;
 }
 
-// Quality filter for noise rows that survive the SQL-level filters.
-// Pure-noise patterns flagged: all-numeric, all-punctuation, all-lowercase short.
-//
-// Exported so `src/lib/ask-companies-data.ts` can apply the SAME filter. That
-// loader reads `companies` directly rather than calling this route, because a
-// server component calling its own HTTP route is a round trip for nothing, and
-// two copies of this predicate would drift into two different directories.
-export function isNoiseName(name: string): boolean {
-  const trimmed = name.trim();
-  // No alphabetic characters → all-numeric or all-punctuation
-  if (!/[A-Za-z]/.test(trimmed)) return true;
-  // All-lowercase letters/spaces and shorter than 5 chars (e.g. "abc", "foo")
-  if (/^[a-z\s]+$/.test(trimmed) && trimmed.length < 5) return true;
-  return false;
-}
+/**
+ * Re-exported so nothing that imported `isNoiseName` from this route has to
+ * move. The predicate itself lives in `@/lib/company-noise` now, because this
+ * route imports `ask-companies-data` and that module imports the predicate; had
+ * it stayed here the two would import each other.
+ */
+export { isNoiseName };
 
 export async function GET(request: NextRequest) {
   const { supabase } = await getSupabaseWithUser();
@@ -97,6 +115,17 @@ export async function GET(request: NextRequest) {
     // Flatten the PostgREST `aliases(count)` relationship subquery to a scalar
     // `alias_count` field. The relationship returns an array of length 1 shaped
     // `[{ count: <N> }]`; renderers should not need to know about that nesting.
+    /* One prover over the rows this response is about to carry, built before
+       the map so the two branches of the proof see the whole window. */
+    const proveHref = buildHrefProver(
+      filtered.map((c) => ({
+        id: c.id as string,
+        name: (c.name ?? null) as string | null,
+        ticker: (c.ticker ?? null) as string | null,
+        sector: (c.sector ?? null) as string | null,
+      })),
+    );
+
     const withAliasCount: Company[] = filtered.map((c) => {
       const aliases = c.aliases;
       const aliasCount =
@@ -114,6 +143,12 @@ export async function GET(request: NextRequest) {
         last_updated: (c.last_updated ?? null) as string | null,
         key_themes: (c.key_themes ?? null) as string[] | null,
         alias_count: aliasCount,
+        href: proveHref({
+          id: c.id as string,
+          name: (c.name ?? null) as string | null,
+          ticker: (c.ticker ?? null) as string | null,
+          sector: (c.sector ?? null) as string | null,
+        }),
       };
     });
 
@@ -157,6 +192,23 @@ export async function GET(request: NextRequest) {
             last_updated: (canonicalRow.last_updated ?? null) as string | null,
             key_themes: (canonicalRow.key_themes ?? null) as string[] | null,
             alias_count: aliasCount,
+            /* A window of one. The canonical row proves against itself, which
+               is the whole of what the redirect can offer: the ticker branch
+               sees its own ticker and the name branch its own name, and both
+               are existence checks the table will answer the same way. */
+            href: buildHrefProver([
+              {
+                id: canonicalRow.id as string,
+                name: (canonicalRow.name ?? null) as string | null,
+                ticker: (canonicalRow.ticker ?? null) as string | null,
+                sector: (canonicalRow.sector ?? null) as string | null,
+              },
+            ])({
+              id: canonicalRow.id as string,
+              name: (canonicalRow.name ?? null) as string | null,
+              ticker: (canonicalRow.ticker ?? null) as string | null,
+              sector: (canonicalRow.sector ?? null) as string | null,
+            }),
           };
           return NextResponse.json({
             companies: [company],
