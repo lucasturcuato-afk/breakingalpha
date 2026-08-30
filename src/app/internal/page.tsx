@@ -17,6 +17,7 @@ import {
   fetchKpiSummaryForCohort,
   type TimeWindow,
   type Segment,
+  loopFixApplied,
   type CohortOption,
 } from "@/lib/internal-kpis";
 
@@ -136,7 +137,34 @@ export default async function InternalDashboardPage({
   const retention4w = pctStr(s.retention_4w_pct);
   const isAll = segment === "All";
 
-  const pitch = `${SEG_LABEL[segment]}: ${s.weekly_actives} weekly actives of ${s.total_users} users, ${retention4w} four-week retention, WAPS ${pctStr(s.waps_pct)}${isAll && s.waitlist_count !== null ? `, ${s.waitlist_count} on the waitlist` : ""}.`;
+  // The most quotable sentence on the page, so it carries the honest
+  // denominator. It used to read "N weekly actives of 199 users", which is a
+  // ratio against every signup ever and falls as the product grows. Tenured
+  // users are those who existed for the whole window and have actually had a
+  // chance to show up.
+  const loopFixed = loopFixApplied(s);
+  const tenured = s.tenured_users;
+  const wapsShown = loopFixed ? s.waps_tenured_pct : s.waps_pct;
+  const pitch = `${SEG_LABEL[segment]}: ${s.weekly_actives} weekly actives of ${
+    tenured === null ? `${s.total_users} users` : `${tenured} tenured users`
+  }, ${retention4w} four-week retention${
+    s.retention_4w_cohort === null ? "" : ` on ${s.retention_4w_cohort}`
+  }, WAPS ${pctStr(wapsShown)}${
+    loopFixed ? "" : " (pre-migration denominator, see notice above)"
+  }${isAll && s.waitlist_count !== null ? `, ${s.waitlist_count} on the waitlist` : ""}.`;
+
+  // D12. The helper text under the activation table used to hard-code
+  // "the 2026-04-27 cohort is the reliable read". That stopped being the
+  // largest cohort and the sentence became false while still rendering. The
+  // referent is computed now, so it follows the data instead of rotting.
+  // window_closed arrives with the loop-fix migration; before it, no row can be
+  // called complete and the fallback sentence says so.
+  const largestComplete = activation
+    .filter((a) => a.window_closed === true)
+    .reduce<(typeof activation)[number] | null>(
+      (best, a) => (best === null || a.cohort_size > best.cohort_size ? a : best),
+      null,
+    );
 
   // Toggle hrefs preserve the other dimensions, cohort included.
   const cohortQ = cohortParam ? `&cohort=${encodeURIComponent(cohortParam)}` : "";
@@ -238,6 +266,18 @@ export default async function InternalDashboardPage({
         </p>
       ) : null}
 
+      {!loopFixed ? (
+        <p className="mt-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
+          The loop-fix migration is NOT applied, so several cards below are still
+          on their old definitions. Brief opens are NOT deduped, so the open count
+          counts page mounts rather than opens. WAPS and percent-with-a-watchlist
+          still divide by every signup ever, which falls as the product grows.
+          Companies researched still reads a column that is empty on every memo
+          row. Apply backend/migrations/UNAPPLIED-2026-08-30-loop-fixes.sql, then
+          run node scripts/invariants.mjs.
+        </p>
+      ) : null}
+
       <p className="mt-6 rounded-xl border border-neutral-900 bg-neutral-900 p-5 text-base font-medium text-neutral-50 dark:border-neutral-100 dark:bg-neutral-100 dark:text-neutral-900">
         {pitch}
       </p>
@@ -254,13 +294,45 @@ export default async function InternalDashboardPage({
       </Section>
 
       <Section title="Engagement">
-        <Stat label="WAPS" value={pctStr(s.waps_pct)} sub="weekly brief openers / total (7d)" />
-        <Stat label="Weekly actives" value={s.weekly_actives} sub="distinct event users (7d)" />
-        <Stat label="4-week retention" value={retention4w} sub="joined 4w+ ago, active last 7d" />
+        {/* WAPS over TENURED users, not over every signup ever. The old
+            denominator fell as the product grew: 98 of 199 users signed up
+            inside the window and exactly one opened a brief, dragging the
+            printed number from 10.9 to 6.0 with no change in behavior. */}
         <Stat
-          label="Brief opens / active"
-          value={s.brief_opens_per_active === null ? "n/a" : s.brief_opens_per_active}
-          sub="in-app opens (7d)"
+          label="WAPS"
+          value={pctStr(wapsShown)}
+          sub={
+            loopFixed
+              ? `${s.brief_open_users_7d} of ${tenured} tenured (7d)`
+              : `${s.brief_open_users_7d} of ${s.total_users} all signups, MIGRATION NOT APPLIED`
+          }
+        />
+        <Stat label="Weekly actives" value={s.weekly_actives} sub="distinct event users (7d)" />
+        <Stat
+          label="4-week retention"
+          value={retention4w}
+          sub={
+            s.retention_4w_cohort === null
+              ? "joined 4w+ ago, active last 7d"
+              : `of ${s.retention_4w_cohort} joined 4w+ ago`
+          }
+        />
+        {/* REPLACES "Brief opens / active". That card divided an inflated event
+            count by active readers and printed 15.36; one account produced 195
+            of 215 counted opens by remounting. Days is the honest habit unit:
+            a reader who opened four times in one sitting had one day, not four. */}
+        <Stat
+          label="Brief-open days / week"
+          value={
+            s.brief_open_days_median_7d === null
+              ? "n/a"
+              : `${s.brief_open_days_median_7d} of 7`
+          }
+          sub={
+            loopFixed
+              ? `median across ${s.brief_open_users_7d} openers (7d)`
+              : "needs the loop-fix migration"
+          }
         />
       </Section>
 
@@ -270,9 +342,17 @@ export default async function InternalDashboardPage({
         <Stat
           label="Companies researched"
           value={s.distinct_companies_researched === null ? "n/a" : s.distinct_companies_researched}
-          sub={isAll ? "global, capture fix deferred (D5a)" : "All only"}
+          sub={isAll ? "global, distinct memo target companies" : "All only"}
         />
-        <Stat label="% with a watchlist" value={pctStr(s.watchlist_pct)} sub={`${s.users_with_watchlist} of ${s.total_users}`} />
+        <Stat
+          label="% with a watchlist"
+          value={pctStr(loopFixed ? s.watchlist_tenured_pct : s.watchlist_pct)}
+          sub={
+            loopFixed
+              ? `${s.users_with_watchlist} of ${tenured} tenured`
+              : `${s.users_with_watchlist} of ${s.total_users} all signups, MIGRATION NOT APPLIED`
+          }
+        />
       </Section>
 
       <p className="mt-4 text-xs text-neutral-400 dark:text-neutral-500">
@@ -284,7 +364,9 @@ export default async function InternalDashboardPage({
           Activation funnel ({SEG_LABEL[segment]})
         </h2>
         <p className="mb-3 text-xs text-neutral-400 dark:text-neutral-500">
-          Within 7 days of each user&apos;s own signup. Activated = first brief open or first memo. Onboarded is the earlier setup stage. Recent weeks have small cohorts; the 2026-04-27 cohort is the reliable read.
+          Within 7 days of each user&apos;s own signup. Activated = first brief open or first memo. Onboarded is the earlier setup stage. Recent weeks have small cohorts. {largestComplete
+            ? `The largest cohort whose 7-day window has closed is ${largestComplete.cohort_week} (n=${largestComplete.cohort_size}); read that one.`
+            : "No cohort has a closed 7-day window yet, so every row below is still accruing."}
         </p>
         <div className="overflow-x-auto rounded-xl border border-neutral-200 dark:border-neutral-800">
           <table className="w-full text-left text-sm">
@@ -299,7 +381,14 @@ export default async function InternalDashboardPage({
             <tbody>
               {activation.map((a) => (
                 <tr key={a.cohort_week} className="border-t border-neutral-100 dark:border-neutral-800">
-                  <td className="px-4 py-2">{a.cohort_week}</td>
+                  <td className="px-4 py-2">
+                    {a.cohort_week}
+                    {a.window_closed === false ? (
+                      <span className="ml-2 text-amber-600 dark:text-amber-400">
+                        censored
+                      </span>
+                    ) : null}
+                  </td>
                   <td className="px-4 py-2 tabular-nums">{a.cohort_size}</td>
                   <td className="px-4 py-2 tabular-nums">{pctStr(a.onboarded_7d_pct)}</td>
                   <td className="px-4 py-2 tabular-nums">{pctStr(a.activated_7d_pct)}</td>
@@ -328,7 +417,14 @@ export default async function InternalDashboardPage({
             <tbody>
               {cohorts.map((c) => (
                 <tr key={c.cohort_week} className="border-t border-neutral-100 dark:border-neutral-800">
-                  <td className="px-4 py-2">{c.cohort_week}</td>
+                  <td className="px-4 py-2">
+                    {c.cohort_week}
+                    {c.window_closed === false ? (
+                      <span className="ml-2 text-amber-600 dark:text-amber-400">
+                        censored
+                      </span>
+                    ) : null}
+                  </td>
                   <td className="px-4 py-2 tabular-nums">{c.weeks_since_signup}</td>
                   <td className="px-4 py-2 tabular-nums">{c.cohort_size}</td>
                   <td className="px-4 py-2 tabular-nums">{c.active_last_7d}</td>
@@ -389,7 +485,7 @@ export default async function InternalDashboardPage({
 
       <div className="mt-10 space-y-1 text-xs text-neutral-400 dark:text-neutral-500">
         <p>
-          Notes: real users only (founders and internal/test accounts excluded). Active and retention are first-party-event based, not last_sign_in_at. WAPS and brief-open metrics count in-app brief page opens (morning_brief_opened / evening_wrap_opened), not email opens. Companies researched keeps the Phase A definition; reliable capture is deferred to D5a. Segment is an email-domain proxy (USC = usc.edu and marshall.usc.edu); club-level segmentation needs new signup capture. Refresh reloads; numbers are live.
+          Notes: real users only (founders and internal/test accounts excluded). Active and retention are first-party-event based, not last_sign_in_at. WAPS and brief-open metrics count in-app brief page opens (morning_brief_opened / evening_wrap_opened), not email opens. Companies researched counts distinct memo target companies, case-normalized. Segment is an email-domain proxy (USC = usc.edu and marshall.usc.edu); club-level segmentation needs new signup capture. Refresh reloads; numbers are live.
         </p>
       </div>
     </main>

@@ -25,12 +25,37 @@ export interface KpiSummary {
   memos_7d: number;
   memos_30d: number;
   users_with_watchlist: number;
-  waps_pct: number | null;
-  watchlist_pct: number | null;
-  brief_opens_per_active: number | null;
   retention_4w_pct: number | null;
   waitlist_count: number | null; // global, populated on 'All' only
   distinct_companies_researched: number | null; // global, 'All' only
+
+  // ── Added by the loop-fix migration, and NULL until a human applies it. ──
+  //
+  // backend/migrations/UNAPPLIED-2026-08-30-loop-fixes.sql ships in the same
+  // branch as this file but is deliberately not applied, so this code runs
+  // against BOTH view shapes. Every field below is nullable for that reason,
+  // and the page renders a notice rather than a wrong number when they are
+  // null. Do not make them required until the migration has been run.
+  tenured_users: number | null;
+  waps_tenured_pct: number | null; // brief openers / users older than the window
+  waps_active_pct: number | null; // brief openers / weekly actives
+  watchlist_tenured_pct: number | null;
+  brief_open_days_median_7d: number | null; // habit measure, 1 to 7
+  retention_4w_cohort: number | null; // the denominator, printed on the card
+  window_start_utc: string | null;
+  window_end_utc: string | null;
+  computed_at: string | null;
+
+  // ── Legacy, present only BEFORE the migration is applied. ──
+  // Kept so the page can fall back and say so, rather than rendering 0.
+  waps_pct: number | null;
+  watchlist_pct: number | null;
+  brief_opens_per_active: number | null;
+}
+
+/** Present on the row only once the loop-fix migration has been applied. */
+export function loopFixApplied(s: KpiSummary): boolean {
+  return s.computed_at !== null && s.waps_tenured_pct !== null;
 }
 
 export interface RetentionCohort {
@@ -40,6 +65,9 @@ export interface RetentionCohort {
   active_last_7d: number;
   retention_pct: number | null;
   weeks_since_signup: number;
+  /** NULL until the loop-fix migration is applied. */
+  window_closed: boolean | null;
+  cohort_size_observed: number | null;
 }
 
 export interface ActivationCohort {
@@ -50,6 +78,11 @@ export interface ActivationCohort {
   onboarded_7d_pct: number | null;
   activated_7d: number;
   activated_7d_pct: number | null;
+  /** NULL until the loop-fix migration is applied. A right-censored cohort is
+   *  not a low number, it is not a number yet. */
+  window_closed: boolean | null;
+  window_closes_at: string | null;
+  cohort_size_observed: number | null;
 }
 
 export interface InstrumentationHealth {
@@ -105,10 +138,19 @@ export async function fetchKpiSummary(segment: Segment): Promise<KpiSummary> {
     memos_7d: num(r.memos_7d),
     memos_30d: num(r.memos_30d),
     users_with_watchlist: num(r.users_with_watchlist),
+    retention_4w_pct: numOrNull(r.retention_4w_pct),
+    tenured_users: numOrNull(r.tenured_users),
+    waps_tenured_pct: numOrNull(r.waps_tenured_pct),
+    waps_active_pct: numOrNull(r.waps_active_pct),
+    watchlist_tenured_pct: numOrNull(r.watchlist_tenured_pct),
+    brief_open_days_median_7d: numOrNull(r.brief_open_days_median_7d),
+    retention_4w_cohort: numOrNull(r.retention_4w_cohort),
+    window_start_utc: r.window_start_utc == null ? null : String(r.window_start_utc),
+    window_end_utc: r.window_end_utc == null ? null : String(r.window_end_utc),
+    computed_at: r.computed_at == null ? null : String(r.computed_at),
     waps_pct: numOrNull(r.waps_pct),
     watchlist_pct: numOrNull(r.watchlist_pct),
     brief_opens_per_active: numOrNull(r.brief_opens_per_active),
-    retention_4w_pct: numOrNull(r.retention_4w_pct),
     waitlist_count: numOrNull(r.waitlist_count),
     distinct_companies_researched: numOrNull(r.distinct_companies_researched),
   };
@@ -205,10 +247,19 @@ export async function fetchKpiSummaryForCohort(
     memos_7d: num(r.memos_7d),
     memos_30d: num(r.memos_30d),
     users_with_watchlist: num(r.users_with_watchlist),
+    retention_4w_pct: numOrNull(r.retention_4w_pct),
+    tenured_users: numOrNull(r.tenured_users),
+    waps_tenured_pct: numOrNull(r.waps_tenured_pct),
+    waps_active_pct: numOrNull(r.waps_active_pct),
+    watchlist_tenured_pct: numOrNull(r.watchlist_tenured_pct),
+    brief_open_days_median_7d: numOrNull(r.brief_open_days_median_7d),
+    retention_4w_cohort: numOrNull(r.retention_4w_cohort),
+    window_start_utc: r.window_start_utc == null ? null : String(r.window_start_utc),
+    window_end_utc: r.window_end_utc == null ? null : String(r.window_end_utc),
+    computed_at: r.computed_at == null ? null : String(r.computed_at),
     waps_pct: numOrNull(r.waps_pct),
     watchlist_pct: numOrNull(r.watchlist_pct),
     brief_opens_per_active: numOrNull(r.brief_opens_per_active),
-    retention_4w_pct: numOrNull(r.retention_4w_pct),
     waitlist_count: null,
     distinct_companies_researched: null,
   };
@@ -231,6 +282,8 @@ export async function fetchRetentionCohorts(segment: Segment): Promise<Retention
     active_last_7d: num(r.active_last_7d),
     retention_pct: numOrNull(r.retention_pct),
     weeks_since_signup: num(r.weeks_since_signup),
+    window_closed: typeof r.window_closed === "boolean" ? r.window_closed : null,
+    cohort_size_observed: numOrNull(r.cohort_size_observed),
   }));
 }
 
@@ -252,6 +305,9 @@ export async function fetchActivation(segment: Segment): Promise<ActivationCohor
     onboarded_7d_pct: numOrNull(r.onboarded_7d_pct),
     activated_7d: num(r.activated_7d),
     activated_7d_pct: numOrNull(r.activated_7d_pct),
+    window_closed: typeof r.window_closed === "boolean" ? r.window_closed : null,
+    window_closes_at: r.window_closes_at == null ? null : String(r.window_closes_at),
+    cohort_size_observed: numOrNull(r.cohort_size_observed),
   }));
 }
 
