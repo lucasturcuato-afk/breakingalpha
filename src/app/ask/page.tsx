@@ -1,71 +1,58 @@
 import { AppShell } from "@/components/shell";
-import { AskAnswerScreen, AskBrowseScreen, type AskStage } from "@/components/ask";
-import { ASK_FIXTURE_ENABLED } from "@/components/ask/fixture-gate";
-/* Imported by path, never through the barrel. The barrel sits above the client
-   composer, so pulling the invented answer through it would put it in the
-   browser bundle. This page is a server component, so from here it stays on
-   the server unless the gate is open. */
-import { ASK_ANSWER_FIXTURE, ASK_BROWSE_FIXTURE } from "@/components/ask/fixture";
+import { AskDirectoryScreen } from "@/components/ask";
 import { FONT_DISPLAY, FONT_SANS } from "@/components/mobile/fonts";
 import { getSupabaseWithUser } from "@/lib/supabase-server";
-import { loadAskCompanies, type AskCompaniesLoad } from "@/lib/ask-companies-data";
+import { loadAskCompanies } from "@/lib/ask-companies-data";
+import { loadAskCounters } from "@/lib/ask-counters";
 
 /**
- * Ask. Both halves of the Ask pole's entry layer on one route.
+ * Ask. One screen, one route, no query parameter.
  *
- * `?q=` is the whole hierarchy: absent is the directory, present is the answer.
- * `briefs/batch-4.md` open question 1 leaves the answer's URL undecided between
- * `/intelligence` and a child of `/ask`; this unit was scoped to build both
- * states on `/ask`, and a query parameter keeps one route, one pole and one
- * back-stack entry rather than two paths for one screen. `/intelligence` is
- * untouched and still ships the working desktop chat.
+ * WHAT THIS PAGE STOPPED DOING, and each removal is the point of the unit.
  *
- * `?state=` renders a lifecycle state directly. The three browse counters and
- * the whole answer turn still have no source, so their states cannot be reached
- * by reproducing their conditions and the runtime audit has to be able to reach
- * each one by URL. Outside development and preview the fixture is off and the
- * parameter cannot reach anything invented.
+ * IT NO LONGER READS `?q=`. It used to branch on it: absent drew the directory,
+ * present drew a separate answer screen whose whole content was the reader's
+ * question, the sentence "This surface does not answer yet.", two chips and one
+ * inline link measuring 126 by 14 pixels. That screen's scroll region measured
+ * `clientHeight` 48 against `scrollHeight` 48, a header and a composer with
+ * nothing between them. It is deleted. `/ask?q=nvidia` is now the same screen
+ * with its field seeded from the URL and its directory filtered on the client,
+ * so a shared link lands on something that works rather than on a sentence
+ * saying it does not.
  *
- * THE COMPANY DIRECTORY IS REAL AND IS NOT BEHIND THAT PARAMETER. It is read
- * here, on the server, before a byte of the screen is sent, and passed down as
- * data with its own `{ data, stage }`. `?state=` cannot force it, because it
- * has a source: its states are reached by reproducing its conditions, which is
- * what a wired block is for. `src/lib/ask-companies-data.ts` carries what it
- * reads and what it refuses to read.
+ * That is also the cleanest available answer to Ruling 20 (`DECISIONS.md:249`).
+ * The ruling exists because `next/link` prefetched four full RSC renders of
+ * `/ask?q=...` with zero interaction, and `prefetch={false}` does not close it:
+ * a shared link, a reload or a back press all server-render the same route.
+ * There is now no answer block for the framework to reach, no `next/link`
+ * anywhere pointing at `/ask?q=`, and neither read below takes `q`, so this
+ * page does identical work for every URL that reaches it.
  *
- * Server component so it can read the async searchParams and do that read,
- * matching /ledger and /watch.
+ * IT NO LONGER READS `?state=`. That parameter existed because the three
+ * destination counters had no source, so their lifecycle states could not be
+ * reached by reproducing their conditions and the runtime audit needed a URL.
+ * They have a source now. A wired block's states are reached by reproducing its
+ * conditions, and both reads below already model theirs.
+ *
+ * IT NO LONGER HAS A FIXTURE. `ASK_FIXTURE_ENABLED`, `ASK_BROWSE_FIXTURE` and
+ * `ASK_ANSWER_FIXTURE` are deleted with the screen and the counters they served.
+ * Nothing on this route is invented in any environment.
+ *
+ * Server component so it can do both reads before a byte of the screen is sent,
+ * matching /ledger and /watch. That is also why there is no skeleton anywhere
+ * below: a reader cannot observe either block mid-flight.
  */
 
-const STAGES: AskStage[] = ["ready", "loading", "error", "empty", "stale"];
-
-function first(v: string | string[] | undefined): string | undefined {
-  return Array.isArray(v) ? v[0] : v;
-}
-
-/**
- * The directory read, and the client it needs.
- *
- * A function rather than a value computed above the branch, so it is called on
- * the browse branch ONLY. The answer screen draws no directory, so reading one
- * for it would be a query for a block that is not on the screen, and a
- * `null` threaded through the browse screen's prop would need a `??` at the
- * render site to become a load again.
- */
-async function readCompanies(): Promise<AskCompaniesLoad> {
+export default async function AskPage() {
+  /* One client for both reads, so this page cannot end up reading as two
+     different sessions. `companies` and all three counter tables carry public
+     read policies, so this answers signed out as well, which is what the parity
+     and width audits need. */
   const { supabase } = await getSupabaseWithUser();
-  return loadAskCompanies(supabase);
-}
-
-export default async function AskPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ q?: string | string[]; state?: string | string[] }>;
-}) {
-  const params = await searchParams;
-  const q = (first(params.q) ?? "").trim();
-  const rawStage = first(params.state);
-  const stage: AskStage = STAGES.includes(rawStage as AskStage) ? (rawStage as AskStage) : "ready";
+  const [companies, counters] = await Promise.all([
+    loadAskCompanies(supabase),
+    loadAskCounters(supabase),
+  ]);
 
   return (
     <AppShell pageTitle="Ask" mobileFullBleed>
@@ -73,19 +60,7 @@ export default async function AskPage({
           beats the class at every breakpoint, which is the defect that shipped
           the tab bar to desktop once already. */}
       <div className="md:hidden">
-        {q ? (
-          <AskAnswerScreen
-            stage={stage}
-            question={q}
-            data={ASK_FIXTURE_ENABLED ? ASK_ANSWER_FIXTURE : null}
-          />
-        ) : (
-          <AskBrowseScreen
-            stage={stage}
-            data={ASK_FIXTURE_ENABLED ? ASK_BROWSE_FIXTURE : null}
-            companies={await readCompanies()}
-          />
-        )}
+        <AskDirectoryScreen companies={companies} counters={counters} />
       </div>
 
       {/* Above the breakpoint this route has no layout of its own. The desk

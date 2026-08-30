@@ -1,32 +1,27 @@
 import Link from "next/link";
 import type { CSSProperties, ReactNode } from "react";
 /* Deep import, not the barrel. `@/components/ledger` re-exports `LedgerScreen`,
-   which is a 25KB "use client" module, and `ask-composer.tsx` is a client
-   component that imports PAD from this file, so the barrel would drag the whole
-   Ledger into the /ask client graph for the sake of one 14px chevron.
-   `chevron.tsx` carries no "use client" and imports nothing. */
+   which is a 25KB "use client" module, and the Ask screen is a client component
+   that imports these parts, so the barrel would drag the whole Ledger into the
+   /ask client graph for the sake of one 14px chevron. `chevron.tsx` carries no
+   "use client" and imports nothing. */
 import { Chevron } from "@/components/ledger/chevron";
 import { FONT_DISPLAY, FONT_MONO, FONT_SANS } from "@/components/mobile/fonts";
 
 /**
- * The pieces both Ask screens are built from.
+ * The pieces the Ask screen is built from.
  *
- * These are wrappers beside the shared ledger vocabulary, never edits to it.
- * `Chevron` is imported and used as it stands; the back chevron on the answer
- * screen is drawn here instead because it points left at 16px and stroke 1.8,
- * and adding a direction and a size to a shared component to serve one screen
- * is exactly the divergence the build skill forbids.
- *
- * Every number below is the prototype's own, read off
- * `design_handoff_signalera_mobile/Signalera Mobile v3.dc.html` lines 742 to
- * 763 (browse) and 2549 to 2576 (answer) through the parity harness.
+ * These are wrappers beside the shared ledger and watch vocabulary, never edits
+ * to it. Every number below is read off the Direction C artboards
+ * (`d-artboards/ask-artboards.html`, boards `c-light`, `c-dark`, `cq-light`,
+ * `cq-dark`), which is the drawing the owner picked and therefore the spec.
  */
 
 export const PAD = "var(--v3-pad)";
 
 /**
- * Every box on these two screens that sets a `min-height` also sets it
- * `content-box`, and this is the reason.
+ * Every box on this screen that sets a `min-height` also sets it `content-box`,
+ * and this is the reason.
  *
  * The prototype ships no box-sizing reset, so every box in it is the browser
  * default, content-box. This app sets `border-box` globally through Tailwind's
@@ -37,21 +32,17 @@ export const PAD = "var(--v3-pad)";
  *
  * | box | design | border-box | content-box |
  * |---|---|---|---|
- * | directory row, `min-height:64` + `15px 0` + rule | 95 | 93 | 95 |
- * | lookup row, `min-height:56` + rule | 57 | 56 | 57 |
+ * | destination row, `min-height:30` + `11px 0` + rule | 53 | 52 | 53 |
+ * | company row, `min-height:47` + rule | 48 | 47 | 48 |
+ * | jump row, `min-height:43` + two rules | 45 | 43 | 45 |
  * | prompt chip, `min-height:44` + 1px border | 46 | 44 | 46 |
- * | composer field, `min-height:48` + 1px border | 50 | 48 | 50 |
- * | answer top bar, `min-height:48` + 1px rule | 49 | 48 | 49 |
+ * | filter field, `min-height:48` + 1px border | 50 | 48 | 50 |
  *
  * Nothing was out of compliance at border-box, since 44 clears the 44px floor
  * exactly. But it clears it exactly rather than by the 2px the design drew,
  * and `README.md:180` names content-box as the pattern used throughout for
- * reaching 44. Reproducing the prototype's own box model is the correct fix;
- * padding a number until it matches is not. Same reconciliation the mobile
- * Trends and Deal Flow units made.
- *
- * Only boxes with a `min-height` need this. The 48x48 send control sets an
- * explicit `width`/`height` and no border, so both models give 48.
+ * reaching 44. Reproducing the drawing's own box model is the correct fix;
+ * padding a number until it matches is not.
  */
 export const CONTENT_BOX = { boxSizing: "content-box" } as const satisfies CSSProperties;
 
@@ -66,9 +57,10 @@ function rowRule(last: boolean): CSSProperties {
 /* ── Section rules ─────────────────────────────────────────────────── */
 
 /**
- * The italic Playfair section rule, "browse" and "company intel". A different
- * object from the uppercase mono eyebrow: lower case, italic, and the rule
- * fills whatever width the label leaves.
+ * The italic serif section rule, "company intel", "browse" and "prompts". A
+ * different object from the uppercase mono eyebrow: lower case, italic, and the
+ * rule fills whatever width the label leaves. Mono small caps belong on a
+ * published artifact; this is a reading surface.
  */
 export function AskSectionRule({ label, style }: { label: string; style?: CSSProperties }) {
   return (
@@ -86,77 +78,127 @@ export function AskSectionRule({ label, style }: { label: string; style?: CSSPro
   );
 }
 
-/* ── Directory row ─────────────────────────────────────────────────── */
-
-export type AskDirectoryRowProps = {
-  href: string;
-  label: string;
-  /** A count, never a rate. Null when the count could not be read. */
-  counter: ReactNode;
-  /** One line of standing copy. Null when there is nothing to say. */
-  summary: ReactNode;
-  icon: ReactNode;
-  first?: boolean;
-  last?: boolean;
-};
+/* ── The assistant jump row ────────────────────────────────────────── */
 
 /**
- * Deal Flow, Trends, Live Feed. A real anchor carrying the row's own layout, so
- * the whole 64px box is the tap target rather than a focusable div wrapping a
- * link inside it.
+ * The one deliberate way to put a QUESTION to the product, sitting directly
+ * under a field that answers none.
+ *
+ * It is a row rather than a second filled control beside the field, because the
+ * field is the primary act and a pair of equals would say otherwise. It is a
+ * separate control rather than a submit on the field because the field has no
+ * submit moment: it narrows as you type, and a send control beside it would
+ * promise a navigation that does not happen. A question is therefore one
+ * deliberate tap and never an accident of pressing Enter.
+ *
+ * The chevron takes `--c-goldink`, the ink token. `--c-gold` is a FILL and
+ * never becomes type.
  */
-export function AskDirectoryRow({
-  href,
-  label,
-  counter,
-  summary,
-  icon,
-  first = false,
-  last = false,
-}: AskDirectoryRowProps) {
+export function AskJumpRow({ href, label }: { href: string; label: string }) {
   return (
     <Link
       href={href}
       style={{
         ...CONTENT_BOX,
         display: "flex",
-        gap: "13px",
-        alignItems: "flex-start",
-        minHeight: "64px",
-        padding: "15px 0",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: "10px",
+        minHeight: "43px",
+        borderTop: "1px solid var(--c-hair)",
+        borderBottom: "1px solid var(--c-hair)",
+        font: `400 13.5px/1.35 ${FONT_SANS}`,
+        color: "var(--c-ink)",
+        textDecoration: "none",
+      }}
+    >
+      <span>{label}</span>
+      <Chevron direction="right" size={15} stroke="var(--c-goldink)" />
+    </Link>
+  );
+}
+
+/* ── Destination row ───────────────────────────────────────────────── */
+
+export type AskDestinationRowProps = {
+  href: string;
+  label: string;
+  /** A count, never a rate. Null when the count could not be read. */
+  figure: string | null;
+  /** The window the figure covers. Drawn only when there is a figure. */
+  window: string;
+  icon: ReactNode;
+  first?: boolean;
+  last?: boolean;
+};
+
+/**
+ * Deal Flow, Trends, Live Feed, on one line each.
+ *
+ * WHAT THIS ROW GAVE UP AND WHY. It used to be a 95px two-line block with a
+ * counter and a sentence of standing copy under the label, and all three of
+ * those sentences came from a fixture that production never rendered: the live
+ * screen drew three labels, no figures, and a notice explaining that the
+ * figures had no source. One line with a real figure on it beats two lines
+ * where the second was blank for every real reader, and three rows at 95px
+ * becoming three rows at 53 is most of what lets six companies and all three
+ * destinations share one fold.
+ *
+ * A FAULTED COUNT DRAWS NEITHER THE FIGURE NOR THE WINDOW. The row stays and
+ * still opens its destination, because the destination is fine; only the count
+ * failed. A bare "0" there would state a fact about the corpus that no read
+ * supports, and a window with nothing beside it would frame an absence as a
+ * figure. Both go, and the row reads as a row with no figure on it, which is
+ * what it is.
+ *
+ * A real anchor carrying the row's own layout, so the whole box is the tap
+ * target rather than a focusable div wrapping a link inside it.
+ */
+export function AskDestinationRow({
+  href,
+  label,
+  figure,
+  window: windowLabel,
+  icon,
+  first = false,
+  last = false,
+}: AskDestinationRowProps) {
+  return (
+    <Link
+      href={href}
+      style={{
+        ...CONTENT_BOX,
+        display: "flex",
+        gap: "11px",
+        alignItems: "center",
+        minHeight: "30px",
+        padding: "11px 0",
         textDecoration: "none",
         ...rowRule(last),
         ...(first ? { marginTop: "6px" } : null),
       }}
     >
       {icon}
-      <div style={{ minWidth: 0, flex: 1 }}>
-        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: "10px" }}>
-          <span style={{ font: `600 15px/1.3 ${FONT_SANS}`, color: "var(--c-ink)" }}>{label}</span>
-          {counter ? (
-            <span
-              style={{
-                font: `400 10.5px/1 ${FONT_MONO}`,
-                letterSpacing: "0.045em",
-                color: "var(--c-muted)",
-              }}
-            >
-              {counter}
-            </span>
-          ) : null}
-        </div>
-        {summary ? (
-          <p
+      <span style={{ minWidth: 0, flex: 1, font: `600 15px/1.3 ${FONT_SANS}`, color: "var(--c-ink)" }}>
+        {label}
+      </span>
+      {figure !== null ? (
+        <>
+          <span
             style={{
-              margin: "5px 0 0",
-              font: `400 12.5px/1.5 ${FONT_SANS}`,
-              color: "var(--c-secondary)",
+              flex: "none",
+              font: `400 10.5px/1 ${FONT_MONO}`,
+              letterSpacing: "0.045em",
+              color: "var(--c-ink)",
             }}
           >
-            {summary}
-          </p>
-        ) : null}
-      </div>
+            {figure}
+          </span>
+          <span style={{ flex: "none", font: `400 10.5px/1 ${FONT_SANS}`, color: "var(--c-muted)" }}>
+            {windowLabel}
+          </span>
+        </>
+      ) : null}
     </Link>
   );
 }
@@ -167,9 +209,10 @@ export type AskLookupRowProps = {
   href: string;
   /**
    * Null when the company carries no ticker. The chip keeps its 44px so the
-   * names below it stay on one left edge; nothing is drawn inside it. Anthropic
-   * and OpenAI are both in the head of the read this row is built from, so a
-   * missing ticker is a real company rather than a bad row.
+   * names beside it stay on one left edge; nothing is drawn inside it.
+   * Anthropic and OpenAI are both in the head of this read, so a missing ticker
+   * is a real company rather than a bad row. Measured at read depth 50, ticker
+   * coverage is 92%, so the chip is drawn as present and this is the rare case.
    */
   ticker: string | null;
   name: string;
@@ -180,14 +223,18 @@ export type AskLookupRowProps = {
 };
 
 /**
- * The row the "company intel" block is built from.
+ * The row the company directory is built from.
  *
- * The NAME is unchanged and the geometry is untouched: this is the same
- * ticker chip, name, detail line and chevron the design draws, at the same
- * numbers. What changed is behind it. The block used to list recent lookups,
- * which nothing in the product records, so the rows now come from the company
- * directory read in `src/lib/ask-companies-data.ts` and every href is proved to
- * resolve before it is built.
+ * THE SECTOR IS A TAIL NOW, NOT A SECOND LINE, and that is the only change to
+ * this row. It used to sit under the name at 10.5px on its own line, which cost
+ * every row nine pixels and drew "Technology" five times down a six row list as
+ * a stack. As an inline tail after the name it costs no line at all, and the
+ * field is low entropy enough that the one row reading `Aerospace & Defense`
+ * becomes the thing that stands out, which is what a low-entropy field should
+ * do.
+ *
+ * The name ellipsizes and the tail goes with it, so a long name never pushes
+ * the chevron off the row.
  */
 export function AskLookupRow({ href, ticker, name, detail, first = false, last = false }: AskLookupRowProps) {
   return (
@@ -198,7 +245,7 @@ export function AskLookupRow({ href, ticker, name, detail, first = false, last =
         display: "flex",
         alignItems: "center",
         gap: "13px",
-        minHeight: "56px",
+        minHeight: "47px",
         textDecoration: "none",
         ...rowRule(last),
         ...(first ? { marginTop: "12px" } : null),
@@ -214,25 +261,26 @@ export function AskLookupRow({ href, ticker, name, detail, first = false, last =
       >
         {ticker}
       </span>
-      <div style={{ minWidth: 0, flex: 1 }}>
-        <div style={{ font: `500 14px/1.3 ${FONT_SANS}`, color: "var(--c-ink)" }}>{name}</div>
-        {/* No detail, no line. An empty second row would draw the box the
-            design gives a fact and put nothing in it. */}
+      <span
+        style={{
+          minWidth: 0,
+          flex: 1,
+          font: `500 14px/1.3 ${FONT_SANS}`,
+          color: "var(--c-ink)",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {name}
+        {/* No sector, no tail. An empty span would reserve the gap the design
+            gives a fact and put nothing in it. */}
         {detail ? (
-          <div
-            style={{
-              marginTop: "3px",
-              font: `400 10.5px/1 ${FONT_SANS}`,
-              color: "var(--c-muted)",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}
-          >
+          <span style={{ marginLeft: "9px", font: `400 10.5px/1 ${FONT_SANS}`, color: "var(--c-muted)" }}>
             {detail}
-          </div>
+          </span>
         ) : null}
-      </div>
+      </span>
       <Chevron direction="right" />
     </Link>
   );
@@ -241,7 +289,7 @@ export function AskLookupRow({ href, ticker, name, detail, first = false, last =
 /* ── Notices ───────────────────────────────────────────────────────── */
 
 /**
- * The one shape a failed read, an empty group and a stale count all take.
+ * The one shape a failed read and an empty group both take.
  *
  * Kept distinct in wording on purpose: the handoff's own principle, quoted in
  * github.md from `cross-source/page.tsx`, is that a failed read must never
@@ -269,41 +317,88 @@ export function AskNotice({ children, style }: { children: ReactNode; style?: CS
 }
 
 /**
- * A skeleton bar. The prototype's shimmer class lives in its own stylesheet and
- * is not in this repo, so this is a static block: it says "not yet" without
- * animating, which is also what prefers-reduced-motion would reduce it to.
+ * What a reader who arrived on `/ask?q=` is told, and the control that helps.
+ *
+ * WHAT IT REPLACED. The retired answer screen said "This surface does not
+ * answer yet." and offered one inline link measuring 126 by 14 pixels, a live
+ * tap-target violation on the one screen in the product where a reader has
+ * already been told that nothing answers them. This is the same admission with
+ * a full-width 44px action under it, and the working screen continues below it
+ * rather than the page ending there.
+ *
+ * WHY IT IS NOT `WatchNotice`. `watch/watch-notice.tsx:20` is the block this
+ * reproduces, and its anatomy is copied exactly: 1px `--c-border`, 12px radius,
+ * `--c-surface`, 15px by 16px padding, 13px/1.6 body. What it has not got is a
+ * full-width action; its `action` is an inline underlined 12.5px link sized to
+ * its own text, which is the shape being replaced here. Adding a second action
+ * form to a component three Watch tiers render, to serve one row on one screen,
+ * is exactly the variant axis the build rules forbid, so the anatomy is reused
+ * and the component is not edited. If a second surface ever needs the
+ * full-width form, that is the moment to lift this into the shared one.
  */
-export function AskSkeleton({
-  width,
-  height = 12,
-  style,
+export function AskAnswerNotice({
+  heading,
+  body,
+  action,
 }: {
-  width: string;
-  height?: number;
-  style?: CSSProperties;
+  heading: string;
+  body: string;
+  action: { href: string; label: string };
 }) {
   return (
-    <span
-      aria-hidden="true"
+    <div
       style={{
-        display: "block",
-        width,
-        height: `${height}px`,
-        borderRadius: "4px",
-        backgroundColor: "var(--c-hair)",
-        ...style,
+        padding: "15px 16px",
+        border: "1px solid var(--c-border)",
+        borderRadius: "12px",
+        backgroundColor: "var(--c-surface)",
       }}
-    />
+    >
+      <h2 style={{ margin: 0, font: `600 15px/1.3 ${FONT_SANS}`, color: "var(--c-ink)" }}>{heading}</h2>
+      <p
+        style={{
+          margin: "7px 0 0",
+          font: `400 13px/1.6 ${FONT_SANS}`,
+          color: "var(--c-secondary)",
+          textWrap: "pretty",
+        }}
+      >
+        {body}
+      </p>
+      <Link
+        href={action.href}
+        style={{
+          ...CONTENT_BOX,
+          marginTop: "12px",
+          minHeight: "44px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: "10px",
+          borderTop: "1px solid var(--c-hair)",
+          font: `500 13px/1 ${FONT_SANS}`,
+          color: "var(--c-goldink)",
+          textDecoration: "none",
+        }}
+      >
+        <span>{action.label}</span>
+        <Chevron direction="right" size={15} stroke="var(--c-goldink)" />
+      </Link>
+    </div>
   );
 }
 
 /* ── Icons ─────────────────────────────────────────────────────────── */
 
 /**
- * The three directory glyphs, reproduced at 18px on a 24-unit viewBox at stroke
- * 1.7 with round caps. The design strokes them with a colour literal whose
- * value is exactly `--c-secondary` in the light theme; built with the token,
- * per the same ruling the ledger chevron carries.
+ * The three destination glyphs, reproduced at 18px on a 24-unit viewBox at
+ * stroke 1.7 with round caps. The design strokes them with a colour literal
+ * whose value is exactly `--c-secondary` in the light theme; built with the
+ * token, per the same ruling the ledger chevron carries.
+ *
+ * No `marginTop` any more. It existed to hang an 18px glyph off the top of a
+ * two-line row aligned `flex-start`; the destination row is one line aligned
+ * `center`, so the offset would now push it 2px below its own label.
  */
 function Glyph({ children }: { children: ReactNode }) {
   return (
@@ -316,7 +411,7 @@ function Glyph({ children }: { children: ReactNode }) {
       strokeWidth="1.7"
       strokeLinecap="round"
       aria-hidden="true"
-      style={{ flex: "none", marginTop: "2px" }}
+      style={{ flex: "none" }}
     >
       {children}
     </svg>
@@ -340,21 +435,4 @@ export const IconFeed = (
   <Glyph>
     <path d="M4 6h16M4 12h16M4 18h10" />
   </Glyph>
-);
-
-/** The answer screen's back chevron. Left, 16px, stroke 1.8, inherits colour. */
-export const IconBack = (
-  <svg
-    width="16"
-    height="16"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="1.8"
-    strokeLinecap="round"
-    aria-hidden="true"
-    style={{ flex: "none" }}
-  >
-    <path d="M15 6l-6 6 6 6" />
-  </svg>
 );
