@@ -21,6 +21,7 @@ import { getSectorStyle } from "@/lib/sector-colors";
 import { ThemeTags } from "@/components/company/ThemeTags";
 import { SignInModal } from "@/components/auth/sign-in-modal";
 import { canonicalize, timeAgo } from "@/lib/company-intel";
+import { zeroMatchTarget } from "@/lib/company-search-target";
 import { useLiveMood } from "@/hooks/useLiveMood";
 
 // Shape of /api/companies response items. Locally redeclared to avoid importing
@@ -574,12 +575,16 @@ export default function CompanyIntelPage() {
                   if (target) router.push(`/company/${encodeURIComponent(slugify(target.name))}`);
                   return;
                 }
-                // Zero matches: navigate only for a plausible ticker shape so the
-                // on-demand mint path opens. Non-ticker junk does not navigate.
-                const upper = q.toUpperCase();
-                if (/^[A-Z]{1,6}(\.[A-Z]{1,4})?$/.test(upper)) {
-                  router.push(`/company/${encodeURIComponent(upper)}`);
-                }
+                /* Zero matches. The rule is in
+                   `src/lib/company-search-target.ts` with its measurements: a
+                   query that matched nothing only gets a navigation when
+                   `/company/<query>` can terminate on a company, either
+                   because the resolve retry's ticker push is one the route can
+                   look up, or because CANONICAL points at a name this search
+                   never ran. It lives in a module because the version that
+                   lived here could only be tested by retyping it. */
+                const target = zeroMatchTarget(q);
+                if (target) router.push(target);
               }}
               placeholder="Search companies by name or ticker..."
               className="pl-9 font-sans"

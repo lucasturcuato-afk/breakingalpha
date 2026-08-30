@@ -77,6 +77,16 @@ import { mobileFixtureAuthBypass } from "@/lib/mobile-fixture-gate";
  * and at `md` and above the desk header sits under it as an `h2`, which is the
  * order that was wanted. There is no heading-order finding here.
  *
+ * THAT PARAGRAPH DESCRIBED THE HIT BRANCH ONLY, and the miss branch below did
+ * not hold to it. It rendered without `mobileFullBleed`, so the shell head was
+ * on screen at EVERY width beside `EmptyState`'s own `h1`, and the enumeration
+ * came back two-deep at 375, 390, 430 and 1024 alike. The flag now ships on
+ * both branches, which settles it below `md`. Above `md` the miss branch has
+ * no second tree to put inside `display:none`, so it cannot borrow the trick
+ * this paragraph describes: `EmptyState` spells the same rule on the heading
+ * itself, `h1` below `md` and `h2` above it, and the invariant is one visible
+ * `h1` at every width on both branches now rather than on one of them.
+ *
  * BELOW `md` THE DESK TREE IS NOT IN THE DOCUMENT AT ALL, and that is newer
  * than the flip. `display:none` hides a subtree and mounts it: measured at
  * 390px signed in with zero interaction, the desk tree was firing
@@ -167,12 +177,33 @@ export default async function CompanyDetailPage({
   // fully resolves before render.
   const companyDetail = await getCompanyDetail(supabase, canonicalize(companyName));
 
-  // Null branch: no companies-row match (un-indexed via web-fallback path).
-  // Renders the PR-E1 empty state inside LiveMoodShell so sidebar / topbar
-  // stay rendered. Tab grid is not mounted -- there is no data to populate.
+  /* Null branch: no companies-row match (un-indexed via web-fallback path).
+     Renders the PR-E1 empty state inside LiveMoodShell so the sidebar and
+     topbar stay rendered AT `md` AND ABOVE. Tab grid is not mounted -- there
+     is no data to populate.
+
+     `mobileFullBleed` IS THE SAME FLAG THE HIT BRANCH BELOW SETS, and this
+     branch not setting it was one line that shipped five separate defects to
+     a phone. Measured on a production build at 375, 390 and 430 in both
+     themes, signed in: the mood bar drew at y0..36 and the topbar at y36..88
+     over a screen that has its own head; the topbar's disabled "Ask Signalera
+     anything..." span ran three 19.2px lines inside a 32px pill and hung
+     12.8px out of it at both ends; the user avatar laid out at x381.8 with a
+     32px box, so its right edge reached 413.8 on a 390 viewport and an
+     ancestor `overflow-hidden` cut it to a half-round sliver; and the footer
+     drew at y721.8..844 with 122px of height under a fixed tab bar, because
+     `app-shell.tsx` puts the tab-bar clearance on `<main>` and the footer is
+     that element's SIBLING. All five are shell chrome, and all five are what
+     this flag gates out below `md`.
+
+     IT IS THIS ROUTE ONLY, not a pattern to roll out. Eight other routes set
+     no `mobileFullBleed` either, and they are a separate question: this one is
+     a defect specifically because the SAME route sets the flag on its other
+     branch, so one company renders full-bleed and the next renders under two
+     bars purely on whether it happens to be indexed. */
   if (!companyDetail) {
     return (
-      <LiveMoodShell pageTitle="Company Intel">
+      <LiveMoodShell pageTitle="Company Intel" mobileFullBleed>
         <CompanyAutoResolve query={companyName} />
         <EmptyState canonical={companyName} />
       </LiveMoodShell>
