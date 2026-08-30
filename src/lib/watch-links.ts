@@ -59,13 +59,19 @@ import type { WatchlistKind } from "@/components/watch/fixture";
  *
  * `linkLookups` IS THE EXCEPTION AND IT IS NOT AN ACCIDENT. It carries no read
  * and no proof set, only the route's reconstruction, so it is the half a client
- * can run. `src/app/company/page.tsx` imports it in the directory search box to
- * decide whether a zero-match query is a slug the route's ticker branch can even
- * run on, which is how BRK.B stopped routing into the miss surface. That import
- * puts `aliasResolver` in the directory's client chunk; `company-intel` was
- * already there for `canonicalize`, and neither module reads `server-only` or
- * touches a secret. Anything that DOES need a read stays on this side of the
- * line.
+ * can run. `src/lib/company-search-target.ts` calls it from the company
+ * directory's search box, where a zero-match query has to be judged on whether
+ * `/company/<what was typed>` can terminate at all; that module states the rule
+ * and the two clauses it decides on. The reconstruction is the whole of what it
+ * borrows: the ticker half of the answer is `TICKER_RE` on the RECONSTRUCTED
+ * string, which is what `resolveAlias` tests too, because `page.tsx` hands it
+ * `canonicalize(slugToCompanyName(id))` rather than the raw slug. Reading it as
+ * "is the slug ticker-shaped" is the misreading to avoid.
+ *
+ * That path puts `aliasResolver` in the directory's client chunk;
+ * `company-intel` was already there for `canonicalize`, and neither module
+ * reads `server-only` or touches a secret. Anything that DOES need a read stays
+ * on this side of the line.
  */
 
 /** A watchlist row reduced to the two fields a destination depends on. */
@@ -91,9 +97,25 @@ export const NO_PROOF: WatchLinkProof = { tickers: new Set(), names: new Set() }
 /**
  * The string `page.tsx` hands to `getCompanyDetail`, and therefore the string
  * `resolveAlias` sees as its input.
+ *
+ * `null` FOR A SLUG THAT CANNOT BE READ. `slugToCompanyName` opens with
+ * `decodeURIComponent`, which throws `URIError` on a malformed percent escape,
+ * and every string a person types is a candidate: "100%", "50%off", "a%b". The
+ * throw is not catchable at the useful end of the call, so a caller that ran
+ * this inside an event handler took an uncaught `URIError` on a keypress. A
+ * string the decoder rejects is not a slug and cannot name a company, so it is
+ * an absence rather than an error, and every caller here already has an
+ * absence path: no link, no navigation.
+ *
+ * Only `URIError` is swallowed. Anything else is a real fault and rethrows.
  */
-function reconstruct(slug: string): string {
-  return canonicalize(slugToCompanyName(slug)).trim();
+function reconstruct(slug: string): string | null {
+  try {
+    return canonicalize(slugToCompanyName(slug)).trim();
+  } catch (err) {
+    if (err instanceof URIError) return null;
+    throw err;
+  }
 }
 
 /**
@@ -105,9 +127,12 @@ export function linkLookups(identifier: string): { ticker: string | null; name: 
   const slug = identifier.trim();
   if (slug.length === 0) return null;
   const first = reconstruct(slug);
-  if (first.length === 0) return null;
+  if (first === null || first.length === 0) return null;
   const upper = first.toUpperCase();
+  // A decoded string can still carry a bare `%` ("100%25" -> "100%"), so the
+  // second pass needs the same guard as the first.
   const second = reconstruct(first);
+  if (second === null) return null;
   return {
     ticker: TICKER_RE.test(upper) ? upper : null,
     name: second,
