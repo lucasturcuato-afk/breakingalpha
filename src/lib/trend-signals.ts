@@ -152,7 +152,22 @@ export function trendTags(signal: TrendSignal, max = 3): string[] {
   return out;
 }
 
-export type TrendLens = "all" | "critical" | "high" | "medium" | "mine";
+/**
+ * The lens values the chip row offers.
+ *
+ * Every severity `strengthToLevel` can return is a member, plus "all" and the
+ * profile lens. That is not a style choice. The four severity chips are the
+ * control set over the level taxonomy this screen renders on every card, so a
+ * missing member is a level the reader can read off a badge and cannot find
+ * above, and the chips stop summing to the total.
+ *
+ * "low" was the missing one: `strengthToLevel` has returned it since day one
+ * for anything under 0.4, `LEVEL_TONES.low` draws it, and the card prints the
+ * word, while the chip row offered three tiers against a total that counted
+ * four. Adding the member is what makes `Critical + High + Medium + Low` equal
+ * `All` again.
+ */
+export type TrendLens = "all" | "critical" | "high" | "medium" | "low" | "mine";
 
 /**
  * The counts the chip row and the subhead render.
@@ -162,24 +177,30 @@ export type TrendLens = "all" | "critical" | "high" | "medium" | "mine";
  * which the README's State section forbids ("Any figure that describes state
  * must be read from that state, never typed").
  *
+ * All four severities are counted, so the four tier figures sum to `total`.
+ * They did not before: `low` went uncounted while `total` stayed
+ * `signals.length`, so the chip row read "All 462 / Critical 109 / High 17 /
+ * Medium 302" and left 34 clusters with no chip, each one printing the word
+ * "Low" on its own card. Every level `strengthToLevel` returns gets a counter
+ * here, and the tally is keyed by the level type so the compiler enforces it.
+ *
  * `newThisWeek` counts clusters created inside seven days. The prototype's
  * subhead says "3 moved this week"; `trend_clusters` has no field for movement
  * of any kind, so the word is changed to one the data can carry.
  */
 export function trendCounts(signals: TrendSignal[], now: number = Date.now()) {
   const week = now - 7 * 24 * 60 * 60 * 1000;
-  let critical = 0;
-  let high = 0;
-  let medium = 0;
+  /* Keyed by the level type rather than four loose counters, so the tally is
+     exhaustive by construction: a fifth member on `AnomalyLevel` fails to
+     compile here instead of going uncounted, which is precisely how `low` was
+     lost. */
+  const byLevel: Record<AnomalyLevel, number> = { critical: 0, high: 0, medium: 0, low: 0 };
   let newThisWeek = 0;
   for (const s of signals) {
-    const level = strengthToLevel(s.strength_score);
-    if (level === "critical") critical += 1;
-    else if (level === "high") high += 1;
-    else if (level === "medium") medium += 1;
+    byLevel[strengthToLevel(s.strength_score)] += 1;
     if (s.created_at && new Date(s.created_at).getTime() >= week) newThisWeek += 1;
   }
-  return { total: signals.length, critical, high, medium, newThisWeek };
+  return { total: signals.length, ...byLevel, newThisWeek };
 }
 
 /**

@@ -75,11 +75,22 @@ type LoadState =
 
 const EMPTY: TrendSignal[] = [];
 
+/**
+ * The chip row, severity descending, then the profile lens.
+ *
+ * "Low" sits after "Medium" and before "My sectors" because the first four are
+ * one control set over the level taxonomy and read as a descending scale,
+ * while "My sectors" filters on something else entirely and belongs at the
+ * end. It is not a new kind of chip: `LEVEL_TONES.low` already existed and the
+ * card already printed the word, so this only adds the control that was
+ * missing above it.
+ */
 const LENSES: { value: TrendLens; label: string }[] = [
   { value: "all", label: "All" },
   { value: "critical", label: "Critical" },
   { value: "high", label: "High" },
   { value: "medium", label: "Medium" },
+  { value: "low", label: "Low" },
   { value: "mine", label: "My sectors" },
 ];
 
@@ -372,6 +383,7 @@ function lensCount(
   if (lens === "critical") return counts.critical;
   if (lens === "high") return counts.high;
   if (lens === "medium") return counts.medium;
+  if (lens === "low") return counts.low;
   /* "My sectors" carries no count in the design and cannot carry one honestly
      here either: the count would depend on a profile that may not have loaded
      yet, and a figure that changes under the reader is worse than none. */
