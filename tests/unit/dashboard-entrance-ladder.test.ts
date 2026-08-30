@@ -70,7 +70,7 @@ function allShapes(): { present: LadderRung[]; shape: Record<LadderRung, boolean
 describe("ladderDelays", () => {
   test("the full render is the authored uniform grid", () => {
     const shape = shapeOf([...LADDER_ORDER]);
-    assert.deepEqual(renderedDelays(shape), [0, 60, 120, 180, 240, 300, 360, 420, 480, 540]);
+    assert.deepEqual(renderedDelays(shape), [0, 40, 80, 120, 160, 200, 240, 280, 320, 360]);
   });
 
   test("the live shape measured on a real account is even, where the old table was not", () => {
@@ -88,8 +88,8 @@ describe("ladderDelays", () => {
     ]);
     const delays = renderedDelays(shape);
     assert.equal(delays.length, 7);
-    assert.deepEqual(delays, [0, 60, 120, 180, 240, 300, 360]);
-    assert.deepEqual(gapsOf(delays), [60, 60, 60, 60, 60, 60]);
+    assert.deepEqual(delays, [0, 40, 80, 120, 160, 200, 240]);
+    assert.deepEqual(gapsOf(delays), [40, 40, 40, 40, 40, 40]);
   });
 
   test("every gap is one interval, on all 64 renderable shapes", () => {
@@ -109,10 +109,10 @@ describe("ladderDelays", () => {
       shapeOf(LADDER_ORDER.filter((rung) => rung !== "context")),
     );
     /* Everything below the hole moves UP one rung rather than leaving a gap. */
-    assert.equal(withContext.marketHead, 180);
-    assert.equal(withoutContext.marketHead, 120);
-    assert.equal(withContext.stories, 540);
-    assert.equal(withoutContext.stories, 480);
+    assert.equal(withContext.marketHead, 120);
+    assert.equal(withoutContext.marketHead, 80);
+    assert.equal(withContext.stories, 360);
+    assert.equal(withoutContext.stories, 320);
   });
 
   test("the market band always follows its own heading by one interval", () => {
@@ -138,16 +138,32 @@ describe("the desk record's proportion bars", () => {
     }
   });
 
-  test("keep their own 40ms cadence, which is not the rise interval", () => {
+  test("keep their own 40ms cadence, which is theirs and not the rungs'", () => {
+    /* Asserted as a literal rather than against STAGGER_MS. The two are equal
+       this round and that is a coincidence of the ruling, not a link: the
+       sweep is a horizontal scaleX and does not track the rise ladder. If the
+       rung interval moves again, this stays 40 and this test still holds. */
     assert.deepEqual(gapsOf([...BAR_OFFSETS]), [40, 40, 40]);
-    assert.notEqual(BAR_OFFSETS[1] - BAR_OFFSETS[0], STAGGER_MS);
   });
 
-  test("reproduce the shipped absolute delays on the full render", () => {
+  test("the lead-in is a beat: at least one 60Hz frame, under one rung", () => {
+    /* The two bounds the lead-in was derived from. A proportional rescale of
+       the old 20ms to the 40ms grid gives 13.3ms, which fails the lower bound
+       and would put the first sweep on the same frame as its own heading. */
+    const FRAME_60HZ = 1000 / 60;
+    assert.ok(BAR_OFFSETS[0] >= FRAME_60HZ, "lead-in must be at least one frame");
+    assert.ok(BAR_OFFSETS[0] < STAGGER_MS, "lead-in must stay inside its own rung");
+  });
+
+  test("absolutes on the full render follow the ladder, they are not pinned", () => {
     const base = ladderDelays(shapeOf([...LADDER_ORDER])).deskRecord;
+    assert.equal(base, 320);
     assert.deepEqual(
       BAR_OFFSETS.map((offset) => base + offset),
-      [500, 540, 580, 620],
+      [340, 380, 420, 460],
     );
+    /* And the whole group is spent inside the ladder it sits in: the last
+       sweep starts at 460 and runs 400ms, against a last rung at 360 + 720. */
+    assert.ok(base + BAR_OFFSETS[BAR_OFFSETS.length - 1] + 400 <= 360 + 720);
   });
 });
