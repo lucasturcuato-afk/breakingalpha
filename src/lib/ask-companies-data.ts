@@ -77,7 +77,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { canonicalize } from "@/lib/company-intel";
 import { TICKER_RE, slugToCompanyName } from "@/lib/data-access/aliasResolver";
-import { isNoiseName } from "@/app/api/companies/route";
+import { isNoiseName } from "@/lib/company-noise";
 
 /** One directory row, already resolved to something that renders. */
 export interface AskCompanyRow {
@@ -104,6 +104,26 @@ export interface AskCompaniesLoad {
    */
   data: AskCompanyRow[] | null;
   stage: AskCompaniesStage;
+  /**
+   * How many companies the field can reach, counted rather than typed.
+   *
+   * It exists because the screen now makes a claim about REACH: the field
+   * searches the corpus through `GET /api/companies`, not the fifty rows in
+   * this payload, and a reader has no way to know the difference unless the
+   * screen says how big the corpus is. A literal in the copy would be a number
+   * that was true on the day it was written, so it is read.
+   *
+   * WHAT IT COUNTS, exactly: rows of `companies` carrying a name and a mention
+   * count, which is the predicate the search query below and the search route
+   * both start from. It does NOT subtract the JS noise filter, which drops rows
+   * that are not names at all (all-numeric, all-punctuation). So it is an upper
+   * bound by however many of those the table holds, and the copy says "ingested"
+   * rather than "searchable" for that reason.
+   *
+   * Null when the count FAULTED. The copy then drops the figure and keeps the
+   * reach claim, because reach is true whether or not the count answered.
+   */
+  corpusTotal: number | null;
 }
 
 export type AskCompaniesStage = "ready" | "error";
@@ -233,6 +253,39 @@ function provedHref(
 }
 
 /**
+ * The prove-out, over an arbitrary window of rows, as something a caller with
+ * its OWN window can run. `GET /api/companies` is the caller that made this
+ * necessary: the field on /ask now searches through that route, and a fetched
+ * row has to clear the same bar a server-read row clears before it becomes a
+ * link.
+ *
+ * THE SETS ARE BUILT ONCE AND THEN APPLIED, rather than rebuilt per row. Both
+ * branches of the proof are existence checks against the SET of rows in the
+ * window, so the sets come from the whole window before any row is proved.
+ * Per-row construction would prove each row against itself alone, which fails
+ * every name that resolves through some other row's ticker.
+ *
+ * THE PROOF IS MONOTONE IN THE WINDOW, and that is what makes it safe to run
+ * over a search result of three rows rather than the fifty this file reads.
+ * Both branches ask "does the corpus carry a row with this ticker, or this
+ * name", and any window is a subset of the corpus, so a TRUE answer here is
+ * true against the database too. A smaller window proves FEWER rows; it cannot
+ * prove a wrong one. The fifty-row window already leaned on exactly this; the
+ * property is not new, only the caller is.
+ */
+export function buildHrefProver(
+  rows: readonly DirectoryReadRow[],
+): (row: DirectoryReadRow) => string | null {
+  const tickers = new Set(
+    rows.map((r) => r.ticker?.trim().toUpperCase() ?? "").filter((t) => t.length > 0),
+  );
+  const names = new Set(
+    rows.map((r) => r.name?.trim().toLowerCase() ?? "").filter((n) => n.length > 0),
+  );
+  return (row: DirectoryReadRow) => provedHref(row, tickers, names);
+}
+
+/**
  * Rows to directory entries. Pure, so the unit test can drive it without a
  * client, and exported for that reason.
  */
@@ -240,12 +293,7 @@ export function buildAskCompanies(
   rows: DirectoryReadRow[],
   shown: number = READ_LIMIT,
 ): AskCompanyRow[] {
-  const tickers = new Set(
-    rows.map((r) => r.ticker?.trim().toUpperCase() ?? "").filter((t) => t.length > 0),
-  );
-  const names = new Set(
-    rows.map((r) => r.name?.trim().toLowerCase() ?? "").filter((n) => n.length > 0),
-  );
+  const prove = buildHrefProver(rows);
 
   const out: AskCompanyRow[] = [];
   for (const row of rows) {
@@ -254,7 +302,7 @@ export function buildAskCompanies(
     // The same two gates `/api/companies` applies after its query, so the
     // directory and the desk directory cannot show different companies.
     if (name.length < 2 || isNoiseName(name)) continue;
-    const href = provedHref(row, tickers, names);
+    const href = prove(row);
     if (!href) continue;
     out.push({
       id: row.id,
@@ -277,23 +325,46 @@ export function buildAskCompanies(
  * what the parity and width audits need.
  */
 export async function loadAskCompanies(sb: SupabaseClient): Promise<AskCompaniesLoad> {
-  const { data, error } = await sb
-    .from("companies")
-    .select(DIRECTORY_COLS)
-    .not("name", "is", null)
-    .not("mention_count", "is", null)
-    .order("mention_count", { ascending: false, nullsFirst: false })
-    .order("last_updated", { ascending: false, nullsFirst: false })
-    .order("name", { ascending: true })
-    .limit(READ_LIMIT);
+  /* Two reads, concurrent, and the count is `head: true` so it sends no rows
+     over the wire at all. That is the shape `loadAskCounters` already uses on
+     this same page for three figures; this is a fourth of the same kind. The
+     two answer INDEPENDENTLY: a faulted count does not fault the directory and
+     a faulted directory does not blank the count. */
+  const [rowsRes, countRes] = await Promise.all([
+    sb
+      .from("companies")
+      .select(DIRECTORY_COLS)
+      .not("name", "is", null)
+      .not("mention_count", "is", null)
+      .order("mention_count", { ascending: false, nullsFirst: false })
+      .order("last_updated", { ascending: false, nullsFirst: false })
+      .order("name", { ascending: true })
+      .limit(READ_LIMIT),
+    sb
+      .from("companies")
+      .select("id", { count: "exact", head: true })
+      .not("name", "is", null)
+      .not("mention_count", "is", null),
+  ]);
 
-  if (error) {
-    console.error("[ask-companies] companies read", error.message);
+  let corpusTotal: number | null = null;
+  if (countRes.error) {
+    console.error("[ask-companies] corpus count", countRes.error.message);
+  } else {
+    corpusTotal = countRes.count;
+  }
+
+  if (rowsRes.error) {
+    console.error("[ask-companies] companies read", rowsRes.error.message);
     /* Null, never an empty list. The screen draws a failed read and an empty
        corpus as two different sentences, and it can only do that if the two
        arrive as two different values. */
-    return { data: null, stage: "error" };
+    return { data: null, stage: "error", corpusTotal };
   }
 
-  return { data: buildAskCompanies((data as DirectoryReadRow[] | null) ?? []), stage: "ready" };
+  return {
+    data: buildAskCompanies((rowsRes.data as DirectoryReadRow[] | null) ?? []),
+    stage: "ready",
+    corpusTotal,
+  };
 }
