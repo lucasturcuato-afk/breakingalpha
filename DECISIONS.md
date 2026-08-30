@@ -10,6 +10,13 @@ states the conflicts; this states what won.
 Rulings 1 to 22 live below and keep their numbers forever, because the codebase
 and the PR history reference them by number.
 
+Rulings 23 and 24 are also below, and they are the exception that proves the
+rule rather than a licence for a twenty-fifth. They were authored in parallel
+with the closure itself and merged just after it, so they were numbered before
+this notice existed. They stay where they are for the same reason 1 to 22 do:
+they are already referenced by number. **The file is closed. Nothing else gets
+a number.**
+
 **New rulings go in `decisions/`, one file each, named rather than numbered.**
 Run `npm run decisions` to list them.
 
