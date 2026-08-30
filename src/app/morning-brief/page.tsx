@@ -595,14 +595,22 @@ export default function MorningBriefPage() {
         // different intents and were previously indistinguishable.
         entry_point: getEntryPoint(),
       },
-      { entity_type: "briefing", entity_id: briefingId },
+      // `once` is the guard that actually holds. The ref below is a cheap
+      // same-mount short circuit; it dies with the mount, so a remount, a
+      // client route re-entry or a reload all re-fire past it. One account
+      // produced 195 of 215 counted opens that way, across 125 sessions but
+      // only 5 briefings. Keyed per briefing per UTC day, matching the SQL.
+      { entity_type: "briefing", entity_id: briefingId, once: briefingId },
     );
 
     // Legacy name kept in parallel so the five existing user_events consumers
     // (user_signal_aggregator, profile/insights, collective-signals,
     // updateInferredWeights, internal dashboard views) see no change. Drop this
     // once those move to the dotted names.
-    trackClientEvent("morning_brief_opened", { briefing_id: briefingId });
+    //
+    // Same `once` key: the guard scopes it by event_type internally, so this
+    // still emits alongside the dotted name rather than being suppressed by it.
+    trackClientEvent("morning_brief_opened", { briefing_id: briefingId }, { once: briefingId });
   }, [user, briefing?.id, briefing?.created_at, rankedStories, profile]);
 
   // ── Attention instrumentation ──────────────────────────────────────────

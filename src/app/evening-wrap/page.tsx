@@ -616,14 +616,19 @@ export default function EveningWrapPage() {
         // served order is the shared baseline regardless of mode.
         rail_personalizable: !!profile,
       },
-      { entity_type: "briefing", entity_id: briefingId },
+      // See the morning brief's note: `once` is the guard that survives a
+      // remount, and the ref above only covers a single mount.
+      { entity_type: "briefing", entity_id: briefingId, once: briefingId },
     );
 
     // Legacy name kept in parallel so the five existing user_events consumers
     // (user_signal_aggregator, profile/insights, collective-signals,
     // updateInferredWeights, internal dashboard views) see no change. Drop this
     // once those move to the dotted names.
-    trackClientEvent("evening_wrap_opened", { briefing_id: briefingId });
+    //
+    // Same `once` key: the guard scopes it by event_type internally, so this
+    // still emits alongside the dotted name rather than being suppressed by it.
+    trackClientEvent("evening_wrap_opened", { briefing_id: briefingId }, { once: briefingId });
   }, [user, briefing?.id, briefing?.created_at, rankedStories, profile]);
 
   const tone = normaliseTone(briefing?.market_tone);
