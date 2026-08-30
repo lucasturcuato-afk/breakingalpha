@@ -15,10 +15,27 @@ import type { AnomalyLevel } from "@/lib/trend-signals";
  * design. None of that survives. Only the level TYPE is reused, and it comes
  * through `@/lib/trend-signals`.
  *
- * `low` is not drawn anywhere in the prototype: the design has no Low card and
- * no Low chip, while `strengthToLevel` still produces one for any cluster
- * under 0.4. It takes the same neutral treatment the design gives Medium,
- * which is the only neutral treatment drawn.
+ * `low` SHARES MEDIUM'S TONE, and that is now a live question rather than a
+ * settled one.
+ *
+ * The original reason no longer holds. This block used to read "the design has
+ * no Low card and no Low chip", and that absence was the whole justification
+ * for giving `low` the only neutral treatment the prototype draws. Low now
+ * ships a chip: it sits directly beside Medium in the row, because
+ * `strengthToLevel` has always produced it for any cluster under 0.4 and the
+ * chip row was denying a level the card was printing.
+ *
+ * So the two lenses draw indistinguishable cards. Every value below is
+ * byte-identical to `medium` except `word`, which means tapping Medium and
+ * tapping Low changes which clusters are listed and changes nothing else on
+ * any card. The badge word is the only signal, and by the rule at the top of
+ * this file the word is the part that has to carry the level, so this is
+ * legible rather than broken. It is still thinner than the other three tiers.
+ *
+ * DELIBERATELY LEFT SHARED, pending Noah. Whether Low earns its own edge, fill
+ * and dot is a design call about the severity scale, not a builder's judgement
+ * to make while adding a chip, and this table should not grow a colour on the
+ * way past. Give it a tone here when that is answered.
  *
  * The prototype writes the Medium dot as a literal hex, which is the
  * light-theme value of `--c-muted`. Tokenised here, so it flips with the theme

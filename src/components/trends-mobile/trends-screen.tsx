@@ -14,6 +14,7 @@ import {
   TREND_MIN_SOURCES,
   TREND_SELECT,
   TREND_STALE_AFTER_HOURS,
+  type AnomalyLevel,
   type TrendLens,
   type TrendSignal,
 } from "@/lib/trend-signals";
@@ -75,11 +76,43 @@ type LoadState =
 
 const EMPTY: TrendSignal[] = [];
 
+/**
+ * One chip per severity, keyed by the level type, in the order drawn.
+ *
+ * `Record<AnomalyLevel, string>` is the whole point. A hand-written chip list
+ * is exactly the defect this screen just shipped a fix for: `low` existed in
+ * the data, drew a tone, printed its word on the card, and had no control,
+ * because nothing tied the row to the taxonomy. Adding a counter to
+ * `trendCounts` closed that for the TALLY only. This closes it for the ROW.
+ * A fifth level fails to compile here until it is given a chip.
+ *
+ * Order is the literal's own key order, which the language guarantees for
+ * string keys, so the row reads as the descending scale it is.
+ */
+const SEVERITY_LABELS: Record<AnomalyLevel, string> = {
+  critical: "Critical",
+  high: "High",
+  medium: "Medium",
+  low: "Low",
+};
+
+/**
+ * The chip row: "All", then the severity scale, then the profile lens.
+ *
+ * "My sectors" stays OUTSIDE `SEVERITY_LABELS` and is written by hand. It is
+ * not a severity and does not belong in a table keyed by level; forcing it in
+ * to make one construction cover the row would make the type lie about what a
+ * lens is. Same for "All". Only the middle is exhaustive, because only the
+ * middle is a taxonomy.
+ *
+ * Assigning `AnomalyLevel` into `value: TrendLens` is a second, free check: a
+ * level that is not also a lens fails right here.
+ */
 const LENSES: { value: TrendLens; label: string }[] = [
   { value: "all", label: "All" },
-  { value: "critical", label: "Critical" },
-  { value: "high", label: "High" },
-  { value: "medium", label: "Medium" },
+  ...(Object.entries(SEVERITY_LABELS) as [AnomalyLevel, string][]).map(
+    ([value, label]) => ({ value, label }),
+  ),
   { value: "mine", label: "My sectors" },
 ];
 
@@ -354,13 +387,15 @@ function lensCount(
   counts: ReturnType<typeof trendCounts>,
 ): number | null {
   if (lens === "all") return counts.total;
-  if (lens === "critical") return counts.critical;
-  if (lens === "high") return counts.high;
-  if (lens === "medium") return counts.medium;
   /* "My sectors" carries no count in the design and cannot carry one honestly
      here either: the count would depend on a profile that may not have loaded
      yet, and a figure that changes under the reader is worse than none. */
-  return null;
+  if (lens === "mine") return null;
+  /* Everything left is a severity, so it is read by key rather than by four
+     hand-written branches. A new level picks its count up here for free
+     instead of falling through to `null` and shipping a chip with no figure,
+     which is how a hand-written lookup would have failed. */
+  return counts[lens];
 }
 
 function LensChip({
