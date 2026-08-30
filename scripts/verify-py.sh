@@ -31,8 +31,8 @@ echo "==> Installing pinned deps (runtime + dev)"
 "$PY" -m pip install --quiet --upgrade pip
 "$PY" -m pip install --quiet -r "$REPO_ROOT/backend/requirements.txt" -r "$REPO_ROOT/requirements-dev.txt"
 
-echo "==> ruff check backend/ (must-fix tier: E9,F63,F7,F82)"
-"$VENV/bin/ruff" check backend/
+echo "==> ruff check backend/ tools/ (must-fix tier: E9,F63,F7,F82)"
+"$VENV/bin/ruff" check backend/ tools/
 
 echo "==> pytest import smoke (backend/tests/test_smoke.py)"
 set +e
