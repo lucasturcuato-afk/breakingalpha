@@ -21,9 +21,10 @@
  * A view the desk is watching with no direction and no window on it.
  *
  * THE TIER IS NOT DRAWN and `WatchData` carries no `trackedViews` field. The
- * screen now states that on screen rather than only here; the reason and the
+ * screen says nothing about that, by the ruling of 2026-08-29: omit silently
+ * unless absence would mislead, and this absence does not. The reason and the
  * measurement behind it are in `omissions.ts`, which is the one place either
- * should be read from.
+ * should be read from, and which records why this entry went silent.
  *
  * WHAT THIS COMMENT USED TO SAY, AND WHY IT WAS WRONG. It said the tier was
  * absent because `headline` had no source, `user_claims` carrying no article

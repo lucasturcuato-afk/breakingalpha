@@ -28,9 +28,10 @@
  *
  * WHAT IT REFUSES TO DO
  *
- * TRACKED VIEWS ARE NOT LOADED, and the tier is not drawn. The reason is now
- * stated on screen as well as here, out of `src/components/watch/omissions.ts`,
- * which carries the measurement.
+ * TRACKED VIEWS ARE NOT LOADED, and the tier is not drawn. The reason is not
+ * stated on screen: the ruling of 2026-08-29 narrowed that to absences whose
+ * silence would mislead, and this one does not. It lives here and in
+ * `src/components/watch/omissions.ts`, which carries the measurement.
  *
  * THE REASON THAT USED TO STAND HERE IS RETRACTED. It said `headline` had no
  * source because `user_claims` carries no article foreign key. `user_claim` IS

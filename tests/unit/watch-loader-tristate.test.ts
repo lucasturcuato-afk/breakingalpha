@@ -300,7 +300,8 @@ test("every figure is a count of rows, and no tracked-views field exists", async
   // IS the headline (sql/0012:10-11), and that earlier reason is retracted. No
   // row in `user_claims` is a tracked view, because a tracked view carries no
   // direction and no window and every row carries both. The measurement is in
-  // `src/components/watch/omissions.ts`; the reason is now on screen.
+  // `src/components/watch/omissions.ts`; the screen states it nowhere, because
+  // absence of a tier nothing on the screen names does not mislead.
   assert.ok(!("trackedViews" in data));
   // followsWithCoverage + followsQuiet + followsMuted + couldNotCheck accounts
   // for every follow row exactly once.

@@ -32,11 +32,13 @@ import { FONT_DISPLAY, FONT_SANS } from "@/components/mobile/fonts";
  * three things that are false about it. `src/components/watch/omissions.ts`
  * carries the measurement.
  *
- * WHAT IS DIFFERENT NOW: the omission is stated on screen instead of only in
- * comments like this one. Still NOT as an empty-tier notice. "No tracked views
- * yet" is a claim about the reader and needs a read behind it; "this tier draws
- * claims carrying no direction and no window, and none has been written that
- * way" is a claim about the product and needs none.
+ * WHAT IS DIFFERENT NOW: the tier is absent SILENTLY. PR #731 put its reason
+ * on screen; the ruling of 2026-08-29 narrowed that to "omit silently unless
+ * absence would mislead", and this absence does not. Nothing on `/watch` names
+ * a third tier, no figure counts claims, and no rendered line becomes wrong
+ * without the note, so the finding stays in `src/components/watch/omissions.ts`
+ * and the screen says nothing. Never as an empty-tier notice either: "No
+ * tracked views yet" is a claim about the reader and needs a read behind it.
  *
  * The tiers live at two separate desktop routes today (/radar/watchlist,
  * /radar/following). Neither is edited to get here: the design dismantles
