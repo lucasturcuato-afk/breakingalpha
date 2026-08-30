@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import Link from "next/link";
 import { DealRow } from "./deal-row";
 import { FilterChipRow, type FilterChip } from "./filter-chip-row";
 import {
@@ -12,6 +11,7 @@ import {
 } from "./deal-stage";
 import type { MobileDeal } from "./types";
 import styles from "./deals.module.css";
+import { BackHeader } from "@/components/mobile";
 import { FONT_DISPLAY, FONT_SANS } from "@/components/mobile/fonts";
 import { ASK_POLE_HREF } from "@/components/shell/mobile-tab-bar";
 
@@ -129,46 +129,18 @@ export function DealsScreen({
           The href is `ASK_POLE_HREF`, read from the pole table, NOT a literal.
           It read `/intelligence` until now, which is where the Ask pole used
           to point; PR #736 moved the pole to /ask and this control kept
-          sending the reader to the desk chat, with no route back to the
-          directory they arrived from. It depends on where the Ask pole goes,
-          so it reads that from the one place that decides it. */}
-      <div
-        style={{
-          flex: "none",
-          minHeight: "48px",
-          display: "flex",
-          alignItems: "center",
-          padding: `0 ${PAD}`,
-          borderBottom: "1px solid var(--c-border)",
-        }}
-      >
-        <Link
-          href={ASK_POLE_HREF}
-          style={{
-            minHeight: "44px",
-            display: "flex",
-            alignItems: "center",
-            gap: "6px",
-            font: `500 13px/1 ${FONT_SANS}`,
-            color: "var(--c-secondary)",
-            cursor: "pointer",
-          }}
-        >
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-            aria-hidden="true"
-          >
-            <path d="M15 6l-6 6 6 6" />
-          </svg>
-          Ask
-        </Link>
-      </div>
+          sending the reader to the desk chat.
+
+          THE HREF WAS ONLY HALF OF IT. /deal-flow has more non-Ask entrances
+          than Ask ones: `mobile-saved-screen.tsx:82` and `:288` link here,
+          `search-parts.tsx:345` has a row for it, and `search-data.ts:69`
+          jumps straight to it. For every one of those a fixed `href` made this
+          chevron a LATERAL JUMP into a directory the reader had never seen,
+          and a back chevron that is not a back is worse than no chevron. It is
+          `historyAware` now: back when there is a history, and `ASK_POLE_HREF`
+          on the cold entry where `history.back()` is a no-op. The anatomy is
+          `BackHeader`'s, which is where the rule lives, once. */}
+      <BackHeader href={ASK_POLE_HREF} label="Ask" historyAware />
 
       <div style={{ flex: "none", padding: `14px ${PAD} 0` }}>
         <h1

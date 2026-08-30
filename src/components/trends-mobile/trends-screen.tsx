@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { createBrowserClient } from "@supabase/ssr";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useUserProfile } from "@/hooks/useUserProfile";
@@ -21,6 +20,7 @@ import {
 import { FIXTURE_ALLOWED } from "./fixture-gate";
 import { TrendSignalCard } from "./trend-signal-card";
 import styles from "./trends.module.css";
+import { BackHeader } from "@/components/mobile";
 import { FONT_DISPLAY, FONT_SANS } from "@/components/mobile/fonts";
 import { ASK_POLE_HREF } from "@/components/shell/mobile-tab-bar";
 
@@ -206,46 +206,29 @@ export function TrendsScreen({ preview = null }: { preview?: TrendsPreview | nul
           this was written; PR #736 moved the pole to /ask and the literal did
           not move with it. The comment described a dependency the code did not
           have. It has it now: `ASK_POLE_HREF` comes from the pole table, so
-          the next pole move carries these three controls with it. */}
-      <div
-        style={{
-          /* content-box, matching the prototype's own box model. The app sets
-             border-box globally, which would eat the 1px rule out of the 48px
-             row and land the bar a pixel short of the drawn height. */
-          boxSizing: "content-box",
-          minHeight: "48px",
-          display: "flex",
-          alignItems: "center",
-          padding: `0 ${PAD}`,
-          borderBottom: "1px solid var(--c-border)",
-        }}
-      >
-        <Link
-          href={ASK_POLE_HREF}
-          style={{
-            minHeight: "44px",
-            display: "flex",
-            alignItems: "center",
-            gap: "6px",
-            font: `500 13px/1 ${FONT_SANS}`,
-            color: "var(--c-secondary)",
-          }}
-        >
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-            aria-hidden="true"
-          >
-            <path d="M15 6l-6 6 6 6" />
-          </svg>
-          Ask
-        </Link>
-      </div>
+          the next pole move carries these three controls with it.
+
+          AND A FIXED DESTINATION WAS STILL NOT A BACK. `search-data.ts:79`
+          jumps a reader straight here, and the pole owns /trends-mobile
+          without anything on /ask linking to it, so an arrival from Ask is one
+          of several entrances rather than the only one. A chevron that always
+          lands on Ask is a lateral jump for the rest of them. `historyAware`
+          steps back to the actual previous entry and keeps `ASK_POLE_HREF` for
+          the cold entry, where `history.back()` is a no-op. The row is
+          `BackHeader`'s now, which is where that rule lives, once.
+
+          `boxSizing` is carried through rather than dropped: content-box
+          matches the prototype's own box model, and the app sets border-box
+          globally, which would eat the 1px rule out of the 48px row and land
+          the bar a pixel short of the drawn height. The other BackHeader
+          screens build at border-box, so the difference is passed explicitly
+          instead of being normalised away by this consolidation. */}
+      <BackHeader
+        href={ASK_POLE_HREF}
+        label="Ask"
+        historyAware
+        boxSizing="content-box"
+      />
 
       <div style={{ padding: `14px ${PAD} 0` }}>
         <h1

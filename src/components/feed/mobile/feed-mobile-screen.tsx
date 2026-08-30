@@ -3,6 +3,7 @@
 import { useMemo, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import styles from "./feed-mobile.module.css";
+import { BackHeader } from "@/components/mobile";
 import { FEED_FIXTURE } from "./fixture";
 import type {
   FeedBucket,
@@ -303,63 +304,41 @@ function Header({
   updatedAt: string | null;
   stale: boolean;
 }) {
-  return (
-    <div
-      style={{
-        flex: "none",
-        minHeight: "48px",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        padding: `0 ${PAD}`,
-        borderBottom: "1px solid var(--c-border)",
-      }}
-    >
-      {/* The design labels this Ask and the href is the Ask pole's own live
-          destination, read from the pole table rather than written out here.
+  /* The design labels this Ask and the destination is the Ask pole's own live
+     one, read from the pole table rather than written out here.
 
-          It was the literal `/intelligence` until now, and the comment above
-          it named the pole while the string named a route. PR #736 moved the
-          pole to /ask; the comment stayed true and the string went stale, so a
-          reader who tapped Ask, then Live Feed, then back landed on the desk
-          chat instead of the directory they came from. `ASK_POLE_HREF` is the
-          one definition, in the file that owns the pole table. */}
-      <Link
-        href={ASK_POLE_HREF}
-        style={{
-          minHeight: "44px",
-          display: "flex",
-          alignItems: "center",
-          gap: "6px",
-          font: `500 13px/1 ${FONT_SANS}`,
-          color: "var(--c-secondary)",
-          textDecoration: "none",
-        }}
-      >
-        <svg
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.8"
-          strokeLinecap="round"
-          aria-hidden="true"
+     It was the literal `/intelligence` until now, and the comment above it
+     named the pole while the string named a route. PR #736 moved the pole to
+     /ask; the comment stayed true and the string went stale.
+
+     AND A FIXED DESTINATION WAS STILL WRONG. /live-feed's loudest entrance is
+     not Ask at all: `dashboard-screen.tsx:381` puts "The whole feed" ONE TAP
+     from /dashboard, and `search-data.ts:77` jumps here too. For those readers
+     a chevron labelled Ask threw them into a directory they had never seen. It
+     is `historyAware` now, so it steps back to wherever they actually came
+     from, and it still carries `ASK_POLE_HREF` for the cold entry where
+     `history.back()` is a no-op and the anchor has to do the work itself.
+
+     The row is `BackHeader`'s, which is where that rule lives once, for all of
+     Deal Flow, Live Feed and Trends. The freshness stamp is this screen's own
+     and rides in the trailing slot. */
+  return (
+    <BackHeader
+      href={ASK_POLE_HREF}
+      label="Ask"
+      historyAware
+      right={
+        <span
+          style={{
+            font: `400 10px/1 ${FONT_MONO}`,
+            letterSpacing: "0.07em",
+            color: stale ? "var(--c-amberink)" : "var(--c-muted)",
+          }}
         >
-          <path d="M15 6l-6 6 6 6" />
-        </svg>
-        Ask
-      </Link>
-      <span
-        style={{
-          font: `400 10px/1 ${FONT_MONO}`,
-          letterSpacing: "0.07em",
-          color: stale ? "var(--c-amberink)" : "var(--c-muted)",
-        }}
-      >
-        {updatedAt ? `UPDATED ${updatedAt}` : "UPDATING"}
-      </span>
-    </div>
+          {updatedAt ? `UPDATED ${updatedAt}` : "UPDATING"}
+        </span>
+      }
+    />
   );
 }
 
