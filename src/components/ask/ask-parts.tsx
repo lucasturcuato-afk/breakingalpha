@@ -78,55 +78,48 @@ export function AskSectionRule({ label, style }: { label: string; style?: CSSPro
   );
 }
 
-/* ── The assistant jump row ────────────────────────────────────────── */
-
-/**
- * The one deliberate way to put a QUESTION to the product, sitting directly
- * under a field that answers none.
- *
- * It is a row rather than a second filled control beside the field, because the
- * field is the primary act and a pair of equals would say otherwise. It is a
- * separate control rather than a submit on the field because the field has no
- * submit moment: it narrows as you type, and a send control beside it would
- * promise a navigation that does not happen. A question is therefore one
- * deliberate tap and never an accident of pressing Enter.
- *
- * The chevron takes `--c-goldink`, the ink token. `--c-gold` is a FILL and
- * never becomes type.
- */
-export function AskJumpRow({ href, label }: { href: string; label: string }) {
-  return (
-    <Link
-      href={href}
-      style={{
-        ...CONTENT_BOX,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        gap: "10px",
-        minHeight: "43px",
-        borderTop: "1px solid var(--c-hair)",
-        borderBottom: "1px solid var(--c-hair)",
-        font: `400 13.5px/1.35 ${FONT_SANS}`,
-        color: "var(--c-ink)",
-        textDecoration: "none",
-      }}
-    >
-      <span>{label}</span>
-      <Chevron direction="right" size={15} stroke="var(--c-goldink)" />
-    </Link>
-  );
-}
-
 /* ── Destination row ───────────────────────────────────────────────── */
 
-export type AskDestinationRowProps = {
-  href: string;
-  label: string;
+/**
+ * What a destination row can say about volume, when the destination is a thing
+ * somebody counts.
+ *
+ * Structurally identical to `AskCounter` in `src/lib/ask-counters.ts`, and
+ * declared here rather than imported from it so that a client component never
+ * reaches into a module that carries a Supabase import. tsc checks the two
+ * against each other structurally at the one call site that passes a counter.
+ */
+export type AskDestinationCount = {
   /** A count, never a rate. Null when the count could not be read. */
   figure: string | null;
   /** The window the figure covers. Drawn only when there is a figure. */
   window: string;
+};
+
+export type AskDestinationRowProps = {
+  href: string;
+  label: string;
+  /**
+   * The row's count, when the row HAS one. THREE STATES, NOT TWO, and the
+   * shape is the reason it is an optional object rather than a nullable
+   * string:
+   *
+   *   count omitted      NOTHING COUNTS THIS DESTINATION. There is no figure
+   *                      to read, no read to fault, and no window to name.
+   *   count.figure null  A read that FAULTED. The count exists and this
+   *                      render did not get it.
+   *   count.figure set   The count.
+   *
+   * The first two draw identically on screen and must not be sayable
+   * identically in the types. `figure: null` is documented in
+   * `ask-counters.ts` as a faulted read and is deliberately distinguished from
+   * a zero; a row that can never have a figure is a third thing, and handing
+   * it `figure: null` would collapse it into the second. Intelligence is that
+   * third thing: no conversation table exists, nothing logs a query, and
+   * `RATE_LIMIT_CHAT` is an in-memory Map that resets on restart and differs
+   * per serverless instance, so there is no count to fail at reading.
+   */
+  count?: AskDestinationCount;
   icon: ReactNode;
   first?: boolean;
   last?: boolean;
@@ -144,6 +137,11 @@ export type AskDestinationRowProps = {
  * becoming three rows at 53 is most of what lets six companies and all three
  * destinations share one fold.
  *
+ * FOUR ROWS NOW, AND THE FOURTH HAS NO FIGURE AT ALL. Intelligence joined the
+ * list at the bottom, out of the jump row that used to float above the company
+ * directory. It carries no count and cannot: see the `count` prop's own note
+ * for why an omitted count and a null one are two different statements.
+ *
  * A FAULTED COUNT DRAWS NEITHER THE FIGURE NOR THE WINDOW. The row stays and
  * still opens its destination, because the destination is fine; only the count
  * failed. A bare "0" there would state a fact about the corpus that no read
@@ -157,8 +155,7 @@ export type AskDestinationRowProps = {
 export function AskDestinationRow({
   href,
   label,
-  figure,
-  window: windowLabel,
+  count,
   icon,
   first = false,
   last = false,
@@ -182,7 +179,7 @@ export function AskDestinationRow({
       <span style={{ minWidth: 0, flex: 1, font: `600 15px/1.3 ${FONT_SANS}`, color: "var(--c-ink)" }}>
         {label}
       </span>
-      {figure !== null ? (
+      {count && count.figure !== null ? (
         <>
           <span
             style={{
@@ -192,10 +189,10 @@ export function AskDestinationRow({
               color: "var(--c-ink)",
             }}
           >
-            {figure}
+            {count.figure}
           </span>
           <span style={{ flex: "none", font: `400 10.5px/1 ${FONT_SANS}`, color: "var(--c-muted)" }}>
-            {windowLabel}
+            {count.window}
           </span>
         </>
       ) : null}
@@ -479,5 +476,18 @@ export const IconTrends = (
 export const IconFeed = (
   <Glyph>
     <path d="M4 6h16M4 12h16M4 18h10" />
+  </Glyph>
+);
+
+/**
+ * Intelligence. A speech bubble, because the destination is the one place on
+ * the product a reader puts a question to it. Same 18px on a 24-unit viewBox at
+ * stroke 1.7 with round caps as the three above, through the same `Glyph`, so
+ * the fourth row's icon column lines up with the other three by construction
+ * rather than by a second set of numbers.
+ */
+export const IconAssistant = (
+  <Glyph>
+    <path d="M20 14.5a2.5 2.5 0 0 1-2.5 2.5H9l-4.5 3.5V6.5A2.5 2.5 0 0 1 7 4h10.5A2.5 2.5 0 0 1 20 6.5z" />
   </Glyph>
 );

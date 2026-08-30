@@ -7,17 +7,23 @@ import styles from "./ask.module.css";
 import {
   AskAnswerNotice,
   AskDestinationRow,
-  AskJumpRow,
   AskLookupRow,
   AskNotice,
   AskSectionRule,
   CONTENT_BOX,
+  IconAssistant,
   IconDeals,
   IconFeed,
   IconTrends,
   PAD,
 } from "./ask-parts";
-import { ASK_DIRECTORY, ASSISTANT_HREF, CHIP_PROMPTS, type DirectoryId } from "./ask-data";
+import {
+  ASK_DIRECTORY,
+  ASSISTANT_HREF,
+  ASSISTANT_LABEL,
+  CHIP_PROMPTS,
+  type DirectoryId,
+} from "./ask-data";
 import { useAskSearch } from "./use-ask-search";
 import {
   ASK_SHOWN,
@@ -32,7 +38,7 @@ import type { AskCompaniesLoad } from "@/lib/ask-companies-data";
 import { FONT_DISPLAY, FONT_SANS } from "@/components/mobile/fonts";
 
 /**
- * Ask. Directory first, field at the top. One screen, no second one.
+ * Browse. Directory first, field at the top. One screen, no second one.
  *
  * THE FIELD REACHES THE CORPUS NOW, AND THAT IS WHAT CHANGED HERE LAST.
  * It used to run `String.includes` over the fifty rows the server had already
@@ -76,10 +82,15 @@ import { FONT_DISPLAY, FONT_SANS } from "@/components/mobile/fonts";
  *   5. THE DESTINATIONS DEMOTE to one line each and carry a REAL figure with
  *      the window it covers spelled beside it.
  *
- * THE FIELD SEARCHES ON A POLE CALLED ASK, AND THAT IS STILL A WATCH ITEM. A
- * reader who types a question into it gets companies whose names contain the
- * words of that question, and a block saying this screen does not answer. That
- * is the honest behaviour rather than the ideal one, and it is deliberately NOT
+ * THE FIELD SEARCHES ON A POLE NOW CALLED BROWSE, AND THAT IS STILL A WATCH
+ * ITEM, THOUGH A SMALLER ONE. The pole was named Ask when this note was
+ * written, and a search field under that word promised an answer it never
+ * gave. The rename takes half of that away: a field on a pole called Browse
+ * that reaches the company corpus is doing the thing its pole is named for.
+ * What is left is the reader who types a question into it anyway. They get
+ * companies whose names contain the words of that question, and a block saying
+ * this screen does not answer. That is the honest behaviour rather than the
+ * ideal one, and it is deliberately NOT
  * pre-solved: no mode toggle, no segmented control, no "did you mean to ask?"
  * affordance, and NO SECOND CONTROL. The field is right; what was wrong was its
  * promise, and the promise is what moved.
@@ -160,8 +171,6 @@ const ANSWER_NOTICE = {
   body: "The research assistant answers from the same intelligence, theses and briefings today.",
   action: { href: ASSISTANT_HREF, label: "Open the research assistant" },
 };
-
-const JUMP_LABEL = "Put a question to the research assistant";
 
 export function AskDirectoryScreen({
   companies,
@@ -253,7 +262,7 @@ export function AskDirectoryScreen({
             color: "var(--c-ink)",
           }}
         >
-          Ask
+          Browse
         </h1>
         <p style={{ margin: "8px 0 0", font: `400 12.5px/1.5 ${FONT_SANS}`, color: "var(--c-secondary)" }}>
           {INTRO}
@@ -308,20 +317,20 @@ export function AskDirectoryScreen({
       </div>
 
       <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: `18px ${PAD} 24px` }}>
-        {/* The one block that changes with `?q=`, and it changes between two
-            pieces of standing copy rather than between a screen and a screen.
-            Empty field: the assistant is one row away. Anything typed: the
-            screen says plainly that it does not answer, and the same assistant
-            is a full-width 44px action instead of a 126x14 inline link. */}
+        {/* The one block that changes with `?q=`. Anything typed: the screen
+            says plainly that it does not answer, and the assistant is a
+            full-width 44px action instead of a 126x14 inline link. Empty
+            field: NOTHING, and that is the change. This slot used to hold a
+            45px jump row carrying the assistant above the company directory.
+            The assistant is a browse destination now, last in that list, so a
+            row here would be the same destination twice on one screen. */}
         {typing ? (
           <AskAnswerNotice
             heading={ANSWER_NOTICE.heading}
             body={ANSWER_NOTICE.body}
             action={ANSWER_NOTICE.action}
           />
-        ) : (
-          <AskJumpRow href={ASSISTANT_HREF} label={JUMP_LABEL} />
-        )}
+        ) : null}
 
         <AskSectionRule label="company intel" style={{ marginTop: "20px" }} />
 
@@ -389,6 +398,23 @@ export function AskDirectoryScreen({
           </>
         )}
 
+        {/* FOUR ROWS, AND THE FOURTH IS THE ASSISTANT. The owner's ruling:
+            Intelligence gets its own row, and 3px past the fold at 390 against
+            rescuing 320 from 2-of-3 to 3-of-4 is a trade worth taking.
+
+            IT IS LAST, MEASURED RATHER THAN CHOSEN. Any other position pushes
+            Live Feed off the fold at 375 and 390 instead, which trades a row
+            nothing counts for a row with a real figure on it.
+
+            IT IS NOT IN `ASK_DIRECTORY` AND MUST NOT BE. That table is typed
+            `DirectoryId`, which is kept in sync with `AskCounterId` in
+            `ask-counters.ts`, and `AskCounters` is `Record<AskCounterId,
+            AskCounter>`. A fourth id there would make tsc demand a counter
+            entry for a count that has no source, and the only way to satisfy
+            it would be `figure: null`, which already means a FAULTED read.
+            Two different absences would then render identically and say the
+            same thing in the types. The row simply carries no `count` prop,
+            so the shape has no figure slot to fill wrongly. */}
         <AskSectionRule label="browse" style={{ marginTop: "24px" }} />
         {ASK_DIRECTORY.map((route, i) => (
           <AskDestinationRow
@@ -396,12 +422,16 @@ export function AskDirectoryScreen({
             href={route.href}
             label={route.label}
             icon={ICONS[route.id]}
-            figure={counters[route.id].figure}
-            window={counters[route.id].window}
+            count={counters[route.id]}
             first={i === 0}
-            last={i === ASK_DIRECTORY.length - 1}
           />
         ))}
+        <AskDestinationRow
+          href={ASSISTANT_HREF}
+          label={ASSISTANT_LABEL}
+          icon={IconAssistant}
+          last
+        />
 
         <AskSectionRule label="prompts" style={{ marginTop: "24px" }} />
         {/* ONE ROW, NOT TWO. At 11.5px with 12px of side padding the pair needs

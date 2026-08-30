@@ -6,7 +6,7 @@ import { loadAskCompanies } from "@/lib/ask-companies-data";
 import { loadAskCounters } from "@/lib/ask-counters";
 
 /**
- * Ask. One screen, one route, no query parameter.
+ * Browse. One screen, one route, no query parameter.
  *
  * WHAT THIS PAGE STOPPED DOING, and each removal is the point of the unit.
  *
@@ -55,7 +55,12 @@ export default async function AskPage() {
   ]);
 
   return (
-    <AppShell pageTitle="Ask" mobileFullBleed>
+    /* THE LITERAL IS DELIBERATE. `BROWSE_POLE_LABEL` lives in
+       `mobile-tab-bar.tsx`, which is a `"use client"` module; this page is a
+       Server Component, so that export would arrive here as a client-reference
+       function rather than a string and the failure is silent. The constant's
+       own note records the measurement. */
+    <AppShell pageTitle="Browse" mobileFullBleed>
       {/* Gating lives in a class, never in an inline style: an inline display
           beats the class at every breakpoint, which is the defect that shipped
           the tab bar to desktop once already. */}
@@ -68,7 +73,7 @@ export default async function AskPage() {
           neither is being rebuilt here. */}
       <div className="hidden md:block" style={{ padding: "48px", backgroundColor: "var(--c-bg)" }}>
         <p style={{ margin: 0, font: `500 17px/1.4 ${FONT_DISPLAY}`, color: "var(--c-ink)" }}>
-          Ask is a mobile surface.
+          Browse is a mobile surface.
         </p>
         <p style={{ margin: "10px 0 0", font: `400 13px/1.6 ${FONT_SANS}`, color: "var(--c-secondary)" }}>
           On a wider screen the desk splits it across the research assistant and the company directory.

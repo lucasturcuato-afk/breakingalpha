@@ -107,3 +107,26 @@ export const CHIP_PROMPTS: readonly [string, string] = [
  * if the pole moves again.
  */
 export const ASSISTANT_HREF = "/intelligence";
+
+/**
+ * What the assistant's row in the browse list is CALLED.
+ *
+ * IT IS THE DESTINATION'S OWN NAME, and every other row in that list already
+ * works that way: `pageTitle` is "Deal Flow" at `/deal-flow`, "Trends" at
+ * `/trends-mobile` and "Live Feed" at `/live-feed`, and each row carries that
+ * string exactly. `/intelligence` renders `pageTitle="Intelligence"` and the
+ * desk sidebar labels the same route "Intelligence", so this row does too.
+ *
+ * "Research Assistant" WAS THE OTHER CANDIDATE AND WAS REJECTED. It describes
+ * the destination better and names it worse: it would land a reader on a screen
+ * headed Intelligence, which is the label-versus-heading mismatch this same
+ * change is removing from the Dashboard pole. One of those two costs is being
+ * paid deliberately in this PR and it is not worth taking on a new one to save
+ * a word.
+ *
+ * WHAT THE ROW GAVE UP. It read `Put a question to the research assistant`, a
+ * whole sentence, because it was a jump row floating on its own above the
+ * directory and had a line to itself. In a list of one-word rows a sentence is
+ * a different object wearing the same rule, so the register wins.
+ */
+export const ASSISTANT_LABEL = "Intelligence";
