@@ -922,15 +922,66 @@ function ThemeCluster({ cluster, first }: { cluster: FollowCluster; first: boole
           {cluster.label}
         </h3>
       ) : null}
+      {/* A FOLLOW ROW IS NOT A CONTROL, and that is the design rather than a
+          shortfall. Every row was a `<button>` with `onClick={() => {}}`,
+          carrying a TODO, see #643. `/story` still does not exist, measured:
+          `/story` and `/story/abc` both 404. What changed is that the row
+          stopped claiming to be tappable while it waits.
+
+          THE PROTOTYPE ALREADY DRAWS THIS. `Signalera Mobile v3.dc.html`
+          draws three following rows and only two are controls; line 729 is an
+          inert row with identical padding, hairline and type. The two live
+          rows point at `goSignal` and `goDeals`, never at a story surface, and
+          `/signal` is step 10, which is the same reason `watch-links.ts`
+          leaves an industry card unlinked.
+
+          WHAT IT COST. 82 no-op tab stops measured across four real accounts,
+          worst case 37 consecutive dead stops in one uninterrupted run because
+          the list is deliberately uncapped. The e2e account has zero follows,
+          so the defect was invisible to the suite that guards this screen.
+
+          NOTHING IS LOST, and this was measured rather than assumed. All 850
+          computed properties were enumerated on this row, on main and on this
+          branch, in both themes. NINE MOVE. An earlier version of this comment
+          said two, which is exactly the shortlist-presented-as-exhaustive that
+          a change arguing "nothing moves" cannot afford. `cursor: pointer`
+          becomes `auto`, which is the false affordance itself. `text-align:
+          left` becomes the inherited `start`. `unicode-bidi: normal` becomes
+          `isolate`. And six border style longhands, the three physical sides
+          plus their three logical aliases, go `none` to `solid`.
+
+          ONLY THE CURSOR PAINTS. The document's `direction` is `ltr` and no
+          element on the page carries a `dir`, so `start` resolves to `left`
+          and the bidi isolation has nothing to isolate. Every box, font,
+          colour, padding, gap and border is identical: row `350x76.78`,
+          headline `350x37.78`, meta `350x10`, in both themes. Every `:hover`
+          rule in `globals.css` is class or attribute scoped, so not one ever
+          matched a bare row either.
+
+          THE BORDER STYLES ARE LATENT RATHER THAN INERT, which is the one
+          thing here worth knowing before editing this row. They fail to paint
+          only because the top, leading and trailing border widths are all
+          `0px`. `styles.bare` set `border: 0`, which zeroed every width AND
+          set the style to `none`; a plain div
+          zeroes nothing and inherits `solid`. So a `border-width` introduced
+          anywhere up the cascade would now paint on three sides where it
+          previously could not, and the bottom hairline this row draws on
+          purpose would silently gain neighbours. If you add a border here,
+          name the sides you do not want.
+
+          Each headline is fully rendered static text with nothing clipped, so
+          a screen reader reads it identically and stops announcing "button"
+          over something that is not one. `width: 100%` goes with the button
+          because it is redundant on a block element.
+
+          WHEN A DESTINATION EXISTS. `matchFollow` already returns `url` and
+          `primary_company` on every row and the loader discards both, so
+          giving these rows somewhere to go is a change in `watch-data.ts`, not
+          a bare button restored here. */}
       {cluster.rows.map((row) => (
-        <button
+        <div
           key={row.id}
-          type="button"
-          // TODO, see #643: open the story. /story is step 10 and does not exist.
-          onClick={() => {}}
-          className={styles.bare}
           style={{
-            width: "100%",
             display: "flex",
             flexDirection: "column",
             gap: "4px",
@@ -960,7 +1011,7 @@ function ThemeCluster({ cluster, first }: { cluster: FollowCluster; first: boole
               {row.meta}
             </p>
           ) : null}
-        </button>
+        </div>
       ))}
     </div>
   );
