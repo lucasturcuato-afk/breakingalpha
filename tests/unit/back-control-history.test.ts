@@ -65,17 +65,36 @@ const CHEVRON_PATH = "M15 6l-6 6 6 6";
 
 const read = (file: string) => readFileSync(file, "utf8");
 
-test("the decision fires only when there is a history to step back through", () => {
-  /* Entry one of a tab. `back()` here does nothing at all, and on a screen that
-     draws no other exit that is a dead control. */
-  assert.equal(shouldStepBack(1), false);
-  /* Two entries means the reader came from somewhere, whatever it was. */
-  assert.equal(shouldStepBack(2), true);
-  assert.equal(shouldStepBack(17), true);
-  /* Server render and any environment without a window. */
+test("the decision fires only when a page of OURS is behind this one", () => {
+  /* Every case below is a MEASURED navigation.currentEntry.index from the
+     production-build walk in the PR body, not an invented number.
+
+     ARRIVED FROM A FOREIGN ORIGIN, no in-app navigation yet. This is the one
+     that ejected the reader out of Signalera when the rule asked
+     `history.length > 1` instead: length was 2 and the entry behind us was
+     Slack. entries() is same-origin and contiguous by spec, so the foreign page
+     is not in it and the index is 0. */
+  assert.equal(shouldStepBack({ index: 0 }), false);
+
+  /* Cold entry, history.length === 1. Same answer, same reason. */
+  assert.equal(shouldStepBack({ index: 0 }), false);
+
+  /* One in-app hop later. Now there is a page of ours behind us. */
+  assert.equal(shouldStepBack({ index: 1 }), true);
+  assert.equal(shouldStepBack({ index: 9 }), true);
+
+  /* AND BACK AGAIN, which is the case `history.length` provably cannot answer:
+     it stayed at 3 through both of these, so a length test would step back a
+     second time and eject. The index goes 1 -> 0 and this stops. */
+  assert.equal(shouldStepBack({ index: 0 }), false);
+
+  /* No Navigation API, and any server render. We do not guess; the control
+     falls through to its href, which is a lateral jump and never an ejection. */
   assert.equal(shouldStepBack(undefined), false);
-  /* Not reachable from a live browser, and it must not read as "go back". */
-  assert.equal(shouldStepBack(0), false);
+
+  /* The spec allows an entry that is not in our slice at all. Not a reason to
+     move the reader. */
+  assert.equal(shouldStepBack({ index: -1 }), false);
 });
 
 test("modified and non-primary clicks are left to the browser", () => {
@@ -104,6 +123,16 @@ test("the history rule has exactly one implementation, in BackHeader", () => {
   assert.ok(
     chrome.includes("shouldStepBack("),
     `${BACK_HEADER} must call shouldStepBack; it is the only place the rule may live`,
+  );
+  /* The rule that ejected a reader. `history.length` counts entries from before
+     we existed and never decreases on back, so it can never answer "is there a
+     page of ours behind this one". It must not come back anywhere in the
+     header. */
+  assert.ok(
+    !chrome.includes("history.length"),
+    `${BACK_HEADER} reads history.length, which walks readers out of Signalera ` +
+      `when they arrive from Slack or a search result. Ask the Navigation API ` +
+      `for our own slice instead.`,
   );
   assert.ok(
     chrome.includes("router.back()"),
@@ -189,4 +218,49 @@ test("historyAware is opt-in, so the lateral BackHeader call sites still mean it
     "Saved is reached from the tab bar, so its previous entry is usually some " +
       "other pole. A back there would not be 'Back to Deal Flow'.",
   );
+});
+
+test("a history-aware control says Back, a destination control names it", () => {
+  /* THE VISIBLE WORD HAS TO MATCH WHAT THE CONTROL DOES. These three said "Ask"
+     while stepping back, which closed a loop a reader could not get out of:
+
+       /saved -> "Back to Deal Flow" -> /deal-flow -> "Ask" -> /saved -> repeat
+
+     A reader who reached Deal Flow from Saved could never reach Ask from the
+     control named Ask. And the element is an anchor with an aria-hidden
+     chevron, so a screen reader announced "Ask, link" and then delivered
+     /dashboard, /saved, or another website entirely: a link-purpose failure.
+
+     An aria-label over a visible "Ask" would only trade that for a
+     label-in-name failure, so the assertion is on the VISIBLE prop. */
+  for (const file of ASK_BACK_SCREENS) {
+    const source = read(file);
+    assert.ok(
+      /<BackHeader\b[^>]*\blabel="Back"/.test(source),
+      `${file}: a historyAware control must be labelled "Back". It does not ` +
+        `always deliver Ask, and the visible word is what a screen reader reads.`,
+    );
+    assert.ok(
+      !/<BackHeader\b[^>]*\blabel="Ask"/.test(source),
+      `${file} still says "Ask" on a control that steps back`,
+    );
+  }
+});
+
+test("the four destination-naming controls keep their labels", () => {
+  /* The other half of the same rule. A control that promises a specific place
+     goes on promising it, and none of these four is a back. */
+  const expected: [string, string, string][] = [
+    ["src/components/saved/mobile-saved-screen.tsx", "/deal-flow", "Back to Deal Flow"],
+    ["src/components/settings/mobile-alerts-screen.tsx", "/settings/profile", "Settings"],
+    ["src/components/settings/mobile-learned-screen.tsx", "/settings/profile", "Settings"],
+    ["src/components/settings/mobile-settings-screen.tsx", "/ledger", "Ledger"],
+  ];
+  for (const [file, href, label] of expected) {
+    const source = read(file);
+    assert.ok(
+      source.includes(`<BackHeader href="${href}" label="${label}" />`),
+      `${file} must keep <BackHeader href="${href}" label="${label}" /> unchanged`,
+    );
+  }
 });

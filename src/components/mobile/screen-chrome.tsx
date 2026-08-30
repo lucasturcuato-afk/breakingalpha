@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import type { MouseEvent, ReactNode } from "react";
 import styles from "./mobile.module.css";
 import { FONT_DISPLAY, FONT_MONO, FONT_SANS } from "@/components/mobile/fonts";
-import { isPlainLeftClick, shouldStepBack } from "./history-back";
+import { isPlainLeftClick, readAppHistory, shouldStepBack } from "./history-back";
 
 /**
  * Chrome shared by the five screens in this batch: the back header and the
@@ -39,19 +39,35 @@ import { isPlainLeftClick, shouldStepBack } from "./history-back";
  * ask for the new one.
  *
  * The test for the flag, so the next caller does not have to guess: pass it
- * when the label names a POLE the reader may or may not have arrived from;
- * leave it off when the label names a specific destination the control promises
- * to open. `/claim`'s chevron (`claim-screen.tsx:133`) is the second kind and
- * stays a plain link to `/ledger`.
+ * when the control's job is "go back", and leave it off when the control
+ * promises a specific destination. `/claim`'s chevron (`claim-screen.tsx:133`)
+ * is the second kind and stays a plain link to `/ledger`.
+ *
+ * AND THE FLAG DECIDES THE VISIBLE WORD. A `historyAware` control is labelled
+ * "Back". The three screens said "Ask", which was the pole they used to always
+ * deliver, and the first build of this change kept that word while taking the
+ * behaviour away. Measured, that was a closed loop and a link-purpose failure
+ * at once:
+ *
+ *   /saved -> "Back to Deal Flow" -> /deal-flow -> "Ask" -> /saved -> repeat
+ *
+ * A reader who reached Deal Flow from Saved could never reach Ask from the
+ * control named Ask. And the element is `<a>Ask</a>` with an `aria-hidden`
+ * chevron, so a screen reader announced "Ask, link" and then delivered
+ * /dashboard, /saved, or another website. `aria-label="Back"` over a visible
+ * "Ask" would only trade a link-purpose failure for a label-in-name failure, so
+ * THE VISIBLE WORD IS WHAT CHANGED. The four destination-naming call sites keep
+ * their labels exactly as they were, which is the same opt-in rule made
+ * visible: a control that promises a destination goes on promising it.
  *
  * WHY IT STAYS A `Link` AND DID NOT BECOME A `<button>`. The `href` is the
- * fallback, not decoration. When `history.length` is 1 the handler does nothing
- * and the anchor navigates on its own, so the cold-entry path needs no
- * `router.push` and is served by the anchor's own semantics. It also keeps the
- * accessible name, keeps cmd-click and middle-click opening the stated
- * destination in a new tab, and keeps `ASK_POLE_HREF` flowing through a prop at
- * the call site, which is what leaves `tests/unit/ask-pole-href.test.ts` able
- * to see a hardcoded pole route where a reader would write one.
+ * fallback, not decoration. When nothing of ours is behind the page the handler
+ * does nothing and the anchor navigates on its own, so that path needs no
+ * `router.push` and is served by the anchor's own semantics. It also keeps
+ * cmd-click and middle-click opening the stated destination in a new tab, and
+ * keeps `ASK_POLE_HREF` flowing through a prop at the call site, which is what
+ * leaves `tests/unit/ask-pole-href.test.ts` able to see a hardcoded pole route
+ * where a reader would write one.
  */
 
 export function BackHeader({
@@ -62,10 +78,13 @@ export function BackHeader({
   boxSizing,
 }: {
   href: string;
+  /** THE VISIBLE WORD, and it has to match what the control does. A
+   *  `historyAware` control passes "Back"; a destination control passes the
+   *  destination. Guarded by `tests/unit/back-control-history.test.ts`. */
   label: string;
-  /** Step back through history when there is history to step through, and fall
-   *  through to `href` when there is not. See the note above for which of the
-   *  two a given control is. */
+  /** Step back only when a page of OURS is behind this one, and fall through to
+   *  `href` when none is. See the note above for which of the two a given
+   *  control is. */
   historyAware?: boolean;
   /** A trailing element in the same 48px row, which pushes the two apart. */
   right?: ReactNode;
@@ -81,9 +100,11 @@ export function BackHeader({
   function onClick(event: MouseEvent<HTMLAnchorElement>) {
     if (!historyAware) return;
     if (!isPlainLeftClick(event)) return;
-    if (!shouldStepBack(typeof window === "undefined" ? undefined : window.history.length)) {
-      /* First entry of the tab. `history.back()` is a no-op here, so the anchor
-         is left alone and navigates to `href` by itself. */
+    if (!shouldStepBack(readAppHistory())) {
+      /* Nothing of OURS is behind this page: a cold entry, a link opened from
+         Slack or a search result, or a reader who has already walked back to
+         where they came in. The anchor is left alone and navigates to `href`
+         by itself. */
       return;
     }
     event.preventDefault();

@@ -316,8 +316,13 @@ function Header({
      from /dashboard, and `search-data.ts:77` jumps here too. For those readers
      a chevron labelled Ask threw them into a directory they had never seen. It
      is `historyAware` now, so it steps back to wherever they actually came
-     from, and it still carries `ASK_POLE_HREF` for the cold entry where
-     `history.back()` is a no-op and the anchor has to do the work itself.
+     from, and it still carries `ASK_POLE_HREF` for the reader with nothing of
+     ours behind them, where the anchor has to do the work itself.
+
+     AND IT SAYS "BACK". One tap from /dashboard is this screen's loudest
+     entrance, so the word "Ask" named a place the control would not take that
+     reader, and a screen reader announced "Ask, link" before delivering
+     /dashboard.
 
      The row is `BackHeader`'s, which is where that rule lives once, for all of
      Deal Flow, Live Feed and Trends. The freshness stamp is this screen's own
@@ -325,7 +330,7 @@ function Header({
   return (
     <BackHeader
       href={ASK_POLE_HREF}
-      label="Ask"
+      label="Back"
       historyAware
       right={
         <span

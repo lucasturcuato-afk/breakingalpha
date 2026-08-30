@@ -214,8 +214,10 @@ export function TrendsScreen({ preview = null }: { preview?: TrendsPreview | nul
           of several entrances rather than the only one. A chevron that always
           lands on Ask is a lateral jump for the rest of them. `historyAware`
           steps back to the actual previous entry and keeps `ASK_POLE_HREF` for
-          the cold entry, where `history.back()` is a no-op. The row is
-          `BackHeader`'s now, which is where that rule lives, once.
+          the reader with nothing of ours behind them. It says "Back" rather
+          than "Ask", because it no longer always delivers Ask and the visible
+          word is what a screen reader announces. The row is `BackHeader`'s
+          now, which is where that rule lives, once.
 
           `boxSizing` is carried through rather than dropped: content-box
           matches the prototype's own box model, and the app sets border-box
@@ -225,7 +227,7 @@ export function TrendsScreen({ preview = null }: { preview?: TrendsPreview | nul
           instead of being normalised away by this consolidation. */}
       <BackHeader
         href={ASK_POLE_HREF}
-        label="Ask"
+        label="Back"
         historyAware
         boxSizing="content-box"
       />

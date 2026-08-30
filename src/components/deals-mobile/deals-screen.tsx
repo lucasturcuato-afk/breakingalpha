@@ -136,11 +136,15 @@ export function DealsScreen({
           `search-parts.tsx:345` has a row for it, and `search-data.ts:69`
           jumps straight to it. For every one of those a fixed `href` made this
           chevron a LATERAL JUMP into a directory the reader had never seen,
-          and a back chevron that is not a back is worse than no chevron. It is
-          `historyAware` now: back when there is a history, and `ASK_POLE_HREF`
-          on the cold entry where `history.back()` is a no-op. The anatomy is
-          `BackHeader`'s, which is where the rule lives, once. */}
-      <BackHeader href={ASK_POLE_HREF} label="Ask" historyAware />
+          and a back chevron that is not a back is worse than no chevron.
+
+          So it is `historyAware`: it steps back when a page of OURS is behind
+          this one, and falls through to `ASK_POLE_HREF` when none is. AND IT
+          SAYS "BACK", because it no longer always delivers Ask. Reached from
+          /saved it used to close a loop, /saved -> Deal Flow -> "Ask" ->
+          /saved, with no route to Ask from the control named Ask. The anatomy
+          and the rule both live in `BackHeader`, once. */}
+      <BackHeader href={ASK_POLE_HREF} label="Back" historyAware />
 
       <div style={{ flex: "none", padding: `14px ${PAD} 0` }}>
         <h1
