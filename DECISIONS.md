@@ -420,6 +420,70 @@ happens to carry a percentage. **Item 1 replaces the need to remember. It does
 not replace the need to decide.**
 
 
+### Ruling 23: Ask is redrawn, and that is a deliberate override of the handoff
+
+**The ruling.** `/ask` is redrawn rather than completed. Company Intel's directory
+inside it is drawn at the same time.
+
+**This overrides the handoff, knowingly.** The prototype draws `/ask` at
+`Signalera Mobile v3.dc.html`, the build matches it, and a parity run measured
+**23 property mismatches, every one font-family** from the merged face swap in
+PR #701. There is no divergence to correct. Under the normal rule the build is
+already right and nothing should change.
+
+**Why override it.** The drawn screen is built around three counters and three
+summary lines, and **none of the six has a source**:
+
+- Deal Flow's "largest since yesterday" needs a numeric value. `deal_flow.value`
+  is free text like `"$2.5B"`, so the figure needs a parser, not a migration.
+- Trends' "N moved" needs a movement field. `trend_clusters` has none and there
+  is no history table, so the delta cannot be computed at all.
+- Live Feed's "filtered to your N followed names" describes behaviour the
+  destination does not have. `/live-feed` filters by the reader's profile
+  sectors and never reads the `follows` table.
+- "Recent lookups" needs a record of company views. Nothing in the schema
+  records one, and the shipped copy already admits it.
+
+So filling the screen faithfully would **complete a screen that does not work**.
+The design is not wrong about what a reader wants; it is drawn against data that
+was assumed rather than checked.
+
+**The same class as the Radar rename in ruling 19.** Both are places where the
+handoff is overridden on purpose, with the reason written down, rather than
+followed into a defect.
+
+**What the redraw is bound by.** A recon names the source for every block either
+screen could carry, and **no block may be drawn that the recon could not source**.
+That constraint is the whole point: it is the rule the current screen was built
+without.
+
+### Ruling 24: Company Intel stays under the Ask pole
+
+**The ruling.** Company Intel is reached from Ask. The pole set is not reopened.
+
+**Why it is not a fresh decision.** `design_handoff_signalera_mobile/README.md`
+assigns it there already: the Ask pole owns Search, Company Intel, Deal Flow,
+Trends, Live Feed and Intelligence, and the prototype puts all of those inside
+the `isAskBrowse` block. `mobile-tab-bar.tsx` has carried `/company` in Ask's
+`owns` array since the four-pole shell shipped.
+
+**What was actually missing was a link, not a decision.** A recon walked every
+path on a production build and found exactly one live chain to `/company/[id]`,
+through the dashboard's feed link and an entity chip on `/live-feed`. The
+directory Ask draws for that purpose had no data behind it.
+
+**So the work is a real directory inside Ask**, not a fifth pole and not a new
+screen. `GET /api/companies` already returns rows ordered by mention count, and
+`/company/[id]` accepts a raw ticker as its slug, so a row can link without
+slugification and without a write.
+
+**One measurement worth keeping**, because it decides how a directory should be
+read: ticker coverage is 17.2% across the whole 5,599-row corpus and **96% in
+the top 100 by mention count**. A directory only ever shows the head, so the
+corpus figure is the wrong denominator and reasoning from it produces the wrong
+design.
+
+
 ## Open items
 
 Logged 2026-08-16 from a DOM read of `design_handoff_signalera_mobile/Signalera
