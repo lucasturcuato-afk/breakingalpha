@@ -93,47 +93,77 @@ function ChatMessageFeedback({ outputId, children }: { outputId?: string | null;
   return (
     <div ref={ref as React.RefObject<HTMLDivElement>}>
       {children}
-      {/* THE KEYBOARD HALF IS FIXED HERE. THE TOUCH HALF IS DELIBERATELY OPEN.
+      {/* BOTH HALVES ARE CLOSED HERE, AND THE SECOND ONE COST A DESIGN
+          DECISION THAT WAS MADE RATHER THAN GUESSED AT.
 
-          These two buttons are 15x15 around an 11px glyph, under the 44px
-          floor, and until this change they were also unreachable: the wrapper
-          is `opacity-0` revealed by `group-hover/msg`, and Tailwind compiles
-          every `hover:` variant inside `@media (hover: hover)`. On a touch
-          context `matchMedia("(hover: hover)")` is false, so the measured
-          opacity was 0 with and without a synthetic hover.
+          WHAT WAS WRONG. Two defects on one control. It was 15x15 around an
+          11px glyph, under the 44px floor. And it was unreachable: the wrapper
+          was `opacity-0` revealed by `group-hover/msg`, and Tailwind compiles
+          every `hover:` variant inside `@media (hover: hover)`, so on a touch
+          context `matchMedia("(hover: hover)")` is false and the measured
+          opacity stayed 0 with and without a synthetic hover. On top of that,
+          `focus()` succeeded and `document.activeElement` was the button while
+          the wrapper was still at 0, so a keyboard user landed on something
+          invisible, which is a 2.4.7 failure.
 
-          Two defects, and they are NOT welded together, which is the thing to
-          get right. `focus-within:opacity-100` closes the keyboard one on its
-          own: before it, `b.focus()` succeeded and
-          `document.activeElement === b` while the wrapper sat at opacity 0, so
-          a keyboard user tabbed onto a control they could not see, a 2.4.7
-          failure. Now the wrapper reveals when either button takes focus. That
-          costs no design decision, adds no permanently visible control, and a
-          reader on a touch device sees nothing change.
+          The keyboard half was separable and was fixed first, with
+          `focus-within`. The other half was not this unit's to decide, because
+          revealing these permanently changes what every assistant message looks
+          like on every touch device. It was escalated and ruled on: size them
+          and make them reachable. The cost, two permanently visible controls
+          under every answer, was named and accepted.
 
-          WHAT IS STILL OPEN, ON PURPOSE: the 15x15 size and the touch
-          reachability. Those two do move together, because raising a control
-          nobody can see to 44px produces a 44px target nobody can see, which is
-          worse than today. Doing both means two permanently visible 44px
-          buttons under every assistant answer on every touch device, which
-          changes what a message looks like. That is a design decision with an
-          owner and it needs its own measurements at 320 through 430. Not this
-          unit's to make, so it is written down rather than guessed at. */}
+          SO THE REVEAL IS GONE. No `opacity-0`, no `group-hover/msg`, no
+          `focus-within` standing in for it, and `group/msg` came off the
+          message row with them because nothing referenced it any more. A
+          control that is always painted needs none of that machinery, and
+          leaving a dead `focus-within` behind would imply a hidden state that
+          no longer exists.
+
+          THE BOX IS A REAL 44x44, NOT A PADDED-OUT HIT AREA. The usual trick
+          for keeping a small glyph at a legal size is block padding plus a
+          negative margin, so the target grows without the row growing. Not
+          here: a negative top margin would push a 44px target up over the last
+          line of the answer, and tapping that line would rate the answer. The
+          brief for this change asks in the same breath for 44px targets and for
+          no collision with the message body, and those two only hold together
+          if the box occupies the space it claims. So the row is 44 tall and
+          every assistant message is 29px taller than before. Measured, not
+          estimated, including on a multi-message thread.
+
+          THE GLYPH STAYS AT 11px. The ruling was about the target and the
+          reachability. Redrawing the icon is a separate decision and nobody
+          asked for it, so the box grew and the drawing did not.
+
+          THE NAMES ARE ACTIONS NOW. They read "Helpful" and "Not helpful",
+          which name a rating rather than what a tap does, and neither exposed
+          that the control is a toggle: tapping the lit one clears it. Same
+          reasoning the send button gets named "Send" by, applied here, plus
+          `aria-pressed` so the on state is announced instead of being carried
+          by colour alone. */}
       {outputId && (
-        <div className="flex items-center gap-1 mt-1.5 opacity-0 group-hover/msg:opacity-100 focus-within:opacity-100 transition-opacity">
+        <div className="flex items-center gap-1 mt-1.5">
           <button
             type="button"
             onClick={() => setThumbs(thumbs === "up" ? null : "up")}
-            className={cn("p-0.5 rounded cursor-pointer", thumbs === "up" ? "text-gold" : "text-text-faint hover:text-gold")}
-            aria-label="Helpful"
+            className={cn(
+              "w-11 h-11 inline-flex items-center justify-center rounded-lg cursor-pointer transition-colors",
+              thumbs === "up" ? "text-gold" : "text-text-faint hover:text-gold",
+            )}
+            aria-label="Rate this answer helpful"
+            aria-pressed={thumbs === "up"}
           >
             <ThumbsUp size={11} strokeWidth={1.75} />
           </button>
           <button
             type="button"
             onClick={() => setThumbs(thumbs === "down" ? null : "down")}
-            className={cn("p-0.5 rounded cursor-pointer", thumbs === "down" ? "text-gold" : "text-text-faint hover:text-gold")}
-            aria-label="Not helpful"
+            className={cn(
+              "w-11 h-11 inline-flex items-center justify-center rounded-lg cursor-pointer transition-colors",
+              thumbs === "down" ? "text-gold" : "text-text-faint hover:text-gold",
+            )}
+            aria-label="Rate this answer not helpful"
+            aria-pressed={thumbs === "down"}
           >
             <ThumbsDown size={11} strokeWidth={1.75} />
           </button>
@@ -366,7 +396,7 @@ export function IntelligenceChat({ userId }: IntelligenceChatProps) {
               <div
                 key={i}
                 className={cn(
-                  "flex group/msg",
+                  "flex",
                   msg.role === "user" ? "justify-end" : "justify-start",
                 )}
               >
