@@ -143,14 +143,15 @@ test.describe("Watch, signed in", () => {
     // silence would mislead, and a tier nothing on this screen names is not
     // one. The finding is unchanged and lives in `omissions.ts`.
     await expect(screen).not.toContainText("no direction and no window");
-    // The block itself survives, carrying the one absence that does mislead in
-    // silence: the screen renders dated claims off an undated store.
-    await expect(screen).toContainText("NOT SHOWN HERE");
-    await expect(screen).toContainText("A staleness line");
-    await expect(screen).toContainText("Nothing records when these rows were last refreshed");
-    // And the claim stays SCOPED. The product-wide version is false: run times
-    // are recorded (`articles.fetched_at`, `ingest_run_stats.run_started_at`).
-    await expect(screen).not.toContainText("Nothing records when the last pass ran");
+    // ALL FOUR NOTES ARE GONE, staleness last and for a different reason: the
+    // owner ruled it a caption on a wrong sentence, and issue #748 is the fix.
+    // The BLOCK is kept with an empty array so issue #748 has something to fill, and
+    // it must render nothing at all in the meantime: no container, no rule, no
+    // heading. Asserted on the element, because "no visible text" would also
+    // pass for an empty section that still draws a hairline and a margin.
+    await expect(screen).not.toContainText("NOT SHOWN HERE");
+    await expect(screen).not.toContainText("A staleness line");
+    await expect(screen.locator('section[aria-labelledby="watch-omitted"]')).toHaveCount(0);
   });
 
   test("an empty watchlist is a read answering empty, and names a destination", async ({

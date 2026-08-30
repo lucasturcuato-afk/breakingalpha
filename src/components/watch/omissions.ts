@@ -1,8 +1,7 @@
 /**
- * What Radar does not draw and says so anyway, as rendered copy rather than as
- * comments. One entry, and the reason it is the only one.
+ * What Radar does not draw and says so anyway. Currently: nothing.
  *
- * THE RULING THIS FILE NOW CARRIES, given 2026-08-29, verbatim: "The app must
+ * THE RULING THIS FILE EXISTS FOR, given 2026-08-29, verbatim: "The app must
  * never assert something false, but it does not have to enumerate everything
  * absent. Four stacked 'not shown here' explanations on Radar read as a product
  * apologizing for itself. Omit silently unless absence would mislead."
@@ -23,65 +22,53 @@
  * to be there, nothing on screen becomes wrong without it, and the answer is
  * silence. That is the ordinary case.
  *
- * WHY THIS FILE STILL EXISTS RATHER THAN BEING DELETED. Applied per entry,
- * three of the four failed the test and one passed it:
+ * ALL FOUR WENT. Three of them failed that test outright:
  *
- *   TRACKED VIEWS        dropped. Nothing on `/watch` names a third tier, no
- *                        figure counts claims, and the masthead's "your
- *                        watchlist and what you follow" describes exactly what
- *                        is drawn. A reader cannot know the tier was ever meant
- *                        to be there, and no rendered line becomes wrong
- *                        without the note. The measurement that kept the tier
- *                        out is unchanged and lives in `fixture.ts` and
- *                        `src/lib/watch-data.ts`; what is dropped is the
- *                        on-screen sentence, not the finding.
+ *   TRACKED VIEWS        Nothing on `/watch` names a third tier, no figure
+ *                        counts claims, and the masthead's "your watchlist and
+ *                        what you follow" describes exactly what is drawn. A
+ *                        reader cannot know the tier was ever meant to be
+ *                        there. The measurement that keeps it out is unchanged
+ *                        and lives in `fixture.ts` and `src/lib/watch-data.ts`;
+ *                        what went is the on-screen sentence, not the finding.
  *
- *   THE PINNED HERO      dropped. Every entry renders as the same card, so
- *                        nothing on screen implies a rank that is then missing.
+ *   THE PINNED HERO      Every entry renders as the same card, so nothing on
+ *                        screen implies a rank that is then missing.
  *
- *   THEME NAMES          dropped. Cluster labels are null until a lazy pass
- *                        names them, and `ThemeCluster` already draws no
- *                        heading when there is none. The rows read as a list
- *                        because they are one. No figure counts themes.
+ *   THEME NAMES          Cluster labels are null until a lazy pass names them,
+ *                        and `ThemeCluster` already draws no heading when there
+ *                        is none. The rows read as a list because they are one.
+ *                        No figure counts themes.
  *
- *   STALENESS            KEPT, and it is the one that would mislead. The screen
- *                        renders dated claims off an undated store: "No news
- *                        today", "N with news / M quiet", "This week's
- *                        coverage", "an empty week, not a failed load". Every
- *                        one of those is read out of stored article rows
- *                        (`watch-data.ts` filters on `published_at`), and
- *                        nothing records when THIS DESK'S rows were last
- *                        refreshed. Without the note "No news today" reads as
- *                        "we looked today and found nothing", which is a check
- *                        the product did not make. That is the second failure
- *                        mode above, squarely, and it is the same shape as the
- *                        two corrections this screen already protects: the
- *                        per-entry read fault, which withdraws names from the
- *                        quiet count, and `FollowingTail`, which withdraws its
- *                        own "empty week, not a failed load" claim when a
- *                        follow could not be checked. Those correct WHO is in
- *                        the set. This one corrects WHEN it was measured.
+ * THE FOURTH IS THE INTERESTING ONE AND IT WENT FOR A DIFFERENT REASON.
+ * Staleness passed the misleading test and was kept for one round, on the
+ * argument that `/watch` renders dated claims off an undated store: "No news
+ * today", the with-news and quiet counts, "This week's coverage", "an empty
+ * week, not a failed load". All are read out of stored article rows
+ * (`watch-data.ts` filters on `published_at`) and nothing records when a given
+ * desk's rows were last refreshed. That argument is still true. It is just not
+ * an argument for a note.
  *
- *                        THE SCOPE IS LOAD-BEARING AND IT WAS MISSING. The
- *                        string shipped by PR #731 said "nothing records when
- *                        the last pass ran", which is a product-wide negative
- *                        and is false: `articles.fetched_at` is read by this
- *                        very loader to build `lastCheckedLabel`, and
- *                        `sql/0028_ingest_observability.sql:82-84` creates
- *                        `ingest_run_stats.run_started_at`, one row per ingest
- *                        run. `watch-data.ts:68` had the accurate version all
- *                        along and scopes it to a given desk. What is missing
- *                        is a per-desk record of when a reader's rows were
- *                        last refreshed, not a record of pipeline runs, and
- *                        the copy now says that. A note kept on honesty
- *                        grounds does not get to be the loosest claim on the
- *                        screen.
+ * THE OWNER'S RULING, 2026-08-29, is that the note is A CAPTION ON A WRONG
+ * SENTENCE. `/watch` says "No news today" off a store it cannot date, and issue
+ * issue #748 measured that `watchlist_articles` currently holds zero rows published
+ * or fetched within 24h DB-wide, so every entry on every desk renders quiet
+ * right now. A footnote explaining that nothing is dated does not make "No news
+ * today" true. It apologises for it in smaller type, which is the shape the
+ * ruling above rules out, and it lets a wrong sentence keep shipping because
+ * something downstairs technically withdrew it.
  *
- * SO THE MECHANISM IS NOT AN EMPTY SHELL. `WATCH_OMISSIONS` carries exactly one
- * entry, `OmittedNotes` draws it, and the list must not become a place nobody
- * reads. If the last entry ever goes, delete this file and that block with it.
+ * THE FIX IS issue #748, NOT COPY. Making the `stale` branch reachable lets the
+ * screen say when it last checked instead of asserting a check it did not make.
+ * A screen that dates its readings needs no note about not dating them.
  *
- * THE DISTINCTION THAT SURVIVES INTACT, because it decides the copy:
+ * DO NOT RESTORE THE NOTE ON THE OLD REASONING. "But the quiet line is undated"
+ * is the argument that kept it, and it is correct and is not sufficient. The
+ * only thing that would put a staleness note back here is a case where the
+ * screen states the date it checked AND still omits something a reader would be
+ * misled by.
+ *
+ * THE DISTINCTION THAT SURVIVES INTACT, because it decides any future copy:
  *
  *   an EMPTY STATE says something about the READER ("you follow nothing yet").
  *                  It needs a read behind it, and `watch/page.tsx` records what
@@ -90,19 +77,10 @@
  *                  and here is why"). It needs no read, which is why this file
  *                  is a constant and not a loader.
  *
- * ONE PLACE THE OLD "NEEDS NO READ" DOCTRINE NO LONGER HOLDS, and it is worth
- * naming so it is not restored as a tidy-up. `OmittedNotes` used to render
- * unconditionally in every stage on the grounds that a reason is true in every
- * stage. That is false for the entry that survived: at `?stage=stale` the
- * screen draws "Last checked <time>", and a foot note saying it "never dates
- * the readings above" would be contradicted by a line directly above it. The
- * block is gated on that one stage in `watch-screen.tsx`. The gate is not a
- * read about the reader; it is the screen declining to state an absence in the
- * one stage where the thing is present.
- *
- * `tests/unit/watch-omissions.test.ts` pins all of it: the surviving set
- * exactly, the three dropped ids by name so restoring one is red, the
- * product-not-reader register, and the render.
+ * `tests/unit/watch-omissions.test.ts` pins the empty list, the four dropped ids
+ * by name so restoring one is red, and the mechanism below: that `OmittedNotes`
+ * still exists, is still in the tree, still iterates this constant, and draws
+ * nothing while it is empty.
  */
 
 export interface WatchOmission {
@@ -115,27 +93,25 @@ export interface WatchOmission {
 }
 
 /**
- * The one absence whose silence would mislead.
+ * EMPTY, AND KEPT EMPTY RATHER THAN DELETED. This is the owner's instruction
+ * and not an oversight: "keep the mechanism with an empty array and a comment
+ * saying why, rather than deleting it. issue #748 will make the stale branch
+ * reachable and something will need to render."
  *
- * TWO RENDERED LINES AT 390, down from eight. That is a MEASUREMENT and not an
- * estimate: the paragraph is 36px over a 17.825px line box, and the whole
- * `section` including its rule and heading is 81px. Scoping the claim added
- * eleven characters and did not add a line, so the four-state void table is
- * unchanged to the pixel.
+ * So the type, the constant, `OmittedNotes` and its render site all stay. What
+ * is gone is the copy, all four entries of it, for the reasons in the header
+ * above. `OmittedNotes` returns null while this is empty, so the screen renders
+ * no container, no rule and no heading, and the foot of the scroll is the last
+ * tier. That is verified in the DOM rather than by reading the component.
  *
- * The old note in this slot said three lines begin at about 113 characters of
- * REASON. The rendered paragraph is the reason plus the "A staleness line."
- * lead-in, 116 characters together, and it still sets in two, so the boundary
- * is looser than that figure implied. Re-measure before lengthening this
- * further rather than trusting either number, and re-measure the trailing void
- * with it, because the foot of this screen is the seam that starts with a
- * structural floor already under it.
+ * WHEN issue #748 LANDS, the screen will date its own readings and the question of
+ * what belongs here reopens. Anything added must clear the test in the header:
+ * would a reader be misled by its absence, and is the note a correction rather
+ * than a caption on a sentence that should have been fixed instead.
+ *
+ * An entry added here renders immediately and unconditionally in every stage
+ * but `stale`. Read the gate in `watch-screen.tsx` before adding one; it was
+ * written for a note that no longer exists and it has to be re-decided against
+ * whatever replaces it.
  */
-export const WATCH_OMISSIONS: WatchOmission[] = [
-  {
-    id: "staleness",
-    absent: "A staleness line",
-    reason:
-      "Nothing records when these rows were last refreshed, so this screen never dates the readings above.",
-  },
-];
+export const WATCH_OMISSIONS: WatchOmission[] = [];

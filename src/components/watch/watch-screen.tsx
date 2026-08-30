@@ -31,31 +31,30 @@ import { FONT_DISPLAY, FONT_MONO, FONT_SANS } from "@/components/mobile/fonts";
  *
  * WHAT IS DRAWN AND WHAT IS NOT.
  *
- * FOUR THINGS ARE OMITTED AND ONE OF THEM SAYS SO. Tracked views, the
+ * FOUR THINGS ARE OMITTED AND NONE OF THEM SAYS SO. Tracked views, the
  * pinned-espresso hero, theme headings over following and staleness are all
- * absent, and the measurements behind each are unchanged. What changed is how
- * many of them are stated on screen. The ruling of 2026-08-29 narrowed the
- * one this screen shipped under: the app must never assert something false,
- * but it does not have to enumerate everything absent, and four stacked "not
- * shown here" explanations read as a product apologizing for itself. The test
- * is whether ABSENCE WOULD MISLEAD, applied per entry.
+ * absent, and the measurements behind each are unchanged. What changed is that
+ * the screen stopped narrating them. The ruling of 2026-08-29 narrowed the one
+ * this screen shipped under: the app must never assert something false, but it
+ * does not have to enumerate everything absent, and four stacked "not shown
+ * here" explanations read as a product apologizing for itself. The test is
+ * whether ABSENCE WOULD MISLEAD, applied per entry.
  *
- * Three of the four fail that test and are now silent. Nothing on this screen
- * names a third tier, no figure counts claims, every entry renders as the same
- * card so no rank is implied, and `ThemeCluster` already draws no heading where
- * there is no label, so the rows read as the list they are. A reader has no way
- * to know any of the three was ever meant to be here, and no rendered line
- * becomes wrong without the note.
+ * Three fail it outright. Nothing on this screen names a third tier, no figure
+ * counts claims, every entry renders as the same card so no rank is implied,
+ * and `ThemeCluster` already draws no heading where there is no label, so the
+ * rows read as the list they are. A reader has no way to know any of the three
+ * was ever meant to be here, and no rendered line becomes wrong without it.
  *
- * Staleness passes it and is kept. This screen renders dated claims off an
- * undated store - "No news today", the with-news and quiet counts, "This
- * week's coverage" - and nothing records when THIS DESK'S rows were last
- * refreshed. Silence there would let "No news today" read as a check made
- * today. The scope matters and the copy carries it: run times ARE recorded
- * (`articles.fetched_at`, `ingest_run_stats.run_started_at`), so the
- * product-wide version of that sentence would be false. `omissions.ts` carries
- * the full per-entry reasoning; `OmittedNotes` at the foot of this file draws
- * what survives.
+ * The fourth went for a different reason and it is the one to read before
+ * putting anything back. Staleness PASSES the misleading test: this screen
+ * renders dated claims off an undated store, and nothing records when a given
+ * desk's rows were last refreshed. The owner's ruling is that the note was
+ * still wrong, because it is a CAPTION ON A WRONG SENTENCE. "No news today"
+ * does not become true because a footnote says nothing is dated; it stays
+ * wrong and acquires an apology. The fix is issue #748, which makes the `stale`
+ * branch reachable so the screen says when it last checked instead of
+ * asserting a check it did not make. `omissions.ts` carries all of it.
  *
  * The register is unchanged: a REASON is about the PRODUCT, an EMPTY STATE is
  * about the READER and needs a read behind it.
@@ -535,15 +534,31 @@ export function WatchScreen({
         ) : null}
 
         {/* ── what is not drawn here ─────────────────────────────────── */}
-        {/* DRAWN IN EVERY STAGE BUT ONE, and the exception is not a read about
-            the reader. A reason is a statement about the product, so it holds
-            while a tier is loading and while a tier has failed, and gating it
-            on either would make it behave like an empty state. The one stage
-            it cannot hold in is `stale`, where the notice above draws "Last
-            checked <time>": a foot note saying this screen never dates the
-            readings above, under a line that just dated them, is the false
-            assertion the ruling did not loosen. So it stands down there and
-            only there. */}
+        {/* NOTHING RENDERS HERE TODAY. `WATCH_OMISSIONS` is empty and
+            `OmittedNotes` guards on that, so this line draws no container, no
+            rule and no heading, in every stage. The element and the constant
+            stay on the owner's instruction: issue #748 makes the `stale` branch
+            reachable and something will need to render here again.
+
+            THE STALE GATE IS KEPT, DELIBERATELY, and it is currently guarding
+            nothing. It was added because the staleness note contradicted the
+            "Last checked <time>" line the stale notice draws directly above it,
+            and that note is now gone, so today `{stale ? null : ...}` and a
+            bare `<OmittedNotes />` are indistinguishable.
+
+            It is kept because issue #748 is the work that refills this, and issue #748 is
+            precisely the work that makes this screen date its own readings. The
+            note most likely to come back here is therefore the one most likely
+            to collide with that line, and rediscovering the collision from a
+            rendered contradiction is worse than carrying four characters of
+            guard.
+
+            IT IS NOTE-SPECIFIC AND MUST BE RE-DECIDED, not inherited. This
+            encodes "no omission note in the stale stage", which was true of one
+            note rather than of the block. An entry about something other than
+            dating would be suppressed here for no reason. Whoever refills the
+            array decides whether the gate still applies; it is not a rule about
+            omissions, it is a fact about one that no longer exists. */}
         {stale ? null : <OmittedNotes />}
       </div>
 
@@ -1079,32 +1094,47 @@ function FollowingTail({
 }
 
 /**
- * What Radar does not draw, and why, at the foot of the screen.
+ * What Radar does not draw, and why, at the foot of the screen. Currently:
+ * nothing, and the block is kept anyway.
  *
- * THE RULING: omit silently unless absence would mislead. One absence on this
- * screen clears that bar and the block carries it; the other three are silent.
- * A reason is still not an empty state, and what is here says what is absent
- * and why, in the register the rest of this file uses.
+ * THE RULING: omit silently unless absence would mislead. All four of this
+ * screen's absences now clear that bar in the silent direction, so
+ * `WATCH_OMISSIONS` is empty and this draws nothing. `omissions.ts` carries the
+ * per-entry reasoning and the owner's argument for the last one to go, which is
+ * that a note explaining the store is undated is a CAPTION ON A WRONG SENTENCE
+ * rather than a correction: "No news today" does not become true because
+ * something downstairs withdrew it.
  *
- * That register is used well in two other places here: the per-entry fault
- * notice names the identifiers and then says "They are not quiet and they are
- * not counted quiet", and `FollowingTail` withdraws its own claim when a follow
- * could not be checked. Both correct a rendered figure, and so does this. Flat,
- * specific, about the product. So the copy is `tailCopy`, the quieter of the
- * two surfaces, because nothing here went wrong: the notice surface is for a
- * fault, and an absence is not one.
+ * KEPT RATHER THAN DELETED, on the owner's instruction: "keep the mechanism
+ * with an empty array and a comment saying why, rather than deleting it. issue #748
+ * will make the stale branch reachable and something will need to render." So
+ * this is a live component with no data, not dead code, and the empty case is
+ * a guard rather than an accident.
  *
- * THE BLOCK SURVIVES A SINGLE ENTRY, and the heading with it. "NOT SHOWN HERE"
- * over one line is a label on a thing rather than a wall of apology, which is
- * the shape the ruling rules out. If the last entry ever goes, this function
- * and `omissions.ts` go with it rather than being left as a mechanism with no
- * consumers.
+ * WHAT THE COPY HAS TO BE IF ANYTHING COMES BACK. The register is used well in
+ * two other places on this screen: the per-entry fault notice names the
+ * identifiers and then says "They are not quiet and they are not counted
+ * quiet", and `FollowingTail` withdraws its own claim when a follow could not
+ * be checked. Both CORRECT A RENDERED FIGURE, which is the bar. Flat, specific,
+ * about the product. `tailCopy` is the surface, the quieter of the two, because
+ * an absence is not a fault and the notice surface is for faults.
  *
  * The heading is a heading and not a `SectionRule`: a rule with a label and a
  * hairline is this screen's shape for A TIER, and a tier is the one thing this
  * block must not look like.
  */
 function OmittedNotes() {
+  /* NOTHING TO SAY MEANS NOTHING DRAWN, and that has to be a guard rather than
+     a trusted consequence of `.map` over an empty array. Without it the section
+     still renders: a 26px top margin, a hairline rule and an "NOT SHOWN HERE"
+     heading with no content under it, which is a section rule promising a tier
+     that is not there. That is a worse screen than the four notes were.
+
+     The guard is on the DATA being empty, not on a stage or a read, so it is
+     still not an empty state. Verified in the DOM: with `WATCH_OMISSIONS` empty
+     the screen contains no `section[aria-labelledby="watch-omitted"]` at all. */
+  if (WATCH_OMISSIONS.length === 0) return null;
+
   return (
     <section
       aria-labelledby="watch-omitted"

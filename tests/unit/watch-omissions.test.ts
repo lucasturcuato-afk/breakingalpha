@@ -1,11 +1,12 @@
-// Unit tests for the omission copy Radar states on screen
+// Unit tests for the omission mechanism Radar keeps and does not currently use
 // (src/components/watch/omissions.ts).
 //
 // WHY A UNIT TEST AND NOT A BROWSER SPEC. `/watch` is a server component and
 // its copy is static, so the only thing a browser could add here is a second
-// place for the same strings to be typed. What needs enforcing is not that the
-// strings render, it is WHICH absences are allowed to speak and what they are
-// ALLOWED TO SAY, and both are properties of the constant.
+// place for the same strings to be typed. What needs enforcing is WHICH
+// absences are allowed to speak, what they are ALLOWED TO SAY, and that the
+// mechanism carrying them survives being empty. All three are properties of the
+// constant and of the source that draws it.
 //
 // THE RULE LOCKED HERE, given 2026-08-29: "The app must never assert something
 // false, but it does not have to enumerate everything absent. Omit silently
@@ -13,33 +14,47 @@
 // under (PR #731: every omitted tier states its reason on screen). The honesty
 // half is untouched; the enumeration half is now conditional.
 //
-// Applied per entry, three of the four absences went silent and one stayed:
+// Applied per entry, all four absences went silent:
 //
-//   tracked-views  dropped. No figure counts claims, nothing names a third
-//                  tier, no rendered line becomes wrong without the note.
-//   lead-story     dropped. Every entry renders as the same card, so no rank
-//                  is implied and none is then missing.
-//   theme-names    dropped. `ThemeCluster` already draws no heading where there
-//                  is no label; the rows read as the list they are.
-//   staleness      KEPT. The screen renders dated claims off an undated store,
-//                  so silence would let "No news today" read as a check made
-//                  today, which is a check the product did not make.
+//   tracked-views  no figure counts claims, nothing names a third tier, no
+//                  rendered line becomes wrong without the note.
+//   lead-story     every entry renders as the same card, so no rank is implied
+//                  and none is then missing.
+//   theme-names    `ThemeCluster` already draws no heading where there is no
+//                  label; the rows read as the list they are.
+//   staleness      PASSED the misleading test and went anyway, on the owner's
+//                  ruling that it is a CAPTION ON A WRONG SENTENCE. "No news
+//                  today" is said off a store the screen cannot date, and a
+//                  footnote saying nothing is dated does not make it true. The
+//                  fix is issue #748, which makes the `stale` branch reachable
+//                  so the screen says when it last checked. That is a screen
+//                  change, not a copy change.
 //
-// SO THE SET ITSELF IS THE ASSERTION, in both directions. Deleting the survivor
-// is red, and so is restoring any of the three, because "the notes were dropped
-// by accident" is the mistake the next reader is most likely to make.
+// SO THE EMPTY LIST IS THE ASSERTION, and it is pinned in both directions:
+// empty by equality, and each of the four ids named individually, because "the
+// notes were dropped by accident" is the mistake the next reader is most likely
+// to make. Restoring one on the old reasoning is red.
 //
-//   the survivor states WHAT is absent and WHY       -> both halves non-empty
-//   a reason is about the PRODUCT, never the READER  -> no second person
-//   the three dropped absences stay silent           -> named individually
-//   the block is drawn, and stands down where it
-//   would contradict the line above it               -> asserted on the element
+// AND THE MECHANISM IS PINNED SEPARATELY FROM THE DATA. The owner's instruction
+// is to keep it: "keep the mechanism with an empty array and a comment saying
+// why, rather than deleting it. issue #748 will make the stale branch reachable and
+// something will need to render." A suite that passes whether or not
+// `OmittedNotes` survives would let the next refactor quietly delete the thing
+// issue #748 is going to need. So:
 //
-// The reader/product distinction is the half of PR #731 that did not move. "You
-// have no tracked views yet" is an empty state, needs a read behind it, and
-// there is none; "nothing records when the last pass ran" is a reason, needs no
-// read, and is true whatever the reader has. It is exactly the distinction
-// three shipped empty states missed (see `src/app/watch/page.tsx`).
+//   the list is empty                              -> equality, not length > 0
+//   the four ids stay out                          -> named individually
+//   `OmittedNotes` still exists and is in the tree  -> asserted on the element
+//   it still iterates the constant                  -> the map, inside the body
+//   it draws NOTHING while the list is empty        -> the guard, before the
+//                                                      section it guards
+//
+// The reader/product distinction is the half of PR #731 that did not move, and
+// it still decides any copy that comes back. "You have no tracked views yet" is
+// an empty state, needs a read behind it, and there is none; "this tier draws
+// claims carrying no direction and no window" is a reason and needs none. It is
+// exactly the distinction three shipped empty states missed (see
+// `src/app/watch/page.tsx`).
 //
 // WHAT IS DELIBERATELY NOT ASSERTED HERE: the closed compliance vocabulary.
 // `npm run design:lint` already reads `src/components/watch/omissions.ts` and
@@ -52,128 +67,134 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { WATCH_OMISSIONS } from "../../src/components/watch/omissions.ts";
 
-/** Second person, in every form the copy could reach for. */
+/** Second person, in every form any future copy could reach for. */
 const READER = /\b(you|your|yours|yourself)\b/i;
 
 /** Silenced by the narrowed ruling. Restoring one is a regression, not a fix. */
-const DROPPED = ["tracked-views", "lead-story", "theme-names"];
+const DROPPED = ["tracked-views", "lead-story", "theme-names", "staleness"];
 
-test("every omission states both what is absent and why", () => {
-  assert.ok(WATCH_OMISSIONS.length > 0, "an empty list is a mechanism with no consumers");
-  for (const o of WATCH_OMISSIONS) {
-    assert.ok(o.absent.trim().length > 0, `${o.id}: names nothing`);
-    assert.ok(o.reason.trim().length > 0, `${o.id}: gives no reason`);
-    // A reason is a sentence, not a label. The bar is low on purpose; it is
-    // here to catch a stub, not to judge prose.
-    assert.ok(o.reason.trim().length >= 40, `${o.id}: reason is too short to be one`);
-  }
+const SCREEN = () => readFileSync("src/components/watch/watch-screen.tsx", "utf8");
+
+/** The body of `OmittedNotes`, so a stray match elsewhere cannot stand in. */
+function omittedNotesBody(): string {
+  const screen = SCREEN();
+  const start = screen.indexOf("function OmittedNotes(");
+  assert.ok(start !== -1, "OmittedNotes is gone; issue #748 needs it to still be here");
+  const rest = screen.slice(start);
+  const end = rest.indexOf("\nfunction ", 1);
+  return end === -1 ? rest : rest.slice(0, end);
+}
+
+test("the list is empty, because all four absences are silent now", () => {
+  // Equality rather than a length check, so adding an entry back is red and has
+  // to argue for itself against the header in omissions.ts.
+  assert.deepEqual(WATCH_OMISSIONS, []);
 });
 
-test("no omission is a sentence about the reader", () => {
-  for (const o of WATCH_OMISSIONS) {
-    assert.ok(!READER.test(o.absent), `${o.id}: names the reader in "${o.absent}"`);
-    assert.ok(!READER.test(o.reason), `${o.id}: addresses the reader in "${o.reason}"`);
-  }
-});
-
-test("ids are unique, so one omission cannot quietly shadow another", () => {
-  const ids = WATCH_OMISSIONS.map((o) => o.id);
-  assert.equal(new Set(ids).size, ids.length);
-});
-
-test("the surviving set is exactly the one absence whose silence would mislead", () => {
-  // Equality rather than a membership check, so this is red both when the
-  // survivor is deleted and when an unrelated entry is added beside it.
-  assert.deepEqual(
-    WATCH_OMISSIONS.map((o) => o.id),
-    ["staleness"],
-  );
-});
-
-test("the three narrowed-away absences stay silent", () => {
-  // Named individually rather than counted. They were correct copy under the
-  // rule that preceded this one, which is exactly why someone will be tempted
-  // to put them back as a lost-in-a-refactor fix. They were not lost.
+test("none of the four narrowed-away absences comes back", () => {
+  // Named individually rather than counted. All four were correct copy under
+  // the rule that preceded this one, which is exactly why someone will be
+  // tempted to put them back as a lost-in-a-refactor fix. They were not lost.
+  //
+  // Staleness is the one to watch. Its argument ("the quiet line is undated")
+  // is still TRUE and is still not sufficient: the owner ruled the note is a
+  // caption on a wrong sentence and that issue #748 is the fix. Do not restore it on
+  // the old reasoning.
   const ids = new Set(WATCH_OMISSIONS.map((o) => o.id));
   for (const gone of DROPPED) {
     assert.ok(!ids.has(gone), `${gone} was narrowed away by the 2026-08-29 ruling`);
   }
 });
 
-test("the staleness reason is about the undated store, not about the reader's day", () => {
-  const o = WATCH_OMISSIONS.find((x) => x.id === "staleness");
-  assert.ok(o, "the survivor is gone; see omissions.ts before restoring anything");
-  // What earns it its place is that the screen renders dated claims off rows
-  // whose refresh time nothing records. The copy has to keep naming both halves,
-  // because a reason that stops saying the readings are undated stops
-  // correcting anything.
-  assert.match(o.reason, /refresh/i);
-  assert.match(o.reason, /date/i);
+test("any entry that ever comes back still states what is absent and why", () => {
+  // Vacuous today, and deliberately kept rather than deleted: it is the shape
+  // check that whatever issue #748 adds will meet on the way in, and a rule
+  // that only exists while it has data gets rediscovered the hard way.
+  for (const o of WATCH_OMISSIONS) {
+    assert.ok(o.absent.trim().length > 0, `${o.id}: names nothing`);
+    assert.ok(o.reason.trim().length >= 40, `${o.id}: reason is too short to be one`);
+    assert.ok(!READER.test(o.absent), `${o.id}: names the reader in "${o.absent}"`);
+    assert.ok(!READER.test(o.reason), `${o.id}: addresses the reader in "${o.reason}"`);
+  }
+  const ids = WATCH_OMISSIONS.map((o) => o.id);
+  assert.equal(new Set(ids).size, ids.length, "ids must be unique");
 });
 
-test("the staleness claim is scoped to the desk and is not a product-wide negative", () => {
-  const o = WATCH_OMISSIONS.find((x) => x.id === "staleness");
-  assert.ok(o);
-  // THE STRING PR #731 SHIPPED WAS FALSE, and this is the only note kept on
-  // honesty grounds, so it does not get to be the loosest claim on the screen.
-  // "Nothing records when the last pass ran" is a product-wide negative and run
-  // times ARE recorded: `articles.fetched_at` is read by this very loader to
-  // build `lastCheckedLabel`, and `sql/0028_ingest_observability.sql:82-84`
-  // creates `ingest_run_stats.run_started_at`, one row per ingest run.
-  // `src/lib/watch-data.ts:68` had the accurate version all along and scopes it
-  // to a given desk: what is missing is a per-desk refresh record.
-  assert.ok(
-    !/\bthe last pass ran\b/i.test(o.reason),
-    "the product-wide negative is false; scope the claim to this desk's rows",
-  );
-  // The scope is what makes it true, so the scope is pinned rather than left to
-  // care. "these rows" / "this desk" both read as the reader's own set.
-  assert.match(o.reason, /\b(these rows|this desk)\b/i);
+test("the mechanism survives being empty: OmittedNotes exists and is in the tree", () => {
+  // THE OWNER'S INSTRUCTION IS THAT THIS SURVIVES. An empty array is not a
+  // reason to delete the component, because issue #748 makes the stale branch
+  // reachable and something will need to render here. Without this assertion a
+  // tidy-up that removes "dead code" is green.
+  assert.match(SCREEN(), /<OmittedNotes\s*\/>/, "the render site is gone; issue #748 needs it");
+  assert.match(omittedNotesBody(), /^function OmittedNotes\(/, "OmittedNotes is not a function");
 });
 
-test("the surviving reason is rendered by the screen rather than kept as a comment", () => {
-  // A reason in a constant that nothing draws is the state this unit was built
-  // to end: the reasons lived in comments and PR bodies, and a recon measured
-  // no string about any omitted thing anywhere on the rendered screen.
-  //
+test("the mechanism still iterates the constant rather than hardcoding copy", () => {
   // THIS ASSERTION HAS PASSED BOTH WAYS TWICE, in two different shapes, and
   // both are closed here.
   //
   //   1. The first draft asserted only the constant. Deleting `<OmittedNotes />`
   //      from the tree while leaving the function defined kept `WATCH_OMISSIONS`
-  //      in the file and the test green. Closed by asserting the ELEMENT.
+  //      in the file and the test green. Closed by asserting the ELEMENT above.
   //   2. `assert.match(screen, /WATCH_OMISSIONS/)` is satisfied by the IMPORT
   //      LINE ALONE, so gutting `OmittedNotes` to `return null` with the element
-  //      and the import intact kept all eight tests green, tsc at 0, and cost
-  //      one eslint warning. The comment here claimed that hole was closed. It
-  //      closed the element-deleted case, not the element-draws-nothing case.
-  //      Closed by pinning the ITERATION, inside the function that does it.
-  const screen = readFileSync("src/components/watch/watch-screen.tsx", "utf8");
-  assert.match(screen, /<OmittedNotes\s*\/>/, "the block is defined but nothing draws it");
-
-  // Scoped to the function body rather than the whole file, so a dead
-  // `WATCH_OMISSIONS.map(` left anywhere else cannot stand in for the render.
-  const start = screen.indexOf("function OmittedNotes(");
-  assert.ok(start !== -1, "OmittedNotes is gone; the reason has nothing drawing it");
-  const rest = screen.slice(start);
-  const end = rest.indexOf("\nfunction ", 1);
-  const body = end === -1 ? rest : rest.slice(0, end);
+  //      and the import intact kept every test green, tsc at 0, and cost one
+  //      eslint warning. Closed by pinning the ITERATION, inside the function
+  //      that does it.
+  //
+  // The distinction that matters now that the array is empty: a component that
+  // returns null BECAUSE THE LIST IS EMPTY is the mechanism working, and a
+  // component that returns null unconditionally is the mechanism gone. The
+  // `.map` is what tells them apart, so it is what is pinned.
   assert.match(
-    body,
+    omittedNotesBody(),
     /WATCH_OMISSIONS\.map\(/,
-    "OmittedNotes draws something other than the reasons, or draws nothing at all",
+    "OmittedNotes no longer draws the constant; it cannot render what issue #748 adds",
   );
 });
 
-test("the block stands down in the one stage that dates the readings", () => {
-  // At `?stage=stale` the screen draws "Last checked <time>" above this block.
-  // A foot note saying it never dates the readings above, under a line that
-  // just dated them, is a false assertion, and the ruling loosened enumeration
-  // rather than honesty. The gate is on the stage, not on the reader's data.
-  const screen = readFileSync("src/components/watch/watch-screen.tsx", "utf8");
+test("it draws nothing at all while the list is empty", () => {
+  // NOT AN EMPTY CONTAINER, not a stray margin, not a hairline rule over a
+  // heading with no content under it. `.map` over an empty array is not enough:
+  // the `section` around it still renders its 26px margin, its border and its
+  // "NOT SHOWN HERE" heading, which is a section rule promising a tier that is
+  // not there. So the empty case is an explicit guard.
+  const body = omittedNotesBody();
+
+  // ANCHORED TO ITS OWN LINE AT THE FUNCTION'S TOP LEVEL, and that is the whole
+  // strength of this assertion. A loose `.search(/if \(...\) return null;/)`
+  // passed both ways: wrapping the guard in
+  // `const dead = () => { if (WATCH_OMISSIONS.length === 0) return null; };`
+  // leaves the text present, above the section, and completely inert, and the
+  // suite went green on it. Two spaces of indent and end-of-line pin it as a
+  // STATEMENT IN THE BODY rather than a string that appears in the file. A
+  // nested copy is indented deeper; a wrapped copy does not start the line.
+  const guard = body.search(/^ {2}if \(WATCH_OMISSIONS\.length === 0\) return null;$/m);
+  assert.ok(guard !== -1, "no empty guard: the block draws a rule and a heading over nothing");
+
+  // REACHABLE. A guard after an earlier `return` is text, not behaviour.
+  assert.ok(
+    !/\breturn\b/.test(body.slice(0, guard)),
+    "the empty guard is unreachable; an earlier exit sits above it",
+  );
+
+  // BEFORE the thing it guards, so moving it below the section is red rather
+  // than green-and-dead.
+  const section = body.indexOf("<section");
+  assert.ok(section !== -1, "OmittedNotes draws no section at all");
+  assert.ok(guard < section, "the empty guard sits after the element it is supposed to prevent");
+});
+
+test("the block still stands down in the one stage that dates the readings", () => {
+  // Currently guarding nothing, and kept on purpose. issue #748 is the work that
+  // refills the array AND the work that makes this screen date its own
+  // readings, so the note most likely to come back is the one most likely to
+  // collide with the "Last checked <time>" line the stale notice draws above
+  // it. The gate is note-specific and has to be re-decided against whatever
+  // issue #748 adds; see the comment at the render site.
   assert.match(
-    screen,
+    SCREEN(),
     /\{stale \? null : <OmittedNotes \/>\}/,
-    "the omission block is drawn in a stage where the screen contradicts it",
+    "the stale gate is gone; re-read the render site before removing it",
   );
 });
