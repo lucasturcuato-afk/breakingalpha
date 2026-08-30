@@ -230,8 +230,26 @@ they decide it:
    same vocabulary appears in `useLiveMood.ts`, `from-dashboard.ts` and the
    thesis state map. A pole label that collides with a state label makes two
    different things read as one thing.
-2. It names an action rather than a place. Every other pole is a destination:
-   Today, Ledger, Ask. "Watch" reads as an instruction.
+2. It names an action rather than a place. **Poles are named for places, not
+   actions.** "Watch" reads as an instruction.
+
+   **Amended 2026-08-30 by Noah.** This line originally read, verbatim: *"It
+   names an action rather than a place. Every other pole is a destination:
+   Today, Ledger, Ask."* The example list was wrong; the principle it was
+   illustrating was right. **Today, Watch and Ask were all actions.** Ledger
+   was already a place, which is why Ledger is the one that survives.
+
+   The list read as true when it was written because the Ask pole then pointed
+   at `/intelligence`, where "Ask" named the destination accurately: the
+   surface really was a place you go to ask, so the label described where you
+   arrived. Once the pole came to hold a company directory, three desks and a
+   link to the assistant, the word stopped describing the place and started
+   promising one of the things inside it.
+
+   The original wording is quoted above rather than deleted, because the PR
+   history references this line and a silently rewritten reason cannot be
+   cited. The consequence for the other two labels is ruled separately, in
+   `decisions/poles-are-named-for-places.md`.
 3. Radar is the word the reader already knows from the desk, so the pole is
    navigational continuity rather than a new concept to learn.
 
@@ -274,6 +292,31 @@ a prompt that can be rewritten again.
 **The rule.** `/ask`'s answer block fetches from the client, after an explicit
 submit, the way `IntelligenceChat` already does. It must never be wired as a
 server render that reads `?q=` from `searchParams`.
+
+**Amended 2026-08-30 by Noah: the submit clause is scoped to the answer block,
+and what it binds is a model call.** Written as it was, the rule could be read
+as "nothing on `/ask` may fetch without a submit", and PR #764 ships a company
+field that fetches on a 200ms debounce. **The debounce stands.** The rule is
+about model calls on a path the framework can walk on its own, and a database
+read behind a debounce is outside it. Stated as a test rather than left to be
+re-argued:
+
+- **The harm this ruling was written against is budget consumption.** The
+  measurement below ends on the line that matters: "the limit is consumed
+  **before** the cache is checked", so a render the reader did not ask for
+  costs them messages even on a cache hit. A call with no budget cannot cause
+  that harm.
+- **`/api/companies` makes no model call and consumes no budget.** Measured,
+  not assumed: it imports only `getSupabaseWithUser` and `normalizeLookupKey`,
+  and its only I/O is two Supabase reads. There is no per-user limit on it.
+- **The three structural properties that closed this on `/ask` are untouched
+  by the debounce.** Nothing links to `/ask?q=`, the URL is read and never
+  written, and the server read does not take `q`. A debounced client fetch
+  adds no prefetchable link and no `searchParams` dependency, so the prefetch
+  path the measurement found stays closed.
+
+So: a model call belongs behind a deliberate tap. A DB read may sit behind a
+debounce. The answer block is the first; the company lookup is the second.
 
 **Why the wrong way looks right.** `/ask` is a server component and `?q=` is a
 `searchParams` read, so wiring the answer to it is the obvious move, matches
