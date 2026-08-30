@@ -2,7 +2,6 @@ export { AskDirectoryScreen } from "./ask-directory-screen";
 export {
   AskAnswerNotice,
   AskDestinationRow,
-  AskJumpRow,
   AskLookupRow,
   AskNotice,
   AskSectionRule,
@@ -10,10 +9,12 @@ export {
 export {
   ASK_DIRECTORY,
   ASSISTANT_HREF,
+  ASSISTANT_LABEL,
   CHIP_PROMPTS,
   SUGGESTED_PROMPTS,
 } from "./ask-data";
 export type { AskDirectoryRoute, DirectoryId } from "./ask-data";
+export type { AskDestinationCount } from "./ask-parts";
 /* `./fixture` and `./fixture-gate` are GONE, and the note they used to carry
    here goes with them. The barrel warned that re-exporting the fixture would
    put an invented answer one careless import away from the browser bundle.
