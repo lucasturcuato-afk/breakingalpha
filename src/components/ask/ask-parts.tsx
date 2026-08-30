@@ -206,7 +206,29 @@ export function AskDestinationRow({
 /* ── Company directory row ─────────────────────────────────────────── */
 
 export type AskLookupRowProps = {
-  href: string;
+  /**
+   * Proved to land, or null.
+   *
+   * A NULL HREF DRAWS THE ROW WITHOUT A LINK, and that is a state this row did
+   * not have before the field started searching the corpus. The standing
+   * directory never sends one: `buildAskCompanies` omits a row it cannot prove,
+   * because a row in a list of six ways in that opens nothing is a dead row. A
+   * SEARCH result does send them, because 9.5% of the corpus does not resolve
+   * from its own slug and dropping those would make the empty-result sentence
+   * claim the corpus has never heard of a company it carries.
+   *
+   * The row keeps its ticker, its name and its sector, loses its chevron, and
+   * is not a tap target. The count of them is stated in the copy above the
+   * list, so an absent chevron is explained rather than inferred.
+   */
+  href: string | null;
+  /**
+   * Passed straight to `next/link`. False on searched rows: the rows are links,
+   * and one keystroke over forty-nine of them already fired eight RSC
+   * prefetches of company pages, which is a fan-out that scales with the result
+   * set. The standing six keep the framework default.
+   */
+  prefetch?: boolean;
   /**
    * Null when the company carries no ticker. The chip keeps its 44px so the
    * names beside it stay on one left edge; nothing is drawn inside it.
@@ -236,21 +258,28 @@ export type AskLookupRowProps = {
  * The name ellipsizes and the tail goes with it, so a long name never pushes
  * the chevron off the row.
  */
-export function AskLookupRow({ href, ticker, name, detail, first = false, last = false }: AskLookupRowProps) {
-  return (
-    <Link
-      href={href}
-      style={{
-        ...CONTENT_BOX,
-        display: "flex",
-        alignItems: "center",
-        gap: "13px",
-        minHeight: "47px",
-        textDecoration: "none",
-        ...rowRule(last),
-        ...(first ? { marginTop: "12px" } : null),
-      }}
-    >
+export function AskLookupRow({
+  href,
+  ticker,
+  name,
+  detail,
+  prefetch,
+  first = false,
+  last = false,
+}: AskLookupRowProps) {
+  const box: CSSProperties = {
+    ...CONTENT_BOX,
+    display: "flex",
+    alignItems: "center",
+    gap: "13px",
+    minHeight: "47px",
+    textDecoration: "none",
+    ...rowRule(last),
+    ...(first ? { marginTop: "12px" } : null),
+  };
+
+  const inner = (
+    <>
       <span
         style={{
           flex: "none",
@@ -266,7 +295,11 @@ export function AskLookupRow({ href, ticker, name, detail, first = false, last =
           minWidth: 0,
           flex: 1,
           font: `500 14px/1.3 ${FONT_SANS}`,
-          color: "var(--c-ink)",
+          /* An unlinked row reads at the secondary weight of ink rather than at
+             full ink. It is still a real company and still legible; it is just
+             not a way in, and a row that looks exactly like its neighbours but
+             does nothing when tapped is worse than one that looks quieter. */
+          color: href !== null ? "var(--c-ink)" : "var(--c-secondary)",
           overflow: "hidden",
           textOverflow: "ellipsis",
           whiteSpace: "nowrap",
@@ -281,7 +314,19 @@ export function AskLookupRow({ href, ticker, name, detail, first = false, last =
           </span>
         ) : null}
       </span>
-      <Chevron direction="right" />
+      {/* No href, no chevron. A chevron on a row that opens nothing is the
+          affordance lying about itself, and the copy above the list already
+          says how many rows are in this state. */}
+      {href !== null ? <Chevron direction="right" /> : null}
+    </>
+  );
+
+  if (href === null) {
+    return <div style={box}>{inner}</div>;
+  }
+  return (
+    <Link href={href} prefetch={prefetch} style={box}>
+      {inner}
     </Link>
   );
 }

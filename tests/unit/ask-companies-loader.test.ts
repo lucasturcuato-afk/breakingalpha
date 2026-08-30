@@ -30,6 +30,7 @@ import assert from "node:assert/strict";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   buildAskCompanies,
+  buildHrefProver,
   loadAskCompanies,
   resolvesTo,
   type DirectoryReadRow,
@@ -199,4 +200,81 @@ test("a ticker the route cannot resolve is REPAIRED by the name branch, not drop
   );
   assert.equal(row.href, "/company/berkshire-hathaway");
   assert.equal(row.ticker, "BRK.B");
+});
+
+/* ── the corpus count, and the reach claim that rests on it ──────────── */
+
+/**
+ * A client that answers the two reads `loadAskCompanies` now makes, in the
+ * order `Promise.all` builds them: rows first, head count second.
+ */
+function clientForPair(rows: Result, count: Result & { count?: number | null }): SupabaseClient {
+  let nth = 0;
+  return {
+    from: () => {
+      const answer = nth++ === 0 ? rows : count;
+      const chain: Record<string, unknown> = {};
+      for (const method of ["select", "not", "order", "limit"]) {
+        chain[method] = () => chain;
+      }
+      chain.then = (ok: (v: unknown) => unknown, fail?: (e: unknown) => unknown) =>
+        Promise.resolve(answer).then(ok, fail);
+      return chain;
+    },
+  } as unknown as SupabaseClient;
+}
+
+test("the corpus count is read, not typed, and travels with the rows", async () => {
+  const load = await loadAskCompanies(
+    clientForPair({ data: ROWS, error: null }, { data: null, error: null, count: 5599 }),
+  );
+  assert.equal(load.corpusTotal, 5599);
+});
+
+test("a faulted count does not fault the directory, and draws no figure", async () => {
+  const load = await loadAskCompanies(
+    clientForPair(
+      { data: ROWS, error: null },
+      { data: null, error: { message: "57014 statement timeout" }, count: null },
+    ),
+  );
+  assert.equal(load.stage, "ready");
+  assert.ok(load.data !== null && load.data.length > 0);
+  /* Null and never 0. A zero here would say the corpus is empty, which is a
+     claim about the data that a failed count is not entitled to make. */
+  assert.equal(load.corpusTotal, null);
+});
+
+test("a faulted directory still carries a count that answered", async () => {
+  const load = await loadAskCompanies(
+    clientForPair(
+      { data: null, error: { message: "57014 statement timeout" } },
+      { data: null, error: null, count: 5599 },
+    ),
+  );
+  assert.equal(load.stage, "error");
+  assert.equal(load.data, null);
+  assert.equal(load.corpusTotal, 5599);
+});
+
+/* ── the prover, which the search route now runs over its own window ─── */
+
+test("the prover is monotone: a smaller window proves fewer rows, never a wrong one", () => {
+  /* The whole reason `GET /api/companies` may run this over a three-row search
+     result rather than the fifty this file reads. Both branches are existence
+     checks, so anything proved against a subset is true against the table. */
+  const wide = buildHrefProver(ROWS);
+  const narrow = buildHrefProver([ROWS[0]]);
+  assert.equal(wide(ROWS[0]), "/company/nvda");
+  assert.equal(narrow(ROWS[0]), "/company/nvda");
+
+  /* Alphabet proves through its own ticker in both windows. Anthropic proves
+     through its NAME, and only when its own row is in the window. */
+  assert.equal(wide(ROWS[1]), "/company/anthropic");
+  assert.equal(narrow(ROWS[1]), null);
+});
+
+test("the prover returns null rather than a href for a row that proves neither way", () => {
+  const prove = buildHrefProver(ROWS);
+  assert.equal(prove(ROWS[3]), null);
 });

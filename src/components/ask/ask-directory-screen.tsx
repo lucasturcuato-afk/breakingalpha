@@ -18,13 +18,40 @@ import {
   PAD,
 } from "./ask-parts";
 import { ASK_DIRECTORY, ASSISTANT_HREF, CHIP_PROMPTS, type DirectoryId } from "./ask-data";
-import { ASK_SHOWN, filterAskCompanies, filterBlurb } from "@/lib/ask-filter";
+import { useAskSearch } from "./use-ask-search";
+import {
+  ASK_SHOWN,
+  belowMinimumLine,
+  directoryLine,
+  pendingLine,
+  searchBlurb,
+  type AskSearchRow,
+} from "@/lib/ask-search";
 import type { AskCounters } from "@/lib/ask-counters";
 import type { AskCompaniesLoad } from "@/lib/ask-companies-data";
 import { FONT_DISPLAY, FONT_SANS } from "@/components/mobile/fonts";
 
 /**
  * Ask. Directory first, field at the top. One screen, no second one.
+ *
+ * THE FIELD REACHES THE CORPUS NOW, AND THAT IS WHAT CHANGED HERE LAST.
+ * It used to run `String.includes` over the fifty rows the server had already
+ * put in this payload, against a corpus of thousands. Under one percent of it.
+ * The probe that settles it is `starbucks`, a company the corpus carries with a
+ * ticker and hundreds of mentions: typing its name returned nothing. The copy
+ * said so honestly ("Nothing beyond this list was searched"), which is exactly
+ * why copy could not fix it. A reader only ever read that sentence after
+ * already failing, and it confirmed the ceiling rather than offering a way past
+ * it. The field now queries `GET /api/companies?q=`, debounced, and
+ * `src/lib/ask-filter.ts` is deleted along with the substring match.
+ *
+ * FOUR STATES THIS SCREEN HAS NEVER HAD. Both of the directory's states used to
+ * be resolved on the server before a byte was sent, which is why the note below
+ * says there is no skeleton here. A fetch adds pending, failed, stale and race.
+ * They are handled in `use-ask-search.ts` and drawn here, and none of them
+ * draws a skeleton: the rows already on screen stay while a search is in
+ * flight, one line of copy carries the state, and that line waits out the
+ * ordinary case before it appears so it cannot flash.
  *
  * WHAT THIS REPLACED, and why the shape changed rather than the copy. The Ask
  * pole root drew a heading, an intro, a rule, three 95px destination rows
@@ -39,23 +66,23 @@ import { FONT_DISPLAY, FONT_SANS } from "@/components/mobile/fonts";
  *
  *   1. NOTHING IS PINNED TO THE BOTTOM except the tab bar. The composer and the
  *      chip row are gone from the bottom chrome, which is what buys the room.
- *   2. THE FIELD MOVES TO THE TOP AND FILTERS. It narrows the rows the server
- *      already read, on the client, as the reader types. No endpoint, no second
- *      query, no model call, and no submit moment.
+ *   2. THE FIELD MOVES TO THE TOP. It filtered the payload when that move
+ *      shipped; it searches the corpus now, and the note at the top of this
+ *      file is the record of why. No model call and no submit moment either
+ *      way.
  *   3. THE DIRECTORY BECOMES THE SCREEN, directly under the field, rather than
  *      a section under a heading below three destinations.
  *   4. SECTOR DEMOTES to an inline tail, so a company row loses its second line.
  *   5. THE DESTINATIONS DEMOTE to one line each and carry a REAL figure with
  *      the window it covers spelled beside it.
  *
- * THE FIELD FILTERS ON A POLE CALLED ASK, AND THAT IS A KNOWN WATCH ITEM. A
- * reader who types a question into a field labelled "Filter companies" gets a
- * filtered list and a block saying this screen does not answer. That is the
- * honest behaviour rather than the ideal one, and it is deliberately NOT
+ * THE FIELD SEARCHES ON A POLE CALLED ASK, AND THAT IS STILL A WATCH ITEM. A
+ * reader who types a question into it gets companies whose names contain the
+ * words of that question, and a block saying this screen does not answer. That
+ * is the honest behaviour rather than the ideal one, and it is deliberately NOT
  * pre-solved: no mode toggle, no segmented control, no "did you mean to ask?"
- * affordance. The label says what the field does, the assistant sits one
- * deliberate tap below it, and the confusion is something to look for in
- * testing rather than to design around before it has been seen.
+ * affordance, and NO SECOND CONTROL. The field is right; what was wrong was its
+ * promise, and the promise is what moved.
  *
  * RULING 20 (`DECISIONS.md:249`), AND HOW THIS SATISFIES IT.
  * An answer block must never be a server render of `?q=`. The measurement
@@ -75,6 +102,22 @@ import { FONT_DISPLAY, FONT_SANS } from "@/components/mobile/fonts";
  *     called on any path the framework can reach.
  *
  * There is no answer block to server-render, because the answer screen is gone.
+ *
+ * THE FIELD NOW MAKES A CLIENT FETCH, AND THAT IS WHAT THE RULING PRESCRIBES
+ * RATHER THAN WHAT IT FORBIDS. Its title is "the Ask answer is a CLIENT FETCH
+ * ... never a server read of `?q=`", and the harm it measured was a model call
+ * reached by prefetch: `gemini-embedding-001` plus `gemini-2.5-flash` fired
+ * with no interaction, burning 2 of a reader's 15 daily messages before the
+ * cache was even checked. `GET /api/companies` imports `getSupabaseWithUser`
+ * and `normalizeLookupKey`, calls no model, and has no per-user budget. All
+ * three properties above are unchanged: the fetch writes nothing to the URL,
+ * so no keystroke produces a navigation the prefetcher can walk.
+ *
+ * ONE CLAUSE OF THE RULING IS OPEN AND IS NOT RESOLVED HERE. It says "behind an
+ * explicit submit", and a debounce is not a submit. It is in the PR body for
+ * the owner to rule on; if that clause is read as universal rather than as a
+ * property of the model call it was written about, this becomes a submit and
+ * `ASK_SEARCH_DEBOUNCE_MS` goes away.
  */
 
 const ICONS: Record<DirectoryId, ReactNode> = {
@@ -88,7 +131,7 @@ const ICONS: Record<DirectoryId, ReactNode> = {
  * offers them. It is one sentence because the field is directly under it and a
  * paragraph above a field is a delay.
  */
-const INTRO = "Filter the directory below, or ask the assistant.";
+const INTRO = "Search every company, or ask the assistant.";
 
 /**
  * What the field says it does, and it is the same string twice on purpose: the
@@ -97,22 +140,20 @@ const INTRO = "Filter the directory below, or ask the assistant.";
  * label drawn above it, which is what keeps a 16px field from inverting the
  * hierarchy against the 26px title.
  *
- * IT NAMES THE FILTER, NOT THE POLE. "Ask Signalera" or "Search Signalera"
- * would both promise something this field does not do. It filters companies, so
- * it says so, and the owner's ruling is explicit that the honest label goes on
- * and the confusion gets watched for rather than pre-solved.
- */
-const FIELD_LABEL = "Filter companies";
-
-/**
- * The directory's standing copy, drawn when nothing is typed.
+ * IT SAID "Filter companies" AND THAT WAS ACCURATE ABOUT A DEFECT. The field
+ * filtered fifty rows; the label described the filter; a reader read a true
+ * sentence and still could not reach Starbucks. The mechanism moved first, and
+ * the label moved with it rather than instead of it.
  *
- * The ordering is stated HERE, once, rather than as a figure on every row: a
- * mention count beside each name invites reading the column as a ranking of
- * importance, which a count of articles is not.
+ * WHY THIS STRING AND NOT A LONGER ONE. "any" carries the reach in one word.
+ * "name or ticker" carries the match rule, which is the whole of the honesty
+ * budget here: the search is a plain substring over two columns, so naming them
+ * is also the promise NOT to forgive a misspelling. It fits a 390 gutter at
+ * 16px without ellipsis, which a sentence naming the corpus size would not; the
+ * figure is carried by the section line below, where there is room for it.
  */
-const DIRECTORY_INTRO =
-  "Named most often across the coverage Signalera has ingested. Each row opens its primer, filings and financials.";
+const FIELD_LABEL = "Search any company or ticker";
+
 
 const ANSWER_NOTICE = {
   heading: "Not answered on this screen yet.",
@@ -142,11 +183,55 @@ export function AskDirectoryScreen({
   const seeded = useSearchParams().get("q") ?? "";
   const [query, setQuery] = useState(seeded);
 
-  const filtering = query.trim().length > 0;
-  const rows = companies.data;
-  const matched = rows === null ? null : filterAskCompanies(rows, query);
-  /* Every match when the reader is filtering, the standing six when not. */
-  const visible = matched === null ? null : filtering ? matched : matched.slice(0, ASK_SHOWN);
+  /* The one request this screen makes. Debounced, race-guarded, aborted on
+     supersede, and never issued under two characters. No model is called on
+     this path; see the Ruling 20 note above and `ask-search.ts`. */
+  const { state, pendingVisible } = useAskSearch(query);
+
+  const typing = query.trim().length > 0;
+  const standing = companies.data;
+  const corpusTotal = companies.corpusTotal;
+
+  /* WHICH ROWS ARE DRAWN, and the only branch that ever empties the list is a
+     search that answered with nothing. A pending search keeps whatever is
+     already on screen: the previous answer if there is one, the standing
+     directory if there is not. */
+  const searched = state.kind !== "off";
+  let rows: AskSearchRow[] | null;
+  if (state.kind === "ready") {
+    rows = state.rows;
+  } else if (state.kind === "pending") {
+    rows = state.held?.rows ?? standing?.slice(0, ASK_SHOWN) ?? null;
+  } else if (state.kind === "error") {
+    rows = null;
+  } else {
+    rows = standing?.slice(0, ASK_SHOWN) ?? null;
+  }
+
+  /* The one line under the section rule, and every state gets its own sentence.
+     A failed SEARCH is not drawn here at all; it takes the notice branch below,
+     because "could not be read" and "there is nothing here" are different
+     facts and this codebase keeps them in different shapes. */
+  let line: string | null;
+  if (state.kind === "ready") {
+    line = searchBlurb(state, corpusTotal);
+  } else if (state.kind === "pending") {
+    /* Nothing is SAID about the wait until it has outlasted the ordinary case.
+       Until then the standing sentence holds, and which sentence that is
+       follows the rows that are still drawn: the previous answer's own
+       sentence, or the directory line when there has not been one yet. */
+    line = pendingVisible
+      ? pendingLine(state.query, corpusTotal)
+      : state.held
+        ? searchBlurb(state.held, corpusTotal)
+        : directoryLine(corpusTotal);
+  } else if (state.kind === "error") {
+    line = null;
+  } else if (typing) {
+    line = belowMinimumLine(corpusTotal);
+  } else {
+    line = directoryLine(corpusTotal);
+  }
 
   return (
     <div
@@ -228,7 +313,7 @@ export function AskDirectoryScreen({
             Empty field: the assistant is one row away. Anything typed: the
             screen says plainly that it does not answer, and the same assistant
             is a full-width 44px action instead of a 126x14 inline link. */}
-        {filtering ? (
+        {typing ? (
           <AskAnswerNotice
             heading={ANSWER_NOTICE.heading}
             body={ANSWER_NOTICE.body}
@@ -240,43 +325,65 @@ export function AskDirectoryScreen({
 
         <AskSectionRule label="company intel" style={{ marginTop: "20px" }} />
 
-        {/* THERE IS NO SKELETON HERE. `/ask` is a server component and both
-            reads are awaited before a byte of the screen is sent, so a reader
-            can never observe this block mid-flight. A skeleton for a state that
-            cannot be reached is a drawing of a load, not a load. */}
-        {rows === null ? (
+        {/* STILL NO SKELETON, AND NOW THAT IS A DECISION RATHER THAN A FACT
+            ABOUT THE ROUTE. The standing directory is a server read awaited
+            before a byte is sent, so it cannot be observed mid-flight; the
+            SEARCH can. What it never does is replace real rows with drawn
+            ones: a pending search leaves the rows that are already there and
+            changes one line of copy, and it waits out the ordinary case
+            (`ASK_PENDING_VISIBLE_AFTER_MS`) before it changes even that. A
+            skeleton here would be a drawing of a load, not a load.
+
+            THE TWO FAILED READS ARE SEPARATE SENTENCES, because they are
+            separate facts. A search that could not run says so; a server read
+            that could not run says so; neither is allowed to render as "there
+            is nothing here". */}
+        {state.kind === "error" ? (
+          <AskNotice>
+            The search for “{state.query}” did not run. This is a failed request and not an empty
+            result: no company has been ruled out of coverage, and the answer is missing rather than absent.
+          </AskNotice>
+        ) : rows === null ? (
           <AskNotice>
             The company directory did not load. This is a failed read and not an empty one: no company has
             been ruled out of coverage, and the rows are missing rather than absent.
           </AskNotice>
-        ) : rows.length === 0 ? (
-          <AskNotice>The read answered with no companies, so there is nothing to list here yet.</AskNotice>
         ) : (
           <>
-            <p
-              style={{
-                margin: "8px 0 0",
-                font: `400 11.5px/1.5 ${FONT_SANS}`,
-                color: "var(--c-muted)",
-                textWrap: "pretty",
-              }}
-            >
-              {/* The second sentence of the filtered copy is the load-bearing
-                  one. The filter narrowed a list of fifty rows and says so; it
-                  does not claim to have searched the corpus, and it makes no
-                  typo-tolerance promise, because a substring match over fifty
-                  names cannot keep one. */}
-              {filtering ? filterBlurb(matched?.length ?? 0) : DIRECTORY_INTRO}
-            </p>
-            {visible?.map((company, i) => (
+            {line !== null ? (
+              <p
+                style={{
+                  margin: "8px 0 0",
+                  font: `400 11.5px/1.5 ${FONT_SANS}`,
+                  color: "var(--c-muted)",
+                  textWrap: "pretty",
+                }}
+              >
+                {line}
+              </p>
+            ) : null}
+            {/* An empty SEARCH result is the sentence above and no rows. It is
+                not a notice, because nothing failed: the corpus was read and it
+                carries no such name, which the sentence says outright along
+                with the reason a misspelling would land here. */}
+            {rows.length === 0 && !searched ? (
+              <AskNotice>The read answered with no companies, so there is nothing to list here yet.</AskNotice>
+            ) : null}
+            {rows.map((company, i) => (
               <AskLookupRow
                 key={company.id}
                 href={company.href}
                 ticker={company.ticker}
                 name={company.name}
                 detail={company.detail}
+                /* Searched rows do not prefetch. One keystroke over
+                   forty-nine linked rows already fired eight RSC prefetches of
+                   company pages, and a result set moves with every keystroke.
+                   The standing six keep the framework default: they are the
+                   same six on every visit and they are what a reader taps. */
+                prefetch={searched ? false : undefined}
                 first={i === 0}
-                last={i === visible.length - 1}
+                last={i === rows.length - 1}
               />
             ))}
           </>
