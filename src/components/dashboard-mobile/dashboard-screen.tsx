@@ -10,6 +10,7 @@ import { DESK_RECORD_COPY } from "@/lib/desk-record";
 import ledger from "@/components/ledger/ledger.module.css";
 import styles from "./dashboard.module.css";
 import { RecordBuckets } from "./record-buckets";
+import { ladderDelays } from "./entrance-ladder";
 import { FONT_DISPLAY, FONT_MONO, FONT_SANS } from "@/components/mobile/fonts";
 import type { DashboardData, DashMarketCell, DashStage, DashStory } from "./fixture";
 
@@ -40,48 +41,6 @@ import type { DashboardData, DashMarketCell, DashStage, DashStory } from "./fixt
  */
 
 const PAD = "var(--v3-pad)";
-
-/**
- * The stagger ladder. A uniform 60ms grid.
- *
- * README, github.md and the desktop call sites give three different sequences,
- * and none of them can be right for this screen because the mobile briefing
- * has seven sections against the desktop grid's eleven. The ladder that
- * shipped was read off the prototype's own dashReady MARKUP: 0, 80, 100, 140,
- * 180, 220, 260, 300, 340, 420. Nine of its ten steps are 40ms or 20ms.
- *
- * WHY THAT MARKUP IS NOT THE INTENT. The same prototype states the intent in
- * prose, in its design note (`design_handoff_signalera_mobile/Signalera Mobile
- * v3.dc.html` line 2866, verified, quoted exactly): "Content rises fourteen
- * pixels and settles on the same easing curve everywhere, staggered by about
- * sixty milliseconds down the landing so the page assembles in reading order
- * rather than appearing at once." Sixty is the drawn intent; the 40ms in the
- * markup is drift. The note is written about the LANDING, whose `v3rise`
- * keyframe really is 14px, while the dashboard mock's `dashRise` is 12px, so
- * the note understates travel for this screen and is not authority on the
- * amplitude. It is authority on the cadence, which is what is taken here.
- *
- * So: every rung on 60ms, in reading order, the eyebrow and the headline
- * sharing one rung as they do in the prototype because they are one block.
- *
- * WHAT IT COSTS. Last rung 420ms -> 540ms, so the ladder runs 1140ms -> 1260ms
- * end to end against an unchanged 720ms duration. 120ms longer, 10.5%. It buys
- * a cadence a reader can count instead of one that blurs into a single fade,
- * and it stays well inside the ~1.2s the gate already spends, so nothing about
- * the screen feels slower to arrive.
- */
-const D = {
-  dateRule: 0,
-  greeting: 60,
-  context: 120,
-  marketHead: 180,
-  marketBand: 240,
-  waiting: 300,
-  brief: 360,
-  yourRecord: 420,
-  deskRecord: 480,
-  stories: 540,
-} as const;
 
 export function DashboardScreen({
   stage = "ready",
@@ -157,6 +116,33 @@ export function DashboardScreen({
   const shown =
     answered === null ? null : storyLens === "you" ? answered.filter((s) => s.forYou) : answered;
 
+  /* THE LADDER IS COMPUTED, NOT DECLARED.
+   *
+   * Every test below is the SAME test the corresponding JSX branch makes a few
+   * lines down, and that is the whole mechanism: a rung's delay is its
+   * position among the rungs that exist on this render, so whatever subset a
+   * reader's data produces, the gaps between consecutive rungs are equal. A
+   * fixed table could not do that, because the holes move with the data. See
+   * `entrance-ladder.ts` for the measurement that forced this.
+   *
+   * `stories` is tested through `d.stories` and `shown` rather than through
+   * the lens, deliberately. `shown` is a filter of an answered list and is
+   * non-null whether or not the filter kept anything, so toggling For You
+   * cannot renumber the ladder underneath a reader who is already looking at
+   * it. */
+  const D = ladderDelays({
+    dateRule: true,
+    greeting: true,
+    context: Boolean(d.context),
+    marketHead: d.market.length > 0,
+    marketBand: d.market.length > 0,
+    waiting: Boolean(d.waiting),
+    brief: true,
+    yourRecord: Boolean(d.yourRecord),
+    deskRecord: Boolean(d.deskRecord),
+    stories: d.stories === "failed" || shown !== null,
+  });
+
   return (
     <div data-parity="dash" style={{ backgroundColor: "var(--c-bg)", minHeight: "100%" }}>
       <ScreenHead initials={d.initials} />
@@ -165,7 +151,15 @@ export function DashboardScreen({
           cannot be false is not a guard, it is a place for the next reader to
           assume one of the exits above is optional. */}
       <div className={styles.dots} style={{ padding: `0 ${PAD} 26px` }}>
-        <div className={styles.rise} style={{ display: "flex", alignItems: "center", gap: "11px" }}>
+        <div
+          className={styles.rise}
+          style={{
+            animationDelay: `${D.dateRule}ms`,
+            display: "flex",
+            alignItems: "center",
+            gap: "11px",
+          }}
+        >
           <span style={{ font: `400 italic 13px/1 ${FONT_DISPLAY}`, color: "var(--c-secondary)" }}>
             {d.date}
           </span>
@@ -222,13 +216,23 @@ export function DashboardScreen({
         {/* No cells, no band. An empty grid under a MARKET rule reads as a
             tape with nothing on it; an absent band reads as what it is. */}
         {d.market.length ? (
-          <MarketBand cells={d.market} editing={editing} onToggle={() => setEditing((v) => !v)} />
+          <MarketBand
+            cells={d.market}
+            headDelayMs={D.marketHead}
+            bandDelayMs={D.marketBand}
+            editing={editing}
+            onToggle={() => setEditing((v) => !v)}
+          />
         ) : null}
 
         {d.waiting ? (
           <>
             <SectionRule label="waiting for you" delayMs={D.waiting} />
-            <WaitingCard eyebrow={d.waiting.eyebrow} line={d.waiting.line} />
+            <WaitingCard
+              eyebrow={d.waiting.eyebrow}
+              line={d.waiting.line}
+              delayMs={D.waiting}
+            />
           </>
         ) : null}
 
@@ -350,6 +354,10 @@ export function DashboardScreen({
                 variant="desk"
                 byResolution={d.deskRecord.byResolution}
                 total={d.deskRecord.total}
+                /* The bars are anchored to the rung that introduces them, not
+                   to an absolute clock, so they land after their heading on
+                   every ladder length. */
+                barBaseMs={D.deskRecord}
               />
             )}
             {/* TODO: point at the Desk record once step 7 lands. Held on this
@@ -622,12 +630,19 @@ function Explainer({ text }: { text: string }) {
   );
 }
 
+/* Both delays come in from the screen. This block owns two consecutive rungs
+   under one condition, and the screen is the only place that knows where in
+   the rendered ladder they land. */
 function MarketBand({
   cells,
+  headDelayMs,
+  bandDelayMs,
   editing,
   onToggle,
 }: {
   cells: DashMarketCell[];
+  headDelayMs: number;
+  bandDelayMs: number;
   editing: boolean;
   onToggle: () => void;
 }) {
@@ -636,7 +651,7 @@ function MarketBand({
       <div
         className={styles.rise}
         style={{
-          animationDelay: `${D.marketHead}ms`,
+          animationDelay: `${headDelayMs}ms`,
           marginTop: "18px",
           display: "flex",
           alignItems: "center",
@@ -665,7 +680,7 @@ function MarketBand({
       <div
         className={styles.rise}
         style={{
-          animationDelay: `${D.marketBand}ms`,
+          animationDelay: `${bandDelayMs}ms`,
           marginTop: "2px",
           display: "grid",
           gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)",
@@ -807,7 +822,17 @@ function MarketCell({
   );
 }
 
-function WaitingCard({ eyebrow, line }: { eyebrow: string; line: string }) {
+/* Shares the rule's rung above it, so it takes the same delay rather than
+   deriving one: the rule and the card are one block. */
+function WaitingCard({
+  eyebrow,
+  line,
+  delayMs,
+}: {
+  eyebrow: string;
+  line: string;
+  delayMs: number;
+}) {
   return (
     <button
       type="button"
@@ -821,7 +846,7 @@ function WaitingCard({ eyebrow, line }: { eyebrow: string; line: string }) {
       className={`${styles.rise} ${ledger.bare}`}
       style={{
         cursor: "default",
-        animationDelay: `${D.waiting}ms`,
+        animationDelay: `${delayMs}ms`,
         marginTop: "12px",
         width: "100%",
         minHeight: "60px",
