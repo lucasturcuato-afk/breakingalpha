@@ -112,8 +112,8 @@ export function FormField({
           ...FIELD,
           marginTop: labelHidden ? "10px" : FIELD.marginTop,
           font: mono
-            ? `400 13px/1 ${FONT_MONO}`
-            : `400 13px/1 ${FONT_SANS}`,
+            ? `400 16px/1 ${FONT_MONO}`
+            : `400 16px/1 ${FONT_SANS}`,
           letterSpacing: mono ? "0.02em" : undefined,
         }}
       />

@@ -113,7 +113,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
                 setSelectedIndex(0);
               }}
               placeholder="Search pages, commands..."
-              className="flex-1 h-12 bg-transparent font-sans text-[14px] text-text-primary placeholder:text-text-faint outline-none"
+              className="flex-1 h-12 bg-transparent font-sans text-[16px] text-text-primary placeholder:text-text-faint outline-none"
             />
             <button
               type="button"

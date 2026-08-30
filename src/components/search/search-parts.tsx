@@ -140,11 +140,14 @@ export function SearchField({
             flex: 1,
             minWidth: 0,
             /* Fills the 46px the box leaves inside its own border, so the tap
-               target is the field the reader can see rather than the 14px line
-               box the text occupies. The design's own input measures 16px
-               tall, which is the one property parity reports as a mismatch. */
+               target is the field the reader can see rather than the line box
+               the text occupies.
+
+               16px is the iOS Safari floor: Safari zooms the viewport on focus
+               of any form control below it. `alignSelf: stretch` keeps the
+               drawn box at 46px, so the larger type costs no height. */
             alignSelf: "stretch",
-            font: `400 14px/1 ${FONT_SANS}`,
+            font: `400 16px/1 ${FONT_SANS}`,
             color: "var(--c-ink)",
           }}
         />
