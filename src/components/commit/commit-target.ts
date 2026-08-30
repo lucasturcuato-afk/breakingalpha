@@ -44,11 +44,20 @@ export interface CommitTarget {
 /**
  * Floor on a stored note, in characters, counted AFTER trimming.
  *
- * The note is part of what adopting a call means, not a phone enrichment, so
- * every surface that writes a row asks the same thing: the commit sheet, the
- * morning brief, the evening wrap, and desktop /radar/calls. Three surfaces
- * disagreeing about what a commitment requires is the defect ruling 11 closes,
- * and one literal in one pure module is what stops them drifting apart again.
+ * WHICH SURFACES APPLY IT IS NO LONGER "ALL OF THEM", and the split is ruled
+ * rather than incidental. `decisions/commit-note-optional-when-adopting.md`
+ * reverses the second half of ruling 11: authoring a claim still requires the
+ * reasoning, because the reasoning is the claim, so Compose keeps this floor.
+ * Adopting a call the desk already reasoned about does not, so the commit
+ * sheet asks for a note and requires none. `./commit-gate` is where that
+ * decision is made and is the only place that should decide it; this module
+ * still owns the literal, so the surfaces that DO gate cannot drift to two
+ * different numbers, which is the half of ruling 11 that still stands.
+ *
+ * Desktop /radar/calls (`src/components/calls/TrackCallControl.tsx`) still
+ * gates and is out of this change's scope. It adopts, so the ruling reaches
+ * it; nothing here is what stops it, and the recon records it as the one
+ * surface left to follow.
  *
  * Trimming is the load-bearing half. `sql/proposals/0033` writes the same
  * semantic into the column as `length(btrim(commit_note)) > 0`, and the adopt
