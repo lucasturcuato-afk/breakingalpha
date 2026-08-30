@@ -13,9 +13,23 @@ import {
   fetchRetentionCohorts,
   fetchActivation,
   fetchInstrumentationHealth,
+  fetchCohortOptions,
+  fetchKpiSummaryForCohort,
   type TimeWindow,
   type Segment,
+  type CohortOption,
 } from "@/lib/internal-kpis";
+
+const COHORT_ALL = "All";
+
+/** Human label for a cohort key. "unattributed" is a real bucket, not an error. */
+function cohortLabel(o: CohortOption): string {
+  if (o.cohort_key === "unattributed") return `unattributed (${o.member_count})`;
+  const parts = [o.cohort_institution, o.cohort_batch, o.cohort_source].filter(
+    Boolean,
+  );
+  return `${parts.join(" / ")} (${o.member_count})`;
+}
 
 export const dynamic = "force-dynamic";
 
@@ -83,7 +97,7 @@ function pctStr(v: number | null): string {
 export default async function InternalDashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ w?: string; seg?: string }>;
+  searchParams: Promise<{ w?: string; seg?: string; cohort?: string }>;
 }) {
   // Gate FIRST. Nothing below runs for a non-admin.
   await requireAdmin();
@@ -91,13 +105,28 @@ export default async function InternalDashboardPage({
   const sp = await searchParams;
   const win: TimeWindow = sp.w === "30d" ? "30d" : "7d";
   const segment: Segment = sp.seg === "usc" ? "USC" : sp.seg === "other" ? "other" : "All";
+  const cohortParam = sp.cohort && sp.cohort !== COHORT_ALL ? sp.cohort : null;
 
-  const [s, cohorts, activation, health] = await Promise.all([
+  const [baseSummary, cohorts, activation, health, cohortOptions] = await Promise.all([
     fetchKpiSummary(segment),
     fetchRetentionCohorts(segment),
     fetchActivation(segment),
     fetchInstrumentationHealth(),
+    fetchCohortOptions(),
   ]);
+
+  // Cohort scoping is a FILTER, not a redefinition: the scoped view's metric
+  // expressions are copied verbatim from internal_kpi_summary. When no cohort is
+  // selected, or the cohort migration has not been applied, this page renders
+  // exactly what it renders today from exactly the same view.
+  //
+  // cohortOptions === null means the migration is unapplied. That is rendered as
+  // an explicit notice rather than an empty dropdown, because a filter that
+  // silently offers nothing looks functional while measuring nothing.
+  const cohortCaptureAvailable = cohortOptions !== null;
+  const scoped = cohortParam ? await fetchKpiSummaryForCohort(cohortParam) : null;
+  const s = scoped ?? baseSummary;
+  const cohortMissing = cohortParam !== null && scoped === null;
 
   const winLabel = win === "30d" ? "30d" : "7d";
   const newUsersInWindow = win === "30d" ? s.new_users_30d : s.new_users_7d;
@@ -109,15 +138,16 @@ export default async function InternalDashboardPage({
 
   const pitch = `${SEG_LABEL[segment]}: ${s.weekly_actives} weekly actives of ${s.total_users} users, ${retention4w} four-week retention, WAPS ${pctStr(s.waps_pct)}${isAll && s.waitlist_count !== null ? `, ${s.waitlist_count} on the waitlist` : ""}.`;
 
-  // Toggle hrefs preserve the other dimension.
+  // Toggle hrefs preserve the other dimensions, cohort included.
+  const cohortQ = cohortParam ? `&cohort=${encodeURIComponent(cohortParam)}` : "";
   const segOptions = (["All", "USC", "other"] as Segment[]).map((seg) => ({
     label: SEG_LABEL[seg],
-    href: `/internal?w=${win}&seg=${SEG_PARAM[seg]}`,
+    href: `/internal?w=${win}&seg=${SEG_PARAM[seg]}${cohortQ}`,
     active: segment === seg,
   }));
   const winOptions = (["7d", "30d"] as TimeWindow[]).map((w) => ({
     label: w,
-    href: `/internal?w=${w}&seg=${SEG_PARAM[segment]}`,
+    href: `/internal?w=${w}&seg=${SEG_PARAM[segment]}${cohortQ}`,
     active: win === w,
   }));
 
@@ -135,6 +165,78 @@ export default async function InternalDashboardPage({
           <Toggle current={win} options={winOptions} />
         </div>
       </div>
+
+      {/*
+        Cohort filter. A plain GET form so this page stays a Server Component
+        with no client-side data fetching, matching how the window and segment
+        toggles already work. Selecting a cohort scopes the stat cards only.
+      */}
+      <form method="get" className="mt-6 flex flex-wrap items-center gap-2">
+        <input type="hidden" name="w" value={win} />
+        <input type="hidden" name="seg" value={SEG_PARAM[segment]} />
+        <label
+          htmlFor="cohort"
+          className="text-sm font-medium text-neutral-500 dark:text-neutral-400"
+        >
+          Cohort
+        </label>
+        <select
+          id="cohort"
+          name="cohort"
+          defaultValue={cohortParam ?? COHORT_ALL}
+          disabled={!cohortCaptureAvailable}
+          className="rounded-lg border border-neutral-200 bg-white px-3 py-1 text-sm text-neutral-900 disabled:opacity-50 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-100"
+        >
+          <option value={COHORT_ALL}>All cohorts</option>
+          {(cohortOptions ?? []).map((o) => (
+            <option key={o.cohort_key} value={o.cohort_key}>
+              {cohortLabel(o)}
+            </option>
+          ))}
+        </select>
+        <button
+          type="submit"
+          disabled={!cohortCaptureAvailable}
+          className="rounded-lg border border-neutral-200 px-3 py-1 text-sm text-neutral-600 disabled:opacity-50 dark:border-neutral-800 dark:text-neutral-300"
+        >
+          Apply
+        </button>
+        {cohortParam ? (
+          <a
+            href={`/internal?w=${win}&seg=${SEG_PARAM[segment]}`}
+            className="text-sm text-neutral-500 underline dark:text-neutral-400"
+          >
+            clear
+          </a>
+        ) : null}
+      </form>
+
+      {!cohortCaptureAvailable ? (
+        <p className="mt-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
+          Cohort capture is wired in the application but the schema migration is
+          NOT applied, so there is nothing to filter by yet. Apply
+          backend/migrations/UNAPPLIED-2026-08-28-signup-cohort-capture.sql to
+          turn this on. Until then every number below is unfiltered.
+        </p>
+      ) : null}
+
+      {cohortMissing ? (
+        <p className="mt-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
+          No rows for cohort <code>{cohortParam}</code>. Showing UNFILTERED
+          numbers. Treat this as a failure, not an empty cohort: a cohort listed
+          in the filter must return a row.
+        </p>
+      ) : null}
+
+      {cohortParam && !cohortMissing ? (
+        <p className="mt-3 rounded-xl border border-neutral-200 bg-neutral-50 p-3 text-xs text-neutral-600 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-400">
+          Scoped to cohort <code>{cohortParam}</code>. This scopes the STAT CARDS
+          only. The activation, retention and instrumentation tables below are
+          still on the {SEG_LABEL[segment]} segment and are NOT cohort-filtered,
+          so do not read them as belonging to this cohort. Waitlist and Companies
+          researched are global and show n/a under a cohort scope.
+        </p>
+      ) : null}
 
       <p className="mt-6 rounded-xl border border-neutral-900 bg-neutral-900 p-5 text-base font-medium text-neutral-50 dark:border-neutral-100 dark:bg-neutral-100 dark:text-neutral-900">
         {pitch}

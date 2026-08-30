@@ -29,6 +29,7 @@
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { isAllowlisted } from "@/lib/allowlist";
+import { EMPTY_COHORT, isEmptyCohort, type Cohort } from "@/lib/cohort";
 
 export type WaitlistRegisterResult =
   | { approved: true }
@@ -38,6 +39,11 @@ export interface WaitlistRegisterInput {
   email: string;
   name?: string | null;
   source?: string;
+  /**
+   * Signup attribution. Optional and always fail-open: a missing or unparseable
+   * cohort must never block a registration. See src/lib/cohort.ts.
+   */
+  cohort?: Cohort;
 }
 
 /**
@@ -56,12 +62,36 @@ function isUniqueViolation(error: { code?: string; message?: string }): boolean 
   return error.code === "23505" || /duplicate/i.test(error.message ?? "");
 }
 
+/**
+ * True when the failure is "that column does not exist".
+ *
+ * The cohort columns arrive via a migration that is deliberately left UNAPPLIED
+ * (backend/migrations/UNAPPLIED-2026-08-28-signup-cohort-capture.sql), so this
+ * code ships BEFORE the schema does. Without this guard, every waitlist insert
+ * would fail the moment this deploys, which would be a live signup outage
+ * caused by an analytics feature. Instead the insert retries without the cohort
+ * fields, so capture silently no-ops until a human runs the migration.
+ *
+ * 42703 is the Postgres undefined_column code; PGRST204 is PostgREST's schema
+ * cache reporting an unknown column.
+ */
+function isMissingColumn(error: { code?: string; message?: string }): boolean {
+  return (
+    error.code === "42703" ||
+    error.code === "PGRST204" ||
+    /column .* does not exist|could not find the '.*' column/i.test(
+      error.message ?? "",
+    )
+  );
+}
+
 export async function registerWaitlist(
   input: WaitlistRegisterInput,
 ): Promise<WaitlistRegisterResult> {
   const email = input.email.trim().toLowerCase();
   const name = input.name ?? null;
   const source = input.source ?? "waitlist_register";
+  const cohort = input.cohort ?? EMPTY_COHORT;
 
   const admin = makeServiceClient();
   if (!admin) {
@@ -80,10 +110,33 @@ export async function registerWaitlist(
   }
 
   // Non-approved: upsert into the waitlist, capturing new vs duplicate.
+  //
+  // FIRST TOUCH WINS for the cohort. This is an insert that tolerates the
+  // unique-email conflict, not an update, so a returning visitor keeps the
+  // cohort captured on their first visit. That is deliberate; see the header of
+  // src/lib/cohort.ts.
+  const baseRow = { email, name, source };
+  const cohortRow = isEmptyCohort(cohort)
+    ? baseRow
+    : {
+        ...baseRow,
+        cohort_source: cohort.source,
+        cohort_institution: cohort.institution,
+        cohort_batch: cohort.batch,
+      };
+
   let duplicate = false;
-  const { error: insertError } = await admin
-    .from("waitlist")
-    .insert({ email, name, source });
+  let { error: insertError } = await admin.from("waitlist").insert(cohortRow);
+
+  // Schema not migrated yet: retry without the cohort fields so a signup is
+  // never lost to an unapplied analytics migration.
+  if (insertError && cohortRow !== baseRow && isMissingColumn(insertError)) {
+    console.warn(
+      "[waitlist-register] cohort columns absent; retrying without attribution. " +
+        "Apply backend/migrations/UNAPPLIED-2026-08-28-signup-cohort-capture.sql to enable capture.",
+    );
+    ({ error: insertError } = await admin.from("waitlist").insert(baseRow));
+  }
 
   if (insertError) {
     if (isUniqueViolation(insertError)) {

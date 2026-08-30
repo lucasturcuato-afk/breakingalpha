@@ -11,6 +11,7 @@ import { createBrowserClient } from "@supabase/ssr";
 import { cn } from "@/lib/utils";
 import { isAllowlisted } from "@/lib/allowlist";
 import { postWaitlistRegister } from "@/lib/waitlist-register-client";
+import { cohortToQuery, parseCohortFromParams, type Cohort } from "@/lib/cohort";
 import { Mail, Lock, Eye, EyeOff, Check, X } from "lucide-react";
 import styles from "./landing.module.css";
 
@@ -46,6 +47,19 @@ function routeError(message: string): FieldErrors {
   return /password/i.test(message)
     ? { password: message }
     : { email: message };
+}
+
+/**
+ * Signup attribution carried on the landing URL, for example
+ * /?cs=pilot&ci=usc&cb=2026-09-wave-1. Unrecognized values normalize to null, so
+ * a normal visit captures nothing and behaves exactly as before.
+ */
+function cohort(): Cohort {
+  return parseCohortFromParams(
+    new URLSearchParams(
+      typeof window === "undefined" ? "" : window.location.search,
+    ),
+  );
 }
 
 export function WaitlistModal({
@@ -221,7 +235,7 @@ export function WaitlistModal({
           // email, idempotent, body ignored), sign out, and route to /waitlist.
           const approved = await isAllowlisted(supabase, email);
           if (!approved) {
-            await postWaitlistRegister(email, "landing_signin");
+            await postWaitlistRegister(email, "landing_signin", cohort());
             await supabase.auth.signOut();
             window.location.href = "/waitlist";
           } else {
@@ -245,7 +259,7 @@ export function WaitlistModal({
           // IGNORE the endpoint body (it never reveals approval) and ALWAYS show
           // "check your email". A non-approved user is routed to /waitlist later,
           // in /auth/callback, after they click the Supabase confirmation link.
-          await postWaitlistRegister(email, "landing_signup");
+          await postWaitlistRegister(email, "landing_signup", cohort());
           setSignupSuccess(true);
           setLoading(false);
         }
@@ -256,10 +270,16 @@ export function WaitlistModal({
 
   const handleGoogle = useCallback(async () => {
     const supabase = getSupabase();
+    // Cohort has to survive the Google round trip, so it rides redirectTo. This
+    // entry point carries no `next`, so the cohort is the only query it appends,
+    // and it appends nothing when nothing was captured.
+    const cohortQuery = cohortToQuery(cohort());
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
+        redirectTo: `${window.location.origin}/auth/callback${
+          cohortQuery ? `?${cohortQuery}` : ""
+        }`,
         queryParams: { access_type: "offline", prompt: "select_account" },
       },
     });

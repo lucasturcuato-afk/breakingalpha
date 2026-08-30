@@ -5,6 +5,7 @@ import { createBrowserClient } from "@supabase/ssr";
 import { isAllowlisted } from "@/lib/allowlist";
 import { postWaitlistRegister } from "@/lib/waitlist-register-client";
 import { postAuthDestination } from "@/lib/auth-redirect";
+import { cohortToQuery, parseCohortFromParams, type Cohort } from "@/lib/cohort";
 import { cn } from "@/lib/utils";
 import { Mail, Lock, Eye, EyeOff, Check } from "lucide-react";
 import Link from "next/link";
@@ -21,6 +22,20 @@ type AuthMode = "signin" | "signup";
 function destination(): string {
   return postAuthDestination(
     typeof window === "undefined" ? "" : window.location.search,
+  );
+}
+
+/**
+ * Signup attribution carried on the landing URL, for example
+ * /auth?cs=pilot&ci=usc&cb=2026-09-wave-1. Read at click time from the live URL
+ * for the same reason destination() is: avoiding a Suspense boundary on a page
+ * that otherwise needs none. Unrecognized values normalize to null.
+ */
+function cohort(): Cohort {
+  return parseCohortFromParams(
+    new URLSearchParams(
+      typeof window === "undefined" ? "" : window.location.search,
+    ),
   );
 }
 
@@ -68,7 +83,7 @@ export default function AuthPage() {
         // body ignored), sign out, and route to /waitlist.
         const approved = await isAllowlisted(supabase, email);
         if (!approved) {
-          await postWaitlistRegister(email, "auth_signin");
+          await postWaitlistRegister(email, "auth_signin", cohort());
           await supabase.auth.signOut();
           window.location.href = "/waitlist";
         } else {
@@ -95,7 +110,7 @@ export default function AuthPage() {
         // IGNORE the endpoint body (it never reveals approval) and ALWAYS show
         // "check your email". A non-approved user is routed to /waitlist later,
         // in /auth/callback, after they click the Supabase confirmation link.
-        await postWaitlistRegister(email, "auth_signup");
+        await postWaitlistRegister(email, "auth_signup", cohort());
         setSignupSuccess(true);
         setLoading(false);
       }
@@ -108,6 +123,11 @@ export default function AuthPage() {
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     );
 
+    // Cohort has to survive the Google round trip, so it rides redirectTo
+    // exactly as `next` does. Empty when nothing was captured, leaving the URL
+    // byte-identical to today.
+    const cohortQuery = cohortToQuery(cohort());
+
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
@@ -115,7 +135,7 @@ export default function AuthPage() {
        // appends ?code=, so `next` is how the adopt target survives Google.
        redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(
           destination(),
-        )}`,
+        )}${cohortQuery ? `&${cohortQuery}` : ""}`,
         queryParams: {
           access_type: "offline",
           prompt: "select_account",
