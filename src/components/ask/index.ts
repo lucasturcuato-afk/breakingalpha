@@ -1,27 +1,22 @@
-export { AskBrowseScreen } from "./ask-browse-screen";
-export type { AskStage } from "./ask-browse-screen";
-export { AskAnswerScreen } from "./ask-answer-screen";
-export { AskComposer } from "./ask-composer";
+export { AskDirectoryScreen } from "./ask-directory-screen";
 export {
-  AskDirectoryRow,
+  AskAnswerNotice,
+  AskDestinationRow,
+  AskJumpRow,
   AskLookupRow,
   AskNotice,
   AskSectionRule,
-  AskSkeleton,
 } from "./ask-parts";
-/* `./fixture` is NOT re-exported here. `ask-composer` is a client component
-   and this barrel sits above it, so re-exporting the invented answer would put
-   it one careless import away from the browser bundle. The server page imports
-   `./fixture` by path instead. Everything below is invented nothing. */
-export { ASK_FIXTURE_ENABLED } from "./fixture-gate";
 export {
-  ANSWER_CHIP_PROMPTS,
   ASK_DIRECTORY,
+  ASSISTANT_HREF,
   CHIP_PROMPTS,
-  EMPTY_KB_ANSWER,
   SUGGESTED_PROMPTS,
 } from "./ask-data";
-/* `AskLookup` is gone with the recent-lookups list it described. The company
-   directory's row shape lives beside its read, in
-   `src/lib/ask-companies-data.ts`, because nothing about it is a fixture. */
-export type { AskBrowseData, AskAnswerData, AnswerBlock } from "./ask-data";
+export type { AskDirectoryRoute, DirectoryId } from "./ask-data";
+/* `./fixture` and `./fixture-gate` are GONE, and the note they used to carry
+   here goes with them. The barrel warned that re-exporting the fixture would
+   put an invented answer one careless import away from the browser bundle.
+   There is no invented answer any more: the answer screen is deleted, and the
+   three destination figures are real reads in `src/lib/ask-counters.ts`. There
+   is nothing left on this screen for a gate to guard. */

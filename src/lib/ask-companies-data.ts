@@ -63,8 +63,9 @@
  * Ticker coverage does fall, 92% to 83%, and THE NAME BRANCH ABSORBS IT
  * EXACTLY: 5 rows at depth 50, 77 at depth 500. Prove-out is flat. So depth is
  * not a correctness constraint here and the read could go deeper safely.
- * It is shallow for the ordinary reason instead: the block draws six rows, and
- * a 500 row read to render six is 494 rows fetched to be thrown away.
+ * It is shallow for the ordinary reason instead: the block draws six rows and
+ * the field filters fifty, so a 500 row read would be 450 rows fetched to sit
+ * unread in a payload.
  *
  * NO STALENESS AND NO CLOCK. Nothing here records when the corpus last moved,
  * and "as of" over a `last_updated` column would be a claim about the pipeline
@@ -115,19 +116,32 @@ export type AskCompaniesStage = "ready" | "error";
  * 50 to depth 500 (the table in the header), so this could be deeper and is
  * not, because six rendered rows do not justify five hundred fetched ones.
  *
- * SHOWN is six rather than the prototype's three because three rows out of a
- * corpus this size read as a sample rather than as a way in.
+ * HOW MANY ROWS ARE DRAWN IS NOT DECIDED HERE ANY MORE. `ASK_SHOWN` lives in
+ * `src/lib/ask-filter.ts`, beside the filter that overrides it, because the
+ * screen is a client component and this module is not importable from one: it
+ * pulls `company-intel`, `aliasResolver` and the companies route in to prove
+ * every href, and none of that belongs in a browser bundle. It is six rather
+ * than the prototype's three because three rows out of a corpus this size read
+ * as a sample rather than as a way in.
  *
- * IT IS NOT A FIT. An earlier version of this comment claimed six was what the
- * scroll region fits at 390 without running past the composer. Measured on the
- * running page at 390x844: the region is `clientHeight` 497 against
- * `scrollHeight` 798, and exactly ONE row is fully visible before the reader
- * scrolls. Every count above one is a scroll, so six is a choice about how far
- * the list goes, not about what fits, and the number should be argued on that
- * ground or moved.
+ * IT IS A FIT NOW, AND IT WAS NOT BEFORE. An earlier version of this comment
+ * claimed six was what the scroll region fits at 390 without running past the
+ * composer; a later one retracted that, having measured `clientHeight` 497
+ * against `scrollHeight` 886 with exactly ONE row fully visible. The screen no
+ * longer pins a composer or a chip row to the bottom, which gives the scroll
+ * region the room back. Measured on a production build after that change; the
+ * figures are in the PR body. Six is still a choice about how far the list
+ * goes, and it is now a choice the fold agrees with.
+ *
+ * EVERY PROVED ROW IS BUILT, NOT ONLY THE SIX THAT ARE DRAWN, and that is what
+ * changed here. The field at the top of the screen filters this list on the
+ * client, so the rows it filters have to be in the payload. `buildAskCompanies`
+ * therefore caps at the read depth and the screen decides how many of them to
+ * draw when nothing is typed. The cost is fifty rows of four short fields in
+ * the RSC payload instead of six, which is what buys a filter with no endpoint,
+ * no second query and no model call behind it.
  */
 const READ_LIMIT = 50;
-const SHOWN = 6;
 
 /** The columns the directory needs. A subset of what `/api/companies` selects. */
 const DIRECTORY_COLS = "id, name, ticker, sector";
@@ -222,7 +236,10 @@ function provedHref(
  * Rows to directory entries. Pure, so the unit test can drive it without a
  * client, and exported for that reason.
  */
-export function buildAskCompanies(rows: DirectoryReadRow[], shown: number = SHOWN): AskCompanyRow[] {
+export function buildAskCompanies(
+  rows: DirectoryReadRow[],
+  shown: number = READ_LIMIT,
+): AskCompanyRow[] {
   const tickers = new Set(
     rows.map((r) => r.ticker?.trim().toUpperCase() ?? "").filter((t) => t.length > 0),
   );

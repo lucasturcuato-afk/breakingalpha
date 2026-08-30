@@ -83,13 +83,11 @@ const IconAsk = (stroke: string) => (
  * that: no back control may carry the literal, and the Ask entry's href and
  * `owns` must both be this constant.
  *
- * TWO OTHER `/ask` LITERALS EXIST and are deliberately not this constant:
+ * ONE OTHER `/ask` LITERAL EXISTS and is deliberately not this constant. The
+ * second one this note used to list, `ask-answer-screen.tsx`'s chevron with
+ * `replace`, is gone: that screen is deleted and `?q=` is a state of the Ask
+ * root rather than a second screen to come back from.
  *
- *   ask-answer-screen.tsx  a chevron with `replace`. It clears `?q=` and
- *                          returns to the screen the reader is already on.
- *                          That is a same-route affordance, not the pole's
- *                          destination, and if the pole moved this should not
- *                          follow it. Different rule, so a different literal.
  *   proxy.ts               `MOBILE_REDESIGN_DEV_PATHS`. This one CANNOT share
  *                          the constant: proxy runs as Node middleware outside
  *                          the React graph and importing a `"use client"`
