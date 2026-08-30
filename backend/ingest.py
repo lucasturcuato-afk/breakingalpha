@@ -187,6 +187,35 @@ WATCHLIST_GATE_EXCEPTION = _int_env("WATCHLIST_GATE_EXCEPTION", 0)
 #: Which watchlist entry types may rescue an article. See above.
 WATCHLIST_EXCEPTION_TYPES = ("ticker", "company")
 
+#: Keys apply_relevance_grade stamps on `result` so the grader's own verdict
+#: survives to the store and to the audit log. Before these, grade_relevance
+#: produced a band and a ~200-char reason on EVERY call and both were dropped on
+#: the floor: the stored relevance_reason comes from the FILTER, so nothing on a
+#: stored row explained the score the gate was applied to.
+GRADE_REASON_KEY = "relevance_grade_reason"
+GRADE_BAND_KEY = "relevance_band"
+#: The pre-grader score, kept in memory only (never a column). Under `new` the
+#: grader OVERWRITES relevance_score, so without this the filter's own number is
+#: unrecoverable by the time anything downstream could compare the two.
+LEGACY_SCORE_KEY = "legacy_relevance_score"
+
+# How many grader-rejected articles to print per run, 0 = off.
+#
+# WHY. An article the grader scores below the gate is dropped, so no row exists,
+# and the gate loop prints only on the PASS branch. The single largest filter in
+# the pipeline is therefore invisible: there is no record, anywhere, of what it
+# has been throwing away. This samples that population into the run log so false
+# negatives can be read rather than guessed at.
+#
+# LOG ONLY. Nothing is stored and the gate is not consulted or changed.
+GRADER_REJECT_LOG_SAMPLE = _int_env("GRADER_REJECT_LOG_SAMPLE", 50)
+
+#: Score range treated as "rejected" for the audit log. Deliberately independent
+#: of RELEVANCE_NEW_GATE: the point is to inspect the bottom of the grader's own
+#: distribution, which does not move when the gate does. Each logged line still
+#: reports whether the article was ACTUALLY dropped on this run.
+GRADER_REJECT_LOG_MAX_SCORE = 2
+
 # Shadow-window sampling: shadow mode pays for BOTH models (legacy Flash-Lite stays
 # authoritative AND the new Flash grade is computed). To bound that cost during the
 # observation window, the new grade is computed for only a SAMPLED fraction of
@@ -1200,8 +1229,15 @@ def apply_relevance_grade(article, result):
         return result
     grade = grade_relevance(article)
     if grade is not None:
+        # Keep the filter's score before the grader overwrites it. In memory
+        # only: it is not a column, it exists so the two scorers can be compared
+        # in the same breath in the reject log.
+        result[LEGACY_SCORE_KEY] = result.get("relevance_score")
         result["relevance_score"] = grade["score"]
-        result["relevance_band"] = grade["band"]
+        result[GRADE_BAND_KEY] = grade["band"]
+        # grade_relevance has always produced this and it has always been
+        # discarded here. Stored from sql/0034 onward.
+        result[GRADE_REASON_KEY] = grade["reason"]
         _mark_grade_source(result, GRADE_SOURCE_GRADER)
     else:
         # Grader failed. The legacy score stays, exactly as before -- the only
@@ -2682,6 +2718,30 @@ def _grade_source_column_available():
     return _GRADE_SOURCE_COLUMN_AVAILABLE
 
 
+#: Cached probe for the sql/0034 grader-explanation columns. Same hand-apply
+#: contract as the two probes above.
+_GRADE_EXPLANATION_COLUMNS_AVAILABLE = None
+
+
+def _grade_explanation_columns_available():
+    """True when articles.relevance_grade_reason / relevance_band exist."""
+    global _GRADE_EXPLANATION_COLUMNS_AVAILABLE
+    if _GRADE_EXPLANATION_COLUMNS_AVAILABLE is not None:
+        return _GRADE_EXPLANATION_COLUMNS_AVAILABLE
+    try:
+        supabase.table("articles").select(
+            "relevance_grade_reason, relevance_band"
+        ).limit(1).execute()
+        _GRADE_EXPLANATION_COLUMNS_AVAILABLE = True
+    except Exception as ex:
+        _GRADE_EXPLANATION_COLUMNS_AVAILABLE = False
+        print("  relevance-grade: articles.relevance_grade_reason / "
+              "relevance_band missing (apply "
+              f"sql/0034_articles_relevance_grade_explanation.sql) - not storing "
+              f"the grader's reason or band ({ex})")
+    return _GRADE_EXPLANATION_COLUMNS_AVAILABLE
+
+
 def _article_row(article, analysis, clean_companies):
     """Build the articles-table insert row. Shared by store_article (legacy) and
     store_articles_batch so the column shape can never drift between them."""
@@ -2734,6 +2794,14 @@ def _article_row(article, analysis, clean_companies):
     # than being guessed.
     if _grade_source_column_available():
         row["relevance_grade_source"] = analysis.get(GRADE_SOURCE_KEY)
+    # The grader's OWN explanation of the score, which is not what
+    # relevance_reason holds: that column carries the FILTER's reason, written by
+    # a different model against a different prompt, and under `new` the score it
+    # sits next to has since been replaced. Both stay NULL for SEC-pinned rows and
+    # for legacy fallbacks, where the grader produced no verdict to record.
+    if _grade_explanation_columns_available():
+        row[GRADE_REASON_KEY] = analysis.get(GRADE_REASON_KEY)
+        row[GRADE_BAND_KEY] = analysis.get(GRADE_BAND_KEY)
     return row
 
 
@@ -3218,6 +3286,60 @@ def _persist_ingest_run_stats(payload):
           f"only record (apply sql/0028_ingest_observability.sql): {first_error}")
 
 
+def _log_grader_rejects(fresh, results, relevant, ingest_gate):
+    """Print a sample of the articles the grader scored at the bottom.
+
+    LOG ONLY. Reads the outcome the gate loop already produced and prints; it
+    stores nothing, and it neither consults nor changes the gate.
+
+    Membership is decided by identity against `relevant`, not by re-evaluating
+    the gate predicate. A second copy of that predicate here could disagree with
+    the loop's (it already has one exception arm) and would then report drops
+    that did not happen, which is worse than no log at all.
+
+    Sampling is a STRIDE across the candidate list, not the first N. The list
+    arrives in fetch order, which is source-major, so the first 50 would be 50
+    articles from whichever feed happens to be first. A stride spreads the sample
+    across every source at no cost and stays deterministic, so two people reading
+    the same run see the same lines.
+    """
+    if GRADER_REJECT_LOG_SAMPLE <= 0:
+        return
+    stored = {id(a) for a, _r in relevant}
+    candidates = [
+        (a, r) for a, r in zip(fresh, results)
+        if r
+        and r.get(GRADE_SOURCE_KEY) == GRADE_SOURCE_GRADER
+        and (r.get("relevance_score") or 0) <= GRADER_REJECT_LOG_MAX_SCORE
+    ]
+    if not candidates:
+        print(f"  [3/4] grader-reject audit: no grader-scored article at or below "
+              f"{GRADER_REJECT_LOG_MAX_SCORE}")
+        return
+
+    n = min(GRADER_REJECT_LOG_SAMPLE, len(candidates))
+    step = len(candidates) / n
+    sample = [candidates[int(i * step)] for i in range(n)]
+    dropped_total = sum(1 for a, _r in candidates if id(a) not in stored)
+
+    print(f"  [3/4] grader-reject audit: {len(candidates)} articles scored "
+          f"<={GRADER_REJECT_LOG_MAX_SCORE} by the grader, {dropped_total} of them "
+          f"dropped at gate {ingest_gate}; sampling {n}")
+    print("  [3/4] GRADER_REJECT columns: dropped | grader | filter | band | "
+          "publisher | title | reason")
+    for a, r in sample:
+        print(
+            "  GRADER_REJECT "
+            f"dropped={'yes' if id(a) not in stored else 'no '} "
+            f"grader={r.get('relevance_score')} "
+            f"filter={r.get(LEGACY_SCORE_KEY)} "
+            f"band={(r.get(GRADE_BAND_KEY) or '?')[:20]} "
+            f"publisher={(a.get('publisher') or a.get('source') or '?')[:28]!r} "
+            f"title={(a.get('title') or '')[:90]!r} "
+            f"reason={(r.get(GRADE_REASON_KEY) or '')[:200]!r}"
+        )
+
+
 def _watchlist_exception_matcher():
     """Compiled matcher over ticker/company watchlist identifiers, or None.
 
@@ -3395,6 +3517,10 @@ def run_ingestion():
         f"below-gate {gate_dropped['below_gate']}), "
         f"rescued-by-watchlist {gate_rescued}"
     )
+    # Sampled audit of what the grader put at the bottom. Placed here, after the
+    # loop, so `relevant` is final and the log reports what actually happened
+    # rather than what a re-evaluated predicate says should have.
+    _log_grader_rejects(fresh, results, relevant, ingest_gate)
     grade_sources = _grade_source_snapshot()
     if grade_sources:
         print("  [3/4] grade source: " + ", ".join(

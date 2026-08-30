@@ -46,6 +46,7 @@ _FLAGS = (
     ("RELEVANCE_GRADE_MODEL", "ingest.py:91", "str", "<GEMINI_MODEL>", (), ""),
     ("RELEVANCE_NEW_GATE", "ingest.py:156", "int_env", "1", (), ""),
     ("WATCHLIST_GATE_EXCEPTION", "ingest.py:185", "int_env", "0", (), ""),
+    ("GRADER_REJECT_LOG_SAMPLE", "ingest.py:211", "int_env", "50", (), ""),
     ("RELEVANCE_GRADE_SHADOW_SAMPLE_RATE", "ingest.py:114", "float", "0.10", (), ""),
     ("GRADER_SKIP_IRRELEVANT", "ingest.py:126", "truthy", "", (), ""),
     ("FILTER_PARALLEL_WORKERS", "ingest.py:153", "int", "50", (), ""),

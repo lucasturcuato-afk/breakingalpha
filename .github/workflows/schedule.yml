@@ -99,6 +99,19 @@ jobs:
           # SAFE TO MAP: _int_env coerces the EMPTY STRING an unset repo Variable
           # renders to 0, so an unset Variable is off rather than a ValueError.
           WATCHLIST_GATE_EXCEPTION: ${{ vars.WATCHLIST_GATE_EXCEPTION }}
+          # GRADER_REJECT_LOG_SAMPLE, read at backend/ingest.py via _int_env.
+          # Repo VARIABLE, not a secret. How many grader-rejected articles to
+          # print per run under the greppable tag GRADER_REJECT. 0 = off.
+          #
+          # LOG ONLY: nothing is stored and the gate is untouched. It exists
+          # because an article the grader scores at the bottom is dropped, so no
+          # row exists, and the gate loop prints only on the PASS branch -- the
+          # largest filter in the pipeline has no record of what it discards.
+          #
+          # Default 50. Raise it to widen the sample; the cost is log lines.
+          # SAFE TO MAP: _int_env coerces the EMPTY STRING an unset repo Variable
+          # renders to the default rather than raising ValueError at import.
+          GRADER_REJECT_LOG_SAMPLE: ${{ vars.GRADER_REJECT_LOG_SAMPLE }}
           # INGEST_FRESHNESS_DAYS, read at backend/ingest.py via _int_env.
           # Repo VARIABLE, not a secret (a small integer). Feed-entry age cutoff
           # in days; default 7, unchanged from the previous hardcoded constant.
