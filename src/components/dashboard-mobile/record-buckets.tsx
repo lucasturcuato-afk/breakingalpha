@@ -50,8 +50,26 @@ const DESK_FILL: Record<Resolution, string> = {
   notGraded: "var(--c-secondary)",
 };
 
-/** The stagger under the desk's four bars, in the design's order. */
-const BAR_DELAY = [360, 400, 440, 480];
+/**
+ * The stagger under the desk's four bars, in the design's order.
+ *
+ * ANCHORED TO `D.deskRecord` IN `dashboard-screen.tsx`, not to an absolute
+ * clock. These were 360/400/440/480 against a section rule at 340, so +20/+60/
+ * +100/+140 after their own heading. The rise ladder moved to a uniform 60ms
+ * grid and that rule is now at 480, so the whole sub-ladder shifts by the same
+ * 140ms and keeps the offsets it was drawn with. Left where they were, the
+ * bars would have swept in BEFORE the heading they belong to.
+ *
+ * The 40ms internal cadence is deliberately NOT widened with the rise ladder.
+ * These are `barSweepIn`, a horizontal scaleX sweep across the bar's own
+ * width, not a 22px vertical rise, so the front-loaded-curve problem that
+ * forced the rise ladder wider does not apply: there is no small displacement
+ * to lose. Four bars reading as one gesture is the drawn intent.
+ *
+ * The last bar at 620ms + its 400ms duration is spent at 1020ms, inside the
+ * rise ladder's 1260ms, so this does not extend the entrance.
+ */
+const BAR_DELAY = [500, 540, 580, 620];
 
 function BucketLabel({ text, dot }: { text: string; dot?: string }) {
   return (

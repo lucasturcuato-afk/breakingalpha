@@ -42,27 +42,45 @@ import type { DashboardData, DashMarketCell, DashStage, DashStory } from "./fixt
 const PAD = "var(--v3-pad)";
 
 /**
- * The stagger ladder.
+ * The stagger ladder. A uniform 60ms grid.
  *
- * README, github.md and the desktop call sites give three different
- * sequences, and none of them can be right for this screen because the mobile
- * briefing has seven sections against the desktop grid's eleven. These are the
- * delays the prototype's own dashReady block carries, read off the markup:
- * the date rule at rest, the greeting block at 80 and 100, the market band at
- * 140 and 180, waiting-for-you at 220, the brief card at 260, your record at
- * 300, the desk's at 340, top stories at 420.
+ * README, github.md and the desktop call sites give three different sequences,
+ * and none of them can be right for this screen because the mobile briefing
+ * has seven sections against the desktop grid's eleven. The ladder that
+ * shipped was read off the prototype's own dashReady MARKUP: 0, 80, 100, 140,
+ * 180, 220, 260, 300, 340, 420. Nine of its ten steps are 40ms or 20ms.
+ *
+ * WHY THAT MARKUP IS NOT THE INTENT. The same prototype states the intent in
+ * prose, in its design note (`design_handoff_signalera_mobile/Signalera Mobile
+ * v3.dc.html` line 2866, verified, quoted exactly): "Content rises fourteen
+ * pixels and settles on the same easing curve everywhere, staggered by about
+ * sixty milliseconds down the landing so the page assembles in reading order
+ * rather than appearing at once." Sixty is the drawn intent; the 40ms in the
+ * markup is drift. The note is written about the LANDING, whose `v3rise`
+ * keyframe really is 14px, while the dashboard mock's `dashRise` is 12px, so
+ * the note understates travel for this screen and is not authority on the
+ * amplitude. It is authority on the cadence, which is what is taken here.
+ *
+ * So: every rung on 60ms, in reading order, the eyebrow and the headline
+ * sharing one rung as they do in the prototype because they are one block.
+ *
+ * WHAT IT COSTS. Last rung 420ms -> 540ms, so the ladder runs 1140ms -> 1260ms
+ * end to end against an unchanged 720ms duration. 120ms longer, 10.5%. It buys
+ * a cadence a reader can count instead of one that blurs into a single fade,
+ * and it stays well inside the ~1.2s the gate already spends, so nothing about
+ * the screen feels slower to arrive.
  */
 const D = {
   dateRule: 0,
-  greeting: 80,
-  context: 100,
-  marketHead: 140,
-  marketBand: 180,
-  waiting: 220,
-  brief: 260,
-  yourRecord: 300,
-  deskRecord: 340,
-  stories: 420,
+  greeting: 60,
+  context: 120,
+  marketHead: 180,
+  marketBand: 240,
+  waiting: 300,
+  brief: 360,
+  yourRecord: 420,
+  deskRecord: 480,
+  stories: 540,
 } as const;
 
 export function DashboardScreen({
