@@ -106,7 +106,15 @@ export function PrimerKeyStats({ quote, loading }: PrimerKeyStatsProps) {
         >
           {loading
             ? "Loading market data..."
-            : "Market data not available. This company is private, pre-IPO, or not currently quoted."}
+            : /* WHY THIS DOES NOT SAY WHY. `quote` is null for four different
+                 reasons, and the prop comment above says so: private,
+                 price-only, an error, or still loading. This component cannot
+                 tell them apart from its own inputs, so naming three of them as
+                 fact was a guess presented as a finding, and it read as
+                 "private" whenever the real cause was a failed fetch. Alvotech
+                 is quoted on NASDAQ and got this sentence. State the thing that
+                 is true and stop there. */
+              "Market data is not available for this company."}
         </p>
       )}
     </section>
