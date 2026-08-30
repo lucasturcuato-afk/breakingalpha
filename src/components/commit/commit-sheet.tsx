@@ -126,12 +126,12 @@ export function CommitSheet({ target, onDismiss, onCommitted }: CommitSheetProps
   const hintId = useId();
 
   /* Anything at all in the field, once trimmed. This is NOT a gate: nothing
-     is withheld below it. It is what the field's own border and its hint line
+     is locked below it. It is what the field's own border and its hint line
      respond to, so a reader who writes gets an acknowledgement and a reader
      who does not is never told they failed a check. */
   const hasNote = note.trim().length > 0;
 
-  /* The only thing that can withhold the press is a write already in flight.
+  /* The only thing that can lock the press is a write already in flight.
      `noteSatisfiesGate(_, "adopted")` is constantly true and is called anyway,
      so the sheet names which side of the ruling it is on at the one place the
      decision is used rather than in a comment that can drift from the code. */

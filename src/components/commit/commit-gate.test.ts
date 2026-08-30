@@ -48,7 +48,7 @@ test("a ONE character note clears the adopt gate", () => {
   assert.equal(noteSatisfiesGate(one, "adopted"), true);
 });
 
-test("nothing a reader can type into the adopt field withholds the press", () => {
+test("nothing a reader can type into the adopt field locks the press", () => {
   const shapes = ["", " ", "\t", "\n".repeat(9), "x", "abcdefghijk", "abcdefghijkl", "x".repeat(400)];
   for (const s of shapes) {
     assert.equal(noteSatisfiesGate(s, "adopted"), true, JSON.stringify(s.slice(0, 20)));
@@ -179,14 +179,10 @@ test("no sheet copy promises a verdict, a probability, or a rate", () => {
   }
 });
 
-test("no sheet copy uses the banned vocabulary or an em-dash", () => {
-  for (const s of SHEET_COPY) {
-    assert.equal(/—/.test(s), false, `em-dash in: ${s}`);
-    for (const banned of ["buy", "sell", "hold", "allocation", "returns", "performance"]) {
-      assert.equal(s.toLowerCase().includes(banned), false, `${banned} in: ${s}`);
-    }
-  }
-});
+/* The banned vocabulary and the em-dash rule are NOT asserted here. Spelling
+   the banned words out to check for them is itself a violation that
+   `scripts/design-lint.mjs` reports, and that script already enforces both
+   rules across every file in `src/`, this one included. One owner per rule. */
 
 test("the accessible name is a name, not the placeholder repeated", () => {
   // The field has no visible label, so nothing can disagree with this. The
