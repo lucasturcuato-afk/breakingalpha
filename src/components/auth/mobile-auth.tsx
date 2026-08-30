@@ -50,7 +50,7 @@ const FIELD_INPUT = {
   outline: "none",
   background: "transparent",
   fontFamily: FONT_SANS,
-  fontSize: 13,
+  fontSize: 16,
   fontWeight: 400,
   lineHeight: 1,
   color: "var(--c-ink)",

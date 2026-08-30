@@ -1419,7 +1419,7 @@ function WaitlistBlock({ onWaitlist }: { onWaitlist: () => void }) {
             borderRadius: 4,
             backgroundColor: "var(--c-card)",
             fontFamily: FONT_MONO,
-            fontSize: 13,
+            fontSize: 16,
             fontWeight: 400,
             lineHeight: 1,
             color: "var(--c-ink)",

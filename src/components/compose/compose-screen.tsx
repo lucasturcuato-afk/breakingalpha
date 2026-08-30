@@ -888,7 +888,7 @@ export function ComposeScreen({
             placeholder="The reasoning a reader of your record will judge."
             style={{
               minHeight: "64px",
-              font: `400 italic 14.5px/1.6 ${FONT_DISPLAY}`,
+              font: `400 italic 16px/1.6 ${FONT_DISPLAY}`,
               color: "var(--c-ink)",
             }}
           />
