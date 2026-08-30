@@ -274,7 +274,7 @@ test("the prover is monotone: a smaller window proves fewer rows, never a wrong 
   assert.equal(narrow(ROWS[1]), null);
 });
 
-test("the prover returns null rather than a href for a row that proves neither way", () => {
+test("the prover gives null rather than a href for a row that proves neither way", () => {
   const prove = buildHrefProver(ROWS);
   assert.equal(prove(ROWS[3]), null);
 });

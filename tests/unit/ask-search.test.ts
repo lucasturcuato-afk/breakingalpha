@@ -249,7 +249,7 @@ test("the standing line carries the corpus size and the reach, not just the orde
   assert.equal(line.includes("5,064"), false);
 });
 
-test("below two characters the screen says what one more character buys", () => {
+test("below two characters the screen says what one more character reaches", () => {
   const line = belowMinimumLine(CORPUS);
   assert.equal(line.includes("5,599"), true);
   assert.equal(line.toLowerCase().includes("one more character"), true);
