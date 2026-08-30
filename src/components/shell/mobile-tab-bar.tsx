@@ -21,7 +21,7 @@ import { FONT_SANS } from "@/components/mobile/fonts";
  * 2px offset, 4px radius.
  */
 
-type Pole = {
+export type Pole = {
   label: string;
   href: string;
   icon: (stroke: string) => ReactNode;
@@ -68,6 +68,54 @@ const IconAsk = (stroke: string) => (
 );
 
 /**
+ * THE ASK POLE'S DESTINATION. One definition for the pole table and for every
+ * back control that means "wherever the Ask pole goes".
+ *
+ * Three mobile screens draw a back control labelled Ask: `deals-screen.tsx`,
+ * `feed-mobile-screen.tsx` and `trends-mobile/trends-screen.tsx`. Each one
+ * had this route hardcoded, each comment said it aimed at "the Ask pole's own
+ * destination", and PR #736 moved the pole from /intelligence to /ask without
+ * touching any of them. Three copies of a rule with one owner is how that
+ * happened, and it is the fourth time this repo has paid for it: see #713,
+ * see #721, see #738, and a fourth copy of `slugToCompanyName`. The pole table
+ * below reads this constant, the three screens import it, and the next pole
+ * move is one edit. `tests/unit/ask-pole-href.test.ts` holds both halves of
+ * that: no back control may carry the literal, and the Ask entry's href and
+ * `owns` must both be this constant.
+ *
+ * TWO OTHER `/ask` LITERALS EXIST and are deliberately not this constant:
+ *
+ *   ask-answer-screen.tsx  a chevron with `replace`. It clears `?q=` and
+ *                          returns to the screen the reader is already on.
+ *                          That is a same-route affordance, not the pole's
+ *                          destination, and if the pole moved this should not
+ *                          follow it. Different rule, so a different literal.
+ *   proxy.ts               `MOBILE_REDESIGN_DEV_PATHS`. This one CANNOT share
+ *                          the constant: proxy runs as Node middleware outside
+ *                          the React graph and importing a `"use client"`
+ *                          module from it is not available. Structural, not a
+ *                          choice, and the reason it is called out here rather
+ *                          than fixed.
+ *
+ * It lives here, in the file that owns the pole table, rather than in a new
+ * shared module, because the destination and the table have to move together.
+ * The one constraint that buys: this module is `"use client"`, so every export
+ * of it is a client reference when a Server Component imports it. All three
+ * consumers are `"use client"` and the only importer of the bar itself
+ * (`app-shell.tsx`) is too, so nothing crosses the boundary today.
+ *
+ * A SERVER COMPONENT MUST NOT IMPORT THIS, AND THE FAILURE IS SILENT. Measured
+ * on a probe server page: `tsc` 0 errors, `build` exit 0, no warning anywhere.
+ * On the server the export is a client-reference FUNCTION, not a string, so
+ * `ASK_POLE_HREF === "/ask"` is false and `.startsWith` does not exist. A
+ * string operation on it renders a JavaScript error message into the page as
+ * an attribute value. Passing it straight to `href` happens to emit /ask,
+ * which is accidental and must not be relied on. Nothing catches this; a
+ * reader has to know it, which is why it is written here.
+ */
+export const ASK_POLE_HREF = "/ask";
+
+/**
  * The four poles, in the design's order.
  *
  * `owns` lists only routes whose pole is settled by the handoff's navigation
@@ -75,7 +123,11 @@ const IconAsk = (stroke: string) => (
  * /radar/track-record, /radar/desk-record, /radar/theses) are deliberately
  * absent, so they light no pole rather than being assigned by guesswork.
  */
-const POLES: Pole[] = [
+/* Exported for `tests/unit/ask-pole-href.test.ts`, which asserts the invariant
+   the Ask entry's own comment states: a pole whose href is missing from its
+   `owns` list goes dark the moment the reader arrives on it. Nothing in the
+   app imports this; the bar renders it in place. */
+export const POLES: Pole[] = [
   {
     label: "Today",
     href: "/dashboard",
@@ -209,7 +261,7 @@ const POLES: Pole[] = [
        `href`, so /company, /deal-flow, /trends and /live-feed all still light
        this pole exactly as before. */
     label: "Ask",
-    href: "/ask",
+    href: ASK_POLE_HREF,
     icon: IconAsk,
     owns: [
       "/intelligence",
@@ -223,7 +275,7 @@ const POLES: Pole[] = [
          /ask is this pole's destination as well as a member of its list, and it
          has to be both: `isActive` reads `owns` alone, so a pole whose href is
          missing from its own list goes dark the moment the reader arrives. */
-      "/ask",
+      ASK_POLE_HREF,
       "/search",
       "/trends-mobile",
       "/signal",
