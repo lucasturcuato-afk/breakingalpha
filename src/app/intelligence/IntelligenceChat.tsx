@@ -93,26 +93,34 @@ function ChatMessageFeedback({ outputId, children }: { outputId?: string | null;
   return (
     <div ref={ref as React.RefObject<HTMLDivElement>}>
       {children}
-      {/* THE THUMBS ARE 15x15 AND THIS UNIT DELIBERATELY LEFT THEM THAT WAY.
-          Measured, so the next reader does not have to: each button is 15x15
-          around an 11px glyph, well under the 44px floor. But the wrapper is
-          `opacity-0` revealed only by `group-hover/msg`, and Tailwind compiles
+      {/* THE KEYBOARD HALF IS FIXED HERE. THE TOUCH HALF IS DELIBERATELY OPEN.
+
+          These two buttons are 15x15 around an 11px glyph, under the 44px
+          floor, and until this change they were also unreachable: the wrapper
+          is `opacity-0` revealed by `group-hover/msg`, and Tailwind compiles
           every `hover:` variant inside `@media (hover: hover)`. On a touch
           context `matchMedia("(hover: hover)")` is false, so the measured
-          opacity is 0 with and without a synthetic hover: the control is
-          unreachable by construction, not merely small. Worse, `b.focus()`
-          succeeds and `document.activeElement === b` while the wrapper opacity
-          is still 0, so a keyboard user lands on an invisible control, which is
-          a 2.4.7 failure stacked on top of the touch one.
-          Sizing without reachability would produce a 44px target nobody can
-          see, which is strictly worse than today, so it is both or neither.
-          Both is not a tap-target fix: it means revealing two permanently
-          visible 44px buttons under every assistant answer on every touch
-          device, which changes what a message looks like and needs a design
-          owner and its own measurements at 320 through 430. This unit had
-          neither, so it changed nothing here and wrote the defect down. */}
+          opacity was 0 with and without a synthetic hover.
+
+          Two defects, and they are NOT welded together, which is the thing to
+          get right. `focus-within:opacity-100` closes the keyboard one on its
+          own: before it, `b.focus()` succeeded and
+          `document.activeElement === b` while the wrapper sat at opacity 0, so
+          a keyboard user tabbed onto a control they could not see, a 2.4.7
+          failure. Now the wrapper reveals when either button takes focus. That
+          costs no design decision, adds no permanently visible control, and a
+          reader on a touch device sees nothing change.
+
+          WHAT IS STILL OPEN, ON PURPOSE: the 15x15 size and the touch
+          reachability. Those two do move together, because raising a control
+          nobody can see to 44px produces a 44px target nobody can see, which is
+          worse than today. Doing both means two permanently visible 44px
+          buttons under every assistant answer on every touch device, which
+          changes what a message looks like. That is a design decision with an
+          owner and it needs its own measurements at 320 through 430. Not this
+          unit's to make, so it is written down rather than guessed at. */}
       {outputId && (
-        <div className="flex items-center gap-1 mt-1.5 opacity-0 group-hover/msg:opacity-100 transition-opacity">
+        <div className="flex items-center gap-1 mt-1.5 opacity-0 group-hover/msg:opacity-100 focus-within:opacity-100 transition-opacity">
           <button
             type="button"
             onClick={() => setThumbs(thumbs === "up" ? null : "up")}
