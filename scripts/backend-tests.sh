@@ -68,7 +68,7 @@ done
 
 echo "==> GATING tier: backend/ minus ${#QUARANTINED[@]} quarantined test(s)"
 set +e
-"$PY" -m pytest backend/ -q -p no:cacheprovider --tb=short -rfE "${DESELECT[@]}"
+"$PY" -m pytest backend/ tools/ -q -p no:cacheprovider --tb=short -rfE "${DESELECT[@]}"
 RC=$?
 set -e
 

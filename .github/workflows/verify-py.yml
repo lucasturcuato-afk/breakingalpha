@@ -9,6 +9,7 @@ on:
   pull_request:
     paths:
       - 'backend/**'
+      - 'tools/**'
       - 'requirements*.txt'
       - 'ruff.toml'
       - 'scripts/verify-py.sh'
@@ -22,6 +23,7 @@ on:
       - main
     paths:
       - 'backend/**'
+      - 'tools/**'
       - 'requirements*.txt'
       - 'ruff.toml'
       - 'scripts/verify-py.sh'
