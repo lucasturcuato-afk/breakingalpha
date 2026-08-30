@@ -112,3 +112,6 @@ parity-*.json
 #
 # Root-anchored like its neighbours above, for the reason stated there.
 /scratchpad/
+
+# Pressure walk output. Regenerated on every run; not a source artifact.
+/pressure-report/
