@@ -37,15 +37,15 @@ import type { OutcomeState } from "@/components/ledger/claim-anatomy";
  *                  destination. Drawing it here as a first-class row would
  *                  reinstate a surface the product demoted.
  *
- * Every href below resolves to a route that exists on this branch. Three
- * differ from the palette's own href, and the reasons are not the same:
+ * Every href below resolves to a route that exists on this branch. THREE ROWS
+ * are not a plain copy of the palette, and they are not the same case: two
+ * differ from the palette's href, one differs from the prototype instead.
+ *
+ * DIFFER FROM THE PALETTE:
  *
  *   Morning Brief  the palette sends this to /morning-brief; the prototype
  *                  fires goLedger. The Ledger IS the mobile morning brief, so
  *                  it goes to /ledger.
- *   Tracked Views  the prototype fires goRecord, which is the Desk record
- *                  screen. That screen is not built, so this keeps the
- *                  palette's live href rather than aiming at a 404.
  *   Trends         the palette sends this to /trends, which is the desk page.
  *                  This list is only ever tapped on a phone, and /trends at
  *                  390 carries no breakpoint prefixes anywhere in the file and
@@ -54,6 +54,15 @@ import type { OutcomeState } from "@/components/ledger/claim-anatomy";
  *                  in the Ask pole's `owns` list, so the pole still lights.
  *                  The desk page keeps its route; it is simply not where a
  *                  phone reader should be dropped.
+ *
+ * DIFFERS FROM THE PROTOTYPE, AND KEEPS THE PALETTE'S HREF:
+ *
+ *   Tracked Views  the prototype fires goRecord, which is the Desk record
+ *                  screen. That screen is not built, so this keeps the
+ *                  palette's live href rather than aiming at a 404. Against
+ *                  `command-palette.tsx` this row is character-identical
+ *                  (/radar/calls?views=open); it is listed here because it is
+ *                  a deviation from the design, not from the palette.
  */
 
 export type JumpRow = { label: string; href: string };
