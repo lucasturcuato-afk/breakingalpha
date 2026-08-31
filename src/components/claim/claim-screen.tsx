@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { ClaimAnatomy, Chevron } from "@/components/ledger";
-import { UNGRADEABLE_REASON } from "@/components/calls/TrackCallControl";
 import { useCommitSheet } from "@/components/commit/commit-sheet-provider";
 import type { ClaimData, ClaimStage } from "@/lib/claim-data";
 import styles from "./claim.module.css";
@@ -99,7 +98,7 @@ export function ClaimScreen({
      into the marker with no toast. */
   const commit = useCommitSheet();
 
-  const showsClaim = data !== null && (stage === "ready" || stage === "ungradeable");
+  const showsClaim = data !== null && stage === "ready";
   const settlement = data?.settlement;
   const showsSettlement =
     showsClaim &&
@@ -200,13 +199,11 @@ export function ClaimScreen({
       {showsClaim ? (
         <ActionBar
           variant={data.variant}
-          ungradeable={stage === "ungradeable"}
-          /* Gated the way `ledger-screen.tsx:209-211` gates the card, plus two
-             conditions the Ledger does not need. The Ledger draws today's
-             brief, so its cards are open by construction; this screen can be
-             reached by a bookmark long after the card is gone, and the loader's
-             `variant` carries the closed window and the already-graded call
-             that the Ledger never has to describe. */
+          commitReason={data.commitReason}
+          /* Gated the way `ledger-screen.tsx` gates the card, on the SAME
+             condition, computed once in `src/lib/commit-legality.ts` and read
+             by both loaders. The two surfaces used to test different things and
+             reached opposite conclusions about the same five call ids. */
           onTrack={
             data.variant === "open" && commit
               ? () =>
@@ -246,7 +243,7 @@ function SettlementRow({ label, value }: { label: string; value: string }) {
 }
 
 /**
- * The bottom bar. Four renderings, and only one of them carries a control.
+ * The bottom bar. Three renderings, and only one of them carries a control.
  *
  * THE SQUARE IS NOT A CONTROL, and that is a correction rather than a
  * simplification. It shipped here as a button with an authored label ("Save
@@ -281,50 +278,50 @@ function SettlementRow({ label, value }: { label: string; value: string }) {
  * inherits the note gate, the press, the write and the failure path. Nothing in
  * `src/components/commit/` changed to make that work.
  *
- * WHY THE BAR ALWAYS SAYS SOMETHING. Four conditions remove the control, and
- * the first build explained one of them and swallowed three. A reader who saw
- * Track on one call and nothing on the next could not tell a settled call from
- * a broken screen, and that INCONSISTENCY is the defect: the missing verdict is
- * not. So each condition states its reason in the register `UNGRADEABLE_REASON`
- * set, and none of them states an outcome. There is still no verdict on this
- * screen: the design has no slot for one, and the desk's verdict answers a
- * different question from the reader's own, which `src/lib/claim-outcome.ts`
- * enforces by construction.
+ * WHY THE BAR ALWAYS SAYS SOMETHING. A reader who saw Track on one call and
+ * nothing on the next could not tell a settled call from a broken screen, and
+ * that INCONSISTENCY is the defect: the missing verdict is not. So the reason
+ * is stated, in the register `COMMIT_BLOCK_REASON` sets, and it states no
+ * outcome. There is still no verdict on this screen: the design has no slot for
+ * one, and the desk's verdict answers a different question from the reader's
+ * own, which `src/lib/claim-outcome.ts` enforces by construction.
  *
- * Adopting a closed call is worse than useless, which is why none of the four
- * keeps the control: the adopt route silently writes `gradeable: false`
- * (adopt/route.ts:141-149), a commitment that can never settle.
+ * The commitment is withheld for exactly one kind of reason, and it is a fact
+ * about the CALL: no instrument to measure against, no direction to measure,
+ * or a claim type the price grader cannot resolve. Those are the three
+ * tests `isAdoptGradeable` applies before the adopt route writes `gradeable`,
+ * so a control withheld here matches a row the route would refuse.
+ *
+ * IT USED TO WITHHOLD ON THREE MORE, and none of the three was a fact about
+ * the reader. `graded`, `windowClosed` and `noWindow` all describe the DESK's
+ * window, which the row a commit writes never touches: the reader's window
+ * opens today and `grade_user_claims.py` resolves it on the reader's own dates. On the five calls in the live brief
+ * this screen printed "there is nothing left to commit to" while /ledger
+ * committed to the same ids successfully. The comment that justified it cited
+ * the adopt route writing a hardcoded `gradeable: false`, which that route
+ * stopped doing when it started writing a forward window.
+ * `src/lib/commit-legality.ts` carries the argument and the read paths.
  */
 
-/**
- * Why the commitment is not on offer. One line per condition, in the register
- * `UNGRADEABLE_REASON` set, and no outcome word in any of them.
- *
- * `noWindow` is the one that matters most by volume: 305 of 416 rows carry no
- * resolve_on, so on any address older than about five weeks this is the line
- * the screen ends on.
- */
-const NO_COMMITMENT_REASON: Record<"graded" | "windowClosed" | "noWindow", string> = {
-  graded: "The desk has already checked this call, so there is nothing left to commit to.",
-  windowClosed: "This call's window has closed, so there is nothing left to commit to.",
-  noWindow: "This call has no review date on record, so there is no window to commit to.",
-};
 function ActionBar({
   variant,
-  ungradeable,
+  commitReason,
   onTrack,
 }: {
   variant: ClaimData["variant"];
-  ungradeable: boolean;
+  commitReason: string | null;
   onTrack?: () => void;
 }) {
   const onLedger = variant === "onLedger";
+  /* The sentence, straight off the loader. It is the same string /ledger prints
+     on the same call, because both come out of COMMIT_BLOCK_REASON. A screen
+     that reworded it here would be a second copy of the rule, said
+     differently. */
+  const reason = variant === "ungradeable" ? commitReason : null;
   /* The one case with no bar at all: an open call on a screen with no provider
      above it, which is a wiring mistake rather than a state a reader reaches.
      Every other path below draws either a control or a sentence. */
-  const reason =
-    !onLedger && !ungradeable && variant !== "open" ? NO_COMMITMENT_REASON[variant] : null;
-  if (!onLedger && !ungradeable && reason === null && !onTrack) return null;
+  if (!onLedger && reason === null && !onTrack) return null;
 
   return (
     <div
@@ -358,7 +355,7 @@ function ActionBar({
           </span>
           On your ledger
         </div>
-      ) : ungradeable || reason !== null ? (
+      ) : reason !== null ? (
         <p
           style={{
             margin: 0,
@@ -366,7 +363,7 @@ function ActionBar({
             color: "var(--c-muted)",
           }}
         >
-          {ungradeable ? UNGRADEABLE_REASON : reason}
+          {reason}
         </p>
       ) : (
         <>

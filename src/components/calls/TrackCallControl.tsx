@@ -53,6 +53,7 @@ import {
    would drag createPortal and next/navigation into the brief, the wrap and
    /radar/calls bundles to read two integers. commit-target imports nothing. */
 import { COMMIT_NOTE_MAX, COMMIT_NOTE_MIN } from "@/components/commit/commit-target";
+import { COMMIT_BLOCK_REASON } from "@/lib/commit-legality";
 
 /**
  * The reason to commit. Shown ONCE beneath a section heading, never per card.
@@ -60,9 +61,11 @@ import { COMMIT_NOTE_MAX, COMMIT_NOTE_MIN } from "@/components/commit/commit-tar
  * Describes the STANDARD, not a promised event: the window cannot be moved after
  * the fact, and the bar is the same benchmark attribution the desk's own calls
  * are held to (literally the same grader: backend/grading/price_attribution.py
- * serves both). It deliberately does not say a verdict will arrive, because
- * adopted claims are not yet in the grading due-scan
- * (backend/grading/grade_user_claims.py filters source = 'authored').
+ * serves both). It deliberately does not say a verdict WILL arrive on any given
+ * day, only what standard it is held to. Adopted claims are in the due-scan:
+ * backend/grading/grade_user_claims.py reads source in ('authored','adopted')
+ * and resolves each over its own window. The parenthetical here used to say
+ * they were excluded, which stopped being true when that scan widened.
  *
  * Repeating it above every card turned the strongest sentence in the product
  * into wallpaper. Said once, it is read once and believed.
@@ -70,9 +73,16 @@ import { COMMIT_NOTE_MAX, COMMIT_NOTE_MIN } from "@/components/commit/commit-tar
 export const TRACK_TRUST_LINE =
   "Your window is fixed the moment you commit, and misses stay on your record. Same benchmark-attribution bar as the desk's own calls: a move the market explains is not a hit.";
 
-/** Why a call cannot be committed to. Stated, never silently hidden. */
-export const UNGRADEABLE_REASON =
-  "No honest grader for this claim type yet, so there is nothing to commit to.";
+/**
+ * Why a call cannot be committed to. Stated, never silently hidden.
+ *
+ * RE-EXPORTED, not declared. The sentence now lives in `src/lib/commit-legality`
+ * beside the predicate that decides when it applies, so a lib and a loader can
+ * read it without importing a client component, and the three surfaces that
+ * print it cannot drift. The old declaration here was the only copy, which is
+ * why the mobile Claim screen had to reach into this file for a string.
+ */
+export const UNGRADEABLE_REASON = COMMIT_BLOCK_REASON.notPriceable;
 
 /**
  * The note gate, as a function, so the twelve is testable with no DOM.
