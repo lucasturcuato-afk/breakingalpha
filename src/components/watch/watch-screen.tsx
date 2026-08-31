@@ -187,8 +187,34 @@ export function WatchScreen({
   stage = "ready",
   data,
   onRetry,
+  segment,
+  nav,
 }: {
   stage?: WatchStage;
+  /**
+   * WHICH OF RADAR'S FOUR SECTIONS THIS IS. REQUIRED, with no default, so a
+   * call site has to say which one it is drawing rather than inheriting
+   * whichever the last author happened to write first.
+   *
+   * This screen used to draw both tiers in one scroll under one masthead, and
+   * that masthead led on the watchlist, which is exactly why the surface read
+   * as a renamed watchlist while the desk had four tabs. Each tier is now its
+   * own route and its own section, and this prop is the switch. Only two of
+   * Radar's four sections live in this component; Calls and Desk record are
+   * their own screens because their data has nothing to do with this loader.
+   */
+  segment: "watchlist" | "following";
+  /**
+   * The section row, supplied by the route. REQUIRED, so a Radar route cannot
+   * ship without the navigation that makes its three siblings reachable, which
+   * is the failure this whole surface exists to correct.
+   *
+   * Passed in rather than imported here for one reason: this component is one
+   * of three screens under the row, and the other two are `DeskRecordScreen`
+   * and `CallsScreen`. A row each screen imported for itself would be a row no
+   * route owns and three places to forget it.
+   */
+  nav: React.ReactNode;
   /**
    * REQUIRED and NULLABLE, and never defaulted to the sample content. Two
    * separate reasons, and the second is the one that blocked PR #653.
@@ -251,7 +277,8 @@ export function WatchScreen({
           flexDirection: "column",
         }}
       >
-        <WatchMasthead />
+        {nav}
+        <WatchMasthead segment={segment} />
         {/* STILL CENTRED, and this is the one branch that is. The block below
             distributes its free space across the seams the layout already has,
             which is what stops a short screen reading as a hole under the
@@ -281,9 +308,21 @@ export function WatchScreen({
             padding: `18px ${PAD} 24px`,
           }}
         >
+          {/* The section names itself in both halves. This branch used to say
+              "whose watchlist" on a screen that also drew what the reader
+              follows; now each section is its own route, so the sentence can
+              name the one thing that was not read instead of the pair. */}
           <WatchNotice
-            heading="Could not work out whose watchlist to read."
-            body="Your session did not resolve, so nothing was read. This is not an empty watchlist, and nothing you track has been lost."
+            heading={
+              segment === "watchlist"
+                ? "Could not work out whose watchlist to read."
+                : "Could not work out whose follows to read."
+            }
+            body={
+              segment === "watchlist"
+                ? "Your session did not resolve, so nothing was read. This is not an empty watchlist, and nothing you track has been lost."
+                : "Your session did not resolve, so nothing was read. This is not an empty follow list, and nothing you follow has been lost."
+            }
             onRetry={retry}
           />
         </div>
@@ -310,11 +349,19 @@ export function WatchScreen({
     (lens === "all" || lens === "public") && data.quietNames.length > 0;
   const followRows = data.following.reduce((n, c) => n + c.rows.length, 0);
 
-  /* A screen with no cards and no rows in either tier. Reported on the root so
-     a test and a measurement script can name the state they are looking at;
-     the centring below does not depend on it. */
+  /* A section with no cards and no rows. Reported on the root so a test and a
+     measurement script can name the state they are looking at; the slack
+     distribution below does not depend on it.
+
+     SCOPED TO THE SECTION BEING DRAWN. This used to require both tiers to be
+     empty, which was right when both were on one screen and is wrong now: with
+     the sections split, a populated watchlist would have reported the
+     Following route "populated" while it drew nothing at all. The attribute
+     has to describe what is on the screen, or it is worse than absent. */
   const sparse =
-    (watchlistFailed || visible.length === 0) && (followingFailed || followRows === 0);
+    segment === "watchlist"
+      ? watchlistFailed || visible.length === 0
+      : followingFailed || followRows === 0;
 
   /* LOADING IS ITS OWN NAME, and it outranks the other two.
      `sparse` is computed off `data`, which under `stage: "loading"` is whatever
@@ -347,8 +394,9 @@ export function WatchScreen({
         flexDirection: "column",
       }}
     >
+      {nav}
       <Slack grow={SLACK_LEAD} />
-      <WatchMasthead />
+      <WatchMasthead segment={segment} />
 
       {/* THE SLACK IS SPREAD ACROSS THE LAYOUT'S OWN SEAMS, not dumped in one
           place. This replaces `justifyContent: center` on this block, and the
@@ -407,6 +455,15 @@ export function WatchScreen({
         ) : null}
 
         {/* ── watchlist ──────────────────────────────────────────────── */}
+        {/* ONE SECTION PER ROUTE. The two blocks below are unchanged inside;
+            what changed is that exactly one of them is ever drawn, and which
+            one is decided by the route rather than by the scroll position.
+
+            The section rule stays even with one section on the screen. It
+            carries the count, and the count is the only place a reader is told
+            how much of their list produced anything this week. */}
+        {segment === "watchlist" ? (
+        <>
         <SectionRule
           label="watchlist"
           /* Both halves are read off what the screen is actually drawing under
@@ -490,12 +547,20 @@ export function WatchScreen({
             {quietVisible ? <QuietLine names={data.quietNames} shown={data.quietShown} /> : null}
           </>
         ) : null}
+        </>
+        ) : null}
 
         {/* ── following ──────────────────────────────────────────────── */}
-        {/* The second seam. It sits between the tiers rather than inside
-            either, so a short screen opens the gap the two sections already
-            have between them instead of inventing a new one. */}
-        <Slack grow={1} />
+        {/* THE SECOND INTERIOR SEAM IS GONE WITH THE SECOND TIER. It sat
+            between the two tiers, and with one tier per route there is nothing
+            between. The free space it used to take is not lost: the body's
+            remaining `Slack grow={1}` above is the only weighted child left
+            inside the body, so it now receives the whole of the body's share
+            rather than half of it. The 3:8:1 root weights are untouched, which
+            is why the lead and the tail measure as they did. Re-measured for
+            every state and both sections in the PR body. */}
+        {segment === "following" ? (
+        <>
         <SectionRule
           label="following"
           count={
@@ -531,6 +596,8 @@ export function WatchScreen({
               couldNotCheck={data.followsCouldNotCheck}
             />
           </>
+        ) : null}
+        </>
         ) : null}
 
         {/* ── what is not drawn here ─────────────────────────────────── */}
@@ -648,7 +715,7 @@ function TierStandfirst({ children }: { children: React.ReactNode }) {
  * Neither string is a claim about the reader. They describe what the screen is
  * for, which is true whether or not anything was read.
  */
-function WatchMasthead() {
+function WatchMasthead({ segment }: { segment: "watchlist" | "following" }) {
   return (
     <div style={{ flex: "none", padding: `6px ${PAD} 0` }}>
       <h1
@@ -659,7 +726,20 @@ function WatchMasthead() {
           color: "var(--c-ink)",
         }}
       >
-        Radar
+        {/* THE SECTION, NOT THE SURFACE. The row above already says Radar and
+            says which of its four sections is lit, so a masthead reading
+            "Radar" spent the largest type on the screen repeating it. Naming
+            the section is also what stops this screen reading as a renamed
+            watchlist: the reader is told they are in one of four places, not
+            in the whole thing.
+
+            Written as a literal rather than read out of `RADAR_TAB_LABEL`,
+            deliberately. The words are the same by construction and the test
+            holds them together, but this is a headline and the table is a
+            navigation label; a shared constant would weld a 26px display
+            headline to a 12px nav word and the next person to want one changed
+            would have to change both. */}
+        {segment === "watchlist" ? "Watchlist" : "Following"}
       </h1>
       <p
         style={{
@@ -668,7 +748,19 @@ function WatchMasthead() {
           color: "var(--c-secondary)",
         }}
       >
-        Your watchlist and what you follow. Nothing on this screen is ever graded.
+        {/* ONE SENTENCE, AND IT IS NOT A DESCRIPTION. The section rule below
+            already carries a standfirst describing what the tier holds, and
+            repeating it here would spend the top of the screen saying the same
+            thing twice at two sizes.
+
+            What this line says instead is the thing only the four-section
+            structure makes sayable: these two sections are the ungraded half
+            of Radar and the two beside them are the graded half. A reader
+            arriving from Calls or Desk record needs that, and before those two
+            sections existed on this surface there was nothing to distinguish
+            from. It is a claim about the product, never about the reader, so
+            it needs no read behind it and is true in every state. */}
+        Nothing in this section is ever graded.
       </p>
     </div>
   );

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseWithUser } from "@/lib/supabase-server";
+import { loadRadarClaims } from "@/lib/radar-calls-data";
 import { todayPt } from "@/lib/session-date";
 import { COMMIT_NOTE_MAX } from "@/components/commit/commit-target";
 
@@ -76,90 +77,39 @@ function isMissingTable(error: { code?: string; message?: string } | null): bool
   return error?.code === "42P01" || /does not exist/i.test(error?.message ?? "");
 }
 
+/**
+ * THE READ MOVED AND THE RESPONSE DID NOT. Every select, every fold and every
+ * degradation rule this handler used to carry inline now lives in
+ * `src/lib/radar-calls-data.ts`, because Radar's Calls section on a phone is a
+ * Server Component that reads the same claims directly instead of over HTTP.
+ *
+ * Two transports, one read. The four rules that matter (every claim reads its
+ * OWN outcome, archived claims are excluded, newest outcome per claim wins, a
+ * missing `claim_evidence` table degrades to no evidence) are stated once, in
+ * that module, rather than once here and once again on the phone where one of
+ * them would eventually stop being true.
+ *
+ * The three responses below are byte for byte what this route already answered:
+ * a 401 with no session, the pre-migration `unavailable` shape, a 500 carrying
+ * the database's own message, and otherwise the four keys the desk reads.
+ */
 export async function GET() {
   const { supabase, user } = await getSupabaseWithUser();
   if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
-  const { data: claims, error } = await supabase
-    .from("user_claims")
-    .select(
-      "id, user_claim, claim_type, target_symbol, expected_direction, resolution_method, resolution_window_start, resolution_window_end, evidence_entities, gradeable, gradeability_note, status, source, adopted_from_call_id, created_at",
-    )
-    .eq("user_id", user.id)
-    .neq("status", "archived")
-    .order("created_at", { ascending: false })
-    .limit(100);
-
-  if (error) {
-    if (isMissingTable(error)) {
-      return NextResponse.json({ claims: [], outcomes: {}, adoptedOutcomes: {}, unavailable: true });
-    }
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  const read = await loadRadarClaims(supabase, user.id);
+  if (read.kind === "unavailable") {
+    return NextResponse.json({ claims: [], outcomes: {}, adoptedOutcomes: {}, unavailable: true });
   }
-
-  const rows = claims ?? [];
-  const outcomes: Record<string, unknown> = {};
-  const adoptedOutcomes: Record<string, unknown> = {};
-
-  // EVERY claim reads its own outcome. No source branch: an adopted claim is
-  // graded over its own window exactly as an authored one is.
-  const claimIds = rows.map((c) => c.id);
-  if (claimIds.length) {
-    const { data } = await supabase
-      .from("user_claim_outcomes")
-      .select(
-        "claim_id, verdict, attribution, actual_pct_change, actual_direction, verdict_notes, graded_at, metadata",
-      )
-      .in("claim_id", claimIds)
-      .order("graded_at", { ascending: false });
-    // Latest row per claim (no unique constraint on claim_id).
-    for (const o of data ?? []) {
-      if (!(o.claim_id in outcomes)) outcomes[o.claim_id] = o;
-    }
+  if (read.kind === "failed") {
+    return NextResponse.json({ error: read.message }, { status: 500 });
   }
-
-  // Evidence ledger: supporting/challenging stories recorded against each open
-  // claim while it waits (backend/grading/claim_evidence.py). Read-only here,
-  // grouped by claim. Fail-open: before the migration (sql/0026) the table is
-  // absent and this degrades to no evidence, never an error. It is never a
-  // verdict; the surface renders it as plain counts, and the grader alone
-  // resolves outcomes.
-  const evidence: Record<string, unknown[]> = {};
-  if (claimIds.length) {
-    const { data, error: evErr } = await supabase
-      .from("claim_evidence")
-      .select("claim_id, stance, article_published_at, articles(title, url)")
-      .in("claim_id", claimIds)
-      .order("article_published_at", { ascending: false });
-    if (!evErr) {
-      for (const row of data ?? []) {
-        const cid = (row as { claim_id: string }).claim_id;
-        (evidence[cid] ??= []).push(row);
-      }
-    }
-    // On a missing table (or any read error) evidence simply stays empty.
-  }
-
-  // Provenance only: what the desk's original call did. NEVER the adopted
-  // claim's verdict. src/lib/claim-outcome.ts is the single resolver and it
-  // takes no parameter through which this map could reach a verdict.
-  const adoptedCallIds = rows
-    .map((c) => c.adopted_from_call_id)
-    .filter((id): id is string => Boolean(id));
-  if (adoptedCallIds.length) {
-    const { data } = await supabase
-      .from("morning_brief_call_outcomes")
-      .select(
-        "call_id, verdict, attribution, actual_pct_change, actual_direction, verdict_notes, graded_at, metadata",
-      )
-      .in("call_id", adoptedCallIds)
-      .order("graded_at", { ascending: false });
-    for (const o of data ?? []) {
-      if (!(o.call_id in adoptedOutcomes)) adoptedOutcomes[o.call_id] = o;
-    }
-  }
-
-  return NextResponse.json({ claims: rows, outcomes, adoptedOutcomes, evidence });
+  return NextResponse.json({
+    claims: read.claims,
+    outcomes: read.outcomes,
+    adoptedOutcomes: read.adoptedOutcomes,
+    evidence: read.evidence,
+  });
 }
 
 export async function POST(request: NextRequest) {

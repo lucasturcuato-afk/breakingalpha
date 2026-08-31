@@ -5,46 +5,54 @@ import {
   type WatchData,
   type WatchStage,
 } from "@/components/watch";
+import { RadarSegments } from "@/components/radar-mobile/radar-segments";
 import { mobileFixtureScreensEnabled } from "@/lib/mobile-fixture-gate";
 import { getSupabaseWithUser } from "@/lib/supabase-server";
 import { loadWatch } from "@/lib/watch-data";
 import { FONT_DISPLAY, FONT_SANS } from "@/components/mobile/fonts";
 
 /**
- * Watch. Server component, so the read happens before a byte of the screen is
- * sent and the queries never reach the browser.
+ * Radar / Following, on a phone. Server component, so the read happens before
+ * a byte of the screen is sent and the queries never reach the browser.
+ *
+ * THIS ROUTE IS NOW ONE OF FOUR, and that is the change. It used to be the
+ * whole of mobile Radar: one scroll, a watchlist tier and a following tier,
+ * mastheaded "Radar" and led by the watchlist. The desk has four tabs, so a
+ * reader who knew the desk arrived here and found Calls and Desk record
+ * missing, and this surface read as a renamed watchlist. `/watch`,
+ * `/watch/watchlist`, `/watch/calls` and `/watch/desk-record` are now the same
+ * four sections, in the same order, under the same four words, and
+ * `RadarSegments` is the row between them. The handoff said Calls and the
+ * record live under the Ledger on the phone; this is a deliberate override of
+ * it and the reasoning is in `decisions/mobile-radar-mirrors-the-desk.md`.
+ *
+ * IT IS FOLLOWING, AND THAT MIRRORS THE DESK. `src/app/radar/page.tsx` sends
+ * the bare desk route to Following, so the bare phone route draws Following. It
+ * DRAWS it rather than redirecting to a `/watch/following`, because this route
+ * is the Radar pole's own destination in `mobile-tab-bar.tsx`, and a pole that
+ * bounces through a redirect on every tap spends a navigation arriving nowhere
+ * new.
+ *
+ * NO EDIT TO THE POLE TABLE WAS NEEDED, and that is worth stating because the
+ * obvious guess is that four new routes need four new entries. `isActive`
+ * matches a path prefix and the Radar pole already owns `/watch`, so all four
+ * sections light Radar. The Ledger pole owns `/radar/calls`, not
+ * `/watch/calls`, so no section lights two poles.
  *
  * WIRED. `src/lib/watch-data.ts` reads the reader's real watchlist, the real
  * articles behind each entry, and their real follows, and gives back the shape
  * `WatchScreen` already consumed. That file's header lists what it refuses to
- * read and why.
+ * read and why. One loader still serves both this route and
+ * `/watch/watchlist`; splitting the sections split the SCREEN, never the read,
+ * and `loadWatch` is called once per route for the section that route draws.
  *
- * TWO OF THE DESIGN'S THREE TIERS SHIP. Tracked views still do not, and the
- * reason recorded here was wrong. It said `user_claims` has no headline column;
- * `sql/0012_radar_user_claims.sql:10-11` says `user_claim` IS the headline, and
- * `src/lib/review-data.ts` already reads it beside `commit_note` and
- * `commit_note_at`. The mapping works and needs no migration.
- *
- * The real reason is the rows. A tracked view is a claim with no direction and
- * no window on it; measured read-only on 2026-08-29, across the whole table and
- * every account, no such row exists, and the one row carrying a note is a
- * bullish two-day call the grader has already resolved. Drawing it would state
- * three things that are false about it. `src/components/watch/omissions.ts`
- * carries the measurement.
- *
- * WHAT IS DIFFERENT NOW: the tier is absent SILENTLY. PR #731 put its reason
- * on screen; the ruling of 2026-08-29 narrowed that to "omit silently unless
- * absence would mislead", and this absence does not. Nothing on `/watch` names
+ * TRACKED VIEWS STILL DO NOT SHIP, and the reason is unchanged: a tracked view
+ * is a claim with no direction and no window on it, and measured read-only on
+ * 2026-08-29, across the whole table and every account, no such row exists.
+ * `src/components/watch/omissions.ts` carries the measurement. The tier is
+ * absent SILENTLY under the ruling of 2026-08-29: nothing on this screen names
  * a third tier, no figure counts claims, and no rendered line becomes wrong
- * without the note, so the finding stays in `src/components/watch/omissions.ts`
- * and the screen says nothing. Never as an empty-tier notice either: "No
- * tracked views yet" is a claim about the reader and needs a read behind it.
- *
- * The tiers live at two separate desktop routes today (/radar/watchlist,
- * /radar/following). Neither is edited to get here: the design dismantles
- * Radar, so mobile Watch lands at its own route and composes rather than
- * rewrites. `matchFollow` is the one genuine reuse, and the loader calls it
- * directly rather than through `/api/radar/following-feed`.
+ * without the note.
  *
  * WHERE THE SAMPLE CONTENT CAN STILL REACH: a non-production build, and only
  * with nobody signed in. That is exactly the parity harness, the width audits
@@ -54,14 +62,12 @@ import { FONT_DISPLAY, FONT_SANS } from "@/components/mobile/fonts";
  * takes the loader branch whatever the session turns out to be.
  *
  * ?stage= forces a lifecycle state so the runtime audit can reach each one, and
- * it sits behind THE SAME gate the sample content does. It replaces the old
- * ?view= switch, which reached its states by handing the screen fixtures on a
- * route that had no loader at all.
+ * it sits behind THE SAME gate the sample content does.
  */
 
 const STAGES: WatchStage[] = ["ready", "loading", "error", "stale"];
 
-export default async function WatchPage({
+export default async function RadarFollowingMobilePage({
   searchParams,
 }: {
   searchParams: Promise<{ stage?: string | string[] }>;
@@ -106,17 +112,22 @@ export default async function WatchPage({
           chain, and it stays scoped to this route rather than repainting the
           shell under every mobile screen. */}
       <div className="md:hidden h-full">
-        <WatchScreen stage={stage} data={data} />
+        <WatchScreen
+          stage={stage}
+          data={data}
+          segment="following"
+          nav={<RadarSegments active="following" />}
+        />
       </div>
 
       {/* Above the breakpoint this route has no layout of its own. The desktop
           equivalents already exist under Radar and are not being rebuilt here. */}
       <div className="hidden md:block" style={{ padding: "48px", backgroundColor: "var(--c-bg)" }}>
         <p style={{ margin: 0, font: `500 17px/1.4 ${FONT_DISPLAY}`, color: "var(--c-ink)" }}>
-          Watch is a mobile surface.
+          Radar is four sections on a phone.
         </p>
         <p style={{ margin: "10px 0 0", font: `400 13px/1.6 ${FONT_SANS}`, color: "var(--c-secondary)" }}>
-          On a wider screen the desk splits it across your watchlist and what you follow.
+          On a wider screen the desk draws the same four as tabs, at /radar/following.
         </p>
       </div>
     </AppShell>

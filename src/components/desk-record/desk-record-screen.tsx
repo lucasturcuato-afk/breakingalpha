@@ -75,8 +75,34 @@ const CELL_LABEL: Record<Resolution, string> = {
 export function DeskRecordScreen({
   stage = "ready",
   data,
+  nav,
 }: {
   stage?: DeskStage;
+  /**
+   * WHAT SITS ABOVE THE TITLE, when the caller has something better than a back
+   * control to put there.
+   *
+   * THIS IS CHROME AND NOT DATA, which is why it is optional where `data` above
+   * is required and nullable. Getting `data` wrong invents a record; getting
+   * this wrong draws the wrong navigation, which is visible at a glance and
+   * fixable without a migration. The default is exactly what this screen has
+   * always drawn, so `/desk-record` passes nothing and is unchanged.
+   *
+   * IT EXISTS FOR RADAR'S SECOND ENTRANCE. `/watch/desk-record` renders THIS
+   * screen from THIS data, and passes Radar's four-section row here instead of
+   * the back-to-Ledger control, because under Radar the reader's way out is the
+   * three sibling sections rather than the Ledger.
+   *
+   * TWO ENTRANCES, ONE RECORD. That distinction is the whole constraint on this
+   * component and it is worth spelling out where the second entrance is added:
+   * a second entrance is a second ROUTE rendering the same loader through the
+   * same view. It becomes a second RECORD the moment a caller re-queries
+   * `morning_brief_call_outcomes`, re-buckets the rows, or hands this screen
+   * `DESK_FIXTURE`. All three have shipped in this repo before, and the header
+   * of `src/app/desk-record/page.tsx` records what it cost. A prop that swaps a
+   * navigation element cannot do any of the three.
+   */
+  nav?: React.ReactNode;
   /**
    * The record, or null when there is none to draw. REQUIRED and NULLABLE, and
    * never a default parameter.
@@ -103,14 +129,14 @@ export function DeskRecordScreen({
      load, which claims only that something is on its way. */
   if (data === null) {
     return (
-      <DeskChrome>
+      <DeskChrome nav={nav}>
         {stage === "error" ? <DeskError /> : stage === "empty" ? <DeskEmpty /> : <DeskSkeleton />}
       </DeskChrome>
     );
   }
 
   return (
-    <DeskChrome>
+    <DeskChrome nav={nav}>
       {stage === "loading" ? <DeskSkeleton /> : null}
       {stage === "error" ? <DeskError /> : null}
       {stage === "empty" ? <DeskEmpty /> : null}
@@ -292,14 +318,25 @@ export function DeskRecordScreen({
  * Neither string is a claim about the record. They say what the surface is for,
  * which is true whether or not a record was read.
  */
-function DeskChrome({ children }: { children: React.ReactNode }) {
+function DeskChrome({
+  children,
+  nav,
+}: {
+  children: React.ReactNode;
+  /* Undefined means "this screen's own back control", which is what every
+     caller wanted before Radar had a second entrance to the record. */
+  nav?: React.ReactNode;
+}) {
   return (
     <div
       data-parity="desk"
       className={styles.enter}
       style={{ backgroundColor: "var(--c-bg)", minHeight: "100%" }}
     >
-      <BackToLedger />
+      {/* The caller's navigation, or this screen's own. Drawn in the same slot
+          either way, so the title and the standfirst sit at the same height on
+          both entrances and neither one grows a second masthead. */}
+      {nav ?? <BackToLedger />}
 
       <div style={{ padding: `22px ${PAD} 24px` }}>
         <h1
