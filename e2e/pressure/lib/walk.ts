@@ -221,8 +221,53 @@ export async function probeScreen(
       await warmGoto(page, route);
     }
     const appRequests = out.requests.filter((r) => !/\.(js|css|woff2?|png|jpg|svg|ico|map)(\?|$)/.test(r));
+    /* WHAT DOES NOT COUNT AS INERT, and each exclusion cost a false finding on
+       the first clean run of this harness.
+
+       FORCED. A click that needed `force` did not reach the control: something
+       was over it, and the tap landed on the something. Eight controls on
+       /radar/watchlist read as dead this way, including all four poles of the
+       tab bar, because a filter overlay was sitting on top of them. A covered
+       control is worth knowing about and is reported as its own thing; it is
+       not evidence of a missing handler.
+
+       LABELS. A label's whole job is to move focus to its field, and focus is
+       deliberately absent from the structural signature (see probe.ts). Six
+       labels reported as dead handlers were six labels working correctly.
+
+       EXTERNAL LINKS. This harness aborts every non-local origin, so an anchor
+       to supabase.com or a mailto: cannot navigate here by construction.
+       Reporting that as a dead handler is reporting the guard. */
     const forced = out.error === "clicked with force (ordinary click was not actionable)";
-    const inert = !out.navigated && !out.domChanged && appRequests.length === 0 && (!out.error || forced);
+    const isLabel = c.tag === "label";
+    const external =
+      c.href !== null &&
+      (/^(mailto|tel):/i.test(c.href) || (/^https?:\/\//i.test(c.href) && normalise(c.href, base) === null));
+    const inert =
+      !out.navigated && !out.domChanged && appRequests.length === 0 && !out.error && !isLabel && !external;
+
+    if (forced) {
+      finding({
+        severity: "medium",
+        rule: "control-obscured",
+        screen: route,
+        theme,
+        pass,
+        title: `${c.tag} "${c.text || c.ariaLabel || ""}" could not be clicked normally; something is over it`,
+        evidence: `Playwright actionability failed at its centre point and the tap had to be forced. Box ${c.rect.w}x${c.rect.h}, path ${c.path}. Whatever the forced click hit, it was not this control, so nothing is claimed about its handler.`,
+        basis: "measured",
+      });
+    }
+    if (isLabel || external) {
+      controlLog({
+        route,
+        theme,
+        pass,
+        control: c.path,
+        text: c.text,
+        verdict: isLabel ? "label-focus-only" : "external-link-not-followed",
+      });
+    }
 
     controlLog({
       route,
@@ -262,8 +307,9 @@ export async function probeScreen(
 
     if (inert) {
       dead += 1;
+      const alreadyActive = c.selectedState === "true" || c.selectedState === "page";
       finding({
-        severity: c.interactiveRole ? "medium" : "low",
+        severity: alreadyActive ? "low" : c.interactiveRole ? "medium" : "low",
         rule: c.interactiveRole ? "handler-does-nothing" : "cursor-pointer-no-handler",
         screen: route,
         theme,
@@ -271,7 +317,7 @@ export async function probeScreen(
         title: c.interactiveRole
           ? `${c.tag}${c.role ? `[role=${c.role}]` : ""} "${c.text || c.ariaLabel || ""}" activates and changes nothing`
           : `${c.tag} draws cursor:pointer and activates nothing`,
-        evidence: `path ${c.path}; after tap: url unchanged (${out.urlAfter}), structural DOM signature unchanged, 0 app requests${volatile_ ? "; NOTE this screen self-mutates, so the DOM half of this reading is weak and the request half is what carries it" : ""}`,
+        evidence: `path ${c.path}; after tap: url unchanged (${out.urlAfter}), structural DOM signature unchanged, 0 app requests${alreadyActive ? `; the control was ALREADY the selected option (aria state "${c.selectedState}"), so a no-op is the correct behaviour and this is recorded rather than charged` : ""}${volatile_ ? "; NOTE this screen self-mutates, so the DOM half of this reading is weak and the request half is what carries it" : ""}`,
         basis: "measured",
       });
     }

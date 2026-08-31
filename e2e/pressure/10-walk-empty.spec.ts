@@ -230,7 +230,7 @@ test("empty pass: routes that exist but no tap reaches", async () => {
       `HTTP ${status}, landed ${landed}. Present in the build, never reached by a tap from any pole.`,
       "measured",
     );
-    if (landed === "/waitlist") {
+    if (landed === "/waitlist" && route !== "/waitlist") {
       finding({
         severity: "high",
         rule: "allowlist-gate-blocks-route",

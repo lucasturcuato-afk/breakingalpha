@@ -32,6 +32,8 @@ export interface ControlInfo {
   visible: boolean;
   fontSize: number;
   isTextEntry: boolean;
+  /** aria-pressed / aria-selected / aria-current, whichever is set. */
+  selectedState: string | null;
   path: string;
 }
 
@@ -112,6 +114,13 @@ const ENUMERATE = () => {
         visible,
         fontSize: parseFloat(cs.fontSize),
         isTextEntry,
+        /* A segmented control's ALREADY-SELECTED option changes nothing when
+           it is tapped, correctly. Without this the walk cannot tell that from
+           a chip with no handler at all. */
+        selectedState:
+          el.getAttribute("aria-pressed") ??
+          el.getAttribute("aria-selected") ??
+          el.getAttribute("aria-current"),
         path: parts.join(" > "),
       });
     }
