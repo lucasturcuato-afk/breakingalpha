@@ -43,6 +43,7 @@ import { scoredCallProps, type CallOutcomeRow } from "./scored-object-map";
 import { RESOLUTION_BY_STATE, type Resolution } from "./verdict-vocabulary";
 import { VIX_CALM_LEVEL, VIX_ELEVATED_LEVEL } from "./market-regime";
 import { sessionDatePt, todayPt } from "./session-date";
+import { commitLegality } from "./commit-legality";
 import type { LedgerClaim, LedgerData, LedgerDay, LedgerEntry } from "@/components/ledger/fixture";
 import type { OutcomeState } from "@/components/ledger/claim-anatomy";
 
@@ -174,6 +175,13 @@ interface DeskCallRow {
   claim_text: string | null;
   claim_type: string | null;
   target_symbol: string | null;
+  /**
+   * Selected because the commit rule reads it. `isAdoptGradeable` refuses a
+   * call with no direction, so a card that did not select this column could
+   * only ever guess at the answer the adopt route would give, and it guessed
+   * yes on every call in the brief.
+   */
+  expected_direction: string | null;
   brief_date: string | null;
   created_at: string | null;
   confidence: number | null;
@@ -340,13 +348,22 @@ export async function loadLedger(
       : null;
   const stale = ageHours !== null && ageHours > STALE_AFTER_HOURS;
 
-  // A desk call the reader has already taken onto their own record carries a
-  // marker instead of an action. The two reads run in parallel, so the variant
-  // is settled here, once both have answered.
-  const claims: LedgerClaim[] = desk.claims.map((c) => ({
-    ...c,
-    variant: personal.adopted.has(c.id) ? "onLedger" : "open",
-  }));
+  /* A desk call the reader has already taken onto their own record carries a
+     marker instead of an action. The two reads run in parallel, so the variant
+     is settled here, once both have answered.
+
+     ONLY THE ADOPTION HALF IS DECIDED HERE. `loadDeskCalls` has already asked
+     whether the call can be committed to at all, because that question is about
+     the call and not about the reader. This used to overwrite that answer with
+     a flat "open", which is how the Ledger came to offer "Track this call" on
+     every row in the brief including the ones the adopt route writes
+     `gradeable: false` for. Being on the reader's record still outranks it: it
+     is true whatever the call's shape. */
+  const claims: LedgerClaim[] = desk.claims.map((c) =>
+    personal.adopted.has(c.id)
+      ? { ...c, variant: "onLedger", ungradeableReason: undefined }
+      : c,
+  );
 
   const todayDay: LedgerDay = {
     date: longDate(brief?.created_at ? sessionDatePt(new Date(brief.created_at)) : today),
@@ -449,7 +466,9 @@ async function loadDeskCalls(
 ): Promise<DeskLoad> {
   const { data, error } = await supabase
     .from("morning_brief_calls")
-    .select("id, claim_text, claim_type, target_symbol, brief_date, created_at, confidence, resolve_on")
+    .select(
+      "id, claim_text, claim_type, target_symbol, expected_direction, brief_date, created_at, confidence, resolve_on",
+    )
     .eq("brief_id", briefId)
     .order("confidence", { ascending: false });
   if (error) return EMPTY_DESK;
@@ -476,6 +495,7 @@ async function loadDeskCalls(
 
   const claims: LedgerClaim[] = rows.map((r) => {
     const resolveOn = asText(r.resolve_on);
+    const legality = commitLegality(r, today);
     return {
       id: r.id,
       eyebrow: eyebrowFor(r),
@@ -489,7 +509,19 @@ async function loadDeskCalls(
       // call's own span from it; the two fields above are prose and cannot be
       // read back into a date.
       resolveOn: resolveOn ?? null,
-      variant: "open",
+      /* THE shared question, asked of the shared function. `commitLegality`
+         wraps `isAdoptGradeable`, the exact predicate
+         /api/radar/claims/adopt evaluates before it decides what to write into
+         `gradeable`, so a card cannot offer a commitment the route would refuse.
+         `loadClaim` in claim-data.ts asks the identical call, which is what
+         stops /ledger and /claim/[id] describing one call two ways.
+
+         The card variant and its sentence have existed since the component
+         shipped (ledger-claim-card.tsx: the `ungradeable` arm and
+         `ungradeableReason`). Nothing rendered them because no loader ever
+         produced one. */
+      variant: legality.canCommit ? "open" : "ungradeable",
+      ungradeableReason: legality.reason ?? undefined,
     };
   });
 
