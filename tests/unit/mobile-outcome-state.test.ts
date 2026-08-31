@@ -89,7 +89,7 @@ test("every resolution keeps its meaning across the two vocabularies", () => {
     assert.equal(
       mobileOutcomeState(state),
       EXPECTED[RESOLUTION_BY_STATE[state]],
-      `${state} resolved to ${RESOLUTION_BY_STATE[state]} and got the wrong word`,
+      `${state} resolved to ${RESOLUTION_BY_STATE[state]} and the phone drew the other word`,
     );
   }
 });
