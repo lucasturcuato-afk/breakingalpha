@@ -39,8 +39,8 @@ BEGIN;
 --
 -- WHAT WAS WRONG. The exclusion was already IN the view definition, which is
 -- the right place, but it matched on the FULL address with NOT IN. Plus
--- addressing defeats that: 'noahhanning03+e2e@gmail.com' is not equal to
--- 'noahhanning03@gmail.com', so it passed the filter and joined the real-user
+-- addressing defeats that: a <primary>+tag form is not string-equal to the
+-- <primary> literal below, so it passed the filter and joined the real-user
 -- population. Five such accounts exist and ALL FIVE were inside dim_users:
 --
 --     +e2e        created 2026-08-25, still signing in on a schedule
@@ -93,10 +93,10 @@ FROM auth.users u
 LEFT JOIN public.beta_allowlist a ON lower(a.email) = lower(u.email)
 WHERE
   -- Canonical address: local part truncated at the first '+', then the domain.
-  -- 'noahhanning03+e2e@gmail.com' canonicalizes to 'noahhanning03@gmail.com'
-  -- and is therefore matched by the SAME literal that already excluded the
-  -- primary. This is why the list below is unchanged and does not need to grow
-  -- when a new test address is minted.
+  -- A <primary>+tag address canonicalizes to <primary> and is therefore matched
+  -- by the SAME literal that already excluded the primary. This is why the list
+  -- below is unchanged and does not need to grow when a new test address is
+  -- minted. The tags themselves are recorded in FIXES.md, not the addresses.
   (split_part(split_part(lower(u.email), '@', 1), '+', 1)
      || '@' || split_part(lower(u.email), '@', 2))
   NOT IN (
