@@ -432,44 +432,156 @@ class TestGradingIsPurePriceMath:
         for needle in ("genai", "gemini", "openai", "anthropic"):
             assert needle not in source, f"{needle} must not appear in the grader"
 
+    @staticmethod
+    def _graded_outcome():
+        """One clean, graded row. The numbers are what the note must carry."""
+        from backend.grading.resolver import Outcome
+
+        return Outcome(
+            verdict=VERDICT_CORRECT,
+            attribution=ATTRIBUTION_CLEAN,
+            actual_open=100.0,
+            actual_close=103.0,
+            actual_pct_change=0.03,
+            actual_direction="up",
+            metadata={
+                "entity_symbol": "NVDA",
+                "entity_move_pct": 3.0,
+                "benchmarks": [
+                    {"symbol": "SPY", "role": "market", "move_pct": 0.2,
+                     "excess_pct": 2.8, "meaningful_bar_pct": 0.5}
+                ],
+            },
+        )
+
+    @staticmethod
+    def _stub_genai():
+        """A stand-in for `google.genai` whose Client records construction.
+
+        Injected into sys.modules rather than patching the installed package,
+        so this proves the same thing on a machine where google-genai is not
+        installed at all. `from google import genai` resolves the attribute off
+        sys.modules["google"] and never reaches the real distribution.
+        """
+        import types
+        from unittest import mock
+
+        genai = types.ModuleType("google.genai")
+        genai.Client = mock.Mock(name="genai.Client")
+        google = types.ModuleType("google")
+        google.genai = genai
+        return google, genai
+
     def test_the_grading_loop_makes_no_llm_call_by_default(self):
-        """The runner's verdict sentence is deterministic unless explicitly
-        opted in, so a grading run costs zero LLM spend."""
+        """No model client is CONSTRUCTED unless the run opts in.
+
+        This used to assert that the returned sentence contained the words
+        "correct" and "clean", inferring "no model was called" from the shape
+        of a sentence. That is not the claim in the test's name, and it broke
+        the moment the note stopped saying "correct" (the stored verdict token
+        was leaking into reader-facing prose and was replaced with the shared
+        vocabulary word). Asserting the NEW phrasing would only defer the same
+        break to the next copy change, so the seam is asserted directly: the
+        client constructor is spied on, and it must never fire.
+
+        The two halves matter together. `gemini_verdict_notes` falls back to
+        the deterministic text on ANY exception, so "no client constructed"
+        alone is also satisfied by an ImportError on a machine without
+        google-genai. The opted-in control below constructs the same stubbed
+        client, which is what proves the flag is the reason and not a missing
+        dependency.
+
+        GEMINI_API_KEY is deliberately SET here, to a value that is never sent
+        anywhere. Unset, the function raises before it reaches the constructor
+        and the spy reads zero for a reason that has nothing to do with the
+        flag, which would make this test pass on a CI box with no key even if
+        the opt-in check were deleted outright. With a key present the flag is
+        the only thing left standing between the run and a model client.
+        """
         import os
+        import sys
+        from unittest import mock
 
         from backend.grading.grade_brief_calls import (
             _llm_notes_enabled,
             gemini_verdict_notes,
         )
-        from backend.grading.resolver import Outcome
 
-        old = os.environ.pop("GRADER_LLM_NOTES", None)
+        old_flag = os.environ.pop("GRADER_LLM_NOTES", None)
+        old_key = os.environ.get("GEMINI_API_KEY")
+        google, genai = self._stub_genai()
         try:
+            os.environ["GEMINI_API_KEY"] = "stub-key-never-sent"
             assert _llm_notes_enabled() is False
-            outcome = Outcome(
-                verdict=VERDICT_CORRECT,
-                attribution=ATTRIBUTION_CLEAN,
-                actual_open=100.0,
-                actual_close=103.0,
-                actual_pct_change=0.03,
-                actual_direction="up",
-                metadata={
-                    "entity_symbol": "NVDA",
-                    "entity_move_pct": 3.0,
-                    "benchmarks": [
-                        {"symbol": "SPY", "role": "market", "move_pct": 0.2,
-                         "excess_pct": 2.8, "meaningful_bar_pct": 0.5}
-                    ],
-                },
+            with mock.patch.dict(
+                sys.modules, {"google": google, "google.genai": genai}
+            ):
+                notes = gemini_verdict_notes(
+                    "NVDA rallies", "bullish", self._graded_outcome()
+                )
+
+            # THE CLAIM IN THE NAME. Not a word in a sentence: the constructor.
+            assert genai.Client.call_count == 0, (
+                "the default grading loop constructed a model client "
+                f"{genai.Client.call_count} time(s)"
             )
-            # No API key set, no network reachable in the test: if this tried
-            # to call Gemini it would take the exception path. It must not try.
-            notes = gemini_verdict_notes("NVDA rallies", "bullish", outcome)
+
+            # Facts about the price math, which is what this class is for.
+            # These are the entity and its move, not vocabulary.
             assert "NVDA" in notes and "+3.00%" in notes
-            assert "correct" in notes and "clean" in notes
         finally:
-            if old is not None:
-                os.environ["GRADER_LLM_NOTES"] = old
+            if old_flag is not None:
+                os.environ["GRADER_LLM_NOTES"] = old_flag
+            if old_key is None:
+                os.environ.pop("GEMINI_API_KEY", None)
+            else:
+                os.environ["GEMINI_API_KEY"] = old_key
+
+    def test_the_spy_fires_when_the_run_opts_in(self):
+        """Control for the test above. A spy that can never fire proves nothing.
+
+        With GRADER_LLM_NOTES set, the SAME stub is constructed and asked for
+        content. That is what makes the zero above mean "the flag is off"
+        rather than "the patch missed the seam" or "the import failed".
+        """
+        import os
+        import sys
+        from unittest import mock
+
+        from backend.grading.grade_brief_calls import gemini_verdict_notes
+
+        old_flag = os.environ.get("GRADER_LLM_NOTES")
+        old_key = os.environ.get("GEMINI_API_KEY")
+        google, genai = self._stub_genai()
+        try:
+            os.environ["GRADER_LLM_NOTES"] = "1"
+            # Never used: the stub is what answers. The function raises before
+            # reaching the client when this is unset, which would construct
+            # nothing and make the control pass for the wrong reason.
+            os.environ["GEMINI_API_KEY"] = "stub-key-never-sent"
+            with mock.patch.dict(
+                sys.modules, {"google": google, "google.genai": genai}
+            ):
+                gemini_verdict_notes(
+                    "NVDA rallies", "bullish", self._graded_outcome()
+                )
+
+            assert genai.Client.call_count == 1, (
+                "opting in did not construct a model client, so the zero in "
+                "the default-path test proves nothing about the flag"
+            )
+            assert (
+                genai.Client.return_value.models.generate_content.call_count == 1
+            )
+        finally:
+            for name, value in (
+                ("GRADER_LLM_NOTES", old_flag),
+                ("GEMINI_API_KEY", old_key),
+            ):
+                if value is None:
+                    os.environ.pop(name, None)
+                else:
+                    os.environ[name] = value
 
     def test_resolving_a_call_makes_no_network_call_beyond_the_candle_fetch(self):
         """The injected fetcher is the ONLY IO seam. If anything else reached
