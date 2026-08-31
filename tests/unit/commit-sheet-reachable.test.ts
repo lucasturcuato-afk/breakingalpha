@@ -19,7 +19,7 @@
 // gated". Those are one identifier apart in the source and produce opposite
 // conclusions about whether the product works.
 //
-// THE REAL FAILURE MODE THIS DEFENDS. `useCommitSheet()` returns null outside a
+// THE REAL FAILURE MODE THIS DEFENDS. `useCommitSheet()` yields null outside a
 // provider, and both consumers are written to degrade quietly when it does:
 // `ledger-screen.tsx` passes `onTrack={undefined}` and `claim-screen.tsx` draws
 // no action at all. That is good behavior for a missing provider and terrible
@@ -152,7 +152,7 @@ test("every useCommitSheet consumer is rendered by a page that mounts the provid
     assert.ok(
       rendered,
       `${component} calls ${HOOK} but no page that mounts ${PROVIDER} renders ` +
-        `it. ${HOOK} returns null outside a provider, so ${component} will draw ` +
+        `it. ${HOOK} yields null outside a provider, so ${component} will draw ` +
         `NO commit action and nothing will fail: not tsc, not lint, not the ` +
         `build. Mount ${PROVIDER} on the page that renders ${component}.`,
     );

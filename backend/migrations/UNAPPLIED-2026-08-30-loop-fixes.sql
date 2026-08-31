@@ -152,9 +152,9 @@ SELECT
   -- truth is 1.57, and the honest measure of a habit is how many DAYS a reader
   -- showed up, not how many times a component mounted.
   --
-  -- percentile_disc, not percentile_cont: cont interpolates and returns double
+  -- percentile_disc, not percentile_cont: cont interpolates and yields double
   -- precision, which emits 1.5 on an even population and breaks the promised
-  -- 1 to 7 integer scale. disc returns an actually observed value.
+  -- 1 to 7 integer scale. disc yields an actually observed value.
   --
   -- Ordered-set aggregates take WITHIN GROUP rather than a plain argument list,
   -- and they compose with GROUPING SETS exactly like count(*) does, one value
@@ -186,7 +186,7 @@ SELECT
   -- ITEM 4. Was source_id, a uuid polymorphic pointer to the ORIGIN record of
   -- an artifact, qualified by source_table. It is not a company reference, it
   -- is NULL on all 143 memo rows, and it never could hold a company name: a
-  -- filter comparing it to one returns 22P02 invalid input syntax for uuid.
+  -- filter comparing it to one raises 22P02 invalid input syntax for uuid.
   -- So that leg contributed zero and the card's 5 came entirely from the
   -- regeneration-quota table.
   --
@@ -543,7 +543,7 @@ SELECT
   (SELECT count(*) FROM later WHERE later_sessions > 0) AS claims_with_a_later_session,
   -- The DAY figure is the honest one and is why both ship. session_id is per
   -- tab, from sessionStorage, so nine sessions on one afternoon is nine tab
-  -- opens rather than nine returns. Today every later session for the single
+  -- opens rather than nine visits back. Today every later session for the single
   -- challenged claim falls on the same UTC day as its grading.
   (SELECT count(*) FROM later WHERE later_days > 1) AS claims_with_a_later_day,
   round(100.0 * (SELECT count(*) FROM later WHERE later_sessions > 0)

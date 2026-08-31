@@ -139,7 +139,7 @@ export function onceDayStamp(at: Date): string {
 /**
  * Claim `key` for the UTC day containing `at`.
  *
- * Returns true when this is the FIRST claim, meaning the caller should emit,
+ * True when this is the FIRST claim, meaning the caller should emit,
  * and false when the key was already claimed today. Prunes entries older than
  * ONCE_RETENTION_DAYS on every call.
  *
