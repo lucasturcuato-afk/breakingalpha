@@ -64,6 +64,7 @@ from backend.grading.benchmarks import (  # noqa: F401
 )
 from backend.grading.price_attribution import PriceAttributionGrader
 from backend.grading.resolver import Outcome, default_resolver
+from backend.verdict_vocabulary import VERDICT_WORD, verdict_word
 
 
 #: Whether the grading loop may call an LLM at all.
@@ -82,16 +83,66 @@ def _llm_notes_enabled() -> bool:
     return os.environ.get("GRADER_LLM_NOTES", "").strip().lower() in {"1", "true", "yes"}
 
 
+#: The attribution axis in the words the product already uses for it:
+#: DESK_RECORD_COPY.attributionLabel in src/lib/desk-record.ts is Clean /
+#: Confounded / Inconclusive / Not attributed, and cleanAttributionLine in
+#: src/lib/scored-object-map.ts already renders "Attribution: clean" beside
+#: this very sentence. Lowercase because these sit mid-sentence here.
+#:
+#: Attribution is a SEPARATE AXIS from direction and the sentence has to read
+#: that way. A clean read is what lets a direction be credited at all; it is
+#: never itself the outcome, and stapling it to the outcome in parentheses
+#: presented it as one.
+ATTRIBUTION_LABEL: dict[str, str] = {
+    "clean": "clean",
+    "confounded": "confounded",
+    "inconclusive": "inconclusive",
+}
+
+#: A row with no attribution. Matches DESK_RECORD_COPY.attributionLabel.
+DEFAULT_ATTRIBUTION_LABEL = "not recorded"
+
+#: Attribution that can never be credited to the thesis, whatever direction
+#: prices went. Same rule, same reason, as scoredCallProps in
+#: src/lib/scored-object-map.ts: "attribution wins over raw direction".
+UNCREDITABLE_ATTRIBUTIONS = frozenset({"confounded", "inconclusive"})
+
+
+def outcome_word(outcome: Outcome) -> str:
+    """The reader-facing outcome word for a graded row, attribution included.
+
+    verdict_vocabulary.verdict_word() reads the direction axis only. A move the
+    grader could not separate from its sector or the market is No clean read
+    however the direction went, so a confounded or inconclusive row is bucketed
+    on attribution first. Without this the note would say "Challenged" next to a
+    card reading "No clean read" for the same row.
+    """
+    if (outcome.attribution or "") in UNCREDITABLE_ATTRIBUTIONS:
+        return VERDICT_WORD["noCleanRead"]
+    return verdict_word(outcome.verdict)
+
+
 def gemini_verdict_notes(claim_text: str, expected: str, outcome: Outcome) -> str:
     """The verdict sentence. Deterministic by default (no network, no spend);
     optionally phrased by Gemini when GRADER_LLM_NOTES is set. The verdict
     itself is computed before this runs either way, and any failure falls back
-    to the deterministic text."""
+    to the deterministic text.
+
+    The outcome word comes from backend/verdict_vocabulary.py, the one table
+    every surface reads, so this sentence cannot say something the card beside
+    it does not. It used to interpolate the STORED verdict token, which is
+    "correct" / "wrong": a raw column value leaking into reader-facing prose,
+    outside the observational vocabulary, in the exact position a verdict is
+    read from. Two screens rendered it (/review and /radar/calls, both via
+    ScoredObject's calibration slot) because both carry verdict_notes verbatim.
+    """
     meta = outcome.metadata
     entity_pct = meta.get("entity_move_pct")
+    word = outcome_word(outcome)
+    attr = ATTRIBUTION_LABEL.get(outcome.attribution or "", DEFAULT_ATTRIBUTION_LABEL)
     fallback = (
-        f"{expected.capitalize()} call graded {outcome.verdict}"
-        f" ({outcome.attribution}): {meta.get('entity_symbol')}"
+        f"{word}. {expected.capitalize()} call, attribution {attr}:"
+        f" {meta.get('entity_symbol')}"
         f" moved {entity_pct:+.2f}% vs "
         + (
             ", ".join(
@@ -125,9 +176,12 @@ Entity: {meta.get("entity_symbol")} moved {entity_pct:+.2f}% ({outcome.actual_di
 Benchmarks over the same session:
 {bench_lines}
 Attribution: {outcome.attribution} (clean = moved beyond benchmarks; confounded = market/sector carried it; inconclusive = below threshold)
-Verdict: {outcome.verdict}
+Outcome: {word}
 
-Write 1-2 sentences of honest reasoning about why this call was {outcome.verdict}.
+Write 1-2 sentences of honest reasoning about why the evidence reads {word}.
+The outcome vocabulary is exactly supported / challenged / developing / awaiting.
+Never write that a call was right, wrong, correct or incorrect: a claim is
+supported or challenged by evidence, and the person who made it is neither.
 If the attribution is confounded, say plainly that the market or sector move explains it.
 Tone: confident, never defensive. Output only the reasoning, no preamble, no formatting."""
         resp = client.models.generate_content(

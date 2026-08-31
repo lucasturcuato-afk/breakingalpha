@@ -250,3 +250,101 @@ test("no investment-result vocabulary in any string the surface authors", () => 
   console.log(`vocabulary check: ${authored.length} authored strings clean`);
   console.log("copy sample:", DESK_RECORD_COPY.intro);
 });
+
+/* ------------------------------------------------------------------ */
+/* The mobile design gate, applied to this surface's own copy.         */
+/*                                                                     */
+/* scripts/design-lint.mjs owns two rules this copy is bound by: rule  */
+/* 1 bans six substrings, and rule 3 fixes the outcome vocabulary at   */
+/* supported / challenged / developing / awaiting. The lint is a       */
+/* RATCHET (`--since`): it fails only on lines a branch ADDED, so once */
+/* a string is written it is never checked again.                      */
+/* `bucketNote.challenged` did exactly that. It read "The call's       */
+/* direction did not hold." and rendered on /radar/desk-record under   */
+/* the CHALLENGED heading, one line under a sibling saying the same    */
+/* thing about a held direction. This test is not a ratchet: it reads  */
+/* the whole authored surface on every run.                            */
+/*                                                                     */
+/* The rules are READ OUT OF THE LINT, not retyped here. Retyping them */
+/* would fail the lint against this very file, and worse, would give   */
+/* the repo a second copy of the table that could drift from the gate  */
+/* silently. Same technique, and the same reason, as                   */
+/* backend/tests/test_verdict_vocabulary_parity.py, which reads        */
+/* src/lib/verdict-vocabulary.ts rather than mirroring it by hand.     */
+/* ------------------------------------------------------------------ */
+
+import { readFileSync } from "node:fs";
+
+const DESIGN_LINT_SOURCE = "scripts/design-lint.mjs";
+
+/** Rule 2, escaped. `EMDASH = '\u2014'` in the lint, for the same reason. */
+const EM_DASH = "\u2014";
+
+/** The lint's own rule table, parsed from the lint. */
+function designLintRules(): { banned: string[]; outcomeForbidden: RegExp } {
+  const src = readFileSync(DESIGN_LINT_SOURCE, "utf8");
+
+  const bannedBlock = /const BANNED = \[([^\]]*)\]/.exec(src);
+  assert.ok(bannedBlock, `rule 1 not found in ${DESIGN_LINT_SOURCE}`);
+  const banned = [...bannedBlock[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
+  assert.ok(banned.length >= 6, `rule 1 parsed as ${banned.length} terms, expected 6+`);
+
+  const forbidden = /const OUTCOME_FORBIDDEN = \/(.+)\/([a-z]*);/.exec(src);
+  assert.ok(forbidden, `rule 3 not found in ${DESIGN_LINT_SOURCE}`);
+  const outcomeForbidden = new RegExp(forbidden[1], forbidden[2]);
+
+  return { banned, outcomeForbidden };
+}
+
+test("no banned substring in any string the surface authors", () => {
+  const { banned, outcomeForbidden } = designLintRules();
+  const record = buildDeskRecord(fullMatrix(), TODAY_PT);
+  const authored = deskRecordAuthoredStrings(record);
+  assert.ok(authored.length > 20, "the copy surface must actually be covered");
+
+  for (const s of authored) {
+    for (const term of banned) {
+      assert.ok(
+        !s.toLowerCase().includes(term),
+        `banned substring "${term}" in authored copy: ${s}`,
+      );
+    }
+    assert.doesNotMatch(s, outcomeForbidden, `outcome word outside the vocabulary: ${s}`);
+    // Rule 2. The character is escaped so this line is not itself a
+    // violation of the rule it enforces, exactly as EMDASH is written in
+    // scripts/design-lint.mjs.
+    assert.ok(!s.includes(EM_DASH), `em-dash in authored copy: ${s}`);
+  }
+
+  console.log(
+    `design-lint rules ${banned.length} banned + ${outcomeForbidden.source}: ` +
+      `${authored.length} authored strings clean`,
+  );
+});
+
+test("the bucket notes are pinned, so a rewrite cannot restore a banned word", () => {
+  /* Verbatim. The challenged note replaces a sentence that reached for a
+     banned substring to say a direction failed. The replacement uses the
+     vocabulary's own word for it instead, which src/lib/verdict-vocabulary.ts
+     already names: "a claim the evidence challenged". */
+  assert.equal(
+    DESK_RECORD_COPY.bucketNote.challenged,
+    "The evidence challenged the call's direction. It stays on the record.",
+  );
+  assert.equal(
+    DESK_RECORD_COPY.bucketNote.supported,
+    "The call's direction held, and the move was attributable to it.",
+  );
+
+  /* The pair is the point: two buckets, same shape, same length class, and
+     neither is softened relative to the other. */
+  const supported = DESK_RECORD_COPY.bucketNote.supported;
+  const challenged = DESK_RECORD_COPY.bucketNote.challenged;
+  assert.ok(
+    Math.abs(supported.length - challenged.length) < 25,
+    `the miss must not be written shorter or longer than the hit: ` +
+      `${supported.length} vs ${challenged.length}`,
+  );
+
+  console.log("bucket notes:", supported, "/", challenged);
+});
