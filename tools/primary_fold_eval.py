@@ -64,8 +64,12 @@ from supabase import create_client  # noqa: E402
 from company_match import (  # noqa: E402
     BASE_SUFFIXES,
     EXTRA_SUFFIXES,
+    company_key_tokens,
+    guarded_fold_candidates,
+    index_tokens,
     looks_like_ticker,
     normalize_company_key,
+    token_fold_candidates,
 )
 from normalize import normalize_lookup_key  # noqa: E402
 
@@ -100,6 +104,7 @@ def build_index():
 
     name_by_id, by_alias, by_ticker, by_norm = {}, defaultdict(set), defaultdict(set), defaultdict(set)
     exact_names, lower_names = set(), {}
+    by_name_tokens, by_token_prefix = {}, {}
 
     for r in companies:
         cid, name = r.get("id"), (r.get("name") or "").strip()
@@ -109,6 +114,7 @@ def build_index():
         exact_names.add(name)
         lower_names.setdefault(name.lower(), name)
         by_norm[normalize_company_key(name)].add(cid)
+        index_tokens(by_name_tokens, by_token_prefix, company_key_tokens(name), cid, from_name=True)
         t = (r.get("ticker") or "").strip().upper()
         if t:
             by_ticker[t].add(cid)
@@ -119,10 +125,12 @@ def build_index():
             continue
         by_alias[key].add(cid)
         by_norm[normalize_company_key(key)].add(cid)
+        index_tokens(by_name_tokens, by_token_prefix, company_key_tokens(key), cid, from_name=False)
 
     return {
         "name_by_id": name_by_id, "by_alias": by_alias, "by_ticker": by_ticker,
         "by_norm": by_norm, "exact_names": exact_names, "lower_names": lower_names,
+        "by_name_tokens": by_name_tokens, "by_token_prefix": by_token_prefix,
     }
 
 
@@ -141,8 +149,20 @@ def resolve_before(idx, name):
 
 
 def resolve_after(idx, name):
-    """The NEW gate: same first two steps, then alias, ticker, normalized.
-    Returns the CANONICAL name."""
+    """The NEW gate: same first two steps, then alias, ticker, normalized, then
+    the leading-token fold. Mirrors ingest._resolve_primary_to_canonical step
+    for step, AMBIGUITY GUARD INCLUDED. Returns the CANONICAL name.
+
+    The guard is not decoration here. `tools/backfill_primary_fold.py` imports
+    this function and calls it to decide what `--apply` WRITES into
+    articles.companies[]. A version of it that resolves differently from the
+    live pipeline writes rows the pipeline would never have written, and the
+    divergence is invisible because both sides look reasonable in isolation.
+    That is exactly what happened: the guard landed in ingest and in
+    tools/wikidata_gate_recovery.py and was missed here, and the two resolvers
+    then disagreed on 14 strings over 105 of 196,056 rows, every one of the
+    four measured false folds among them.
+    """
     if name in idx["exact_names"]:
         return name
     canonical = idx["lower_names"].get(name.lower())
@@ -155,7 +175,12 @@ def resolve_after(idx, name):
         canonical = _unique(idx, idx["by_ticker"].get(name.strip().upper()))
         if canonical:
             return canonical
-    return _unique(idx, idx["by_norm"].get(normalize_company_key(name)))
+    norm_ids = idx["by_norm"].get(normalize_company_key(name))
+    canonical = _unique(idx, norm_ids)
+    if canonical:
+        return canonical
+    return _unique(idx, guarded_fold_candidates(norm_ids, token_fold_candidates(
+        idx["by_name_tokens"], idx["by_token_prefix"], name)))
 
 
 def oracle_candidates(idx, name):
@@ -178,6 +203,7 @@ def oracle_candidates(idx, name):
     if looks_like_ticker(name):
         ids |= idx["by_ticker"].get(name.strip().upper(), set())
     ids |= idx["by_norm"].get(normalize_company_key(name), set())
+    ids |= token_fold_candidates(idx["by_name_tokens"], idx["by_token_prefix"], name)
     return {idx["name_by_id"][i] for i in ids if i in idx["name_by_id"]}
 
 

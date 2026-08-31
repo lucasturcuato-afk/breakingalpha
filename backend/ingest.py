@@ -32,7 +32,14 @@ from entity_resolver import resolve_entity, increment_mention_counts
 from normalize import normalize_lookup_key
 # Read-only matching for the primary_company fold. Deliberately NOT the alias
 # write key: see backend/company_match.py's module docstring.
-from company_match import normalize_company_key, looks_like_ticker
+from company_match import (
+    company_key_tokens,
+    guarded_fold_candidates,
+    index_tokens,
+    looks_like_ticker,
+    normalize_company_key,
+    token_fold_candidates,
+)
 from supabase_client import get_service_client
 try:
     from usage_log import accumulate_gemini_usage
@@ -2502,7 +2509,8 @@ def _load_entity_snapshot() -> dict:
     Fail-soft: on any error returns empty maps, which degrades resolution to
     exactly the pre-existing eq/ilike behavior rather than breaking ingest.
     """
-    snap = {"name_by_id": {}, "by_alias_key": {}, "by_ticker": {}, "by_norm": {}}
+    snap = {"name_by_id": {}, "by_alias_key": {}, "by_ticker": {}, "by_norm": {},
+            "by_name_tokens": {}, "by_token_prefix": {}}
     try:
         companies = _select_all_rows("companies", "id, name, ticker")
         for row in companies:
@@ -2511,6 +2519,8 @@ def _load_entity_snapshot() -> dict:
                 continue
             snap["name_by_id"][cid] = name
             snap["by_norm"].setdefault(normalize_company_key(name), set()).add(cid)
+            index_tokens(snap["by_name_tokens"], snap["by_token_prefix"],
+                         company_key_tokens(name), cid, from_name=True)
             ticker = (row.get("ticker") or "").strip().upper()
             if ticker:
                 snap["by_ticker"].setdefault(ticker, set()).add(cid)
@@ -2525,6 +2535,8 @@ def _load_entity_snapshot() -> dict:
             # Aliases widen the normalized surface too: "Sony Group" reaches
             # Sony through the alias even though no companies.name matches.
             snap["by_norm"].setdefault(normalize_company_key(key), set()).add(cid)
+            index_tokens(snap["by_name_tokens"], snap["by_token_prefix"],
+                         company_key_tokens(key), cid, from_name=False)
 
         print(f"  primary-fold: entity snapshot loaded "
               f"({len(snap['name_by_id'])} companies, {len(snap['by_alias_key'])} alias keys, "
@@ -2566,6 +2578,10 @@ def _resolve_primary_to_canonical(name: str) -> Optional[str]:
                                         "ARM", the join key lives in a column)
       5. suffix/punctuation-normalized (SAP SE -> SAP, The Boeing Company ->
                                         Boeing), over names AND alias keys
+      6. leading-token relationship     (Truist Financial -> Truist, Klaviyo ->
+                                        Klaviyo Inc-A), guarded against generic
+                                        and short stems. See
+                                        company_match.token_fold_candidates.
 
     Steps 1-2 stay live queries rather than reading the snapshot so that a
     company minted earlier in THIS run is still visible, which is how the
@@ -2598,10 +2614,32 @@ def _resolve_primary_to_canonical(name: str) -> Optional[str]:
                 resolved = _unique_company_name(
                     snap, snap["by_ticker"].get(name.strip().upper())
                 )
+            norm_ids = None
             if resolved is None:
-                resolved = _unique_company_name(
-                    snap, snap["by_norm"].get(normalize_company_key(name))
-                )
+                norm_ids = snap["by_norm"].get(normalize_company_key(name))
+                resolved = _unique_company_name(snap, norm_ids)
+            # Step 6 may CONFIRM a step 5 refusal but never OVERRULE it.
+            # _unique_company_name yields None for an empty candidate set and
+            # for an ambiguous one alike, so `resolved is None` cannot tell a
+            # miss from a refusal. Unguarded, the fold fired on step 5's
+            # refusals and then picked, by a weaker relationship, a company step
+            # 5 had already declined to choose between. Measured false folds
+            # that caused: 'Southern Co.' -> 'Southern Tooling, Inc.',
+            # 'DOMINOS PIZZA INC' -> "Domino's Pizza China", "Domino's Pizza
+            # Group" -> "Domino's Pizza China", 'Aecon' -> 'Aecon Utilities'.
+            # In each one Direction A finds no stem, so Direction B reaches for
+            # a longer indexed name that step 5 had already found several
+            # candidates for. For 'Southern Co.' and 'Aecon' the key is a single
+            # token and leading_stems() yields nothing at all (n=1 makes
+            # range(0, 0, -1) empty), so Direction A cannot even run; the two
+            # Domino's strings key to ('dominos', 'pizza') and Direction A runs
+            # but finds no indexed company named just 'Dominos'.
+            # guarded_fold_candidates holds the rule, shared with the two tools
+            # that must agree with this function. See its docstring.
+            if resolved is None:
+                resolved = _unique_company_name(snap, guarded_fold_candidates(
+                    norm_ids, token_fold_candidates(
+                        snap["by_name_tokens"], snap["by_token_prefix"], name)))
     except Exception as ex:
         print(f"  primary-fold: resolution error [{name!r}]: {ex}")
         resolved = None
