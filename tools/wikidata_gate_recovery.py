@@ -63,6 +63,7 @@ from supabase import create_client  # noqa: E402
 import wikidata  # noqa: E402
 from company_match import (  # noqa: E402
     company_key_tokens,
+    guarded_fold_candidates,
     index_tokens,
     looks_like_ticker,
     normalize_company_key,
@@ -165,23 +166,51 @@ def resolve_widened(idx, name, guard_step_five_refusals=True):
     "Domino's Pizza China", "Domino's Pizza Group" -> "Domino's Pizza China",
     'Aecon' -> 'Aecon Utilities'.
 
+    The rule itself lives in company_match.guarded_fold_candidates, shared with
+    ingest and with tools/primary_fold_eval.py so the three cannot drift again.
+
     `guard_step_five_refusals=False` reproduces the pre-guard behavior, so the
     cost of the guard can be measured on the same read rather than argued.
     """
     canonical = resolve_existing(idx, name)
     if canonical:
         return canonical
-    if guard_step_five_refusals and idx["by_norm"].get(normalize_company_key(name)):
-        return None
-    return _unique(idx, token_fold_candidates(
-        idx["by_name_tokens"], idx["by_token_prefix"], name))
+    fold = token_fold_candidates(
+        idx["by_name_tokens"], idx["by_token_prefix"], name)
+    if guard_step_five_refusals:
+        fold = guarded_fold_candidates(
+            idx["by_norm"].get(normalize_company_key(name)), fold)
+    return _unique(idx, fold)
 
 
 # ---------------------------------------------------------------------------
 # The loss population
 # ---------------------------------------------------------------------------
+#: The reference definition of GATE LOSS, spelled out so a number quoted from
+#: this tool can be checked rather than believed. Printed with every report.
+#:
+#: There is exactly one gate-loss definition in this repository and it is the
+#: function below. `backend/wikidata.py` has no counter of any kind: it prints
+#: each drop to stdout and aggregates nothing. The `gate_*` counters at
+#: `backend/ingest.py:3400` are the RELEVANCE gate, a different gate entirely.
+#: Any gate-loss percentage not produced by this function is unsourced.
+GATE_LOSS_DEFINITION = (
+    "GATE LOSS = article rows in the window whose primary_company is set, is "
+    "absent from companies[], HAS a wikidata_entity_cache row, and for which "
+    "replaying backend.wikidata._resolve_keep against that cached verdict "
+    "returns DROP. Names with no cache row are excluded: the gate cannot be "
+    "proven to have run on them. Denominator is ARTICLE ROWS, not names."
+)
+
+
 def gate_verdict_is_drop(name, cache_row, indexed_names):
     """Replay backend.wikidata._resolve_keep against the CACHED verdict.
+
+    THE DEFINITION OF GATE LOSS. See GATE_LOSS_DEFINITION above. This function
+    is the only place the project defines the quantity, so a figure that did
+    not come from here has no definition behind it. Three different gate-loss
+    figures have circulated for this work; only one of them reproduces, and it
+    reproduces here.
 
     Returns True when the gate drops the name. A name with no cache row is not
     counted at all: we cannot prove the gate ever ran on it.
@@ -272,6 +301,9 @@ def report(idx, loss, label, guard=True):
     n_added = sum(loss[n] for n in added)
     n_unguarded = sum(loss[n] for n in unguarded_added)
     print(f"\n=== {label} ===")
+    # Print the definition next to the number. A share-of-loss figure is only
+    # as good as its denominator, and this one has been quoted three ways.
+    print(f"definition                 : {GATE_LOSS_DEFINITION}")
     print(f"gate loss                  : {total} articles over {len(loss)} names")
     print(f"recovered, surfaces 1-5    : {n_existing} "
           f"({n_existing / total * 100:.1f}% of loss) over "

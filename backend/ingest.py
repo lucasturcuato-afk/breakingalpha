@@ -34,6 +34,7 @@ from normalize import normalize_lookup_key
 # write key: see backend/company_match.py's module docstring.
 from company_match import (
     company_key_tokens,
+    guarded_fold_candidates,
     index_tokens,
     looks_like_ticker,
     normalize_company_key,
@@ -2617,26 +2618,28 @@ def _resolve_primary_to_canonical(name: str) -> Optional[str]:
             if resolved is None:
                 norm_ids = snap["by_norm"].get(normalize_company_key(name))
                 resolved = _unique_company_name(snap, norm_ids)
-            # Step 6 fires ONLY when step 5 found nothing, never when step 5
-            # refused. _unique_company_name yields None for an empty candidate
-            # set and for an ambiguous one alike, so `resolved is None` cannot
-            # tell a miss from a refusal. Without `not norm_ids` the fold fired
-            # on step 5's refusals and then picked, by a weaker relationship, a
-            # company step 5 had already declined to choose between. Measured
-            # false folds that caused: 'Southern Co.' -> 'Southern Tooling,
-            # Inc.', 'DOMINOS PIZZA INC' -> "Domino's Pizza China",
-            # "Domino's Pizza Group" -> "Domino's Pizza China", 'Aecon' ->
-            # 'Aecon Utilities'. In each one Direction A finds no stem, so
-            # Direction B reaches for a longer indexed name that step 5 had
-            # already found several candidates for. For 'Southern Co.' and
-            # 'Aecon' the key is a single token and leading_stems() yields
-            # nothing at all (n=1 makes range(0, 0, -1) empty), so Direction A
-            # cannot even run; the two Domino's strings key to ('dominos',
-            # 'pizza') and Direction A runs but finds no indexed company named
-            # just 'Dominos'.
-            if resolved is None and not norm_ids:
-                resolved = _unique_company_name(snap, token_fold_candidates(
-                    snap["by_name_tokens"], snap["by_token_prefix"], name))
+            # Step 6 may CONFIRM a step 5 refusal but never OVERRULE it.
+            # _unique_company_name yields None for an empty candidate set and
+            # for an ambiguous one alike, so `resolved is None` cannot tell a
+            # miss from a refusal. Unguarded, the fold fired on step 5's
+            # refusals and then picked, by a weaker relationship, a company step
+            # 5 had already declined to choose between. Measured false folds
+            # that caused: 'Southern Co.' -> 'Southern Tooling, Inc.',
+            # 'DOMINOS PIZZA INC' -> "Domino's Pizza China", "Domino's Pizza
+            # Group" -> "Domino's Pizza China", 'Aecon' -> 'Aecon Utilities'.
+            # In each one Direction A finds no stem, so Direction B reaches for
+            # a longer indexed name that step 5 had already found several
+            # candidates for. For 'Southern Co.' and 'Aecon' the key is a single
+            # token and leading_stems() yields nothing at all (n=1 makes
+            # range(0, 0, -1) empty), so Direction A cannot even run; the two
+            # Domino's strings key to ('dominos', 'pizza') and Direction A runs
+            # but finds no indexed company named just 'Dominos'.
+            # guarded_fold_candidates holds the rule, shared with the two tools
+            # that must agree with this function. See its docstring.
+            if resolved is None:
+                resolved = _unique_company_name(snap, guarded_fold_candidates(
+                    norm_ids, token_fold_candidates(
+                        snap["by_name_tokens"], snap["by_token_prefix"], name)))
     except Exception as ex:
         print(f"  primary-fold: resolution error [{name!r}]: {ex}")
         resolved = None

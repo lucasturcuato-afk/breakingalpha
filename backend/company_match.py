@@ -340,3 +340,54 @@ def token_fold_candidates(by_name_tokens: dict, by_token_prefix: dict, name: str
     # ambiguity that refuses a fold the shorter one would have earned alone.
     best = min(full_len for full_len, _ in longer)
     return {cid for full_len, cid in longer if full_len == best}
+
+
+def guarded_fold_candidates(norm_ids, fold_ids) -> set:
+    """Surface 6's candidate set, after the surface-5 ambiguity guard.
+
+    THE ONE DEFINITION OF THE GUARD. Three call sites resolve a
+    primary_company: `ingest._resolve_primary_to_canonical`, which the live
+    pipeline runs; `tools/primary_fold_eval.resolve_after`, which decides what
+    `tools/backfill_primary_fold.py --apply` WRITES; and
+    `tools/wikidata_gate_recovery.resolve_widened`, which sizes the recovery.
+    They diverged once already, so the rule lives here and all three call it.
+
+    `norm_ids` is surface 5's candidate set, `fold_ids` surface 6's. Callers
+    apply their own uniqueness guard to the return value, exactly as they do to
+    a bare `token_fold_candidates` result.
+
+    THE PROBLEM. A uniqueness guard yields None for an EMPTY candidate set and
+    for an AMBIGUOUS one alike, so `surface_5_result is None` cannot tell
+    "surface 5 found nothing" from "surface 5 refused to choose". Chaining
+    surface 6 off that None let a weaker relationship pick a company a stronger
+    surface had already declined to pick between. Measured false folds:
+        'Southern Co.'          -> 'Southern Tooling, Inc.'
+        'DOMINOS PIZZA INC'     -> "Domino's Pizza China"
+        "Domino's Pizza Group"  -> "Domino's Pizza China"
+        'Aecon'                 -> 'Aecon Utilities'
+
+    THE RULE. On a surface-5 refusal, surface 6 may CONFIRM but never OVERRULE:
+    its candidates are accepted only when they are a subset of the set surface 5
+    already had. The fold then only narrows an ambiguity, and cannot reach
+    outside it for a company surface 5 never considered.
+
+    Measured over all 196,056 article rows (2026-08-31, 164,891 with a
+    non-empty primary_company) against the blunter alternative of refusing the
+    fold outright on any non-empty `norm_ids`:
+      - identical on all four false folds above, and on 7 more strings the
+        blunt rule also refuses ('Bain & Company' -> 'Bain Capital',
+        'NEXTERA ENERGY INC' -> 'NextEra Energy Partners', both Lucid strings,
+        both Pershing Square strings, 'Fervo Energy Co')
+      - recovers 87 rows over 3 strings the blunt rule refuses, all correct:
+        'Spotify Technology' -> 'Spotify' (83 rows),
+        'Exxon Mobil Corp.' -> 'Exxon' (3), 'LIONSGATE STUDIOS CORP' ->
+        'Lionsgate' (1)
+      - adds zero wrong answers: every string on which the two differ resolves
+        correctly under this rule.
+    """
+    if not norm_ids:
+        # Surface 5 genuinely found nothing. The fold runs free, as before.
+        return fold_ids
+    if fold_ids and set(fold_ids) <= set(norm_ids):
+        return fold_ids
+    return set()

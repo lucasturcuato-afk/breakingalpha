@@ -65,6 +65,7 @@ from company_match import (  # noqa: E402
     BASE_SUFFIXES,
     EXTRA_SUFFIXES,
     company_key_tokens,
+    guarded_fold_candidates,
     index_tokens,
     looks_like_ticker,
     normalize_company_key,
@@ -150,7 +151,18 @@ def resolve_before(idx, name):
 def resolve_after(idx, name):
     """The NEW gate: same first two steps, then alias, ticker, normalized, then
     the leading-token fold. Mirrors ingest._resolve_primary_to_canonical step
-    for step. Returns the CANONICAL name."""
+    for step, AMBIGUITY GUARD INCLUDED. Returns the CANONICAL name.
+
+    The guard is not decoration here. `tools/backfill_primary_fold.py` imports
+    this function and calls it to decide what `--apply` WRITES into
+    articles.companies[]. A version of it that resolves differently from the
+    live pipeline writes rows the pipeline would never have written, and the
+    divergence is invisible because both sides look reasonable in isolation.
+    That is exactly what happened: the guard landed in ingest and in
+    tools/wikidata_gate_recovery.py and was missed here, and the two resolvers
+    then disagreed on 14 strings over 105 of 196,056 rows, every one of the
+    four measured false folds among them.
+    """
     if name in idx["exact_names"]:
         return name
     canonical = idx["lower_names"].get(name.lower())
@@ -163,11 +175,12 @@ def resolve_after(idx, name):
         canonical = _unique(idx, idx["by_ticker"].get(name.strip().upper()))
         if canonical:
             return canonical
-    canonical = _unique(idx, idx["by_norm"].get(normalize_company_key(name)))
+    norm_ids = idx["by_norm"].get(normalize_company_key(name))
+    canonical = _unique(idx, norm_ids)
     if canonical:
         return canonical
-    return _unique(idx, token_fold_candidates(
-        idx["by_name_tokens"], idx["by_token_prefix"], name))
+    return _unique(idx, guarded_fold_candidates(norm_ids, token_fold_candidates(
+        idx["by_name_tokens"], idx["by_token_prefix"], name)))
 
 
 def oracle_candidates(idx, name):

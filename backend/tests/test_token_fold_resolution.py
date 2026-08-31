@@ -41,14 +41,20 @@ for _k, _v in {
     os.environ[_k] = _v
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+#: The parity test reads the two tools alongside ingest. They import
+#: backend modules by bare name, so backend/ must already be on the path.
+_REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.join(_REPO, "tools"))
 
 import ingest  # noqa: E402
 from company_match import (  # noqa: E402
     TOKEN_FOLD_MAX_EXTRA_TOKENS,
     TOKEN_FOLD_MAX_STEM_CLOSURE,
     company_key_tokens,
+    guarded_fold_candidates,
     index_tokens,
     leading_stems,
+    normalize_company_key,
     stem_is_foldable,
     token_fold_candidates,
 )
@@ -98,6 +104,15 @@ COMPANIES = [
     {"id": "t22", "name": "Domino's Pizza Inc", "ticker": "DPZ"},
     {"id": "t23", "name": "Domino's Pizza Corp", "ticker": None},
     {"id": "t24", "name": "Domino's Pizza China", "ticker": None},
+    # --- CONFIRMATORY fixture (see TokenFoldStepFiveRefusalTest) ---
+    # Verbatim shape of the prod rows for Spotify. The index holds the SAME
+    # company twice, and an alias on the second row's spelled-out form keys to
+    # the first, so surface 5 sees two ids for "spotify technology". They are
+    # not two companies; they are one company and an index defect. The fold
+    # narrows that pair to the canonical short row, which is INSIDE the pair,
+    # so it disambiguates rather than overrules. 83 prod rows ride on this.
+    {"id": "t25", "name": "Spotify", "ticker": "SPOT"},
+    {"id": "t26", "name": "Spotify Technology SA", "ticker": None},
 ]
 
 ALIASES = [
@@ -105,6 +120,13 @@ ALIASES = [
     # "rocket" points at Rocket Lab, and "Rocket Seals" is a different company.
     {"lookup_key": "rocket", "canonical_id": "t17"},
     {"lookup_key": "hillman", "canonical_id": "t18"},
+    # The second half of the Spotify shape. normalize_company_key folds the
+    # trailing "sa", so this alias key lands on the same normalized key as the
+    # t26 NAME while pointing at t25. That, and not a real ambiguity, is what
+    # makes surface 5 refuse. The key deliberately is not "spotify technology":
+    # in prod it is not, which is why surface 3 misses and the case reaches
+    # surface 5 at all.
+    {"lookup_key": "spotify technology sa", "canonical_id": "t25"},
 ]
 
 MORE_COMPANIES = [
@@ -312,6 +334,145 @@ class TokenFoldStepFiveRefusalTest(_FoldCase):
                 snap["by_name_tokens"], snap["by_token_prefix"], "Southern Co.")),
             "Southern Tooling Inc",
         )
+
+    def test_fold_may_confirm_a_refusal_it_may_not_overrule_one(self):
+        """The narrow guard. Surface 5 refuses "Spotify Technology" because the
+        index holds the company twice, not because two companies compete. The
+        fold's answer lies INSIDE the pair surface 5 was choosing between, so it
+        narrows rather than overrules, and the fold is allowed.
+
+        Contrast 'Southern Co.' above, where the fold's answer lies OUTSIDE
+        surface 5's pair and is refused. Inside versus outside is the whole
+        rule. Blanket-refusing every ambiguous surface 5 would cost 87 correct
+        prod rows over 3 strings and prevent no wrong answer.
+        """
+        self.assertEqual(self.resolve("Spotify Technology"), "Spotify")
+
+    def test_the_confirmatory_case_really_is_a_surface_five_refusal(self):
+        """Pins the premise, so the test above cannot pass for the wrong reason
+        (an alias or exact hit short-circuiting before surface 5)."""
+        snap = ingest._entity_snapshot()
+        from company_match import normalize_company_key as _nk
+        from normalize import normalize_lookup_key as _lk
+
+        # Surfaces 1-2: no company is NAMED "Spotify Technology", in any case.
+        names = {c["name"] for c in COMPANIES + MORE_COMPANIES}
+        self.assertNotIn("Spotify Technology", names)
+        self.assertNotIn("spotify technology", {n.lower() for n in names})
+        # Surface 3: the alias key is "spotify technology sa", so this misses.
+        self.assertIsNone(snap["by_alias_key"].get(_lk("Spotify Technology")))
+        # Surface 5: two ids, so it refuses.
+        norm_ids = snap["by_norm"].get(_nk("Spotify Technology"))
+        self.assertEqual(len(norm_ids), 2)
+        self.assertIsNone(ingest._unique_company_name(snap, norm_ids))
+        fold = token_fold_candidates(
+            snap["by_name_tokens"], snap["by_token_prefix"], "Spotify Technology")
+        self.assertTrue(set(fold) <= set(norm_ids))
+
+
+# ---------------------------------------------------------------------------
+# 5. The guard has ONE definition, and three call sites must share it
+# ---------------------------------------------------------------------------
+class GuardedFoldCandidatesTest(unittest.TestCase):
+    """Unit-level, on the rule itself rather than through a resolver."""
+
+    def test_empty_surface_five_lets_the_fold_run_free(self):
+        self.assertEqual(guarded_fold_candidates(set(), {"a"}), {"a"})
+        self.assertEqual(guarded_fold_candidates(None, {"a"}), {"a"})
+
+    def test_fold_inside_the_refused_set_is_kept(self):
+        self.assertEqual(guarded_fold_candidates({"a", "b"}, {"a"}), {"a"})
+
+    def test_fold_outside_the_refused_set_is_dropped(self):
+        self.assertEqual(guarded_fold_candidates({"a", "b"}, {"c"}), set())
+
+    def test_partial_overlap_is_dropped(self):
+        """Not "intersects": a fold straddling the boundary is not narrowing an
+        ambiguity, it is adding a candidate surface 5 never had."""
+        self.assertEqual(guarded_fold_candidates({"a", "b"}, {"a", "c"}), set())
+
+    def test_empty_fold_against_a_refusal_stays_empty(self):
+        self.assertEqual(guarded_fold_candidates({"a", "b"}, set()), set())
+
+
+class ResolverParityTest(_FoldCase):
+    """THE REGRESSION THIS PR EXISTS FOR.
+
+    Three functions resolve a primary_company and every one of them must agree:
+      backend/ingest.py                    the live pipeline
+      tools/primary_fold_eval.py           what backfill --apply WRITES
+      tools/wikidata_gate_recovery.py      how the recovery is sized
+
+    The guard reached the first and third and missed the second, and nothing
+    failed, because each looked correct read on its own. This test reads all
+    three against ONE index and fails the moment they diverge.
+    """
+
+    @staticmethod
+    def _tool_index():
+        import primary_fold_eval
+
+        idx = {
+            "name_by_id": {}, "by_alias": {}, "by_ticker": {}, "by_norm": {},
+            "exact_names": set(), "lower_names": {},
+            "by_name_tokens": {}, "by_token_prefix": {},
+        }
+        from collections import defaultdict
+        for k in ("by_alias", "by_ticker", "by_norm"):
+            idx[k] = defaultdict(set)
+        for r in COMPANIES + MORE_COMPANIES:
+            cid, name = r["id"], r["name"]
+            idx["name_by_id"][cid] = name
+            idx["exact_names"].add(name)
+            idx["lower_names"].setdefault(name.lower(), name)
+            idx["by_norm"][normalize_company_key(name)].add(cid)
+            index_tokens(idx["by_name_tokens"], idx["by_token_prefix"],
+                         company_key_tokens(name), cid, from_name=True)
+            if r.get("ticker"):
+                idx["by_ticker"][r["ticker"].upper()].add(cid)
+        for a in ALIASES:
+            key, cid = a["lookup_key"], a["canonical_id"]
+            idx["by_alias"][key].add(cid)
+            idx["by_norm"][normalize_company_key(key)].add(cid)
+            index_tokens(idx["by_name_tokens"], idx["by_token_prefix"],
+                         company_key_tokens(key), cid, from_name=False)
+        return primary_fold_eval, idx
+
+    #: Every string the three resolvers must agree on. The first block is the
+    #: measured false folds, the second the measured correct ones, the third
+    #: the confirmatory case that separates the narrow guard from a blunt one.
+    NAMES = (
+        "Southern Co.", "DOMINOS PIZZA INC", "Domino's Pizza Group", "Aecon",
+        "Truist Financial", "Klaviyo", "Kratos Defense & Security Solutions",
+        "Eos Energy", "Teva Pharmaceuticals", "Crown Castle", "GE Vernova",
+        "Spotify Technology", "Spotify", "Vertex", "American Express",
+        "Rocket Seals", "Hillman", "nonexistent company xyz",
+    )
+
+    def test_all_three_resolvers_agree_on_every_measured_string(self):
+        pfe, idx = self._tool_index()
+        import wikidata_gate_recovery as wgr
+
+        for name in self.NAMES:
+            with self.subTest(name=name):
+                live = ingest._resolve_primary_to_canonical(name)
+                tool = pfe.resolve_after(idx, name)
+                recov = wgr.resolve_widened(idx, name)
+                self.assertEqual(live, tool, f"ingest vs primary_fold_eval on {name!r}")
+                self.assertEqual(live, recov, f"ingest vs wikidata_gate_recovery on {name!r}")
+
+    def test_the_unguarded_resolver_still_produces_the_false_folds(self):
+        """Proof the parity test above has teeth: with the guard switched off,
+        the same index yields the wrong answers the guard exists to stop."""
+        _, idx = self._tool_index()
+        import wikidata_gate_recovery as wgr
+
+        self.assertEqual(
+            wgr.resolve_widened(idx, "Southern Co.", guard_step_five_refusals=False),
+            "Southern Tooling Inc")
+        self.assertEqual(
+            wgr.resolve_widened(idx, "DOMINOS PIZZA INC", guard_step_five_refusals=False),
+            "Domino's Pizza China")
 
 
 if __name__ == "__main__":
