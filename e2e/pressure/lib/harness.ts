@@ -66,7 +66,11 @@ export interface GuardState {
   externalAborted: string[];
 }
 
-export async function installGuards(context: BrowserContext): Promise<GuardState> {
+export async function installGuards(
+  context: BrowserContext,
+  /** Extra origins the guard lets through, e.g. the foreign-referrer stub. */
+  allowOrigins: string[] = [],
+): Promise<GuardState> {
   const state: GuardState = {
     blockMutations: true,
     blockedMutations: [],
@@ -148,6 +152,7 @@ export async function installGuards(context: BrowserContext): Promise<GuardState
     const u = req.url();
     const origin = new URL(u).origin;
     if (origin === "http://localhost:3370" || origin === BASE) return route.fallback();
+    if (allowOrigins.includes(origin)) return route.continue();
     if (supabaseOrigin && origin === supabaseOrigin) {
       const p = new URL(u).pathname;
       if (state.blockMutations && p.startsWith("/rest/v1/") && !["GET", "HEAD"].includes(req.method())) {
@@ -208,16 +213,62 @@ export async function assertEmulation(page: Page): Promise<{ anyHoverNone: boole
 }
 
 /**
- * A genuine cold entry.
+ * A genuine cold entry, and it will refuse rather than lie.
  *
- * `newPage()` starts on about:blank, so `page.goto` PUSHES and history.length
- * is 2 on arrival. Any screen whose back control branches on history depth then
- * measures a history the reader could not have. `location.replace` from
- * about:blank replaces that entry instead of adding one.
+ * WHAT WENT WRONG THE FIRST TIME, measured, because the fix is not the obvious
+ * one. `newPage()` starts on `about:blank`, `page.goto` PUSHES, and
+ * `location.replace` was reached for to avoid that. All true, and the call
+ * still reported `history.length = 3`. `location.replace` was working
+ * perfectly: it replaces THE ENTRY IT IS STANDING ON, and two entries already
+ * existed underneath it because the caller had reused a page that had already
+ * navigated. `history.length` is a property of the TAB, not of the call.
+ *
+ * The measurements, on this build:
+ *
+ *   fresh page                          length 1, url about:blank
+ *   fresh page + goto("about:blank")    length 1   <- does NOT push; Chromium
+ *                                                     replaces the initial
+ *                                                     empty document
+ *   fresh page + replace(target)        length 1, navigation index 0,
+ *                                       entries ["/deal-flow"]   <- COLD
+ *   used page (one goto) + goto(blank)  length 3   <- DOES push, because the
+ *                                                     document is no longer
+ *                                                     the initial empty one
+ *   used page + replace(target)         length 3, navigation index 1,
+ *                                       entries ["/dashboard","/deal-flow"]
+ *
+ * The last line is the damage, and `history.length` is not even the part that
+ * matters. `navigation.currentEntry.index` was 1 with a same-origin page behind
+ * it, so `shouldStepBack` would have returned TRUE on a page the harness was
+ * calling a cold entry. A back-control test written there measures the
+ * step-back branch while believing it measures the cold branch, and reports it
+ * green either way.
+ *
+ * So this refuses to run on a page that has already been somewhere, and gives
+ * back the Navigation API's own numbers rather than `history.length`, which is
+ * the tab's and not ours.
  */
-export async function coldGoto(page: Page, url: string): Promise<number> {
+export interface ColdEntry {
+  historyLength: number;
+  /** Our slice: 0 means nothing of ours is behind this page. */
+  navIndex: number | undefined;
+  navEntries: number | undefined;
+  /** The URLs in our slice. The direct proof of what is and is not reachable. */
+  navUrls: string[] | undefined;
+}
+
+export async function coldGoto(page: Page, url: string): Promise<ColdEntry> {
   const target = url.startsWith("http") ? url : BASE + url;
-  await page.goto("about:blank");
+
+  const before = await page.evaluate(() => ({ len: history.length, href: location.href }));
+  if (before.href !== "about:blank" || before.len !== 1) {
+    throw new Error(
+      `coldGoto needs a page that has never navigated. This one is at ${before.href} with history.length ${before.len}. ` +
+        `location.replace can only replace the entry it stands on, so entries underneath survive and the result is not a cold entry. ` +
+        `Call newPage() and pass the fresh page.`,
+    );
+  }
+
   await Promise.all([
     page.waitForURL((u) => u.toString().startsWith(target), { timeout: 20_000 }),
     page.evaluate((u) => {
@@ -226,18 +277,28 @@ export async function coldGoto(page: Page, url: string): Promise<number> {
   ]);
   await page.waitForLoadState("domcontentloaded");
   await page.waitForTimeout(400);
-  return page.evaluate(() => window.history.length);
+  return readEntry(page);
 }
 
-/**
- * Navigate and WAIT FOR THE SCREEN TO SETTLE.
- *
- * `/dashboard` opens on an entrance ladder ("READING OVERNIGHT COVERAGE") and
- * several screens fetch after mount. Measuring at domcontentloaded reports the
- * splash as the screen. This polls the rendered text until two consecutive
- * reads agree, which is cheap and does not depend on knowing which screen has
- * an animation on it.
- */
+/** The Navigation API's view of OUR slice, which is the property the app reads. */
+export async function readEntry(page: Page): Promise<ColdEntry> {
+  return page.evaluate(() => {
+    const nav = (window as unknown as {
+      navigation?: {
+        currentEntry?: { index?: number } | null;
+        entries?: () => { url?: string }[];
+      };
+    }).navigation;
+    const entries = nav?.entries ? nav.entries() : undefined;
+    return {
+      historyLength: history.length,
+      navIndex: typeof nav?.currentEntry?.index === "number" ? nav.currentEntry.index : undefined,
+      navEntries: entries ? entries.length : undefined,
+      navUrls: entries ? entries.map((e) => e.url ?? "") : undefined,
+    };
+  });
+}
+
 export async function warmGoto(page: Page, route: string): Promise<number | null> {
   const res = await page.goto(route.startsWith("http") ? route : BASE + route, {
     waitUntil: "domcontentloaded",

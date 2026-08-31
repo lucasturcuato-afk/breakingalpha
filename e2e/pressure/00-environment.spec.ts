@@ -54,21 +54,25 @@ test("environment: production build, preview gate, phone emulation, real session
   expect(emu.anyHoverNone, "(any-hover: none) must match, or every hover audit is wrong").toBe(true);
   note("environment", "(context)", `390px, hasTouch true, (any-hover:none) matches`, "measured");
 
-  /* 4. A genuine cold entry. goto from about:blank PUSHES; location.replace
-        does not. Anything that branches on history depth needs this. */
-  const histLen = await coldGoto(page, "/ledger");
-  note("environment", "/ledger", `cold entry via location.replace: history.length = ${histLen}`, "measured");
-  if (histLen !== 1) {
-    finding({
-      severity: "info",
-      rule: "cold-entry-history",
-      screen: "/ledger",
-      pass: "static",
-      title: `cold entry left history.length = ${histLen}`,
-      evidence: "location.replace from about:blank was expected to leave a single entry.",
-      basis: "measured",
-    });
-  }
+  /* 4. A genuine cold entry, ON A PAGE THAT HAS NEVER NAVIGATED.
+        The first version of this reused the page above, which had already
+        loaded "/". `location.replace` replaces only the entry it stands on, so
+        two entries survived underneath and the "cold" page reported
+        `navigation.currentEntry.index === 1`: a same-origin page behind it, and
+        `shouldStepBack` true on the page the harness was calling cold. See
+        coldGoto's own note for the measurements. */
+  const coldPage = await ctx.newPage();
+  const cold = await coldGoto(coldPage, "/ledger");
+  note(
+    "environment",
+    "/ledger",
+    `cold entry on a fresh page: history.length ${cold.historyLength}, navigation index ${cold.navIndex}, entries ${cold.navEntries}`,
+    "measured",
+  );
+  expect(cold.historyLength, "a cold entry leaves one tab history entry").toBe(1);
+  expect(cold.navIndex, "nothing of ours may be behind a cold entry").toBe(0);
+  expect(cold.navEntries, "our slice holds exactly the page we landed on").toBe(1);
+  await coldPage.close();
 
   /* 5. Two DISTINCT theme captures. localStorage.signalera_theme, via
         addInitScript, read before paint. emulateMedia does nothing here, and a
