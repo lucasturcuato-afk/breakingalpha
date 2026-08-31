@@ -11,7 +11,7 @@ import type { Page } from "@playwright/test";
 import { enumerateControls, screenIsSelfMutating, tapAndObserve, type ControlInfo } from "./probe";
 import { allRules, readScreenText } from "./rules";
 import { controlLog, finding, note, routeVisit } from "./report";
-import { AUTH_STATE, signIn, warmGoto, type Theme } from "./harness";
+import { AUTH_STATE, NAV_TIMED_OUT, signIn, warmGoto, type Theme } from "./harness";
 
 export const POLE_ROUTES: Array<{ label: string; href: string }> = [
   { label: "Dashboard", href: "/dashboard" },
@@ -365,6 +365,20 @@ export async function walk(page: Page, base: string, theme: Theme, pass: "empty"
     }
 
     routeVisit({ route: item.route, reachedBy: item.via, status, finalUrl, pass });
+
+    if (status === NAV_TIMED_OUT) {
+      finding({
+        severity: "high",
+        rule: "route-did-not-load-in-25s",
+        screen: item.route,
+        theme,
+        pass,
+        title: `${item.route} did not reach domcontentloaded within 25s`,
+        evidence: `Reached by ${item.via}. Measured on a local production build with no network latency, so this is server render time, not the wire. The screen was not probed; nothing is claimed about its controls or its copy.`,
+        basis: "measured",
+      });
+      continue;
+    }
 
     if (landed !== item.route) {
       finding({

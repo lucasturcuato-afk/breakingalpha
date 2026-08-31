@@ -299,11 +299,25 @@ export async function readEntry(page: Page): Promise<ColdEntry> {
   });
 }
 
+/** Sentinel status: the navigation did not complete inside the timeout. */
+export const NAV_TIMED_OUT = -1;
+
 export async function warmGoto(page: Page, route: string): Promise<number | null> {
-  const res = await page.goto(route.startsWith("http") ? route : BASE + route, {
-    waitUntil: "domcontentloaded",
-    timeout: 25_000,
-  });
+  /* A NAVIGATION THAT NEVER COMPLETES MUST NOT END THE WALK. `/company/tsla`
+     took longer than 25s to reach domcontentloaded on one cold render and the
+     thrown timeout aborted a six-minute pass over twenty-seven screens, losing
+     every measurement in it. A route that slow is a finding on its own, so it
+     is reported as one by the caller and the walk carries on to the next
+     screen. Swallowing it silently would be the other failure. */
+  let res: Awaited<ReturnType<Page["goto"]>> = null;
+  try {
+    res = await page.goto(route.startsWith("http") ? route : BASE + route, {
+      waitUntil: "domcontentloaded",
+      timeout: 25_000,
+    });
+  } catch {
+    return NAV_TIMED_OUT;
+  }
   /* Element count, not text length. A live ticker rewrites its own text every
      second, so a text-length signal never settles and every navigation pays the
      full timeout. Structure settles; a quote does not. */

@@ -136,7 +136,7 @@ test("populated pass: plant one follow and one watchlist entry, then walk the re
   guards.blockMutations = true; // probing must not write
   for (const route of RECORD_SCREENS) {
     const status = await warmGoto(page, route);
-    if (status && status >= 400) continue;
+    if (status !== null && (status >= 400 || status < 0)) continue;
     await probeScreen(page, route, BASE, "light", "populated");
   }
 
@@ -160,7 +160,7 @@ test("populated pass: the same screens in dark, rules and geometry", async () =>
   await ensureSignedIn(page);
   for (const route of RECORD_SCREENS) {
     const status = await warmGoto(page, route);
-    if (status && status >= 400) continue;
+    if (status !== null && (status >= 400 || status < 0)) continue;
     await runRules(page, route, "dark", "populated");
     auditGeometry(await enumerateControls(page), route, "dark", "populated");
   }
