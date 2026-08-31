@@ -10,6 +10,90 @@
  * This module is consumption-side only. It does not write, does not touch the memo
  * pool, and is not wired into any UI or the memo route.
  */
+/*
+ * ----------------------------------------------------------------------
+ * REJECT SAFETY. READ THIS BEFORE ADDING A MODIFIER TO ANY QUERY IN THIS
+ * FILE, OR TO ANY QUERY REACHABLE FROM THE FIVE READS /company/[id] ISSUES
+ * TOGETHER.
+ *
+ * The five, and where they live:
+ *   getArticleFallback        src/lib/data-access/getArticleFallback.ts
+ *   fetchCompanyArticles      src/app/api/companies/[id]/articles/route.ts
+ *   fetchCompanyFilings       this file
+ *   getInsiderTransactions    src/lib/data-access/getInsiderTransactions.ts
+ *   fetchCompanyFinancials    src/lib/financial-facts.ts
+ *
+ * src/app/company/[id]/page.tsx awaits all five in one Promise.all. This block
+ * lives here rather than at that call site because the edit that would break
+ * the invariant is an edit to one of these five files, not to the page.
+ *
+ * postgrest-js does NOT make a query un-rejectable. An earlier version of this
+ * comment claimed the library converts even a network-layer failure into an
+ * { error, data: null } tuple so nothing can reject. That is false. In
+ * @supabase/postgrest-js 2.101.1, PostgrestBuilder.then() attaches the
+ * converting `.catch()` under `if (!this.shouldThrowOnError)`, and attaches it
+ * AFTER `_fetch(...)` has already been called. Four real reject paths follow:
+ * a .throwOnError() query on an HTTP 500 (throws PostgrestError inside the
+ * response handler), a .throwOnError() query on connection-refused (no
+ * converting catch is attached at all), .from("") (throws synchronously,
+ * before any promise exists), and a request body JSON.stringify cannot
+ * serialize (thrown while evaluating _fetch's own arguments, so again no catch
+ * is attached).
+ *
+ * The guarantee lives in the call sites instead. Every query reachable from
+ * the five sits inside a try whose catch yields an empty result rather than
+ * rethrowing. That includes resolveCompanyCik, shared by filings / insider /
+ * financials: its `try` is the first statement of the function body and its
+ * catch yields EMPTY_RESOLUTION, so no await in it is outside a try. The
+ * invariant survives by accident of style, not by construction, and nothing
+ * enforces it.
+ *
+ * SCOPE BOUNDARY, and it is not academic. "The five" means the five reads in
+ * the Promise.all. getCompanyDetail runs BEFORE that array and is not one of
+ * them, and it is the opposite shape: src/lib/data-access/getCompanyDetail.ts
+ * contains no try at all, and page.tsx awaits it bare. Its queries have no
+ * swallowing catch anywhere in the chain, so the "sits inside a try" guarantee
+ * above does not reach that file. Nothing rejects there today, for the same
+ * reason nothing rejects in the five: no .throwOnError(), and the converting
+ * catch handles the rest. But an engineer adding .throwOnError() there has no
+ * existing try to inherit and must add one at the call site in the SAME
+ * commit. Track F's adaptive article window added a second, conditional
+ * articles query inside that function, so this region now has four unguarded
+ * awaits rather than three.
+ *
+ * So the hazard is not the modifier by itself. .throwOnError() added to any
+ * query reachable from the five today is inert: the enclosing catch swallows
+ * the thrown PostgrestError exactly as it swallows the { error } tuple. The
+ * hazard is that modifier paired with an await placed OUTSIDE one of those
+ * trys. That combination rejects, Promise.all rejects with it, and the whole
+ * /company/[id] render fails instead of one tab degrading to its own empty
+ * state. If you add such an await, wrap it at the call site or switch page.tsx
+ * to allSettled in the SAME commit.
+ *
+ * Two claims an earlier revision made that were checkable and wrong, dropped
+ * here rather than carried:
+ *  - It said the failure renders the error boundary. There is no error.tsx and
+ *    no global-error.tsx at any segment of src/app, so nothing catches it at
+ *    the route level.
+ *  - It said .throwOnError() and .abortSignal() have 0 occurrences in src/.
+ *    Grep either one and you find this comment. Counting mentions was never
+ *    the right check. The check that means something is whether any occurrence
+ *    sits on a QUERY. That answer is no longer "none", so re-measure rather
+ *    than quoting this paragraph. As of main b3d2e6ad, .throwOnError() sits on
+ *    zero queries anywhere in src/, but .abortSignal() sits on three, all
+ *    added by #698 and all in src/app/radar/watchlist/page.tsx (:329, :334,
+ *    :374), each one .abortSignal(AbortSignal.timeout(DB_READ_TIMEOUT_MS)).
+ *    None of the three weakens the invariant above. They are not reachable
+ *    from the five reads, and .abortSignal() WITHOUT .throwOnError() cannot
+ *    reject in any case: the converting catch described above is still
+ *    attached, so a fired timeout arrives as an { error } tuple, which is
+ *    exactly what those three call sites read before returning FAILED_READ.
+ *
+ * allSettled is not the default in page.tsx because it would also swallow a
+ * reject the sequential version propagated, which is a behavior change rather
+ * than a scheduling change.
+ * ----------------------------------------------------------------------
+ */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { canonicalize } from "@/lib/company-intel";
 import { preferCik } from "@/lib/company-cik-preference";

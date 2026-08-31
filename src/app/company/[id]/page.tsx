@@ -174,7 +174,8 @@ export default async function CompanyDetailPage({
 
   // TODO(E3): wrap CompanyDetailLayout in <Suspense fallback={...}> once
   // streaming boundaries land. Today the page is a server component that
-  // fully resolves before render.
+  // fully resolves before render. The resolve below stays a standalone await:
+  // every read after it needs either its result or its null short-circuit.
   const companyDetail = await getCompanyDetail(supabase, canonicalize(companyName));
 
   /* Null branch: no companies-row match (un-indexed via web-fallback path).
@@ -220,6 +221,44 @@ export default async function CompanyDetailPage({
   // once.
   const canonical = companyDetail.canonical;
 
+  // Everything from here down depends only on `companyDetail` (already
+  // resolved) or on `companyName` (the slug-derived string computed above), so
+  // the five reads are mutually independent. Awaited one after another they
+  // cost the SUM of their latencies; issued together they cost the MAX. This
+  // is purely a scheduling change: same functions, same arguments, same
+  // results.
+  //
+  // Sized against the denominator a reader actually experiences. Median of 5 on
+  // a warm `next start` (Next 16.2.2) against prod, over the DATA BLOCK only:
+  // nvidia 883 -> 546ms, apple 857 -> 525ms, microsoft 844 -> 490ms, samsung
+  // 742 -> 539ms. The post-resolve block alone goes ~580 -> ~235ms:
+  // sequentially it costs articles 200 + filings 105 + insider 108 +
+  // financials 180; together it costs max(articles, financials).
+  //
+  // That is 27-42% OF THE DATA BLOCK, and the data block is not the page. A
+  // real session pays ~250-300ms of auth in front of all of this, none of it
+  // parallelized here: three separate auth.getUser() round trips at 68-84ms
+  // warm (the proxy() gate at proxy.ts:102, then generateMetadata and this
+  // function, each building its own client via getSupabaseWithUser, so nothing
+  // collapses them), plus the proxy's beta_allowlist read (proxy.ts:161, via
+  // isAllowlisted) and its user_profiles read (proxy.ts:184) at ~50-60ms each.
+  // Add that constant to both sides and the honest headline is ~31% user-visible:
+  // ~29-32% on nvidia / apple / microsoft, ~20% on samsung whose block saving
+  // is only ~200ms. Absolute saving ~330-355ms on the first three. It decays to
+  // ~8% at 16 concurrent page views, where connection contention flattens the
+  // gap between SUM and MAX.
+  //
+  // It stays BELOW the null short-circuit above on purpose. Hoisting the three
+  // companyName-only reads over getCompanyDetail would make every un-indexed
+  // slug pay for four reads it currently skips; that path is ~50ms / 1 query
+  // today and must stay that way.
+  //
+  // Promise.all, not allSettled. Before you add .throwOnError(), .abortSignal(),
+  // or any other modifier that lets a reject escape to one of these five reads,
+  // and before you add an await that is not inside their existing trys, read
+  // the reject-safety block at the top of src/lib/sec-filings.ts. A reject in
+  // this array fails the whole page render, not one tab.
+
   // Read-only ArticlesTab fallback (ships dark behind the
   // NEXT_PUBLIC_ARTICLES_WEB_FALLBACK_ENABLED flag, default off). When an
   // indexed company has fewer than ARTICLE_FALLBACK_MIN in-tab articles, this
@@ -228,45 +267,80 @@ export default async function CompanyDetailPage({
   // nothing to articles, companies, or mention_count. Returns [] when the flag
   // is off or coverage already meets the threshold, so the merged list equals
   // companyDetail.articles in every prod path today. See getArticleFallback.ts.
-  const fallbackArticles = await getArticleFallback(
-    supabase,
-    canonical,
-    companyDetail.articles,
-    companyDetail.display,
-  );
+  const [
+    fallbackArticles,
+    { articles: rawArticles },
+    filingsResult,
+    insiderResult,
+    financialsResult,
+  ] = await Promise.all([
+    getArticleFallback(
+      supabase,
+      canonical,
+      companyDetail.articles,
+      companyDetail.display,
+    ),
+    fetchCompanyArticles(supabase, canonical),
+    // SEC filings (read-only). Resolves by name to a CIK; private/pre-IPO names
+    // resolve to a null CIK and an empty list, which FilingsTab renders as the
+    // empty state. See src/lib/sec-filings.ts.
+    //
+    // Limit raised from 25 to 100 because the tab filters client-side: the
+    // server sends one flat newest-first window and applyFilter() partitions
+    // whatever arrived, so the fetch depth caps every chip at once.
+    //
+    // What the raise actually earns, measured read-only against prod on
+    // 2026-08-20 (4,251 sec_filings rows, 667 distinct CIKs): only 9 CIKs carry
+    // more than 25 filings at all, and for 8 of them the DEFAULT material view
+    // gains rows -- 78 additional material filings become visible in total,
+    // cik 1564708 alone going from 23 to 67.
+    //
+    // What it does NOT earn, contrary to the claim this replaces: it rescues
+    // nobody from an empty default view. 25 CIKs have zero material filings in
+    // their newest 25, and every one of those 25 has zero material filings
+    // ANYWHERE in the table, so at limit 100 they render the identical empty
+    // state. Reconstructed from created_at at 2026-06-01 / 07-01 / 08-01, the
+    // count of companies with material filings sitting just outside a 25-row
+    // window was 0 at all three instants. cik 1046179 (TSMC) is the only CIK
+    // past 100 filings: 102 rows, all 102 Form 4, 0 material at any limit.
+    //
+    // Insider shells are 1,364 of those 4,251 rows and every one is a Form 4.
+    // The table carries zero Form 3 and zero Form 5, so filing-categories.ts's
+    // "Form 3/4/5" names a category with exactly one populated member.
+    fetchCompanyFilings(supabase, { name: companyName }, 100),
+    // Form 4 insider transactions (read-only), same name -> CIK resolution as
+    // filings so all three tabs describe the same company row. The SELECT policy
+    // from sql/0019_insider_transactions_read_policy.sql IS applied in prod
+    // (verified 2026-07-26: one policy, cmd SELECT, roles public, qual true), so
+    // an empty list here means no stored rows, not an RLS denial.
+    getInsiderTransactions(supabase, { name: companyName }),
+    // Validated XBRL financials (read-only). Same name -> CIK resolution as
+    // filings; companies without a CIK render the tab's empty state.
+    //
+    // This is the ONLY one of the five that leaves our database. When the
+    // sec_filings.primary_doc_url join covers the visible accessions only
+    // partially, resolvePrimaryDocUrls (financial-facts.ts) falls through to a
+    // raw fetch of https://data.sec.gov/submissions/CIK##########.json.
+    // CLAUDE.md, learned the hard way: "SEC 8-K fetches can return 403 and hang
+    // silently. Keep the timeouts in place." That call carried no AbortSignal
+    // and no timeout, so inside a Promise.all a silent SEC hang would have held
+    // all five reads and the whole page open for as long as the socket lived --
+    // strictly worse than the sequential version, where it blocked only the
+    // reads after it. It now carries AbortSignal.timeout; see
+    // SEC_SUBMISSIONS_TIMEOUT_MS in financial-facts.ts.
+    fetchCompanyFinancials(supabase, { name: companyName }),
+  ]);
+
   const articlesForTab =
     fallbackArticles.length > 0
       ? [...companyDetail.articles, ...fallbackArticles]
       : companyDetail.articles;
 
-  const { articles: rawArticles } = await fetchCompanyArticles(supabase, canonical);
   const classified = filterAndClassifyArticles(rawArticles, canonical);
   const developmentArticles = classified.filter((a) => a._isDevelopment);
   const contextArticles = classified.filter((a) => !a._isDevelopment);
   const memoContent = buildMemoContent(canonical, developmentArticles, contextArticles);
   const systemPrompt = buildMemoSystemPrompt(canonical);
-
-  // SEC filings (read-only). Resolves by name to a CIK; private/pre-IPO names
-  // resolve to a null CIK and an empty list, which FilingsTab renders as the
-  // empty state. See src/lib/sec-filings.ts.
-  //
-  // Limit raised from 25 to 100 because the tab now filters client-side. Form
-  // 3/4/5 shells are 735 of 2,069 stored filings and for some companies they are
-  // ALL of the newest 25, so a 25-row window could contain zero material filings
-  // and the default view would render empty while material filings sat just
-  // outside the window.
-  const filingsResult = await fetchCompanyFilings(supabase, { name: companyName }, 100);
-
-  // Form 4 insider transactions (read-only), same name -> CIK resolution as
-  // filings so all three tabs describe the same company row. The SELECT policy
-  // from sql/0019_insider_transactions_read_policy.sql IS applied in prod
-  // (verified 2026-07-26: one policy, cmd SELECT, roles public, qual true), so
-  // an empty list here means no stored rows, not an RLS denial.
-  const insiderResult = await getInsiderTransactions(supabase, { name: companyName });
-
-  // Validated XBRL financials (read-only). Same name -> CIK resolution as
-  // filings; companies without a CIK render the tab's empty state.
-  const financialsResult = await fetchCompanyFinancials(supabase, { name: companyName });
 
   // Curated identity (Snapshot industry + Business overview), keyed on the same
   // canonical name the memo inputs use. Null for uncurated companies, which the

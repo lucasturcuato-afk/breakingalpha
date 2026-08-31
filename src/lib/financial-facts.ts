@@ -228,6 +228,18 @@ function buildQuarterlyView(rows: FactRow[], keep: number): FinancialView {
 // the SEC 403s header-less requests.
 const SEC_USER_AGENT = "Signalera lucas@signalera.ai";
 
+// CLAUDE.md, learned the hard way: "SEC 8-K fetches can return 403 and hang
+// silently. Keep the timeouts in place." This fetch runs inside the
+// /company/[id] server render, now inside a Promise.all, so an open socket
+// pins the entire page rather than just the reads queued behind it. The
+// backend's SEC client already caps its GETs at 15s (backend/edgar/client.py);
+// 5s is the tighter house default for outbound fetches in src/ and still ~66x
+// the observed response time -- data.sec.gov submissions answered in 50-75ms
+// for AAPL / NVDA / TSMC, ~27KB gzipped, measured 2026-08-20. Timing out is
+// not a new failure mode: the catch below already yields a partial map and
+// every caller keeps the filing-index URL, so the View link never breaks.
+const SEC_SUBMISSIONS_TIMEOUT_MS = 5000;
+
 /**
  * Resolve accessions to their primary filing DOCUMENT (the readable 10-K/10-Q
  * .htm), so View opens the filing itself rather than the index page.
@@ -235,7 +247,8 @@ const SEC_USER_AGENT = "Signalera lucas@signalera.ai";
  * Cheapest source first: sec_filings.primary_doc_url joins on
  * accession_number with zero SEC fetches (it only covers cron-era filings, so
  * hit rate is partial). Anything unresolved falls back to ONE submissions-API
- * fetch for the company (cached an hour via Next), never per-fact fetches.
+ * fetch for the company (cached an hour via Next, capped by
+ * SEC_SUBMISSIONS_TIMEOUT_MS), never per-fact fetches.
  * Note the padding asymmetry: the submissions FILENAME takes the 10-digit
  * zero-padded CIK; the Archives doc path takes the unpadded CIK.
  * Failures return a partial (or empty) map; callers keep the filing-index URL
@@ -267,6 +280,13 @@ async function resolvePrimaryDocUrls(
     const resp = await fetch(`https://data.sec.gov/submissions/CIK${padded}.json`, {
       headers: { "User-Agent": SEC_USER_AGENT, "Accept-Encoding": "gzip, deflate" },
       next: { revalidate: 3600 },
+      // Passing a signal opts this fetch out of Next's per-render-pass
+      // memoization (node_modules/next/dist/docs/01-app/03-api-reference/
+      // 04-functions/fetch.md), which is inert here: /company/[id] reaches this
+      // URL at most once per render. It does NOT weaken the persistent data
+      // cache -- `signal` is not part of IncrementalCache.generateCacheKey in
+      // Next 16.2.2 -- so next.revalidate 3600 still applies unchanged.
+      signal: AbortSignal.timeout(SEC_SUBMISSIONS_TIMEOUT_MS),
     } as RequestInit);
     if (!resp.ok) return out;
     const recent = (await resp.json())?.filings?.recent ?? {};
@@ -303,6 +323,10 @@ function upgradeFilingUrls(view: FinancialView, docByAccession: Record<string, s
  * them is how a Postgres statement timeout became the printed sentence
  * "Financials appear after the first periodic report" over an issuer with five
  * years of validated XBRL on file.
+ *
+ * Reachable from the /company/[id] Promise.all. Before adding .throwOnError(),
+ * .abortSignal(), or an await outside this function's existing trys, read the
+ * reject-safety block at the top of src/lib/sec-filings.ts.
  */
 export async function fetchCompanyFinancials(
   supabase: SupabaseClient,

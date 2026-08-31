@@ -80,6 +80,9 @@ function toTransaction(row: Row, docByAccession: Map<string, string | null>): In
   };
 }
 
+// Reachable from the /company/[id] Promise.all. Before adding .throwOnError(),
+// .abortSignal(), or an await outside this function's existing trys, read the
+// reject-safety block at the top of src/lib/sec-filings.ts.
 export async function getInsiderTransactions(
   supabase: SupabaseClient,
   ref: CompanyRef,

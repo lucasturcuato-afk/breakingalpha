@@ -170,6 +170,10 @@ function mapWebResult(r: SearchResult): CompanyDetailArticle {
  * @param existing  The rows already in the tab (from getCompanyDetail). Used
  *                  for the threshold check and to dedupe Layer 1 by id/url.
  * @param threshold Minimum coverage; defaults to ARTICLE_FALLBACK_MIN.
+ *
+ * Reachable from the /company/[id] Promise.all. Before adding .throwOnError(),
+ * .abortSignal(), or an await outside this function's existing trys, read the
+ * reject-safety block at the top of src/lib/sec-filings.ts.
  */
 export async function getArticleFallback(
   supabase: SupabaseClient,
