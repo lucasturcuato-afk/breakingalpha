@@ -4,8 +4,12 @@ import type { ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { ClaimAnatomy, LedgerEntryRow, type OutcomeState } from "@/components/ledger";
 import { SectionRule, WatchNotice, WatchSkeleton } from "@/components/watch";
-import { ClaimEvidenceStrip } from "@/components/calls/ClaimEvidenceStrip";
-import type { RawEvidenceRow } from "@/lib/claim-evidence";
+import {
+  EVIDENCE_COPY,
+  evidenceCountLine,
+  summarizeClaimEvidence,
+  type RawEvidenceRow,
+} from "@/lib/claim-evidence";
 import { FONT_DISPLAY, FONT_MONO, FONT_SANS } from "@/components/mobile/fonts";
 
 /**
@@ -59,6 +63,24 @@ import { FONT_DISPLAY, FONT_MONO, FONT_SANS } from "@/components/mobile/fonts";
  *                       `user_id`, so there is no reader to scope a tracked
  *                       view to. Already cut from `/watch` for the same reason;
  *                       `src/components/watch/omissions.ts` holds it.
+ *   THE EVIDENCE        The desk's `ClaimEvidenceStrip` is NOT reused, and this
+ *   STRIP'S LINKS       one was found by measuring rather than by reading. Its
+ *                       three recent-story links measured 13px tall at every
+ *                       width, on a production build, signed in. That is a real
+ *                       tap target on a phone and it is a third of the floor.
+ *                       They are also `truncate`d inside a clipping parent, so
+ *                       each link's box measured 565px wide inside a 320px
+ *                       viewport; the page does not scroll sideways, because the
+ *                       parent clips, but a link whose text is ellipsed to a
+ *                       third of itself is not a link anybody can choose.
+ *
+ *                       The COUNTS are the part that carries meaning and they
+ *                       are drawn, at mobile scale, off the same
+ *                       `summarizeClaimEvidence` the desk strip uses. Only the
+ *                       three links are dropped. Silent under the ruling of
+ *                       2026-08-29: no figure on the screen means anything
+ *                       different without them, and nothing implies a story list
+ *                       is coming.
  *   THE JUMP NAV        `GroupJumpNav` is `sticky top-0` and its `bleed` prop
  *                       assumes a `p-6` desktop page. On a full-bleed phone
  *                       screen it would pin at the very top, over the section
@@ -365,7 +387,7 @@ function Standfirst({ children }: { children: ReactNode }) {
  * either pretending to be the other.
  */
 function Row({ row, first }: { row: CallRow; first: boolean }) {
-  const strip = row.evidence?.length ? <ClaimEvidenceStrip rows={row.evidence} /> : null;
+  const strip = <EvidenceCounts rows={row.evidence} />;
 
   if (row.state === null) {
     return (
@@ -433,6 +455,54 @@ function Row({ row, first }: { row: CallRow; first: boolean }) {
       />
       {strip}
     </>
+  );
+}
+
+/**
+ * What has landed against an open claim since it was committed, as counts.
+ *
+ * THE SUMMARY IS THE DESK'S, THE PRESENTATION IS NOT. `summarizeClaimEvidence`
+ * and `evidenceCountLine` are the same pure functions `ClaimEvidenceStrip`
+ * calls, so what counts as supporting and what counts as challenging is decided
+ * in one place for both surfaces. What is not reused is the desk strip's markup:
+ * its three story links measured 13px tall, and its titles are `truncate`d
+ * inside a clipping parent, so a link's box measured 565px wide in a 320px
+ * viewport. Neither is a control a thumb can use.
+ *
+ * DELIBERATELY NOT A SCORE. No percentage, no ratio, no implied verdict. The
+ * price-attribution grader is the only thing that resolves a claim, and this is
+ * an observation log sitting under one that has not resolved yet.
+ *
+ * The empty line is drawn rather than omitted. Absence is the common state,
+ * roughly four stories in five are neutral and record nothing, and a row that
+ * silently loses its evidence block reads as a rendering failure beside rows
+ * that have one.
+ */
+function EvidenceCounts({ rows }: { rows: RawEvidenceRow[] | null | undefined }) {
+  const summary = summarizeClaimEvidence(rows);
+  /* `evidenceCountLine` is the assertion that the counts are sayable as one
+     sentence, and it gives back null on an empty summary. Both halves are
+     checked below so the two cannot disagree about whether there is anything to
+     say. The line itself is not rendered: the visible spans already read as one
+     continuous sentence, and the desk strip's extra screen-reader copy of it
+     duplicates rather than replaces them. */
+  const line = evidenceCountLine(summary);
+
+  if (summary.isEmpty || line === null) {
+    return (
+      <p style={{ margin: 0, font: `400 11px/1.45 ${FONT_SANS}`, color: "var(--c-muted)" }}>
+        {EVIDENCE_COPY.empty}
+      </p>
+    );
+  }
+
+  return (
+    <p style={{ margin: 0, font: `500 11px/1.45 ${FONT_SANS}`, color: "var(--c-muted)" }}>
+      <span style={{ color: "var(--c-greenink)" }}>{summary.supporting} supporting</span>
+      {", "}
+      <span style={{ color: "var(--c-redink)" }}>{summary.challenging} challenging</span>{" "}
+      <span>{EVIDENCE_COPY.since}</span>
+    </p>
   );
 }
 

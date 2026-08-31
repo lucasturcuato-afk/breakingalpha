@@ -26,8 +26,16 @@ import styles from "./watch.module.css";
 import { FONT_DISPLAY, FONT_MONO, FONT_SANS } from "@/components/mobile/fonts";
 
 /**
- * Watch. The reader's watchlist and what they follow, as two visually distinct
- * tiers in one scroll region.
+ * Radar's two ungraded sections: the reader's watchlist, and what they follow.
+ *
+ * ONE COMPONENT, TWO ROUTES, ONE SECTION DRAWN AT A TIME. `segment` decides
+ * which. This used to draw both tiers in one scroll under a masthead reading
+ * "Radar", which is why the surface read as a renamed watchlist while the desk
+ * had four tabs. The two tiers are unchanged inside; what changed is that each
+ * is now a whole screen with its own route, its own masthead and its own place
+ * in the four-section row. Calls and Desk record are the graded half of Radar
+ * and are their own screens, because their data has nothing to do with this
+ * loader. See `decisions/mobile-radar-mirrors-the-desk.md`.
  *
  * WHAT IS DRAWN AND WHAT IS NOT.
  *
@@ -76,18 +84,34 @@ export type WatchStage = "ready" | "loading" | "error" | "stale";
 const PAD = "var(--v3-pad)";
 
 /**
- * How a short screen's free space is divided, as flex-grow weights on the
- * `Slack` blocks. Three at the root, and the middle one is the body, which
- * splits its own share equally between its two seams.
- *
- * Read them as sixteenths of the free space once the body's split is unrolled:
- * 3 above the masthead, 4 above the first section rule, 4 between the tiers, 1
- * below the last notice. The tail is smallest because it is the only seam that
- * starts with a structural floor under it, 83px of tab-bar clearance and
- * padding that no layout here can remove. The arithmetic against the 844px
- * viewport is in the block comment on the body.
+ * How a short section's free space is divided, as flex-grow weights on the
+ * `Slack` blocks.
  */
-const SLACK_LEAD = 3;
+/* THE LEAD IS 0 NOW, AND THE WEIGHTS BELOW ARE RE-DERIVED, because splitting
+   Radar into four sections changed the layout these numbers described.
+
+   WHAT THEY USED TO SERVE. One screen, one masthead, TWO tiers, so the body had
+   two interior seams and 3:8:1 spread the free space across four gaps: above
+   the masthead, above the first section rule, between the tiers, and below the
+   last notice. Measured on the empty state at 390x844 that was 59px / 158px
+   split in two / 20px, every gap inside the 15% gate.
+
+   WHAT BROKE. With one tier per route there is no gap BETWEEN tiers, so the
+   body's whole share fell into the single seam that was left, and that seam sat
+   ABOVE the content. Measured on the empty Following section at 390: roughly
+   300px of nothing between the standfirst and the section rule, with the
+   masthead pinned to the top and the notice pushed to the bottom. That is the
+   two-lump composition the original comment was written to remove, reproduced
+   by the change that inherited it. It was found by looking at the rendered
+   screen, not by reading the code.
+
+   WHAT THEY SERVE NOW. There is also a new element above the masthead that did
+   not exist when these were chosen: the four-section row. It is the top chrome,
+   and the masthead belongs directly under it, which is exactly where Calls and
+   Desk record put theirs. So the lead is 0, the masthead sits under the row on
+   all four sections, and the free space goes BELOW the content where a short
+   document naturally leaves it. */
+const SLACK_LEAD = 0;
 const SLACK_BODY = 8;
 const SLACK_TAIL = 1;
 
@@ -445,7 +469,6 @@ export function WatchScreen({
           padding: `18px ${PAD} 24px`,
         }}
       >
-        <Slack grow={1} />
         {stale ? (
           <WatchNotice
             body={`Last checked ${data.lastCheckedLabel}. Today's pass has not run yet, so everything below is the last reading rather than this morning's.`}
@@ -627,6 +650,17 @@ export function WatchScreen({
             array decides whether the gate still applies; it is not a rule about
             omissions, it is a fact about one that no longer exists. */}
         {stale ? null : <OmittedNotes />}
+
+        {/* THE FREE SPACE, TAKEN BELOW THE CONTENT RATHER THAN ABOVE IT. This
+            is the seam that used to sit between the two tiers. With one section
+            per route the only honest place for the body's share is after the
+            last block: put it above the content and a short section renders as
+            a masthead, a hole, and a notice pressed against the bottom.
+
+            A `Slack` is `flex-basis: 0`, so on a section with enough content to
+            fill the viewport it is 0px high and the layout is exactly what it
+            would be without it. Only the short states move. */}
+        <Slack grow={1} />
       </div>
 
       <Slack grow={SLACK_TAIL} />
