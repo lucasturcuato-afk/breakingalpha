@@ -238,10 +238,11 @@ export default async function CompanyDetailPage({
   // That is 27-42% OF THE DATA BLOCK, and the data block is not the page. A
   // real session pays ~250-300ms of auth in front of all of this, none of it
   // parallelized here: three separate auth.getUser() round trips at 68-84ms
-  // warm (proxy.ts:24, then generateMetadata and this function, each building
-  // its own client via getSupabaseWithUser, so nothing collapses them), plus
-  // the proxy's beta_allowlist and user_profiles reads at ~50-60ms each. Add
-  // that constant to both sides and the honest headline is ~31% user-visible:
+  // warm (the proxy() gate at proxy.ts:102, then generateMetadata and this
+  // function, each building its own client via getSupabaseWithUser, so nothing
+  // collapses them), plus the proxy's beta_allowlist read (proxy.ts:161, via
+  // isAllowlisted) and its user_profiles read (proxy.ts:184) at ~50-60ms each.
+  // Add that constant to both sides and the honest headline is ~31% user-visible:
   // ~29-32% on nvidia / apple / microsoft, ~20% on samsung whose block saving
   // is only ~200ms. Absolute saving ~330-355ms on the first three. It decays to
   // ~8% at 16 concurrent page views, where connection contention flattens the

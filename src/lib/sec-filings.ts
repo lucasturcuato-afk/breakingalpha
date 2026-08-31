@@ -48,6 +48,19 @@
  * invariant survives by accident of style, not by construction, and nothing
  * enforces it.
  *
+ * SCOPE BOUNDARY, and it is not academic. "The five" means the five reads in
+ * the Promise.all. getCompanyDetail runs BEFORE that array and is not one of
+ * them, and it is the opposite shape: src/lib/data-access/getCompanyDetail.ts
+ * contains no try at all, and page.tsx awaits it bare. Its queries have no
+ * swallowing catch anywhere in the chain, so the "sits inside a try" guarantee
+ * above does not reach that file. Nothing rejects there today, for the same
+ * reason nothing rejects in the five: no .throwOnError(), and the converting
+ * catch handles the rest. But an engineer adding .throwOnError() there has no
+ * existing try to inherit and must add one at the call site in the SAME
+ * commit. Track F's adaptive article window added a second, conditional
+ * articles query inside that function, so this region now has four unguarded
+ * awaits rather than three.
+ *
  * So the hazard is not the modifier by itself. .throwOnError() added to any
  * query reachable from the five today is inert: the enclosing catch swallows
  * the thrown PostgrestError exactly as it swallows the { error } tuple. The
@@ -65,7 +78,16 @@
  *  - It said .throwOnError() and .abortSignal() have 0 occurrences in src/.
  *    Grep either one and you find this comment. Counting mentions was never
  *    the right check. The check that means something is whether any occurrence
- *    sits on a query, and today none does.
+ *    sits on a QUERY. That answer is no longer "none", so re-measure rather
+ *    than quoting this paragraph. As of main b3d2e6ad, .throwOnError() sits on
+ *    zero queries anywhere in src/, but .abortSignal() sits on three, all
+ *    added by #698 and all in src/app/radar/watchlist/page.tsx (:329, :334,
+ *    :374), each one .abortSignal(AbortSignal.timeout(DB_READ_TIMEOUT_MS)).
+ *    None of the three weakens the invariant above. They are not reachable
+ *    from the five reads, and .abortSignal() WITHOUT .throwOnError() cannot
+ *    reject in any case: the converting catch described above is still
+ *    attached, so a fired timeout arrives as an { error } tuple, which is
+ *    exactly what those three call sites read before returning FAILED_READ.
  *
  * allSettled is not the default in page.tsx because it would also swallow a
  * reject the sequential version propagated, which is a behavior change rather
