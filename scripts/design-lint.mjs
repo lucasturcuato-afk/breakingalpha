@@ -38,6 +38,14 @@ const EXT = new Set(['.ts', '.tsx', '.js', '.jsx', '.css', '.mdx']);
  * document that defines the rules. */
 const EXCLUDE_DIRS = new Set(['node_modules', '.next', 'design_handoff_signalera_mobile']);
 
+/* Same reason, one level finer: a file that IMPLEMENTS a rule has to contain
+ * the thing the rule bans. `e2e/pressure/lib/rules.ts` asserts these same five
+ * rules against the rendered DOM, so it holds the banned-substring list, an
+ * em-dash literal, the outcome vocabulary and the rate shapes, and linting it
+ * is fifteen errors against the checker itself. Kept to exact paths rather than
+ * a directory so nothing else in the harness gets a free pass. */
+const EXCLUDE_FILES = new Set(['e2e/pressure/lib/rules.ts']);
+
 /* ------------------------------------------------------------------ */
 /* Rule 1. Banned substrings.                                          */
 /* README: check as substrings, not words. Every violation found during*/
@@ -848,7 +856,8 @@ const args = process.argv.slice(2).length
   ? process.argv.slice(2)
   : DEFAULT_ARGS;
 const usedDefault = process.argv.slice(2).length === 0;
-const isExcluded = (f) => f.split('/').some(seg => EXCLUDE_DIRS.has(seg));
+const isExcluded = (f) =>
+  EXCLUDE_FILES.has(f.replace(/^\.\//, '')) || f.split('/').some(seg => EXCLUDE_DIRS.has(seg));
 
 function git(argv) {
   return execFileSync('git', ['-c', 'core.quotePath=false', ...argv], {

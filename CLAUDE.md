@@ -111,8 +111,14 @@ sensitivity, not ownership.
 <!-- /learn appends new rules here when they do not fit a section above. One specific, verifiable line each. -->
 
 ### Measuring a browser
-Nine traps, each one found the expensive way by an agent that trusted a
+Ten traps, each one found the expensive way by an agent that trusted a
 reading. Every one returns a plausible number rather than an error.
+
+The count went from nine to ten and not to eleven, which is the honest
+arithmetic: two were added and ONE OF THE ORIGINAL NINE WAS ITSELF WRONG. The
+allowlist line said the e2e account was not allowlisted. It was, the whole time,
+and the query that said otherwise is now the trap directly above it. A list of
+traps is not exempt from being one.
 
 - A dev build serves the mobile fixtures. Measure product data on a
   production build only, or you will report fixture counts as live ones.
@@ -124,8 +130,21 @@ reading. Every one returns a plausible number rather than an error.
 - `offsetParent` is null for `position: fixed`, so a probe built on it cannot
   see the tab bar. The bar is 58px of row plus a 1px border, height 59.
 - Playwright's `newPage()` starts on `about:blank`, so `goto` pushes and
-  `history.length` is 2. To reach a genuine cold entry use
-  `location.replace()`.
+  `history.length` is 2. `location.replace()` is the way to a genuine cold
+  entry AND IT ONLY WORKS ON A PAGE THAT HAS NEVER NAVIGATED. It replaces the
+  entry it is standing on, so anything underneath survives, and `history.length`
+  counts the TAB and not the call. Measured on this build: a fresh page is
+  `about:blank` at length 1; `goto("about:blank")` on a fresh page does NOT push,
+  because Chromium replaces the initial empty document; replacing from there
+  gives length 1, `navigation.currentEntry.index` 0, `entries()` 1. Reuse a page
+  that has already loaded one URL and the identical sequence gives length 3,
+  index 1, entries `["/dashboard","/deal-flow"]`. The length is the visible half
+  and the index is the damaging half: `shouldStepBack` reads that index, so a
+  back-control test written on such a page measures the step-back branch while
+  believing it measures the cold-entry branch, and passes either way. Assert
+  `location.href === "about:blank"` and `history.length === 1` BEFORE replacing,
+  and assert the result on `navigation.currentEntry.index`, never on
+  `history.length`.
 - `.focus()` called from a script after a mouse click leaves Chromium in
   pointer modality, so `:focus-visible` does not match and the ring reads
   `3px none`. Walk to the control with real Tab presses.
@@ -140,10 +159,23 @@ reading. Every one returns a plausible number rather than an error.
 - A control can be focusable and invisible at the same time. `focus()`
   succeeding proves nothing about whether a reader can see what they landed
   on; read the computed opacity of the wrapper too.
-- The e2e user is not on `beta_allowlist`, so a production build authenticates
-  and then bounces it to `/waitlist`. Adding the row is a DB write. Measure
-  signed out with `VERCEL_ENV=preview` (unprefixed, read at runtime, no
-  rebuild needed).
+- A `+` in a PostgREST query string decodes as a SPACE.
+  `beta_allowlist?email=eq.noahhanning03+e2e@gmail.com` gives back `[]` while
+  the row is sitting there; `email=ilike.*e2e*` finds it. Percent-encode the
+  value as `%2B`, or match on a fragment. Same class as the `%` that crashed
+  `resolvesTo` through `decodeURIComponent`: a character that means something to
+  a URL, silently changing what a query asks rather than failing. This one cost
+  more than a crash would have. The false negative it produced went into six
+  agent briefs in one night and shaped how several units measured.
+- THE E2E USER IS ON `beta_allowlist`, since 2026-08-25, and the line that used
+  to sit here saying otherwise was the `+` trap above. A production build does
+  NOT bounce that account to `/waitlist`: measured signed in on a production
+  build, `/radar/watchlist` is neither a public path nor in
+  `MOBILE_REDESIGN_DEV_PATHS`, so it passes through the gate at `proxy.ts:160`,
+  and it answers 200 and stays put. What `VERCEL_ENV=preview` (unprefixed, read
+  at runtime, no rebuild needed) actually buys is SIGNED-OUT reach into the
+  mobile routes, which is what a build agent with no session needs. Adding an
+  allowlist row is a DB write and is still not the move.
 
 ### Work pushed to a branch whose PR has closed lands nothing
 Two shapes, one failure. A branch that has been squash-merged is a dead end,
