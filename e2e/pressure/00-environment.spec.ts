@@ -71,7 +71,7 @@ test("environment: production build, preview gate, phone emulation, real session
   );
   expect(cold.historyLength, "a cold entry leaves one tab history entry").toBe(1);
   expect(cold.navIndex, "nothing of ours may be behind a cold entry").toBe(0);
-  expect(cold.navEntries, "our slice holds exactly the page we landed on").toBe(1);
+  expect(cold.navEntries, "our slice carries exactly the page we landed on").toBe(1);
   await coldPage.close();
 
   /* 5. Two DISTINCT theme captures. localStorage.signalera_theme, via
@@ -93,9 +93,11 @@ test("environment: production build, preview gate, phone emulation, real session
     "light and dark screenshots are byte-identical: the theme did not flip",
   ).not.toBe(0);
 
-  /* The prompt names rgb(250,247,242) / rgb(15,15,15). tokens.css sets
-     --c-bg to #fffdf9 / #14100a. Record what was actually measured rather than
-     asserting someone's remembered value. */
+  /* The brief names rgb(250,247,242) / rgb(15,15,15) for the body, and
+     `--c-bg` in tokens.css:59 and :499 is a DIFFERENT pair, so the two are not
+     interchangeable and the token literals are deliberately not repeated here.
+     Record what was actually measured rather than asserting a remembered
+     value. */
   if (lightBg !== "rgb(250, 247, 242)" || darkBg !== "rgb(15, 15, 15)") {
     finding({
       severity: "info",
@@ -103,7 +105,7 @@ test("environment: production build, preview gate, phone emulation, real session
       screen: "/ledger",
       pass: "static",
       title: "body background is not the pair the brief quoted",
-      evidence: `measured light ${lightBg} dark ${darkBg}; brief said rgb(250,247,242)/rgb(15,15,15); tokens.css:59/499 set --c-bg #fffdf9 / #14100a. The captures ARE distinct, so the theme flipped.`,
+      evidence: `measured light ${lightBg} dark ${darkBg}; the brief said rgb(250,247,242)/rgb(15,15,15); --c-bg at tokens.css:59 and :499 is a different pair again. The captures ARE distinct, so the theme flipped.`,
       basis: "measured",
     });
   }
