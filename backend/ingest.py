@@ -2451,17 +2451,32 @@ STORE_CHUNK_SIZE = int(os.getenv("STORE_CHUNK_SIZE", "500"))
 # vetted single main actor into the article's companies[] when it resolves to an
 # already-indexed company.
 #
-# HARD FREEZE: this widens the article.companies[] MATCH FIELD ONLY. It is applied
-# inside _article_row, which builds the article-insert row. It is deliberately NOT
-# used to build company_mentions or to increment companies.mention_count or
-# aliases.mention_count: both store paths iterate the ORIGINAL clean_companies for
-# those (store_articles_batch carries clean_companies in its `stored` tuple;
-# store_article loops clean_companies inline). So the longitudinal attention and
-# trend moat signals are unchanged by this flag; only the read-side
-# article-to-company match widens.
+# SCOPE, WIDENED 2026-08-31 (was HARD FREEZE, see below). The fold is applied ONCE,
+# at the source, in both store paths, and the single folded list feeds BOTH the
+# article row and _resolve_company_entity. store_articles_batch folds before it
+# builds its `stored` tuple; store_article folds before its insert and its inline
+# mention loop.
+#
+# What that changed, stated plainly. The original note here read "HARD FREEZE:
+# this widens the article.companies[] MATCH FIELD ONLY ... deliberately NOT used
+# to build company_mentions or to increment companies.mention_count or
+# aliases.mention_count". That was true when the fold lived inside _article_row.
+# It is no longer true. With the flag ON, a folded canonical name now also
+# produces a company_mentions row and a mention_count increment, so the
+# longitudinal attention and trend-moat signals DO move. That is the point of the
+# widening: resolve_entity cannot resolve a name it is never handed.
+#
+# What did NOT change: the article row. _article_row writes byte-identical rows
+# before and after, flag on and flag off, because _fold_primary_into_companies is
+# idempotent and the list it is now handed is already folded.
+#
+# The fold can only ADD a name that _resolve_primary_to_canonical already matched
+# to exactly one indexed company, so every added name resolves against an existing
+# canonical. It cannot cause a mint.
 #
 # Default OFF. When off, _fold_primary_into_companies returns clean_companies
-# unchanged and behavior is byte-identical to today.
+# unchanged and behavior is byte-identical to main on every path, including the
+# newly widened resolve/mention path.
 TAGGING_PRIMARY_FOLD_ENABLED = os.getenv("TAGGING_PRIMARY_FOLD_ENABLED", "false").strip().lower() == "true"
 
 # Process-level memo of "what indexed company does this primary_company name
@@ -2655,9 +2670,14 @@ def _fold_primary_into_companies(clean_companies, analysis):
     Flag on: returns a NEW list = clean_companies plus the CANONICAL name of
     primary_company, when primary_company is non-empty, not a blocked entity,
     resolves to exactly one indexed company, and that canonical name is not
-    already present (case-insensitive). Never mutates clean_companies. See the
-    HARD FREEZE note above: this does not feed company_mentions or
-    mention_count.
+    already present (case-insensitive). Never mutates clean_companies.
+
+    Called ONCE per article, at the source, by both store paths. The list it
+    returns is the single list that feeds the article row AND
+    _resolve_company_entity. See the SCOPE note above.
+
+    Idempotent: re-applying it to its own output returns that output unchanged,
+    because the canonical it would add is already present.
 
     The canonical name, not the raw string, is what gets appended. A resolved
     "ARM" contributes "Arm Holdings"; an unresolvable name contributes nothing,
@@ -2739,11 +2759,13 @@ def _article_row(article, analysis, clean_companies):
         "published_at": article["published_at"],
         "relevance_score": analysis["relevance_score"],
         "relevance_reason": analysis.get("relevance_reason", ""),
-        # companies[] is the article-to-company MATCH FIELD. Fold in primary_company
-        # when the flag is on (dark by default). This widens the match field ONLY;
-        # company_mentions and mention_count keep iterating the original
-        # clean_companies in both store paths. See _fold_primary_into_companies.
-        "companies": _fold_primary_into_companies(clean_companies, analysis),
+        # companies[] is the article-to-company MATCH FIELD. This function writes
+        # the list it is handed and folds nothing itself: both store paths now
+        # call _fold_primary_into_companies ONCE at the source, so the single
+        # folded list feeds this row AND _resolve_company_entity. Folding here as
+        # well would be a second application of an idempotent function, and would
+        # leave the two branches free to drift apart again.
+        "companies": list(clean_companies),
         "themes": analysis.get("themes", []),
         "sentiment": analysis.get("sentiment", "neutral"),
         "sentiment_reason": analysis.get("sentiment_reason"),
@@ -3106,7 +3128,12 @@ def store_articles_batch(relevant, deadline=None, dedup_sets=None):
             if norm and norm in seen_titles:
                 dupes += 1
                 continue
-            companies = _clean_companies(analysis)
+            # ONE fold, at the source. `companies` is the folded list, and it is
+            # what lands BOTH in the article row (index 3) and in the `stored`
+            # tuple (index 2) that the company_mentions loop below iterates. On
+            # main the fold was applied only inside _article_row, so the tuple
+            # carried the UNFOLDED list and resolve_entity never saw a folded name.
+            companies = _fold_primary_into_companies(_clean_companies(analysis), analysis)
             buf.append((a, analysis, companies, _article_row(a, analysis, companies)))
             seen_urls.add(url)
             if norm:
@@ -3186,6 +3213,10 @@ def store_article(article, analysis):
             if not _resolve_company_valid(company):
                 continue
             clean_companies.append(company)
+
+        # ONE fold, at the source, exactly as the batch path above. The same
+        # list feeds the article row and the resolve/mention loop below.
+        clean_companies = _fold_primary_into_companies(clean_companies, analysis)
 
         r = supabase.table("articles").insert(
             _article_row(article, analysis, clean_companies)
