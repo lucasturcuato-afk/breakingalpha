@@ -92,14 +92,17 @@ jobs:
       # backend/tests/known_failures.txt, including test_macro_slice2.py and its
       # AST guard against a module-level constant being assigned twice, which is
       # the specific class of bug that cost four weeks.
-      - name: Backend test gate
+      - name: Backend test gate (BLOCKING)
         env:
           PYTHON: python
         run: bash scripts/backend-tests.sh
 
       # REPORTING. Never blocks. Prints the quarantined failures so the debt stays
-      # visible instead of being forgotten the moment the gate goes green.
-      - name: Known failures (non-blocking)
+      # visible instead of being forgotten the moment the gate goes green. Its output
+      # is tagged [quarantined] on every line and the gate's is tagged [gate], because
+      # a plain uncoloured Actions log gives a reader no other way to tell whose FAILED
+      # line they are looking at, and one reader already reported the wrong cause.
+      - name: Known failures (QUARANTINE, never blocks)
         if: always()
         env:
           PYTHON: python
