@@ -765,6 +765,26 @@ BEGIN
   -- No foreign keys exist on companies.id. Nothing cascades. Repointing is
   -- entirely this function's job.
   --
+  -- TYPE AUDIT (verified 2026-08-30 against the live schema, ALL 23 cross-table
+  -- comparisons and assignments in this function):
+  --   uuid, as assumed: company_mentions.company_id, financial_facts.company_id,
+  --     sec_filings.company_id, insider_transactions.company_id,
+  --     aliases.canonical_id, resolution_log.resolved_canonical_id, companies.id
+  --   NOT uuid, and each one broke this function:
+  --     user_memo_regeneration_quota.company_id  TEXT holding a company NAME
+  --     resolution_log.candidate_canonical_ids   JSONB array of uuid strings
+  --     user_events.entity_id                    TEXT, and never a company id
+  --   Cast-safe: company_mentions.id / sec_filings.id / insider_transactions.id
+  --     are uuid and go into moved_row.row_id (text) via ::text.
+  --   companies.key_themes is text[], so unnest() in the fold below is valid.
+  --
+  -- The collision analysis below was verified against pg_index, which answers
+  -- ONLY whether two rows can collide on a unique key. It cannot report a
+  -- column's TYPE and it cannot report what the values MEAN, which is why the
+  -- three defects above survived it: user_memo_regeneration_quota was in the
+  -- list and still wrong, and user_events and the candidate array were never
+  -- in the list at all.
+  --
   -- Collision analysis (verified against pg_index):
   --   company_mentions      pkey(id)                       -> collision-free
   --   financial_facts       uq(accession_number, concept_tag, period_start,
@@ -805,13 +825,27 @@ BEGIN
   GET DIAGNOSTICS n = ROW_COUNT;
   moved := moved || jsonb_build_object('sec_filings', n);
 
+  -- user_memo_regeneration_quota.company_id is TEXT, and it holds a company
+  -- NAME, not an id. Verified 2026-08-30 against all 6 live rows: 'Anthropic',
+  -- 'SpaceX', 'SpaceX', 'Tesla', 'Bank Of America', 'Snowflake'. Zero are
+  -- uuid-shaped. The original `= ANY(losers)` raised 42883 operator does not
+  -- exist: text = uuid, and a cast would not have helped: the two sides are
+  -- different KEY SPACES, not different types of the same key.
+  --
+  -- So this repoints by name, the same way articles.companies[] has to.
+  -- Dedup first: the pkey is (user_id, company_id, regenerated_at), so a user
+  -- holding a row for both a loser name and the survivor name would collide.
   DELETE FROM public.user_memo_regeneration_quota q
-   WHERE q.company_id = ANY(losers)
+   WHERE q.company_id IN (SELECT pm.name FROM norm_v2.plan_member pm
+                           WHERE pm.new_key = p_new_key AND NOT pm.is_survivor)
      AND EXISTS (SELECT 1 FROM public.user_memo_regeneration_quota k
-                  WHERE k.user_id = q.user_id AND k.company_id = survivor
+                  WHERE k.user_id = q.user_id
+                    AND k.company_id = cl.survivor_name
                     AND k.regenerated_at = q.regenerated_at);
-  UPDATE public.user_memo_regeneration_quota SET company_id = survivor
-   WHERE company_id = ANY(losers);
+  UPDATE public.user_memo_regeneration_quota
+     SET company_id = cl.survivor_name
+   WHERE company_id IN (SELECT pm.name FROM norm_v2.plan_member pm
+                         WHERE pm.new_key = p_new_key AND NOT pm.is_survivor);
   GET DIAGNOSTICS n = ROW_COUNT;
   moved := moved || jsonb_build_object('user_memo_regeneration_quota', n);
 
@@ -823,20 +857,44 @@ BEGIN
   -- CHANGE 5: repoint the candidate ARRAY too. 0020 rewrote only
   -- resolved_canonical_id, leaving array members pointing at deleted rows.
   -- Rewrites each element to the survivor and de-duplicates the result.
+  --
+  -- candidate_canonical_ids is JSONB, not uuid[]. Verified 2026-08-30: the
+  -- column format is jsonb and it stores a JSON array of uuid STRINGS, e.g.
+  -- ["79236278-...","a78433cd-..."]. 340 of a 1,000-row sample are non-empty,
+  -- so this is live data, not a dormant column. The array operator && and
+  -- unnest() do not apply to jsonb at all, so the original form raised rather
+  -- than silently doing nothing.
   UPDATE public.resolution_log rl
      SET candidate_canonical_ids = sub.fixed
     FROM (
       SELECT l.id,
-             (SELECT array_agg(DISTINCT CASE WHEN e = ANY(losers) THEN survivor ELSE e END)
-                FROM unnest(l.candidate_canonical_ids) AS e) AS fixed
+             (SELECT jsonb_agg(DISTINCT CASE WHEN e.v = ANY(losers::text[])
+                                             THEN survivor::text ELSE e.v END)
+                FROM jsonb_array_elements_text(l.candidate_canonical_ids) AS e(v)) AS fixed
         FROM public.resolution_log l
-       WHERE l.candidate_canonical_ids && losers
+       WHERE jsonb_typeof(l.candidate_canonical_ids) = 'array'
+         AND EXISTS (SELECT 1
+                       FROM jsonb_array_elements_text(l.candidate_canonical_ids) x(v)
+                      WHERE x.v = ANY(losers::text[]))
     ) sub
    WHERE rl.id = sub.id;
   GET DIAGNOSTICS n = ROW_COUNT;
   moved := moved || jsonb_build_object('resolution_log_candidates', n);
 
-  UPDATE public.user_events SET entity_id = survivor WHERE entity_id = ANY(losers);
+  -- user_events.entity_id is TEXT, and it does not reference companies.
+  -- Census over ALL 3,082 rows on 2026-08-30: entity_type is one of briefing
+  -- (525), brief_section (255), brief_call (176), story (110), deal (31) or
+  -- NULL (1,985). There is no 'company' entity_type, and ZERO entity_id values
+  -- match a live companies.id. The original statement was therefore not merely
+  -- mistyped, it was pointed at the wrong key space.
+  --
+  -- Kept, narrowed and cast rather than deleted: it matches nothing today, so
+  -- it is a no-op, and it stays correct if a 'company' entity_type is ever
+  -- added. Deleting it would silently drop the repoint if that happens.
+  UPDATE public.user_events
+     SET entity_id = survivor::text
+   WHERE entity_type = 'company'
+     AND entity_id = ANY(losers::text[]);
 
   -- aliases: fold duplicates on (lookup_key, canonical_id) before repointing.
   UPDATE public.aliases s
@@ -943,9 +1001,12 @@ $$;
 --                  WHERE f.company_id IS NOT NULL
 --                    AND NOT EXISTS (SELECT 1 FROM public.companies c
 --                                     WHERE c.id = f.company_id))    AS no_orphan_facts,
---     NOT EXISTS (SELECT 1 FROM public.resolution_log l, unnest(l.candidate_canonical_ids) e
---                  WHERE NOT EXISTS (SELECT 1 FROM public.companies c
---                                     WHERE c.id = e))               AS no_dangling_candidates,
+--     -- candidate_canonical_ids is JSONB, not uuid[]: unnest() does not apply.
+--     NOT EXISTS (SELECT 1 FROM public.resolution_log l,
+--                      jsonb_array_elements_text(l.candidate_canonical_ids) e(v)
+--                  WHERE jsonb_typeof(l.candidate_canonical_ids) = 'array'
+--                    AND NOT EXISTS (SELECT 1 FROM public.companies c
+--                                     WHERE c.id::text = e.v))       AS no_dangling_candidates,
 --     (SELECT sum(mention_count) FROM public.companies)
 --       = (SELECT sum(mention_count) FROM norm_v2.snapshot_companies) AS mentions_conserved;
 --
