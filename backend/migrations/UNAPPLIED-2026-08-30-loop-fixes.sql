@@ -265,7 +265,7 @@ SELECT
 
   -- ITEM 4. Was source_id, a uuid polymorphic pointer to the ORIGIN record of
   -- an artifact, qualified by source_table. It is not a company reference, it
-  -- is NULL on all 143 memo rows, and it never could hold a company name: a
+  -- is NULL on all 143 memo rows, and it never could carry a company name: a
   -- filter comparing it to one raises 22P02 invalid input syntax for uuid.
   -- So that leg contributed zero and the card's 5 came entirely from the
   -- regeneration-quota table.
