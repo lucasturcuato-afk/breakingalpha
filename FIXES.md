@@ -7,6 +7,177 @@ Every item records WHAT WAS BROKEN, WHAT CHANGED, PROOF, and RESIDUAL RISK.
 Proof is a query result, a test result, or a rendered value, before and after.
 A passing build is not proof and is never cited as such.
 
+## ITEM 0, THE POPULATION. Test accounts were inside dim_users.
+
+**Status: FIXED in the unapplied migration. This invalidates and supersedes
+several numbers reported elsewhere in this document; each is restated below.**
+
+### THE TWO QUESTIONS, answered
+
+**1. Is the exclusion in the view definition or applied per query?**
+**In the view definition.** `dim_users` carries it, and every `internal_kpi_*`
+view inherits it by joining through `dim_users`. Nothing is subtracted per
+query. So the PLACEMENT was already right.
+
+The MATCHING was not. The predicate was an exact-address `NOT IN`:
+
+```sql
+WHERE lower(u.email) NOT IN (
+        'noahhanning03@gmail.com',
+        'lucasturcuato@gmail.com',
+        'claude-agent@signalera.ai'
+      )
+```
+
+Plus addressing defeats that, because a plus-addressed variant is a different
+string.
+
+**2. Do the 7 exclusions include the +e2e account created 2026-08-25?**
+**No.** It was inside `dim_users`. Measured:
+
+```
+auth.users total                        : 206
+excluded by the CURRENT exact-match rule : 7
+dim_users                               : 199
+
+PLUS-ADDRESSED variants of an excluded address: 5
+   +tag="e2e"        created=2026-08-25 last_sign_in=2026-08-31T00:44:09  IN dim_users: YES
+   +tag="tmpl0721"   created=2026-07-22 last_sign_in=2026-07-22T03:21:45  IN dim_users: YES
+   +tag="fresh0721"  created=2026-07-21 last_sign_in=2026-07-21T03:53:36  IN dim_users: YES
+   +tag="wltest2"    created=2026-07-20 last_sign_in=                     IN dim_users: YES
+   +tag="wltest1"    created=2026-07-19 last_sign_in=                     IN dim_users: YES
+
+would be excluded by a CANONICAL rule   : 12
+dim_users under a canonical rule        : 194
+```
+
+All five were in the population. The `+e2e` sign-in at 00:44:09 today matches
+the schedule described.
+
+### ONE CORRECTION TO THE FRAMING I WAS GIVEN
+
+The expectation was that the harness plus a personal account were "144 of
+roughly 160 brief opens" and that the corrected 22 was still counting the
+personal one. Measured over the window, the split is different in a way that
+matters:
+
+```
+per-account brief opens, descending (no addresses printed):
+    195 events  | in dim_users: YES | PLUS-VARIANT of an excluded address
+     12 events  | in dim_users: no  | already-excluded (exact)
+      4 events  | in dim_users: YES | real user
+      3 events  | in dim_users: YES | real user
+      2, 2, 2, 1, 1, 1, 1, 1, 1      | real users
+      1 events  | in dim_users: no  | already-excluded (exact)
+raw brief-open events, ALL accounts : 227
+```
+
+The harness is 195 of 227. The primary personal account contributed 13 across
+two rows and **was already correctly excluded**: it is not in `dim_users` and
+was never in the 21. So the contamination was the harness alone, not the
+personal account. After the harness is excluded, the heaviest remaining real
+reader has 4 events.
+
+That does not change the fix, which is needed either way, and it makes the fix
+slightly less impactful than expected rather than more.
+
+### THE FIX
+
+Canonical matching in the view definition, not a subtraction of ids:
+
+```sql
+WHERE
+  (split_part(split_part(lower(u.email), '@', 1), '+', 1)
+     || '@' || split_part(lower(u.email), '@', 2))
+  NOT IN (
+        'noahhanning03@gmail.com',
+        'lucasturcuato@gmail.com',
+        'claude-agent@signalera.ai'
+      )
+  AND lower(split_part(u.email, '@', 2)) NOT IN (
+        'signalera-internal.com',
+        'anthropic-test.local'
+      );
+```
+
+The local part is truncated at the first `+` before comparing, so the SAME three
+literals that already excluded the primaries now also exclude every current and
+FUTURE plus variant of each, Lucas's included. **No new address literal is added
+to the repository**, which also keeps this inside the no-identifiers-in-files
+rule. `CREATE OR REPLACE` is safe here: the column list is unchanged, so the
+dependent views are not dropped.
+
+### THE FOUR CARDS, RECOMPUTED
+
+Population goes 199 to 194, tenured 101 to 97.
+
+| Card | Reported before (199) | Corrected (194) |
+|---|---|---|
+| **Brief opens (7d), deduped** | 21 | **16** |
+| **Brief-open days median** | 1 of 7 | **1 of 7** (unchanged) |
+| **WAPS, tenured** | 10.9% (11/101) | **11.3%** (11/97) |
+| **% with a watchlist, tenured** | 39.6% (40/101) | **41.2%** (40/97) |
+
+Full recompute, both populations, same instant:
+
+```
+--- CURRENT exact-match exclusion (dim_users = 199) ---
+total_users 199 | tenured 101 | weekly_actives 14 | brief_open_users_7d 12
+brief_opens_7d (DEDUPED) 21 | brief_open_days_median_7d 1 of 7
+waps_tenured_pct 10.9 (11/101) | waps_active_pct 85.7 (12/14)
+watchlist_tenured_pct 39.6 (40/101) | retention_4w_pct 12.0 (12/100)
+
+--- CANONICAL exclusion, plus-addressing stripped (194) ---
+total_users 194 | tenured 97 | weekly_actives 13 | brief_open_users_7d 11
+brief_opens_7d (DEDUPED) 16 | brief_open_days_median_7d 1 of 7
+waps_tenured_pct 11.3 (11/97) | waps_active_pct 84.6 (11/13)
+watchlist_tenured_pct 41.2 (40/97) | retention_4w_pct 12.5 (12/96)
+```
+
+The raw brief-open figure moves much further than the deduped one: 214 to 19.
+That is the dedupe and the exclusion catching the same account from two
+directions, which is why both halves were needed.
+
+Note the two percentage cards go UP, not down. Removing test accounts removes
+them from the DENOMINATOR too, and they were not opening briefs or holding
+watchlists in proportion.
+
+**Companies researched is unaffected**, and stays 57. It is a global count over
+`outputs` with no `dim_users` join, so no population change touches it.
+
+### PROOF
+
+Two new invariants, both correctly failing today and both passing after the
+migration:
+
+```
+FAIL  NEW-a  auth.users minus the CANONICAL exclusion list equals dim_users exactly
+        auth_users=206 excluded=12 (by_address=3 by_plus_variant=5 by_domain=4)
+        expected=194 dim_users=199 | null_email=0 whitespace_padded=0
+
+FAIL  NEW-c  no plus-addressed variant of an excluded address is inside dim_users
+        plus_variants_in_dim_users=5 tags=[e2e, tmpl0721, fresh0721, wltest2, wltest1]
+```
+
+NEW-c is the sharp one. NEW-a is a reconciliation and can in principle be
+satisfied by two errors cancelling; NEW-c names the exact leak class and reports
+the `+tags` rather than the addresses.
+
+### RESIDUAL RISK
+
+Canonical matching handles `+`. It does NOT handle the other Gmail alias forms:
+dots in the local part are ignored by Gmail, so a dotted variant of an excluded
+address would still get through. I did not add dot-stripping, because it is
+correct for Gmail and wrong for most other providers, and applying it to every
+domain would silently merge distinct real addresses elsewhere. Measured: zero
+dotted variants of the three excluded addresses exist today. NEW-c would not
+catch one, which is a known blind spot rather than an oversight.
+
+The harness will keep generating events. Excluding it from `dim_users` stops it
+polluting the cards, but its rows stay in `user_events` and still appear in the
+instrumentation health table, which is global by design. The new
+`pct_outside_dim_users` column is what makes that visible rather than confusing.
+
 ## ITEM 1, commit sheet reachability
 
 **Status: NO CHANGE NEEDED. The premise is false. A regression guard ships
@@ -329,6 +500,11 @@ deduped brief_opens_7d                        : 22
 deduped opens per active (22 / 14)            : 1.57
 median brief-open days per opener, 1 to 7     : 1
 days-per-user vector across 12 openers        : [1,1,1,1,1,1,1,1,1,2,3,3]
+
+SUPERSEDED BY ITEM 0. That 22 was computed against a dim_users that still
+contained five plus-addressed test accounts, including the e2e harness, which
+alone produced 195 of 227 raw opens. Under the corrected population the deduped
+figure is 16 across 11 openers. The median stays 1 of 7.
 ```
 
 Nine of twelve openers opened on exactly one day. The card said 15.36; the

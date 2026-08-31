@@ -25,7 +25,8 @@
  *   1  an assertion FAILED
  *   2  NOT RUN (credentials or schema absent). Never treat as a pass.
  *
- * FIVE ASSERTIONS ARE EXPECTED TO FAIL TODAY. That is the point of shipping
+ * SEVEN ASSERTIONS ARE EXPECTED TO FAIL TODAY. NEW-a and NEW-c fail until the
+ * loop-fix migration makes the dim_users exclusion canonical; they pass after. That is the point of shipping
  * them: A6, R9, R10, R12 and 12b are live defects, and a suite that went green
  * over them would be measuring nothing again. Four are recorded in
  * DASH-AUDIT.md; R10 is NEW, found by this suite, and is written up in
@@ -408,8 +409,19 @@ const memoRows = await allRows(
     "claude-agent@signalera.ai",
   ];
   const DOMAINS = ["signalera-internal.com", "anthropic-test.local"];
+
+  // CANONICAL, matching the dim_users predicate: the local part is truncated at
+  // the first '+' before comparing. Plus addressing otherwise defeats an exact
+  // NOT IN, which is how the e2e harness account ended up inside the real-user
+  // population and produced 195 of 227 brief-open events in one week.
+  const canonical = (raw) => {
+    const [local = "", domain = ""] = String(raw).toLowerCase().split("@");
+    return `${local.split("+")[0]}@${domain}`;
+  };
+
   let byAddress = 0;
   let byDomain = 0;
+  let byPlusVariant = 0;
   let nullEmail = 0;
   let padded = 0;
   for (const u of authUsers) {
@@ -420,23 +432,67 @@ const memoRows = await allRows(
     }
     if (raw !== raw.trim()) padded++;
     const e = String(raw).toLowerCase().trim();
+    const c = canonical(e);
     if (EXPLICIT.includes(e)) byAddress++;
+    else if (EXPLICIT.includes(c)) byPlusVariant++;
     else if (DOMAINS.includes(e.split("@")[1] ?? "")) byDomain++;
   }
-  const excluded = byAddress + byDomain;
+  const excluded = byAddress + byPlusVariant + byDomain;
   const expected = authUsers.length - excluded;
   check(
     "NEW-a",
-    "auth.users minus the exclusion list equals dim_users exactly",
+    "auth.users minus the CANONICAL exclusion list equals dim_users exactly",
     expected === dimIds.size,
     `auth_users=${authUsers.length} excluded=${excluded} (by_address=${byAddress} ` +
-      `by_domain=${byDomain}) expected=${expected} dim_users=${dimIds.size} | ` +
-      `null_email=${nullEmail} whitespace_padded=${padded}`,
-    "a NULL email, which makes the NOT IN evaluate to NULL and drops the row " +
-      "silently from dim_users while the arithmetic still says it should be there; " +
-      "an email stored with a trailing space, which defeats the NOT IN equality " +
-      "and readmits a founder account; a soft-deleted auth row the Admin API " +
-      "still lists",
+      `by_plus_variant=${byPlusVariant} by_domain=${byDomain}) expected=${expected} ` +
+      `dim_users=${dimIds.size} | null_email=${nullEmail} whitespace_padded=${padded}`,
+    "it fails NOW, by 5, because the deployed dim_users matches the FULL address " +
+      "while this assertion canonicalizes: five plus-addressed test accounts are " +
+      "inside the population. It passes once the loop-fix migration lands. It " +
+      "would also fail for a NULL email, which makes NOT IN evaluate to NULL and " +
+      "drops the row silently; for an address stored with a trailing space, which " +
+      "defeats the equality and readmits a founder account; or for a soft-deleted " +
+      "auth row the Admin API still lists",
+  );
+}
+
+// ---------------------------------------------------------------------------
+// NEW-c. No plus-addressed variant of an excluded address is in dim_users.
+//
+// The sharp form of NEW-a, which can in principle be satisfied by two errors
+// cancelling. This one names the exact leak that happened: the exclusion lived
+// in the view definition, which is the right place, but it matched the FULL
+// address, so every +tag variant walked straight into the real-user population.
+// ---------------------------------------------------------------------------
+{
+  const EXPLICIT_C = [
+    "noahhanning03@gmail.com",
+    "lucasturcuato@gmail.com",
+    "claude-agent@signalera.ai",
+  ];
+  const canon = (raw) => {
+    const [local = "", domain = ""] = String(raw).toLowerCase().split("@");
+    return `${local.split("+")[0]}@${domain}`;
+  };
+  const leaked = authUsers.filter(
+    (u) =>
+      u.email &&
+      String(u.email).includes("+") &&
+      EXPLICIT_C.includes(canon(u.email)) &&
+      dimIds.has(u.id),
+  );
+  // Report the +tags, never the addresses.
+  const tags = leaked.map((u) => String(u.email).toLowerCase().split("@")[0].split("+")[1]);
+  check(
+    "NEW-c",
+    "no plus-addressed variant of an excluded address is inside dim_users",
+    leaked.length === 0,
+    `plus_variants_in_dim_users=${leaked.length}` +
+      (tags.length ? ` tags=[${tags.join(", ")}]` : ""),
+    "a new test address is minted as a +tag on an already-excluded address while " +
+      "the predicate matches the full string instead of the canonical one. That " +
+      "is what happened: the e2e harness runs on a schedule and produced 195 of " +
+      "227 brief-open events in one week from inside the real-user population",
   );
 }
 
@@ -487,7 +543,7 @@ console.log(`\n${results.length} assertions, ${results.length - failed.length} p
   `${failed.length} failed, ${requests} HTTP requests`);
 if (failed.length) {
   console.error(`FAILED: ${failed.map((r) => r.id).join(", ")}`);
-  const KNOWN = new Set(["A6", "R9", "R10", "R12", "12b"]);
+  const KNOWN = new Set(["A6", "R9", "R10", "R12", "12b", "NEW-a", "NEW-c"]);
   const regressions = failed.filter((r) => !KNOWN.has(r.id)).map((r) => r.id);
   console.error(
     `KNOWN live defects, shipped failing on purpose and recorded in FIXES.md: ` +

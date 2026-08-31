@@ -16,6 +16,7 @@
 --
 -- LOOP FIXES. Four items land here, all of them read-path.
 --
+--   POP     dim_users stops admitting plus-addressed test accounts.
 --   ITEM 3  brief opens are deduped to one per reader per briefing per day,
 --           and the opens-per-active card is replaced by a habit measure.
 --   ITEM 4  companies researched reads the column that is actually populated.
@@ -32,6 +33,85 @@
 -- NO DATA IS WRITTEN. Views only. Nothing is backfilled, altered or deleted.
 
 BEGIN;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- dim_users. THE POPULATION ITSELF, and it was letting test accounts through.
+--
+-- WHAT WAS WRONG. The exclusion was already IN the view definition, which is
+-- the right place, but it matched on the FULL address with NOT IN. Plus
+-- addressing defeats that: 'noahhanning03+e2e@gmail.com' is not equal to
+-- 'noahhanning03@gmail.com', so it passed the filter and joined the real-user
+-- population. Five such accounts exist and ALL FIVE were inside dim_users:
+--
+--     +e2e        created 2026-08-25, still signing in on a schedule
+--     +tmpl0721   created 2026-07-22
+--     +fresh0721  created 2026-07-21
+--     +wltest2    created 2026-07-20
+--     +wltest1    created 2026-07-19
+--
+-- The +e2e one is the end-to-end test harness. It is on a schedule, so it keeps
+-- generating events, and over the 7 day window it alone produced 195 of the 227
+-- raw brief-open events. It is the account that made "brief opens per active"
+-- read 15.36, and it survived the dedupe too, contributing 5 of the 21 deduped
+-- opens.
+--
+-- THE FIX IS CANONICAL, NOT A LIST OF IDS. The local part is truncated at the
+-- first '+' before comparing, so every current and FUTURE plus variant of every
+-- excluded address is covered, including ones nobody has created yet, and
+-- including Lucas's. No new address literal is added to this repository: the
+-- three already here are reused, and the rule is derived from them.
+--
+-- CREATE OR REPLACE is safe and is the right verb. The column list is identical
+-- to the current definition, so the dependent internal_kpi_* views are NOT
+-- dropped and do not need rebuilding on account of this change. Only the WHERE
+-- clause moves.
+--
+-- Effect on the population: 206 auth users, 7 excluded before, 12 excluded now,
+-- so dim_users goes from 199 to 194. scripts/invariants.mjs NEW-a asserts that
+-- reconciliation and has been updated to the canonical rule in the same commit.
+CREATE OR REPLACE VIEW dim_users AS
+SELECT
+  u.id,
+  u.created_at,
+  u.last_sign_in_at,
+  date_trunc('week', u.created_at)::date AS signup_week,
+  CASE WHEN lower(split_part(u.email, '@', 2)) IN ('usc.edu', 'marshall.usc.edu')
+       THEN 'USC' ELSE 'other' END AS segment_domain,
+  a.cohort_source,
+  a.cohort_institution,
+  a.cohort_batch,
+  CASE
+    WHEN a.cohort_source IS NULL
+     AND a.cohort_institution IS NULL
+     AND a.cohort_batch IS NULL THEN 'unattributed'
+    ELSE concat_ws(':',
+           coalesce(a.cohort_source, 'unknown'),
+           coalesce(a.cohort_institution, 'unknown'),
+           coalesce(a.cohort_batch, 'unknown'))
+  END AS cohort_key
+FROM auth.users u
+LEFT JOIN public.beta_allowlist a ON lower(a.email) = lower(u.email)
+WHERE
+  -- Canonical address: local part truncated at the first '+', then the domain.
+  -- 'noahhanning03+e2e@gmail.com' canonicalizes to 'noahhanning03@gmail.com'
+  -- and is therefore matched by the SAME literal that already excluded the
+  -- primary. This is why the list below is unchanged and does not need to grow
+  -- when a new test address is minted.
+  (split_part(split_part(lower(u.email), '@', 1), '+', 1)
+     || '@' || split_part(lower(u.email), '@', 2))
+  NOT IN (
+        'noahhanning03@gmail.com',
+        'lucasturcuato@gmail.com',
+        'claude-agent@signalera.ai'
+      )
+  AND lower(split_part(u.email, '@', 2)) NOT IN (
+        'signalera-internal.com',
+        'anthropic-test.local'
+      );
+-- NULL-email hazard, unchanged from the previous definition and deliberately
+-- not papered over: a NULL email makes NOT IN evaluate to NULL and the row is
+-- dropped silently. There are zero such rows today, and invariants.mjs NEW-a
+-- is the assertion that would catch one appearing.
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- internal_kpi_summary
@@ -591,6 +671,7 @@ COMMIT;
 -- ─────────────────────────────────────────────────────────────────────────────
 -- DOWN (manual rollback). Views only, no data touched.
 --
+--   -- dim_users reverts by re-running the cohort migration's CREATE OR REPLACE.
 --   DROP VIEW IF EXISTS internal_kpi_loop_post_challenge;
 --   DROP VIEW IF EXISTS internal_kpi_loop_adoption;
 --   DROP VIEW IF EXISTS internal_kpi_summary;
