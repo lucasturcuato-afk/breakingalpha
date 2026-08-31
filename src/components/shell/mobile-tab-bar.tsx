@@ -192,7 +192,39 @@ export const POLES: Pole[] = [
       /* Steps 4, 6 and 7. Objects opened out of the record, so they belong to
          the pole the record lives on. Listed before the screens exist because
          isActive reads `owns` alone: a route absent from every list lights no
-         pole, and adding it later would mean a screen unit editing this file. */
+         pole, and adding it later would mean a screen unit editing this file.
+
+         /claim AND /entry ARE HERE FOR THEIR CHILDREN, NOT FOR THEMSELVES, and
+         a reader who checks will find the bare segments 404. Measured on a
+         production build at 390 signed in: GET /claim and GET /entry both
+         answer 404, because `src/app/claim/` and `src/app/entry/` hold only an
+         `[id]/page.tsx` and no page of their own. They stay anyway, and both
+         halves of that are measured rather than argued.
+
+         THEY ARE LOAD BEARING. `isActive` below matches a path prefix as well
+         as an exact path, so "/claim" is the ONLY entry that lights this pole
+         on /claim/<uuid>, and "/entry" the only one on /entry/<id>. Both detail
+         routes exist and both work. Deleting these two strings darkens the pole
+         on every claim screen reachable by tapping a card on /ledger, which
+         trades one defect for a worse one. There is no narrower string to write
+         instead: the matcher has no children-only form, so nothing matches
+         /claim/<uuid> without also matching /claim.
+
+         AND REMOVING THEM WOULD BUY NOTHING, which is the half that settles it.
+         A 404 RENDERS NO TAB BAR AT ALL, so no pole lights on the bare segment
+         today. `AppShell` is the only thing that mounts `MobileTabBar`, every
+         page mounts it individually, and `src/app/layout.tsx` does not; the
+         root `src/app/not-found.tsx` therefore renders under the root layout
+         alone. Measured: no `nav[aria-label="Primary"]` in the DOM on /claim or
+         on /entry, light theme and dark. Nothing in `src/` links to either bare
+         segment either, so they are reachable only by a typed URL.
+
+         WHAT WOULD HAVE TO BE TRUE TO CHANGE THIS. Either a page appears at
+         `src/app/claim/page.tsx` or `src/app/entry/page.tsx`, and the entry
+         stops covering a 404 at all; or `isActive` grows a children-only form
+         and these two become that form. Until one of those, do not delete these
+         strings on the grounds that the route 404s. That was measured here, and
+         deleting is the wrong fix. */
       "/review",
       "/claim",
       "/entry",
@@ -318,8 +350,24 @@ export const POLES: Pole[] = [
       ASK_POLE_HREF,
       "/search",
       "/trends-mobile",
-      "/signal",
-      "/story",
+      /* "/signal" AND "/story" WERE REMOVED HERE, and this note is why, so the
+         next author does not read them back out of the handoff and paste them
+         in again.
+
+         Measured on a production build at 390 signed in: GET /signal and GET
+         /story both answer 404. Unlike /claim and /entry on the Ledger pole
+         above, these two have NO children either: there is no `src/app/signal/`
+         and no `src/app/story/` at all, so removing them costs no working
+         screen and nothing else in `src/` links to them. They were listed
+         against steps 9 and 10 of the handoff, ahead of the screens, and the
+         screens never landed.
+
+         WHAT HAS TO BE TRUE TO PUT THEM BACK. A page has to answer at the
+         route: `src/app/signal/page.tsx` or `src/app/story/page.tsx`, or a
+         `[id]` child of either, at which point the entry names something a
+         reader can stand on. A line in a handoff is not that. Re-adding a
+         string for a route that still 404s puts the table back in the state
+         where it claims a pole owns a page that does not exist. */
     ],
   },
 ];
