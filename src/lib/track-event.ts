@@ -49,6 +49,27 @@ export interface TrackOptions {
    * corrupts the dataset rather than just adding noise.
    */
   immediate?: boolean;
+  /**
+   * Emit at most once per UTC day for this key, per reader, per browser.
+   *
+   * The key is scoped by event_type internally, so two different event names
+   * may pass the SAME key and each still emits once. That is what keeps the
+   * dotted and legacy brief-open names paired 1:1 rather than one suppressing
+   * the other.
+   *
+   * WHY THIS EXISTS. A `useRef` guard inside a component body lives exactly as
+   * long as one mount, so a remount, a client route re-entry or a reload resets
+   * it and the event fires again. Measured consequence on the brief-open event:
+   * one account produced 195 of 215 counted opens across 125 sessions but only
+   * 5 distinct briefings, one of them 84 times in a day.
+   *
+   * Backed by localStorage, deliberately, because sessionStorage dies with the
+   * tab and would still let every reload and every second tab re-fire. Fails
+   * OPEN: if storage throws, which it does in some privacy modes, the event is
+   * emitted rather than dropped. Losing a duplicate is cheap; losing a real
+   * open is not.
+   */
+  once?: string;
 }
 
 interface QueuedEvent {
@@ -90,6 +111,68 @@ function randomId(): string {
   // Not cryptographically meaningful, and it does not need to be. This id only
   // groups events within one tab.
   return `s-${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}`;
+}
+
+// ---------------------------------------------------------------------------
+// Once-per-day emission guard
+//
+// Split from the storage it uses so it can be tested without a browser. The
+// pure half takes a store; the impure half hands it localStorage.
+// ---------------------------------------------------------------------------
+
+/** One namespaced key holds the whole map, so cleanup is a single write. */
+export const ONCE_STORAGE_KEY = "ba_telemetry_once";
+/** Entries older than this are pruned on every claim, so the map cannot grow. */
+export const ONCE_RETENTION_DAYS = 2;
+
+/** The minimum surface of Storage this needs. Lets a test pass a plain object. */
+export interface OnceStore {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+}
+
+/** UTC day stamp. UTC, not local, so the key matches the SQL dedupe key. */
+export function onceDayStamp(at: Date): string {
+  return at.toISOString().slice(0, 10);
+}
+
+/**
+ * Claim `key` for the UTC day containing `at`.
+ *
+ * True when this is the FIRST claim, meaning the caller should emit,
+ * and false when the key was already claimed today. Prunes entries older than
+ * ONCE_RETENTION_DAYS on every call.
+ *
+ * Throws nothing of its own; a store that throws is the caller's to handle.
+ */
+export function claimOnce(store: OnceStore, key: string, at: Date): boolean {
+  const today = onceDayStamp(at);
+  const cutoff = onceDayStamp(new Date(at.getTime() - ONCE_RETENTION_DAYS * 86400000));
+
+  let map: Record<string, string> = {};
+  const raw = store.getItem(ONCE_STORAGE_KEY);
+  if (raw) {
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      // A corrupted or hand-edited value must not wedge telemetry forever.
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        map = parsed as Record<string, string>;
+      }
+    } catch {
+      map = {};
+    }
+  }
+
+  const already = map[key] === today;
+
+  const pruned: Record<string, string> = {};
+  for (const [k, day] of Object.entries(map)) {
+    if (typeof day === "string" && day >= cutoff) pruned[k] = day;
+  }
+  if (!already) pruned[key] = today;
+  store.setItem(ONCE_STORAGE_KEY, JSON.stringify(pruned));
+
+  return !already;
 }
 
 /**
@@ -280,6 +363,18 @@ export function trackClientEvent(
     if (typeof window === "undefined") return;
 
     bindLifecycleListeners();
+
+    // Once-per-day guard. Scoped by event_type so two names may share a key.
+    // FAILS OPEN: any storage error falls through and the event is emitted.
+    if (opts.once) {
+      try {
+        if (!claimOnce(window.localStorage, `${event_type}:${opts.once}`, new Date())) {
+          return;
+        }
+      } catch {
+        // Storage unavailable or blocked. Emit rather than drop.
+      }
+    }
 
     const own = payload && typeof payload === "object" && !Array.isArray(payload) ? payload : {};
     const event: QueuedEvent = {
