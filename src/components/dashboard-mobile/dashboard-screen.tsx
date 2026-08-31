@@ -491,6 +491,50 @@ function ScreenHead({ initials }: { initials: string | null }) {
         <span style={{ color: "var(--c-goldink)" }}>era</span>
       </span>
       <span style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+        {/* SEARCH, and this is the only inbound path to /search in the app.
+            That route answers 200 and NOTHING OPENED IT: the sole occurrence
+            of the path outside its own directory was the string in
+            `mobile-tab-bar.tsx`'s `owns` list, and `owns` lights a pole rather
+            than making a route reachable. It was unreachable in fact, not just
+            by a crawler's definition.
+
+            IT IS A CONTROL AND NOT A TAB, which is why it lives in this head
+            rather than in the bar. `src/app/search/page.tsx` mounts NO
+            AppShell: the surface renders full screen with no tab bar, on
+            purpose, reproducing DECISIONS.md open item O2. It is an overlay
+            with its own Cancel, and `search-screen.tsx:157` resolves Cancel to
+            `router.back()`. Opened from here, Cancel lands back on this
+            screen. Opened by typing the URL it has no history to go back to,
+            which is exactly the dead Cancel that file's comment records and
+            which having a real opener is what fixes.
+
+            WHY THE DASHBOARD HEAD. /search is a jump list first
+            (`JUMP_GROUPS`, PAGES and RESEARCH) and entity results second, so
+            it is the index of the whole product rather than one pole's tool.
+            The Dashboard is the pole a reader opens on and this head is where
+            a magnifier is looked for. It is NOT added to Browse: that screen
+            already carries its own field over `GET /api/companies?q=`, and a
+            second search affordance one scroll above the first is a duplicate
+            control, not redundancy.
+
+            44 by 44 without a content-box trick. The box has no border and no
+            block padding, so `minWidth`/`minHeight` under the global
+            border-box reset render exactly 44, matching the two controls
+            beside it. */}
+        <Link
+          href="/search"
+          aria-label="Search"
+          style={{
+            minWidth: "44px",
+            minHeight: "44px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            textDecoration: "none",
+          }}
+        >
+          <SearchGlyph />
+        </Link>
         <button
           type="button"
           onClick={toggleTheme}
@@ -554,6 +598,28 @@ function ScreenHead({ initials }: { initials: string | null }) {
         </Link>
       </span>
     </div>
+  );
+}
+
+/* The magnifier, drawn to the two glyphs below it: 18 by 18 on a 24 viewBox at
+   stroke-width 1.7, the same geometry the Browse pole's icon uses in
+   `mobile-tab-bar.tsx`. --c-secondary, matching MoonGlyph, so the head reads
+   as one row of chrome rather than one control shouting. */
+function SearchGlyph() {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="var(--c-secondary)"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      aria-hidden="true"
+    >
+      <circle cx="11" cy="11" r="7" />
+      <path d="M20 20l-4-4" />
+    </svg>
   );
 }
 

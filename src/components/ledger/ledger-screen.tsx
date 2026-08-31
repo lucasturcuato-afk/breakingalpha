@@ -272,15 +272,44 @@ export function LedgerScreen({
             This row is NOT promoted to the --c-ink treatment to fill the
             gap left behind. The band is the primary now, and two primaries is
             the defect that removing the old row fixes, so the weight, the
-            border token and the fill all stay exactly as they were. Only the
-            gap changes: 10 was the space below the row that left, and 18 is
-            TailAction's own first-row value, which is what this row now is. */}
+            border token and the fill all stay exactly as they were. */}
+
+        {/* THE RESOLUTION ROW, and it is here because /review had no way in.
+            /review answers 200, `src/lib/review-data.ts` reads the signed-in
+            reader's own `user_claims` joined to their own
+            `user_claim_outcomes`, and NOTHING IN src/ LINKED TO IT: the only
+            occurrence of the route outside its own directory was the string
+            in `mobile-tab-bar.tsx`'s `owns` list, and membership in `owns`
+            lights a pole rather than making a route reachable.
+
+            IT BELONGS ON THIS SCREEN AND NOT ANOTHER ONE. The rows directly
+            above it are `data.past`, which `ledger-data.ts` builds from those
+            same two tables (see its WHAT IT READS header). /review is one of
+            those entries opened up, so the control sits at the end of the
+            list it drills into. Its own footer exit is "On to this morning's
+            brief", pointing back at /ledger, so the loop closes where it
+            opened.
+
+            IT IS NOT A PRIMARY. Unfilled, weight 500, --c-border: the band
+            below is the one primary on this screen and a second filled,
+            ink-bordered row would be the two-primaries defect the note above
+            records. `marginTop` 18 because it is the FIRST tail row now, and
+            the desk row below goes back to its own second-row 10. Those two
+            numbers are the design's, unchanged since PR #622; the desk row only
+            ever carried 18 while it was alone. */}
+        <TailAction
+          label="Your latest resolved call"
+          href="/review"
+          weight={500}
+          borderToken="var(--c-border)"
+          marginTop="18px"
+        />
         <TailAction
           label="The desk grades itself too"
           href="/desk-record"
           weight={500}
           borderToken="var(--c-border)"
-          marginTop="18px"
+          marginTop="10px"
           fillToken="var(--c-surface)"
         />
         {/* Clears the fixed tab bar, not just the home indicator. Measured on a
@@ -412,20 +441,39 @@ export function LedgerScreen({
         }}
       >
         <Link
-          /* /radar/calls IS THE WIRED WRITE PATH. It POSTs to
-             /api/radar/claims/author (radar/calls/page.tsx:974) and to
-             /api/radar/claims (:999), and its author control renders
-             unconditionally (:567).
+          /* THE HARD GATE THIS COMMENT USED TO CARRY IS SATISFIED, so the
+             href has moved from /radar/calls to /compose.
 
-             HARD GATE: DO NOT REPOINT THIS AT /compose. That screen's
-             WRITE_PATH_WIRED is `false` (compose-screen.tsx:61), its primary
-             control is `disabled={!unlocked || !WRITE_PATH_WIRED}` (:608)
-             and the whole file makes zero fetch calls. If this href is ever
-             moved to /compose while that flag is false, THE BAND MUST NOT
-             SHIP. A permanent, unavoidable control leading to a disabled
-             primary button is strictly worse than a tail row that does,
-             because the reader cannot scroll past it. */
-          href="/radar/calls"
+             WHAT THE GATE SAID. "DO NOT REPOINT THIS AT /compose. That
+             screen's WRITE_PATH_WIRED is `false` (compose-screen.tsx:61), its
+             primary control is `disabled={!unlocked || !WRITE_PATH_WIRED}`
+             (:608) and the whole file makes zero fetch calls." The reasoning
+             was right and is preserved: a permanent, unavoidable band leading
+             to a disabled primary control is strictly worse than a tail row
+             that does, because the reader cannot scroll past it.
+
+             WHAT MADE IT TRUE. PR #709, "wire the write path, off the session
+             date", deleted `WRITE_PATH_WIRED` from that file. Grep it: the
+             identifier exists nowhere in src/. The composer now POSTs the
+             draft to /api/radar/claims/author (compose-screen.tsx:354) and
+             the authored insert to /api/radar/claims (:419), which are the
+             same two routes /radar/calls posts to. The primary control reads
+             `disabled={!unlocked}` (:958), gated on the draft alone. The
+             condition the gate named is gone, not waived.
+
+             WHY MOVE IT AT ALL, since both destinations write. The band is
+             drawn on a phone and /radar/calls is the desk-era screen: at 390
+             the pressure walk measured 25 tap targets under 44px on it and a
+             13px input. /compose is the mobile screen for this exact object,
+             it carries THE SAME H1 the band's label says ("Write your own
+             call", compose/page.tsx pageTitle), and every control on it is
+             built to the 44px floor. The band pointed past the screen written
+             for it at the one that was not.
+
+             THE GATE IS NOT DELETED, it is inverted: if a future change ever
+             puts the composer's primary control behind a flag again, this
+             href comes back to /radar/calls before that flag ships. */
+          href="/compose"
           className={`${styles.bare} ${styles.focusable}`}
           style={{
             /* 51px tall by 390px wide as rendered, natively above the 44px
