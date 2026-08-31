@@ -50,10 +50,15 @@ test("cleanup: reverse every write this run made", async () => {
   const claims = (await pgRead(
     `user_claims?user_id=eq.${E2E_USER_ID}&select=id,user_claim,commit_note,status,created_at&order=created_at.desc`,
   )) as Array<Record<string, unknown>>;
+  /* Broader than TEST_TAG on purpose. A row written while the harness itself
+     was being debugged carries "from the harness" rather than the tag, and a
+     row this run created but did not label is still a row this run created.
+     No genuine reader note contains the word. */
+  const HARNESS_MARK = /harness/i;
   const mine = claims.filter(
-    (c) => String(c.commit_note ?? "").includes(TEST_TAG) || String(c.user_claim ?? "").includes(TEST_TAG),
+    (c) => HARNESS_MARK.test(String(c.commit_note ?? "")) || HARNESS_MARK.test(String(c.user_claim ?? "")),
   );
-  note("cleanup-scope", "user_claims", `${claims.length} rows on the account, ${mine.length} tagged ${TEST_TAG}`, "measured");
+  note("cleanup-scope", "user_claims", `${claims.length} rows on the account, ${mine.length} carrying the harness mark (tag is ${TEST_TAG})`, "measured");
 
   for (const c of mine) {
     const r = await deleteAsUser(token, `user_claims?id=eq.${c.id}&user_id=eq.${E2E_USER_ID}`);
@@ -85,7 +90,7 @@ test("cleanup: reverse every write this run made", async () => {
   const follows = (await pgRead(
     `follows?user_id=eq.${E2E_USER_ID}&select=id,target,display_name`,
   )) as Array<Record<string, unknown>>;
-  for (const f of follows.filter((r) => String(r.display_name ?? "").includes("pressure-harness"))) {
+  for (const f of follows.filter((r) => /harness/i.test(String(r.display_name ?? "")))) {
     const r = await deleteAsUser(token, `follows?id=eq.${f.id}&user_id=eq.${E2E_USER_ID}`);
     const still = (await pgRead(`follows?id=eq.${f.id}&select=id`)) as unknown[];
     writeLog({
@@ -112,7 +117,7 @@ test("cleanup: reverse every write this run made", async () => {
   const wl = (await pgRead(
     `watchlist?user_id=eq.${E2E_USER_ID}&select=id,identifier,display_name`,
   )) as Array<Record<string, unknown>>;
-  for (const e of wl.filter((r) => String(r.display_name ?? "").includes("pressure-harness"))) {
+  for (const e of wl.filter((r) => /harness/i.test(String(r.display_name ?? "")))) {
     const r = await deleteAsUser(token, `watchlist?id=eq.${e.id}&user_id=eq.${E2E_USER_ID}`);
     const still = (await pgRead(`watchlist?id=eq.${e.id}&select=id`)) as unknown[];
     writeLog({
@@ -149,7 +154,16 @@ test("cleanup: reverse every write this run made", async () => {
   );
 
   const leftover = (await pgRead(
-    `user_claims?user_id=eq.${E2E_USER_ID}&select=id&commit_note=ilike.*pressure-harness*`,
+    `user_claims?user_id=eq.${E2E_USER_ID}&select=id&commit_note=ilike.*harness*`,
   )) as unknown[];
-  expect(leftover.length, "no harness-tagged claim may survive cleanup").toBe(0);
+  const leftoverW = (await pgRead(
+    `watchlist?user_id=eq.${E2E_USER_ID}&select=id&display_name=ilike.*harness*`,
+  )) as unknown[];
+  const leftoverF = (await pgRead(
+    `follows?user_id=eq.${E2E_USER_ID}&select=id&display_name=ilike.*harness*`,
+  )) as unknown[];
+  expect(
+    [leftover.length, leftoverW.length, leftoverF.length],
+    "no harness-marked row may survive cleanup, in any of the three tables",
+  ).toEqual([0, 0, 0]);
 });

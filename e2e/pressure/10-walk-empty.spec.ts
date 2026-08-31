@@ -14,7 +14,7 @@
  * having to let it.
  */
 import { expect, test } from "@playwright/test";
-import { installGuards, launch, phoneContext, warmGoto, AUTH_STATE, BASE } from "./lib/harness";
+import { ensureSignedIn, installGuards, launch, phoneContext, warmGoto, AUTH_STATE, BASE } from "./lib/harness";
 import { finding, note, routeVisit } from "./lib/report";
 import { walk, POLE_ROUTES } from "./lib/walk";
 import { runRules } from "./lib/walk";
@@ -48,6 +48,8 @@ test("empty pass: tap-driven walk from the four poles, light theme", async () =>
   const ctx = await phoneContext(browser, "light", AUTH_STATE);
   const guards = await installGuards(ctx);
   const page = await ctx.newPage();
+  await warmGoto(page, "/dashboard");
+  await ensureSignedIn(page, AUTH_STATE);
 
   const result = await walk(page, BASE, "light", "empty");
 
@@ -94,6 +96,10 @@ test("empty pass: every reached screen in DARK, and both captures distinct", asy
   await installGuards(darkCtx);
   const lightPage = await lightCtx.newPage();
   const darkPage = await darkCtx.newPage();
+  await warmGoto(lightPage, "/dashboard");
+  await ensureSignedIn(lightPage, AUTH_STATE);
+  await warmGoto(darkPage, "/dashboard");
+  await ensureSignedIn(darkPage);
 
   for (const route of reached) {
     await warmGoto(lightPage, route);
@@ -146,6 +152,8 @@ test("empty pass: routes that exist but no tap reaches", async () => {
   const ctx = await phoneContext(browser, "light", AUTH_STATE);
   await installGuards(ctx);
   const page = await ctx.newPage();
+  await warmGoto(page, "/dashboard");
+  await ensureSignedIn(page, AUTH_STATE);
 
   /* The routes the tab bar's Browse pole claims to own, whether or not a page
      exists behind them. A pole that owns a route with no page is a pole that
@@ -246,6 +254,8 @@ test("empty pass: pole bar itself", async () => {
   const page = await ctx.newPage();
 
   await warmGoto(page, "/dashboard");
+  await ensureSignedIn(page, AUTH_STATE);
+  await warmGoto(page, "/dashboard");
   const bar = await page.evaluate(() => {
     const nav = document.querySelector('nav[aria-label="Primary"]') as HTMLElement | null;
     if (!nav) return null;
@@ -336,6 +346,8 @@ test("empty pass: keyboard focus is visible, walked with real Tab presses", asyn
   const ctx = await phoneContext(browser, "light", AUTH_STATE);
   await installGuards(ctx);
   const page = await ctx.newPage();
+  await warmGoto(page, "/dashboard");
+  await ensureSignedIn(page, AUTH_STATE);
 
   for (const route of POLE_ROUTES.map((p) => p.href)) {
     await warmGoto(page, route);

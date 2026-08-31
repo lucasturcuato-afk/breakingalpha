@@ -19,6 +19,7 @@
 import { expect, test } from "@playwright/test";
 import type { BrowserContext, Page } from "@playwright/test";
 import {
+  ensureSignedIn,
   installGuards,
   launch,
   phoneContext,
@@ -85,20 +86,34 @@ async function openBrowser(): Promise<{ ctx: BrowserContext; page: Page; close: 
     route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(cannedProposal(isoToday())) }),
   );
   const page = await ctx.newPage();
+  /* The saved storage state can be dead: the walk taps Sign out, and Supabase
+     revokes the refresh token globally when it does. */
+  await warmGoto(page, "/dashboard");
+  await ensureSignedIn(page, AUTH_STATE);
   return { ctx, page, close: async () => { await ctx.close(); await browser.close(); } };
 }
 
-/** Long-press the commit control. 700ms is COMMIT_PRESS_MS; hold past it. */
-async function longPress(page: Page, selector: string, ms = 1100) {
-  const el = page.locator(selector);
-  const box = await el.boundingBox();
-  if (!box) throw new Error(`no box for ${selector}`);
-  const x = box.x + box.width / 2;
-  const y = box.y + box.height / 2;
-  await page.mouse.move(x, y);
+/**
+ * Long-press the commit control. 700ms is COMMIT_PRESS_MS; hold past it.
+ *
+ * THE SCROLL IS LOAD-BEARING. On open at 390x844 the sheet's own control sits
+ * at y=848, four pixels below the fold, and `page.mouse` coordinates outside
+ * the viewport hit nothing. Without the scroll the press silently never
+ * happens, the sheet sits there unchanged, and the run reports "the adopt
+ * press produced no new row" as a product defect. It did that once. The box is
+ * measured AFTER the scroll for the same reason.
+ */
+async function longPress(page: Page, locator: ReturnType<Page["locator"]>, ms = 1100): Promise<{ yOnOpen: number | null }> {
+  const before = await locator.boundingBox();
+  await locator.scrollIntoViewIfNeeded();
+  await page.waitForTimeout(250);
+  const box = await locator.boundingBox();
+  if (!box) throw new Error("no box for the press control");
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await page.mouse.down();
   await page.waitForTimeout(ms);
   await page.mouse.up();
+  return { yOnOpen: before ? before.y : null };
 }
 
 test("W1 adopt: the window the sheet states must equal the window the row is written with", async () => {
@@ -132,8 +147,23 @@ test("W1 adopt: the window the sheet states must equal the window the row is wri
   const spanLabel = (sheetText.match(/(\d+) days?,\s*(resolves[^.]*)/) ?? []).slice(1).join(" ") || null;
   note("commit-sheet-promise", "/ledger", `sheet states: checkedOn="${checkedOnLabel}" span="${spanLabel}"; full: ${sheetText.slice(0, 400)}`, "measured");
 
+  const press = sheet.locator('button:has-text("Press to enter this on your ledger")');
+  const pressBoxOnOpen = await press.boundingBox();
+  const vp = page.viewportSize();
+  if (pressBoxOnOpen && vp && pressBoxOnOpen.y >= vp.height) {
+    finding({
+      severity: "medium",
+      rule: "primary-control-below-the-fold",
+      screen: "/ledger commit sheet",
+      pass: "writes",
+      title: `the sheet's only commit control opens at y=${Math.round(pressBoxOnOpen.y)} in an ${vp.height}px viewport`,
+      evidence: `Measured with an EMPTY note field at 390x844. The sheet scrolls (overflow-y: auto, max-height 776px), so the control is reachable, but it is not on screen when the sheet opens and nothing on the visible part of the sheet says there is more below it.`,
+      basis: "measured",
+    });
+  }
+
   await sheet.locator("textarea").fill(NOTE_TEXT);
-  await longPress(page, '[role="dialog"] button:has-text("Press to enter this on your ledger")');
+  await longPress(page, press);
 
   await page.waitForTimeout(2500);
 
@@ -141,9 +171,24 @@ test("W1 adopt: the window the sheet states must equal the window the row is wri
   const added = after.filter((r) => !before.some((b) => b.id === r.id));
 
   if (added.length === 0) {
-    /* The idempotent branch: adopting a call already on the record returns the
-       existing row and writes nothing new. Distinguish it from a silent
-       failure rather than reporting either as the other. */
+    /* THE IDEMPOTENT BRANCH IS NOT A FAILURE. `/api/radar/claims/adopt` keys on
+       adopted_from_call_id and hands back the existing row, so a call already
+       on the record produces no new one. Told apart from a silent failure by
+       looking for that row, because reporting either as the other is worthless.
+
+       Which call the sheet was opened on is not knowable from the sheet, so
+       the check is: does the account carry a row adopted from ANY of today's
+       calls that it did not carry before this test began. */
+    const adoptedNow = after.filter((r) => r.adopted_from_call_id !== null);
+    const adoptedBefore = before.filter((r) => r.adopted_from_call_id !== null);
+    if (adoptedNow.length === adoptedBefore.length && adoptedBefore.length > 0) {
+      note(
+        "adopt-idempotent-or-failed",
+        "/ledger",
+        `no new row. The account already carries ${adoptedBefore.length} adopted claims, so this may be the route's idempotent branch rather than a failure. Sheet after the press: ${(await sheet.innerText().catch(() => "(sheet gone)")).replace(/\s+/g, " ").slice(0, 200)}`,
+        "measured",
+      );
+    }
     finding({
       severity: "critical",
       rule: "adopt-did-not-confirm",
@@ -365,14 +410,7 @@ test("W3 failure: each write path must say nothing was written and keep the note
       const sheet = page.locator('[role="dialog"], [aria-modal="true"]').first();
       await expect(sheet).toBeVisible({ timeout: 5000 });
       await sheet.locator("textarea").fill(NOTE_TEXT);
-      const press = sheet.locator('button:has-text("Press to enter this on your ledger")');
-      const box = await press.boundingBox();
-      if (box) {
-        await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-        await page.mouse.down();
-        await page.waitForTimeout(1100);
-        await page.mouse.up();
-      }
+      await longPress(page, sheet.locator('button:has-text("Press to enter this on your ledger")'));
       await page.waitForTimeout(1800);
 
       const stillOpen = await sheet.isVisible().catch(() => false);
@@ -609,6 +647,12 @@ test("W4 follow and watchlist: both round trips, verified in the database", asyn
   });
   const wlAfter = (await pgRead(`watchlist?user_id=eq.${E2E_USER_ID}&select=id,identifier,type,display_name`)) as Array<Record<string, unknown>>;
   const newWl = wlAfter.find((w) => !wlBefore.some((b) => (b as { id: string }).id === w.id));
+  note(
+    "api-shape-inconsistency",
+    "/api/watchlist vs /api/radar/follows",
+    "DELETE /api/radar/follows takes ?id=; DELETE /api/watchlist takes a JSON body {id} and answers 400 Invalid JSON to a query-string caller. Two sibling routes, two calling conventions.",
+    "measured",
+  );
   note("watchlist-write", "/watch", `POST /api/watchlist -> ${wlRes.status}; rows ${wlBefore.length} -> ${wlAfter.length}`, "measured");
   if (!newWl) {
     finding({
@@ -633,8 +677,16 @@ test("W4 follow and watchlist: both round trips, verified in the database", asyn
     const watchText = (await page.locator("body").innerText()).replace(/\s+/g, " ");
     note("watchlist-visible", "/watch", `after the watchlist add landed, /watch reads: ${watchText.slice(0, 500)}`, "measured");
 
+    /* THE TWO DELETES DO NOT AGREE ON WHERE THE ID GOES. `/api/radar/follows`
+       reads it off the query string; `/api/watchlist` reads it off a JSON
+       body and answers 400 "Invalid JSON" to a query-string caller. Not a
+       defect in either route on its own, and worth a reader knowing. */
     const del = await page.evaluate(async (id) => {
-      const r = await fetch(`/api/watchlist?id=${id}`, { method: "DELETE" });
+      const r = await fetch("/api/watchlist", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
       return { status: r.status, body: await r.text() };
     }, newWl.id);
     const wlFinal = (await pgRead(`watchlist?user_id=eq.${E2E_USER_ID}&select=id`)) as unknown[];

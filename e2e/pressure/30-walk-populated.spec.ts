@@ -13,6 +13,7 @@
  */
 import { test } from "@playwright/test";
 import {
+  ensureSignedIn,
   installGuards,
   launch,
   phoneContext,
@@ -39,6 +40,8 @@ test("populated pass: plant one follow and one watchlist entry, then walk the re
   const guards = await installGuards(ctx);
   guards.blockMutations = false;
   const page = await ctx.newPage();
+  await warmGoto(page, "/dashboard");
+  await ensureSignedIn(page, AUTH_STATE);
 
   await warmGoto(page, "/watch");
 
@@ -153,6 +156,8 @@ test("populated pass: the same screens in dark, rules and geometry", async () =>
   const ctx = await phoneContext(browser, "dark", AUTH_STATE);
   await installGuards(ctx);
   const page = await ctx.newPage();
+  await warmGoto(page, "/dashboard");
+  await ensureSignedIn(page);
   for (const route of RECORD_SCREENS) {
     const status = await warmGoto(page, route);
     if (status && status >= 400) continue;

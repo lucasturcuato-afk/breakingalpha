@@ -274,6 +274,32 @@ export async function signIn(page: Page): Promise<void> {
   await page.waitForURL((u) => !u.pathname.startsWith("/auth"), { timeout: 25_000 });
 }
 
+/**
+ * Is there a live session on this page, and if not, make one.
+ *
+ * `supabase.auth.signOut()` revokes the refresh token GLOBALLY, so a saved
+ * storage state stops working the moment any context signs out. The walk taps
+ * a Sign out button, so that is not hypothetical: every later spec would start
+ * from a dead cookie and measure a signed-out app. This checks a route that
+ * answers 401 without a session and re-signs where needed.
+ *
+ * Returns true when it had to sign in, so the caller can say so.
+ */
+export async function ensureSignedIn(page: Page, saveTo?: string): Promise<boolean> {
+  const status = await page.evaluate(async () => {
+    try {
+      const r = await fetch("/api/radar/claims", { method: "GET" });
+      return r.status;
+    } catch {
+      return 0;
+    }
+  }).catch(() => 0);
+  if (status === 200) return false;
+  await signIn(page);
+  if (saveTo) await page.context().storageState({ path: saveTo });
+  return true;
+}
+
 /** Read the reader's own rows back through PostgREST, service role, READ ONLY. */
 export async function pgRead(pathAndQuery: string): Promise<unknown> {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;

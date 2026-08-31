@@ -24,6 +24,12 @@ export default defineConfig({
   timeout: 20 * 60_000,
   expect: { timeout: 10_000 },
   use: {
+    /* LOCATOR ACTIONS DEFAULT TO NO TIMEOUT AT ALL, and that is not a
+       theoretical hazard: `sheet.innerText()` on a sheet that had just closed
+       hung this suite indefinitely, with a `.catch()` on it that could never
+       fire because the promise never settled. Every action gets a ceiling. */
+    actionTimeout: 15_000,
+    navigationTimeout: 30_000,
     baseURL: process.env.PRESSURE_BASE_URL ?? "http://localhost:3370",
     trace: "off",
     screenshot: "off",

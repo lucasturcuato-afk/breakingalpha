@@ -11,7 +11,7 @@ import type { Page } from "@playwright/test";
 import { enumerateControls, screenIsSelfMutating, tapAndObserve, type ControlInfo } from "./probe";
 import { allRules, readScreenText } from "./rules";
 import { controlLog, finding, note, routeVisit } from "./report";
-import { warmGoto, type Theme } from "./harness";
+import { AUTH_STATE, signIn, warmGoto, type Theme } from "./harness";
 
 export const POLE_ROUTES: Array<{ label: string; href: string }> = [
   { label: "Dashboard", href: "/dashboard" },
@@ -21,6 +21,19 @@ export const POLE_ROUTES: Array<{ label: string; href: string }> = [
 ];
 
 const MAX_ROUTES = 32;
+
+/**
+ * Routes the walk records but never walks INTO.
+ *
+ * `/auth` is the one that matters and it cost a whole run. `/settings/profile`
+ * carries a Sign out button; the walk tapped it, the session was destroyed, and
+ * every route after that point redirected to `/auth` and was written down as
+ * twelve product defects. They were one harness defect. Tapping sign out is a
+ * legitimate thing for a walk to do, so the control is still activated and its
+ * effect still recorded; what changed is that the session is restored
+ * immediately afterwards and these destinations never become screens to walk.
+ */
+const NEVER_WALK_INTO = ["/auth", "/waitlist", "/onboarding"];
 const MAX_CONTROLS_PER_SCREEN = 40;
 
 /** Same-origin app path, query and hash stripped for identity. */
@@ -193,6 +206,20 @@ export async function probeScreen(
 
     const out = await tapAndObserve(page, c.path);
     probed += 1;
+
+    /* THE SESSION SURVIVES THE WALK. See NEVER_WALK_INTO above. */
+    const landedOn = normalise(out.urlAfter, base);
+    if (landedOn && NEVER_WALK_INTO.includes(landedOn)) {
+      note(
+        "session-ended-by-control",
+        route,
+        `${c.tag} "${c.text || c.ariaLabel || ""}" led to ${landedOn}. The session was re-established before probing continued, so nothing after this point is measured signed out.`,
+        "measured",
+      );
+      await signIn(page).catch(() => {});
+      await page.context().storageState({ path: AUTH_STATE }).catch(() => {});
+      await warmGoto(page, route);
+    }
     const appRequests = out.requests.filter((r) => !/\.(js|css|woff2?|png|jpg|svg|ico|map)(\?|$)/.test(r));
     const forced = out.error === "clicked with force (ordinary click was not actionable)";
     const inert = !out.navigated && !out.domChanged && appRequests.length === 0 && (!out.error || forced);
@@ -251,7 +278,9 @@ export async function probeScreen(
 
     if (out.navigated) {
       const to = normalise(out.urlAfter, base);
-      if (to && to !== route) next.push({ to, via: `${c.tag} "${c.text || c.ariaLabel || c.href || ""}"` });
+      if (to && to !== route && !NEVER_WALK_INTO.includes(to)) {
+        next.push({ to, via: `${c.tag} "${c.text || c.ariaLabel || c.href || ""}"` });
+      }
     }
   }
 
@@ -273,9 +302,22 @@ export async function walk(page: Page, base: string, theme: Theme, pass: "empty"
     if (visited.has(item.route)) continue;
     visited.add(item.route);
 
-    const status = await warmGoto(page, item.route);
-    const finalUrl = page.url();
-    const landed = normalise(finalUrl, base);
+    let status = await warmGoto(page, item.route);
+    let finalUrl = page.url();
+    let landed = normalise(finalUrl, base);
+
+    /* A redirect to /auth is ambiguous: it can be the product's gate or it can
+       be this harness having lost its own session. Re-establish and try once
+       more, so only a route that redirects a SIGNED-IN reader is reported as
+       one. Twelve false findings came from not doing this. */
+    if (landed === "/auth") {
+      await signIn(page).catch(() => {});
+      await page.context().storageState({ path: AUTH_STATE }).catch(() => {});
+      status = await warmGoto(page, item.route);
+      finalUrl = page.url();
+      landed = normalise(finalUrl, base);
+    }
+
     routeVisit({ route: item.route, reachedBy: item.via, status, finalUrl, pass });
 
     if (landed !== item.route) {
