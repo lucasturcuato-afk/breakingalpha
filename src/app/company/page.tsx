@@ -22,6 +22,11 @@ import { ThemeTags } from "@/components/company/ThemeTags";
 import { SignInModal } from "@/components/auth/sign-in-modal";
 import { canonicalize, timeAgo } from "@/lib/company-intel";
 import { zeroMatchTarget } from "@/lib/company-search-target";
+import {
+  COMPANY_LOOKUP_SEARCHED,
+  companyLookupPayload,
+} from "@/lib/company-events";
+import { trackClientEvent } from "@/lib/track-event";
 import { useLiveMood } from "@/hooks/useLiveMood";
 
 // Shape of /api/companies response items. Locally redeclared to avoid importing
@@ -324,7 +329,29 @@ export default function CompanyIntelPage() {
       try {
         const res = await fetch(`/api/companies?q=${encodeURIComponent(trimmed)}&limit=50`);
         const json = (await res.json()) as { companies?: ApiCompany[]; error?: string };
-        if (!cancelled) setCompanies(dedupeAndMapApiCompanies(json.companies ?? []));
+        if (!cancelled) {
+          const mapped = dedupeAndMapApiCompanies(json.companies ?? []);
+          setCompanies(mapped);
+          /* THE TYPED STRING, AND WHETHER IT RESOLVED. Emitted here rather than
+             only on Enter, because Enter only would never record the reader who
+             types, sees nothing, and gives up, which is the most informative
+             thing this surface can tell us. It sits INSIDE the `cancelled`
+             guard on purpose: a superseded run does not emit, so a fast typist
+             collapses their own prefixes ("st", "sta", "star") to the query
+             that actually landed, and the residue is collapsible at read time
+             by prefix within a `session_id`. No request is added; the event
+             joins the batch that flushes on the existing 3s interval. */
+          trackClientEvent(
+            COMPANY_LOOKUP_SEARCHED,
+            companyLookupPayload({
+              query: trimmed,
+              matches: mapped.length,
+              committed: false,
+              destination: null,
+              companyId: null,
+            }),
+          );
+        }
       } catch (e) {
         if (!cancelled) {
           console.error("Failed to search companies:", e);
@@ -567,12 +594,35 @@ export default function CompanyIntelPage() {
                 if (e.key !== "Enter") return;
                 const q = search.trim();
                 if (!q) return;
+                /* One emit for the committed lookup, built before any push so
+                   it cannot be lost to the navigation, and shaped by
+                   `companyLookupPayload` rather than restated here. Navigation
+                   behaviour below is byte for byte what it was; the only new
+                   statements are the two `trackClientEvent` calls. */
                 // Matched-row behavior preserved: open the highlighted/top match.
                 const rows = rowsRef.current;
                 if (rows.length > 0) {
                   const i = highlightedRef.current;
                   const target = rows[i >= 0 ? i : 0];
-                  if (target) router.push(`/company/${encodeURIComponent(slugify(target.name))}`);
+                  const dest = target
+                    ? `/company/${encodeURIComponent(slugify(target.name))}`
+                    : null;
+                  trackClientEvent(
+                    COMPANY_LOOKUP_SEARCHED,
+                    companyLookupPayload({
+                      query: q,
+                      matches: rows.length,
+                      committed: true,
+                      destination: dest,
+                      // `companies.id`, straight off the directory row. The
+                      // route already returns it and `dedupeAndMapApiCompanies`
+                      // keeps the highest-mention row's id, so this is the row
+                      // primary key and not a name, a slug or a cluster label.
+                      companyId: target?.id ?? null,
+                    }),
+                    { entity_type: "company", entity_id: target?.id },
+                  );
+                  if (dest) router.push(dest);
                   return;
                 }
                 /* Zero matches. The rule is in
@@ -584,6 +634,22 @@ export default function CompanyIntelPage() {
                    never ran. It lives in a module because the version that
                    lived here could only be tested by retyping it. */
                 const target = zeroMatchTarget(q);
+                /* THE DEAD END. `target` null means the reader typed, pressed
+                   Enter, and the surface did nothing whatever: no navigation,
+                   no error, no result. That produced no record anywhere before
+                   this line, so the strings people give up on were the one
+                   class of demand we could not see at all. `dead_end` on the
+                   payload is exactly this case. */
+                trackClientEvent(
+                  COMPANY_LOOKUP_SEARCHED,
+                  companyLookupPayload({
+                    query: q,
+                    matches: 0,
+                    committed: true,
+                    destination: target,
+                    companyId: null,
+                  }),
+                );
                 if (target) router.push(target);
               }}
               placeholder="Search companies by name or ticker..."
