@@ -55,6 +55,11 @@ try:
 except ImportError:
     from backend.supabase_client import execute_with_retry  # test/dev context: cwd=repo-root
 
+try:
+    from edgar.name_agreement import names_agree  # cron context: cwd=backend/
+except ImportError:
+    from backend.edgar.name_agreement import names_agree  # test/dev context: cwd=repo-root
+
 
 # Cap recursion in the rare hot-race case where two workers keep
 # colliding. Three attempts is extremely conservative; in practice the
@@ -422,6 +427,7 @@ def _try_insert_canonical(
                                 supabase=supabase,
                                 company_id=new_id,
                                 ticker=ticker,
+                                our_name=name,
                             )
                         except Exception:
                             pass  # don't block mint on cik population failure
@@ -462,7 +468,7 @@ def lookup_cik_for_ticker(supabase, ticker: str) -> Optional[int]:
         return None
     rows = (
         supabase.table("cik_tickers")
-        .select("cik")
+        .select("cik, company_name")
         .eq("ticker", t)
         .execute()
         .data
@@ -482,10 +488,37 @@ def lookup_cik_for_ticker(supabase, ticker: str) -> Optional[int]:
     return ciks[0]
 
 
-def populate_sec_cik_for_mint(*, supabase, company_id: str, ticker: str) -> Optional[int]:
+def _registrant_name_for_cik(supabase, ticker: str, cik: int) -> Optional[str]:
+    """The cik_tickers company_name for this (ticker, cik). None when absent,
+    which the name gate treats as fail-open."""
+    rows = (
+        supabase.table("cik_tickers")
+        .select("cik, company_name")
+        .eq("ticker", (ticker or "").upper().strip())
+        .execute()
+        .data
+        or []
+    )
+    for r in rows:
+        if r.get("cik") == cik:
+            return r.get("company_name")
+    return None
+
+
+def populate_sec_cik_for_mint(
+    *, supabase, company_id: str, ticker: str, our_name: str = ""
+) -> Optional[int]:
     """
     Set companies.sec_cik on a freshly minted row from the LOCAL cik_tickers
-    map, with an EXPLICIT dedup existence-check guard.
+    map, with a NAME-AGREEMENT gate and an EXPLICIT dedup existence-check guard.
+
+    NAME GATE: a ticker match is not identity. companies.ticker carries
+    Finnhub-derived and extraction-noise values, so the bare join stamps
+    'Ola' with Coca-Cola's CIK. backend.edgar.name_agreement is the single
+    shared policy, used by this path and by
+    edgar.cik_mapping._update_companies_sec_cik. It FAILS OPEN: no authority
+    name, or a caller that passes no name, means no opinion and the write
+    proceeds exactly as before.
 
     DEDUP HAZARD GUARD: before writing, SELECT for any company row that
     already holds this sec_cik. If one exists (and it is not this row), do
@@ -506,6 +539,16 @@ def populate_sec_cik_for_mint(*, supabase, company_id: str, ticker: str) -> Opti
     cik = lookup_cik_for_ticker(supabase, ticker)
     if cik is None:
         return None
+
+    if our_name:
+        registrant = _registrant_name_for_cik(supabase, ticker, cik)
+        agrees, reason = names_agree(our_name, registrant)
+        if not agrees:
+            print(
+                f"[cik-at-mint] name gate blocked {company_id}: "
+                f"{our_name!r} ({ticker}) vs cik {cik} {registrant!r}: {reason}"
+            )
+            return None
 
     existing = (
         supabase.table("companies")
