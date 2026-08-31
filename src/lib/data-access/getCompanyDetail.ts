@@ -5,6 +5,11 @@ import type { Completeness } from "@/lib/article-signal";
 import { computeTone, type SentimentLabel, type ToneSummary } from "@/lib/tone";
 import { computeAttention, type AttentionSummary } from "@/lib/attention";
 import { deriveTickerPrivacy } from "@/lib/company-privacy";
+import {
+  ARTICLE_DAYS_FAST,
+  escalateArticleWindow,
+  preferWiderRows,
+} from "@/lib/article-window";
 
 export type AliasMention = { name: string; n: number };
 
@@ -56,7 +61,13 @@ export interface CompanyDetail {
 }
 
 const DAYS = 8;
-const ARTICLE_DAYS = 14;
+// Article window policy lives in src/lib/article-window.ts, with the prod
+// measurement that produced it. Summary: a fixed window cannot serve both ends
+// of the corpus. 14 days renders articles on 100% of top-100 companies and
+// 12.5% of the tail; widening the constant instead re-ranks the head's
+// relevance-ordered slate and displaced 22 to 50 of 50 rows on every head
+// company measured. So the window escalates only when the fast rung comes back
+// thin.
 const ARTICLE_LIMIT = 50;
 const DAY_MS = 86_400_000;
 // Tone (src/lib/tone.ts): a trailing 7-day window scored against the preceding
@@ -105,23 +116,20 @@ export async function getCompanyDetail(
   const ids = cluster.map((r) => r.id);
 
   const sinceDay = utcDayMs(new Date(Date.now() - (DAYS - 1) * DAY_MS));
-  const sinceArticles = new Date(Date.now() - ARTICLE_DAYS * DAY_MS).toISOString();
   const sinceMentions = new Date(Date.now() - ATTENTION_LOOKBACK_MS).toISOString();
 
-  const [mentionsRes, articlesRes] = await Promise.all([
-    supabase
-      .from("company_mentions")
-      .select("created_at, sentiment")
-      .in("company_id", ids)
-      .gte("created_at", sinceMentions),
-    // WD136 Phase 1: variant-expansion. Filter articles by ANY known surface
-    // form of `head.name` (case + alias variants from CANONICAL), not just the
-    // single canonical string. See getCompanyVariants() in company-intel.ts.
+  // WD136 Phase 1: variant-expansion. Filter articles by ANY known surface form
+  // of `head.name` (case + alias variants from CANONICAL), not just the single
+  // canonical string. See getCompanyVariants() in company-intel.ts. Hoisted out
+  // of the query so the escalation below reuses it instead of re-walking the
+  // whole CANONICAL map a second time.
+  const companyOr = buildCompanyContainsOr(getCompanyVariants(head.name));
+  const articlesWithin = (days: number) =>
     supabase
       .from("articles")
       .select(ARTICLE_COLS)
-      .or(buildCompanyContainsOr(getCompanyVariants(head.name)))
-      .gte("published_at", sinceArticles)
+      .or(companyOr)
+      .gte("published_at", new Date(Date.now() - days * DAY_MS).toISOString())
       .order("relevance_score", { ascending: false })
       .order("published_at", { ascending: false })
       // Deterministic tiebreak. Postgres does not guarantee which rows a LIMIT
@@ -130,7 +138,15 @@ export async function getCompanyDetail(
       // on one company with the data unchanged. `id` is unique, so this pins
       // the result without changing the ranking.
       .order("id", { ascending: true })
-      .limit(ARTICLE_LIMIT),
+      .limit(ARTICLE_LIMIT);
+
+  const [mentionsRes, articlesRes] = await Promise.all([
+    supabase
+      .from("company_mentions")
+      .select("created_at, sentiment")
+      .in("company_id", ids)
+      .gte("created_at", sinceMentions),
+    articlesWithin(ARTICLE_DAYS_FAST),
   ]);
 
   const aliasSet = new Set<string>(cluster.map((r) => r.name).filter(Boolean));
@@ -179,13 +195,29 @@ export async function getCompanyDetail(
   const tone = computeTone(toneCurrent, tonePrior);
   const attention = computeAttention(attnCurrentCount, attnBaselineCount);
 
-  const articleRows = (articlesRes.data ?? []) as Array<{
+  type ArticleRow = {
     id: string; title: string | null; source: string | null; url: string | null;
     published_at: string | null; sentiment: string | null; deal_type: string | null;
     relevance_score: number | null; sector: string | null;
     summary: string | null; relevance_reason: string | null;
     sentiment_reason: string | null; ingested_at: string | null;
-  }>;
+  };
+  const fastRows = (articlesRes.data ?? []) as ArticleRow[];
+
+  // Adaptive window, rung 2. Runs ONLY when the fast rung came back thin, so a
+  // well-covered company issues exactly the queries it issued before this
+  // change and gets exactly the rows it got before. Sequential on purpose: the
+  // fast rung's row count is the trigger, so it cannot be raced against it. On
+  // an error at the fast rung there is no row count to trust, so we leave the
+  // result alone rather than paper over a failed read with a wider one.
+  let articleRows = fastRows;
+  const wideDays = articlesRes.error ? null : escalateArticleWindow(fastRows.length);
+  if (wideDays !== null) {
+    const wideRes = await articlesWithin(wideDays);
+    if (!wideRes.error) {
+      articleRows = preferWiderRows(fastRows, (wideRes.data ?? []) as ArticleRow[]);
+    }
+  }
 
   const sources = Array.from(
     new Set(articleRows.map((a) => a.source).filter((s): s is string => !!s)),
