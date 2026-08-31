@@ -125,6 +125,12 @@ FIXTURES = [
     ("SAP SE", "sap"),
     ("Nokia Oyj", "nokia"),
     ("The Coca-Cola Company", "the coca cola"),
+    # ASCII SYMBOLS, not Unicode punctuation. '+' is category Sm and '$' is Sc,
+    # so a Unicode-only punct class leaves them in. These two are the regression
+    # guard for the locale bug that made section 3 build 823 clusters against an
+    # audit measuring 825 on 2026-08-30.
+    ("Disney+", "disney"),
+    ("$MIR", "mir"),
 ]
 
 

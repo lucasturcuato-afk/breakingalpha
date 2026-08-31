@@ -168,7 +168,23 @@ DECLARE
 BEGIN
   v_base  := norm_v2.lookup_key_v1(s);
   v_punct := regexp_replace(v_base, '[.''' || U&'\2019' || ']', '', 'g');
-  v_punct := regexp_replace(v_punct, '[[:punct:]]', ' ', 'g');
+  -- NOT [[:punct:]]. That class is LOCALE-DEPENDENT: under this database's
+  -- UTF-8 LC_CTYPE it resolves to Unicode P* only, which EXCLUDES the nine
+  -- ASCII symbols $ + < = > ^ \ | ~ (categories Sc/Sm/Sk). Python's
+  -- string.punctuation includes all of them, so the two diverged silently.
+  --
+  -- Measured 2026-08-30: 'Disney+' keyed to 'disney+' and '$MIR' to '$mir' in
+  -- SQL while backend/company_match.py folded both, so section 3 built 823
+  -- clusters against an audit that measured 825. The drift check caught it.
+  --
+  -- translate() rather than a bracket expression on purpose: a hand-written
+  -- class has to escape ] \ ^ and - correctly and is the likeliest place to
+  -- reintroduce exactly this bug. 32 characters in, 32 spaces out, no regex.
+  v_punct := translate(
+    v_punct,
+    '!"#$%&''()*+,-./:;<=>?@[\]^_`{|}~',
+    '                                '
+  );
   v_punct := btrim(regexp_replace(v_punct, '\s+', ' ', 'g'));
 
   v_out := v_punct;
@@ -199,7 +215,13 @@ $$;
 --     norm_v2.lookup_key_v2('SAP SE')                 = 'sap'                    AS h,
 --     norm_v2.lookup_key_v2('Nokia Oyj')              = 'nokia'                  AS i,
 --     -- leading "The" is deliberately NOT stripped:
---     norm_v2.lookup_key_v2('The Coca-Cola Company')  = 'the coca cola'          AS j;
+--     norm_v2.lookup_key_v2('The Coca-Cola Company')  = 'the coca cola'          AS j,
+--     -- ASCII SYMBOLS, not Unicode punctuation. These two are the regression
+--     -- guard for the [[:punct:]] locale bug: '+' is Sm and '$' is Sc, so a
+--     -- Unicode-only punct class leaves them in and the key stops matching
+--     -- backend/company_match.py.
+--     norm_v2.lookup_key_v2('Disney+')                = 'disney'                 AS k,
+--     norm_v2.lookup_key_v2('$MIR')                   = 'mir'                    AS l;
 
 
 -- =====================================================================

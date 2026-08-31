@@ -376,3 +376,41 @@ byte-identical output:
 both the Python tests and a SQL assertion, so drift fails a test rather than
 silently splitting the index. Consolidating the two TS modules into one is
 strongly recommended before v2 lands.
+
+---
+
+## 9. Known out of scope: leading-word variants stay split
+
+Added 2026-08-30, after the section 1 punctuation fix.
+
+`lookup_key_v2` folds trailing corporate suffixes and punctuation. It does
+nothing about a differing LEADING word, so these remain three clusters over one
+company:
+
+| key | rows | mentions | identity |
+|---|---|---|---|
+| `disney` | Disney, Disney+ | 192 | DIS, cik 1744489 |
+| `walt disney` | Walt Disney, Walt Disney Co | 40 | none |
+| `disney entertainment` | Disney Entertainment | 1 | none |
+
+**This is the same class of problem the migration exists to fix**, and it is
+worth stating plainly rather than leaving implied: the canonical Disney row
+carries the ticker and 189 mentions, while 41 mentions sit on rows that resolve
+to nothing. After the merge runs, a `companies[]`-based query for Disney still
+misses them.
+
+Deliberately NOT addressed here. Stripping a leading "The" was measured and
+rejected during 0020b (zero rows recovered, 65 new ambiguous collisions), and a
+general leading-word rule is strictly harder: `walt disney` -> `disney` is
+correct, but the same rule collapses `general electric` onto `electric` and
+`american express` onto `express`. It needs its own measurement pass and its own
+review queue, not a clause bolted onto this one.
+
+The tractable version is narrower and probably where to start: fold a cluster
+into another when one key is a strict token-suffix of the other AND exactly one
+of the two carries identity. That covers Disney and misses General Electric,
+because `electric` is not a cluster. Unmeasured; treat as a hypothesis.
+
+Sibling cases live in the same shape: check `alibaba` / `alibaba group holding`,
+`rocket lab` / `rocket lab usa`, `moodys` / `moodys ratings`, and
+`the coca cola` / `coca cola femsa` before assuming Disney is the only one.
