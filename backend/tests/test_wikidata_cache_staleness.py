@@ -17,7 +17,10 @@ already failed or could fail:
   4. the wrong-order refusal. C, then D, then E.
 """
 import datetime as dt
+import re
+import sys
 import unittest
+from unittest import mock
 
 from backend import wikidata
 from backend import wikidata_cache_rebuild as R
@@ -432,6 +435,214 @@ class WrongOrderRefusalTest(unittest.TestCase):
 
     def test_the_required_interval_matches_the_measured_budget(self):
         self.assertAlmostEqual(R.REQUIRED_MIN_INTERVAL_S, 5.2, places=4)
+
+
+# ---------------------------------------------------------------------------
+# 5. THE CROSS-LANE STATUS VOCABULARY. no_result IS NOT absent.
+# ---------------------------------------------------------------------------
+# Lane D emits ('ok', 'no_result', 'failed'). This module reasons in
+# ('ok', 'absent', 'error', 'unknown'). Four words, three words, and the
+# plausible-looking mapping of the middle one is the one that destroys data.
+class StatusVocabularyTest(unittest.TestCase):
+
+    def test_no_result_never_maps_to_absent(self):
+        """The single most important mapping in the module. `absent` blanks
+        wikidata_description; lane D's `no_result` is a LABEL-CHECK miss, which
+        is not a proven absence, so mapping it to `absent` would write a
+        fabricated negative over rows that hold a correct description."""
+        self.assertEqual(R.map_fetch_status("no_result"), R.FETCH_STATUS_UNKNOWN)
+        self.assertNotEqual(R.map_fetch_status("no_result"), R.FETCH_STATUS_ABSENT)
+
+    def test_lane_d_vocabulary_translates(self):
+        self.assertEqual(R.map_fetch_status("ok"), R.FETCH_STATUS_OK)
+        self.assertEqual(R.map_fetch_status("failed"), R.FETCH_STATUS_ERROR)
+
+    def test_this_modules_own_vocabulary_passes_through(self):
+        for status in (R.FETCH_STATUS_OK, R.FETCH_STATUS_ABSENT,
+                       R.FETCH_STATUS_ERROR, R.FETCH_STATUS_UNKNOWN):
+            self.assertEqual(R.map_fetch_status(status), status)
+
+    def test_an_unrecognised_status_raises_rather_than_guessing(self):
+        for bogus in ("throttled", "", None, 429):
+            with self.assertRaises(ValueError):
+                R.map_fetch_status(bogus)
+
+    def test_only_absent_may_produce_absent(self):
+        """Enforced at import too. Restated here so the reason is testable: if a
+        later lane tidies a new status word into this table, it must not be
+        allowed to reach the one branch that clears a description."""
+        sources = {k for k, v in R.FETCHER_STATUS_MAP.items()
+                   if v == R.FETCH_STATUS_ABSENT}
+        self.assertEqual(sources, {R.FETCH_STATUS_ABSENT})
+
+    def test_a_no_result_does_not_blank_a_good_row(self):
+        """End to end through run_rebuild with lane D's raw words. The row is a
+        real one from the live cache: 'Allianz SE' carries a correct description
+        and is_company=True, and 2,690 live rows are in that shape."""
+        good = _row("Allianz SE",
+                    "european multinational insurance and financial services corporation",
+                    True, "legacy", R.FETCH_STATUS_UNKNOWN)
+        cache = _FakeCache([good])
+        before = cache.snapshot()["Allianz SE"]
+        items = R.plan(list(cache.rows.values()), CURRENT)
+        counts = R.run_rebuild(items, CURRENT,
+                               fetch_fn=lambda n: ("no_result", None),
+                               write_fn=cache.write, now_fn=lambda: NOW)
+        after = cache.rows["Allianz SE"]
+        self.assertEqual(after["wikidata_description"], before["wikidata_description"])
+        self.assertIs(after["is_company"], before["is_company"])
+        self.assertEqual(counts["refetched_unknown"], 1)
+        self.assertEqual(counts["refetched_absent"], 0)
+        # And it stays in the work set rather than being wrongly settled.
+        self.assertEqual(len(R.plan(list(cache.rows.values()), CURRENT)), 1)
+
+    def test_a_failed_does_not_blank_a_good_row(self):
+        good = _row("Allianz SE", "european multinational insurance company",
+                    True, "legacy", R.FETCH_STATUS_UNKNOWN)
+        cache = _FakeCache([good])
+        counts = R.run_rebuild(R.plan(list(cache.rows.values()), CURRENT), CURRENT,
+                               fetch_fn=lambda n: ("failed", None),
+                               write_fn=cache.write, now_fn=lambda: NOW)
+        self.assertEqual(counts["fetch_errors"], 1)
+        self.assertEqual(cache.rows["Allianz SE"]["wikidata_description"],
+                         "european multinational insurance company")
+
+    def test_the_unknown_payload_carries_only_status_and_attempt_time(self):
+        payload = R.build_update(_row(), R.WORK_REFETCH, CURRENT,
+                                 outcome=R.FETCH_STATUS_UNKNOWN, now=NOW)
+        self.assertEqual(set(payload), {"fetch_status", "last_refetch_at"})
+        self.assertEqual(payload["fetch_status"], R.FETCH_STATUS_UNKNOWN)
+
+    def test_absent_is_the_one_outcome_that_may_clear_a_description(self):
+        """Documented, not accidental. The module header used to claim a row is
+        NEVER blanked, which was false as stated. This is the true scope."""
+        payload = R.build_update(_row(), R.WORK_REFETCH, CURRENT,
+                                 outcome=R.FETCH_STATUS_ABSENT, now=NOW)
+        self.assertIsNone(payload["wikidata_description"])
+
+    def test_a_non_ok_outcome_cannot_smuggle_a_description_through(self):
+        cache = _FakeCache([_row("Acme", "an american company", True, "legacy",
+                                 R.FETCH_STATUS_UNKNOWN)])
+        R.run_rebuild(R.plan(list(cache.rows.values()), CURRENT), CURRENT,
+                      fetch_fn=lambda n: ("failed", "a description that is not an answer"),
+                      write_fn=cache.write, now_fn=lambda: NOW)
+        self.assertEqual(cache.rows["Acme"]["wikidata_description"], "an american company")
+
+
+# ---------------------------------------------------------------------------
+# 6. THE CONTRACTS DESCRIBE THE CODE, NOT A MEMO ABOUT THE CODE.
+# ---------------------------------------------------------------------------
+class DerivedContractTest(unittest.TestCase):
+
+    def test_fetch_contract_is_honest_about_todays_broken_fetcher(self):
+        contract = wikidata.fetch_contract()
+        self.assertEqual(contract["version"], 1)
+        self.assertFalse(contract["honors_retry_after"])
+        self.assertFalse(contract["reports_http_status"])
+
+    def test_fetch_contract_self_heals_when_a_paced_fetcher_is_present(self):
+        """The defect this replaces: both dicts read version 1 after C then D
+        then E, because neither C nor D updates them, so --mode refetch refused
+        permanently with no override. Worse, honors_retry_after=False and
+        reports_http_status=False were then FACTUALLY WRONG about the merged
+        fetcher. Deriving the values removes the need for anyone to remember.
+
+        Simulated by injecting exactly the names lane D (#630) defines."""
+        with mock.patch.dict(wikidata.__dict__, {
+            "_lookup_wikidata": lambda name: ("ok", "x"),
+            "STATUS_OK": "ok",
+            "STATUS_NO_RESULT": "no_result",
+            "STATUS_FAILED": "failed",
+            "_parse_retry_after": lambda v: None,
+            "_sleep_before_retry": lambda *a: True,
+            "_REQUEST_DELAY": 6.0,
+        }):
+            contract = wikidata.fetch_contract()
+        self.assertEqual(contract["version"], 2)
+        self.assertTrue(contract["honors_retry_after"])
+        self.assertTrue(contract["reports_http_status"])
+        self.assertEqual(contract["min_interval_s"], 6.0)
+        # And that contract clears the refetch gate with no hand edit anywhere.
+        passed = R.check_preconditions(R.MODE_REFETCH, resolver_contract=LANE_C_SHIPPED,
+                                       fetch_contract=contract)
+        self.assertTrue(any("LANE_D" in p for p in passed))
+
+    def test_resolver_contract_is_honest_about_todays_tree(self):
+        from backend import entity_resolver
+        contract = entity_resolver.resolver_contract()
+        self.assertEqual(contract["version"], 1)
+        self.assertFalse(contract["widened"])
+        self.assertFalse(contract["index_merged"])
+
+    def test_resolver_contract_self_heals_when_lane_c_is_importable(self):
+        """Lane C (#633) ships its widening in backend/company_match.py and does
+        not touch entity_resolver.py at all, so a hand-written dict in that file
+        would have gone on reporting widened=False forever."""
+        from backend import entity_resolver
+        fake = mock.Mock()
+        fake.token_fold_candidates = lambda *a: set()
+        fake.index_tokens = lambda *a: None
+        with mock.patch.dict(sys.modules, {"company_match": fake}):
+            contract = entity_resolver.resolver_contract()
+        self.assertEqual(contract["version"], 2)
+        self.assertTrue(contract["widened"])
+        self.assertTrue(contract["index_merged"])
+
+
+# ---------------------------------------------------------------------------
+# 7. THE CLASSIFIER FINGERPRINT HAS NO HOLES.
+# ---------------------------------------------------------------------------
+class ClassifierFingerprintTest(unittest.TestCase):
+    """PR #627 added three verdict-determining constants and none of them were
+    in classifier_version()'s parts list. Proved before the fix: deleting
+    "country" from _SOVEREIGNTY_DROP_KEYWORDS flipped
+    _classify("country in central europe", "RH") from None to False while the
+    stamp stayed v1-5af314f88f0a343c, so all 25,731 cache rows would have gone
+    on serving the old verdict with nothing to notice.
+
+    The AST fingerprint does not cover these: it hashes the parsed body of
+    _classify, which references the names but does not contain their values."""
+
+    def _stamp_with(self, **overrides):
+        with mock.patch.dict(wikidata.__dict__, overrides):
+            wikidata._CLASSIFIER_VERSION_CACHE = None
+            try:
+                return wikidata.classifier_version()
+            finally:
+                wikidata._CLASSIFIER_VERSION_CACHE = None
+
+    def test_editing_the_sovereignty_keywords_moves_the_stamp(self):
+        base = self._stamp_with()
+        moved = self._stamp_with(
+            _SOVEREIGNTY_DROP_KEYWORDS=frozenset({"sovereign state", "nation state"}))
+        self.assertNotEqual(base, moved)
+
+    def test_the_sovereignty_edit_really_does_change_a_verdict(self):
+        """Guards the test above against being vacuous."""
+        self.assertIsNone(wikidata._classify("country in central europe", "RH"))
+        with mock.patch.dict(wikidata.__dict__, {
+                "_SOVEREIGNTY_DROP_KEYWORDS": frozenset({"sovereign state"})}):
+            self.assertIs(wikidata._classify("country in central europe", "RH"), False)
+
+    def test_editing_the_hard_drop_patterns_moves_the_stamp(self):
+        base = self._stamp_with()
+        moved = self._stamp_with(
+            _HARD_DROP_DESCRIPTION_PATTERNS=[re.compile(r"^humans?\b")])
+        self.assertNotEqual(base, moved)
+
+    def test_editing_the_ticker_shape_moves_the_stamp(self):
+        base = self._stamp_with()
+        moved = self._stamp_with(_TICKER_SHAPED_NAME_RE=re.compile(r"^[A-Z]{1,4}$"))
+        self.assertNotEqual(base, moved)
+
+    def test_the_stamp_is_stable_across_calls_and_set_ordering(self):
+        """A frozenset's iteration order is not guaranteed, so the sovereignty
+        keywords are sorted before hashing. Same members, different insertion
+        order, same stamp."""
+        base = self._stamp_with()
+        reordered = self._stamp_with(_SOVEREIGNTY_DROP_KEYWORDS=frozenset(
+            ["nation state", "country", "sovereign state"]))
+        self.assertEqual(base, reordered)
 
 
 class CostEstimateTest(unittest.TestCase):

@@ -21,32 +21,57 @@ WIKIDATA_API = "https://www.wikidata.org/w/api.php"
 _USER_AGENT = "BreakingAlpha/1.0 (company intel entity quality; contact via github)"
 _REQUEST_DELAY = 0.15  # seconds between uncached API calls — well within Wikidata limits
 
-# LANE D CONTRACT. This dict is this module's own honest, machine-readable
-# description of how _fetch_wikidata_description behaves. It is read by
-# backend/wikidata_cache_rebuild.py, which REFUSES to make any network call
-# unless the values below clear the measured Wikidata budget.
+# LANE D CONTRACT. Machine-readable description of how this module's fetch
+# surface actually behaves. Read by backend/wikidata_cache_rebuild.py, which
+# REFUSES to make any network call unless these values clear the measured
+# Wikidata budget.
 #
-# The values are correct as written for the CURRENT fetcher, and the current
-# fetcher is broken:
-#   * min_interval_s 0.15 is 400 calls/min against a measured anonymous budget
-#     of 10 to 11 calls per 52 seconds. That is roughly 35x over budget and it
-#     is why 76.34% of wikidata_entity_cache rows carry a NULL description.
-#   * honors_retry_after is False. The except branch swallows HTTP 429 and
-#     returns None, indistinguishable from a genuine "Wikidata has no entry".
-#   * reports_http_status is False, for the same reason: one None means both
-#     "no such entity" and "we got throttled".
+# DERIVED, NOT DECLARED. The first cut of this was a hand-written dict with a
+# comment telling lane D to update it. That is the same discipline that failed
+# for 68 days on the classifier: PR #358 shipped a fix and nothing bumped the
+# thing that would have made it take effect. A hand-maintained dict describing
+# code in the same file is a second source of truth, and the two drift silently
+# in exactly one direction, toward lying about the fetcher.
 #
-# LANE D (the 429 fetch fix) MUST update this dict in the same commit that
-# fixes the fetcher. Until version reaches 2 with honors_retry_after and
-# reports_http_status both True, the cache rebuild will not run. That refusal
-# is deliberate: rebuilding into a throttled fetcher re-poisons the cache with
-# the same NULLs, at scale, and burns the budget doing it.
-FETCH_CONTRACT = {
-    "version": 1,
-    "min_interval_s": _REQUEST_DELAY,
-    "honors_retry_after": False,
-    "reports_http_status": False,
-}
+# So fetch_contract() probes the module's own surface instead. It reports
+# version 1 with both flags False against the current broken fetcher, and it
+# reports version 2 with both flags True the moment a fetcher that reports HTTP
+# status and honors Retry-After is present, with no edit required in the commit
+# that lands it. min_interval_s reads _REQUEST_DELAY, which is 0.15 today and
+# becomes a derived 6.0 under the paced fetcher.
+#
+# WHY THE REFUSAL EXISTS. Rebuilding into a throttled fetcher re-poisons the
+# cache with the same NULLs, at scale, and burns the budget doing it. 76.34% of
+# rows are already NULL for that reason. Worse, a fetcher that cannot report
+# HTTP status cannot tell a 429 from a genuine absence, so the rebuild would
+# write a fabricated negative over up to 18,732 rows.
+def fetch_contract() -> dict:
+    """Probe this module's fetch surface and report what it can actually do.
+
+    Deliberately reads globals() at call time rather than referencing the names
+    directly, because the names it looks for do not all exist on every branch
+    and this function is defined above them.
+
+    reports_http_status: the module exposes a lookup that returns a status
+        alongside the description, and three distinct status constants, so a
+        transport failure is distinguishable from an answered miss.
+    honors_retry_after: the module both parses a Retry-After header and has a
+        pre-retry sleep that consumes it.
+    """
+    g = globals()
+    lookup = g.get("_lookup_wikidata")
+    statuses = [g.get(n) for n in ("STATUS_OK", "STATUS_NO_RESULT", "STATUS_FAILED")]
+    reports_http_status = bool(callable(lookup)
+                               and all(isinstance(s, str) for s in statuses)
+                               and len(set(statuses)) == 3)
+    honors_retry_after = bool(callable(g.get("_parse_retry_after"))
+                              and callable(g.get("_sleep_before_retry")))
+    return {
+        "version": 2 if (reports_http_status and honors_retry_after) else 1,
+        "min_interval_s": g.get("_REQUEST_DELAY"),
+        "honors_retry_after": honors_retry_after,
+        "reports_http_status": reports_http_status,
+    }
 
 # Descriptions that confirm the entity is NOT a company. Checked as substrings on
 # the lowercased Wikidata description. Change (2) splits the original single drop
@@ -341,6 +366,27 @@ def classifier_version() -> str:
         "soft=" + "\x1f".join(_SOFT_DROP_DESCRIPTION_KEYWORDS),
         "keep=" + "\x1f".join(_KEEP_DESCRIPTION_KEYWORDS),
         "noresult=" + "\x1f".join(_NO_RESULT_DROP_SUBSTRINGS),
+        # PR #627 added three more verdict-determining constants and none of
+        # them were in this list, which is a hole in the one mechanism whose
+        # entire job is to have no holes. Proved by deleting "country" from
+        # _SOVEREIGNTY_DROP_KEYWORDS alone: _classify("country in central
+        # europe", "RH") went from None to False while the stamp stayed
+        # v1-5af314f88f0a343c, so 25,731 cache rows would have kept serving the
+        # old verdict with nothing to notice.
+        #
+        # The AST fingerprint below does not cover these. It hashes the parsed
+        # body of _classify, which references these names but does not contain
+        # their values, so editing a constant is invisible to it. Only naming
+        # the values here closes it.
+        #
+        # sorted() on the sovereignty set because it is a frozenset and its
+        # iteration order is not guaranteed stable across interpreters, which
+        # would make the stamp move without the classifier changing. The two
+        # pattern collections are ordered already, and .pattern is hashed rather
+        # than the compiled object, whose repr carries an address.
+        "sovereign=" + "\x1f".join(sorted(_SOVEREIGNTY_DROP_KEYWORDS)),
+        "hardpat=" + "\x1f".join(p.pattern for p in _HARD_DROP_DESCRIPTION_PATTERNS),
+        "tickershape=" + _TICKER_SHAPED_NAME_RE.pattern,
         "logic=" + _classify_logic_fingerprint(),
     ]
     digest = hashlib.sha256("\x1e".join(parts).encode("utf-8")).hexdigest()[:16]
@@ -410,3 +456,15 @@ def is_valid_company(name: str, supabase) -> bool:
         print(f"  ⊘ Wikidata ambiguous-drop (not indexed) [{desc_display}]: {name}")
 
     return keep
+
+
+# ---------------------------------------------------------------------------
+# MODULE-LEVEL SNAPSHOT OF THE LANE D CONTRACT.
+# ---------------------------------------------------------------------------
+# Must stay at the BOTTOM of the file. fetch_contract() probes names such as
+# _lookup_wikidata and _parse_retry_after that a paced fetcher defines further
+# down the module, so evaluating it any earlier reports False for a capability
+# that is present. Callers that can are better off calling fetch_contract()
+# directly; this name exists because it is the one the rebuild's precondition
+# check has always read.
+FETCH_CONTRACT = fetch_contract()

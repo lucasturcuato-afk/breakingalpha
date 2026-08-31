@@ -61,13 +61,24 @@ INTERRUPTION SAFETY
    columns. A rewritten row stamps the current classifier version and leaves the
    set, so re-running simply continues. There is no offset to lose and no
    checkpoint file to corrupt.
-3. A row is NEVER blanked. On a fetch error the update touches only
-   `fetch_status` and `last_refetch_at`; `wikidata_description`, `is_company`
-   and `classifier_version` are left exactly as they were. So a rebuild that
-   dies halfway, or one that runs into a throttled endpoint, cannot convert good
-   rows into NULL rows. That is precisely the failure the current
+3. A row is NEVER blanked BY A NON-ANSWER. The earlier wording here was "a row
+   is never blanked", full stop, and that was false: the `absent` branch of
+   build_update writes `wikidata_description = None` by design. The accurate
+   claim, and the one the code enforces, is narrower.
+
+   On a fetch error, and on any outcome that is not an answer, the update
+   touches only `fetch_status` and `last_refetch_at`; `wikidata_description`,
+   `is_company` and `classifier_version` are left exactly as they were. So a
+   rebuild that dies halfway, or one that runs into a throttled endpoint, cannot
+   convert good rows into NULL rows. That is precisely the failure the current
    `is_valid_company` write path has, since it upserts `description=None` on
    error, which is how the poison got in.
+
+   Exactly one outcome may clear a description: `absent`, meaning Wikidata was
+   reached and positively has no entry. Nothing in this repo can currently
+   produce it. In particular lane D's `no_result` is a LABEL-CHECK miss, not a
+   proven absence, so it maps to `unknown` and is non-destructive. See
+   FETCHER_STATUS_MAP, where that mapping is enforced at import.
 
 Worst case of a half-dead rebuild equals the starting state.
 
@@ -112,6 +123,77 @@ FETCH_STATUS_OK = "ok"            # Wikidata returned a description
 FETCH_STATUS_ABSENT = "absent"    # Wikidata answered, and has no entry. A real negative.
 FETCH_STATUS_ERROR = "error"      # transport, 429 or 5xx. NOT an answer. Do not trust.
 FETCH_STATUS_UNKNOWN = "unknown"  # legacy row, written before we recorded status
+
+# ---------------------------------------------------------------------------
+# CROSS-LANE VOCABULARY BRIDGE
+# ---------------------------------------------------------------------------
+# This module reasons in four words. Lane D's fetcher emits three DIFFERENT
+# words: ('ok', 'no_result', 'failed'). They are not the same vocabulary and the
+# translation is not cosmetic, because one plausible-looking mapping silently
+# writes the exact fabrication this whole design exists to prevent.
+#
+# THE TRAP. `no_result` reads like `absent`, and mapping it there is the obvious
+# thing to do. It is wrong. Lane D returns `no_result` when its LABEL CHECK
+# rejected every result it got back, which happens when Wikidata does hold an
+# entity for the name but under a label the check does not accept. That is not
+# "Wikidata has no entry", it is "we did not recognise what Wikidata sent". The
+# `absent` branch of build_update writes `wikidata_description = None`, so
+# mapping no_result -> absent takes a live, correct row such as
+#   'Allianz SE' / 'european multinational insurance and financial services
+#   corporation' / is_company=True
+# and rewrites it to None / None on every label-check miss. 2,690 rows in the
+# live cache currently hold a description with is_company=True and are eligible
+# for exactly that. Blanking them is strictly worse than never running.
+#
+# So `no_result` maps to `unknown`: honest, non-destructive, and it leaves the
+# row in the work set to be retried. The cost is that a name Wikidata genuinely
+# has no entry for is retried on every pass rather than being settled once. That
+# is the right side to be wrong on, and it is the side that cannot fabricate.
+#
+# `absent` stays in the vocabulary because it is the correct label for a fetcher
+# that can positively prove absence. No fetcher in this repo can, so nothing
+# currently maps onto it, and the invariant below keeps it that way.
+FETCHER_STATUS_MAP = {
+    # lane D's vocabulary
+    "ok": FETCH_STATUS_OK,
+    "no_result": FETCH_STATUS_UNKNOWN,
+    "failed": FETCH_STATUS_ERROR,
+    # this module's own vocabulary, so a fetcher already speaking it passes through
+    FETCH_STATUS_OK: FETCH_STATUS_OK,
+    FETCH_STATUS_ABSENT: FETCH_STATUS_ABSENT,
+    FETCH_STATUS_ERROR: FETCH_STATUS_ERROR,
+    FETCH_STATUS_UNKNOWN: FETCH_STATUS_UNKNOWN,
+}
+
+# Load-bearing invariant, enforced at import rather than left to review: the
+# only key allowed to produce a row-blanking `absent` is `absent` itself. If a
+# later lane adds a status word and maps it here out of tidiness, this raises on
+# import instead of blanking rows in production.
+_ABSENT_SOURCES = {k for k, v in FETCHER_STATUS_MAP.items() if v == FETCH_STATUS_ABSENT}
+if _ABSENT_SOURCES != {FETCH_STATUS_ABSENT}:
+    raise RuntimeError(
+        "FETCHER_STATUS_MAP maps a non-absent status onto FETCH_STATUS_ABSENT: "
+        f"{sorted(_ABSENT_SOURCES)}. `absent` blanks wikidata_description, so it "
+        "may only come from a fetcher that positively proved absence."
+    )
+
+
+def map_fetch_status(status):
+    """Translate a fetcher's status word into this module's vocabulary.
+
+    Raises ValueError on anything unrecognised rather than guessing. A status
+    this module has never seen is not evidence of anything, and the one guess
+    available (treat it as absence) is the destructive one.
+    """
+    try:
+        return FETCHER_STATUS_MAP[status]
+    except (KeyError, TypeError):
+        raise ValueError(
+            f"unrecognised fetch status {status!r}. Known: "
+            f"{sorted(k for k in FETCHER_STATUS_MAP if isinstance(k, str))}. "
+            "Add it to FETCHER_STATUS_MAP deliberately; it must not map to "
+            f"{FETCH_STATUS_ABSENT!r} unless the fetcher proved absence."
+        ) from None
 
 # Every pre-existing row backfills to this. We cannot retroactively separate a
 # 429 from a genuine absence in the 18,732 NULL rows, and pretending we can
@@ -252,11 +334,18 @@ def plan(rows, current_version, *, hot_names=None, max_age_days=DEFAULT_MAX_AGE_
 def build_update(row, work, current_version, *, outcome=None, description=None, now=None):
     """Return the PostgREST update payload for exactly one row.
 
-    The non-destructive guarantee lives here. On FETCH_STATUS_ERROR the payload
+    The non-destructive guarantee lives here, and it is narrower than "a row is
+    never blanked". Precisely: a row is never blanked by an outcome that is not
+    an answer. On FETCH_STATUS_ERROR and FETCH_STATUS_UNKNOWN the payload
     carries only the status and the attempt timestamp. It does not carry
     wikidata_description, is_company or classifier_version, so a throttled or
     dying rebuild cannot blank a good row, and the row stays in the work set for
     the next run.
+
+    FETCH_STATUS_ABSENT does write a NULL description, deliberately, because it
+    is an answer: Wikidata was reached and has no entry. That branch is the only
+    one that can clear a description, and map_fetch_status guarantees nothing
+    reaches it except a fetcher that positively proved absence.
     """
     now = now or _dt.datetime.now(_dt.timezone.utc)
     stamp = now.isoformat()
@@ -270,8 +359,12 @@ def build_update(row, work, current_version, *, outcome=None, description=None, 
             "classifier_version": current_version,
         }
 
-    if outcome == FETCH_STATUS_ERROR:
-        return {"fetch_status": FETCH_STATUS_ERROR, "last_refetch_at": stamp}
+    # Both non-answers take the same non-destructive shape. ERROR is "we never
+    # reached Wikidata"; UNKNOWN is "Wikidata answered and we could not read the
+    # answer as either a description or a proven absence", which is where lane
+    # D's `no_result` lands. Neither is grounds for touching a stored verdict.
+    if outcome in (FETCH_STATUS_ERROR, FETCH_STATUS_UNKNOWN):
+        return {"fetch_status": outcome, "last_refetch_at": stamp}
 
     if outcome == FETCH_STATUS_OK:
         return {
@@ -336,8 +429,12 @@ def check_preconditions(mode, *, resolver_contract=None, fetch_contract=None,
                   resolver and nothing else.
       refetch     LANE C and LANE D and PACING.
 
-    LANE C accepts a human attestation: --lane-c-sha, verified by the CLI as a
-    merged ancestor of origin/main. You cannot type a SHA that is not merged.
+    LANE C accepts a human attestation: --lane-c-sha. The CLI verifies it
+    against the RUNNING TREE, not against a remote branch: lane C's resolution
+    capability must be importable here, and the sha must be an ancestor of HEAD.
+    An earlier version checked only ancestry of origin/main, which every commit
+    in the repository satisfies, including the root commit. A sha on its own is
+    now rejected.
 
     LANE D has NO override, on purpose. Without `reports_http_status` the
     fetcher cannot tell a 429 from a genuine absence, so the rebuild would
@@ -416,9 +513,13 @@ def run_rebuild(items, current_version, *, fetch_fn, write_fn, sleep_fn=None,
                 on_progress=None):
     """Execute a planned work set, one row at a time, committing as it goes.
 
-    `fetch_fn(name)` must return `(outcome, description)` where outcome is one of
-    the FETCH_STATUS_* values. It is injected rather than imported so the tests
-    run fully offline and so lane D owns the real implementation.
+    `fetch_fn(name)` must return `(outcome, description)`. The outcome may be
+    one of this module's FETCH_STATUS_* values or one of lane D's status words;
+    it is normalised through map_fetch_status here, which is the single choke
+    point where a fetcher's vocabulary becomes this module's. Doing it here and
+    not in the caller means no adapter can quietly invent an `absent`.
+    fetch_fn is injected rather than imported so the tests run fully offline and
+    so lane D owns the real implementation.
 
     `max_calls` is a hard cap on outbound Wikidata calls for one invocation.
     Reaching it stops the run cleanly; the untouched rows stay in the work set.
@@ -429,7 +530,8 @@ def run_rebuild(items, current_version, *, fetch_fn, write_fn, sleep_fn=None,
     sleep_fn = sleep_fn or (lambda _s: None)
     now_fn = now_fn or (lambda: _dt.datetime.now(_dt.timezone.utc))
     counts = {"reclassified": 0, "refetched_ok": 0, "refetched_absent": 0,
-              "fetch_errors": 0, "calls": 0, "skipped_cap": 0, "write_errors": 0}
+              "refetched_unknown": 0, "fetch_errors": 0, "calls": 0,
+              "skipped_cap": 0, "write_errors": 0}
     first_call = True
 
     for item in items:
@@ -455,7 +557,12 @@ def run_rebuild(items, current_version, *, fetch_fn, write_fn, sleep_fn=None,
             sleep_fn(interval_s)
         first_call = False
         counts["calls"] += 1
-        outcome, description = fetch_fn(item.name)
+        raw_outcome, description = fetch_fn(item.name)
+        outcome = map_fetch_status(raw_outcome)
+        if outcome != FETCH_STATUS_OK:
+            # A non-OK outcome carries no description worth storing, and letting
+            # one through would reopen the blanking path from the other side.
+            description = None
 
         payload = build_update(item.row, WORK_REFETCH, current_version,
                                outcome=outcome, description=description, now=now_fn())
@@ -472,6 +579,8 @@ def run_rebuild(items, current_version, *, fetch_fn, write_fn, sleep_fn=None,
             counts["refetched_ok"] += 1
         elif outcome == FETCH_STATUS_ABSENT:
             counts["refetched_absent"] += 1
+        elif outcome == FETCH_STATUS_UNKNOWN:
+            counts["refetched_unknown"] += 1
         else:
             counts["fetch_errors"] += 1
         if on_progress:

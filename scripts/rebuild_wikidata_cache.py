@@ -28,6 +28,7 @@ can never blank a good row.
 """
 
 import argparse
+import importlib
 import os
 import subprocess
 import sys
@@ -92,39 +93,153 @@ def _hot_names(sb):
     return weights
 
 
-def _verify_merged_sha(sha):
-    """True only if `sha` is an ancestor of origin/main, i.e. actually merged.
+def _symbol_is_importable(spec):
+    """True if `spec`, written 'module:attribute', resolves in the running tree.
 
-    This is what makes --lane-c-sha an attestation you cannot fake by typing a
-    plausible-looking hex string.
+    This is the escape hatch that keeps --lane-c-sha useful. The default
+    capability probe looks for company_match.token_fold_candidates, which is
+    where lane C's widening lives today. If lane C ships it somewhere else, the
+    operator names the new marker and it is verified the same way: by importing
+    it here, in the process that is about to do the writing. Still a property of
+    the deployed tree, still not a hex string.
     """
+    module_name, _, attr = str(spec).partition(":")
+    if not module_name or not attr:
+        print(f"  --lane-c-symbol {spec!r} is not in 'module:attribute' form")
+        return False
+    for candidate in (module_name, f"backend.{module_name}"):
+        try:
+            module = importlib.import_module(candidate)
+        except ImportError:
+            continue
+        if getattr(module, attr, None) is not None:
+            print(f"  named capability {candidate}.{attr} resolves in the running tree")
+            return True
+        print(f"  imported {candidate} but it has no attribute {attr!r}")
+        return False
+    print(f"  --lane-c-symbol {spec!r}: cannot import {module_name!r}")
+    return False
+
+
+def _verify_lane_c_attestation(sha, symbol=None):
+    """Verify that lane C's capability is in the tree this process is running.
+
+    THIS REPLACED AN ANCESTRY CHECK THAT PROVED NOTHING. The previous version
+    asked only `git merge-base --is-ancestor <sha> origin/main`, and every
+    commit in the repository's history satisfies that. Reproduced on 2026-08-31:
+    the repository ROOT commit 1578cc03 returned GATES PASSED, while lane C's
+    actual tip cba3198b was REJECTED, because it is correctly not merged yet.
+    All 1,151 commits reachable from origin/main passed. The docstring called it
+    "an attestation you cannot fake"; it was an attestation that could not fail.
+
+    The reason it proved nothing is that it tested a proxy. Ancestry of a remote
+    branch is not the question. The question is whether the code about to run
+    can resolve a recovered name onto an existing company instead of minting a
+    duplicate, and a commit hash cannot answer that.
+
+    So this checks the thing itself, in two parts, BOTH required:
+
+      CAPABILITY, the part that actually discriminates. The imported modules
+        must expose lane C's widened resolution surface, via
+        entity_resolver.resolver_contract(). This is a property of the deployed
+        tree. It cannot be satisfied by typing a hex string, and it cannot be
+        satisfied by a commit that exists somewhere but is not in this checkout.
+
+      IDENTITY, the audit record. `sha` must name a real commit that is an
+        ancestor of HEAD, i.e. of the code this process actually imported. Not
+        origin/main: a commit can be on the remote and absent from the tree
+        running here, and the tree running here is what will do the writes.
+
+    Why the override still exists at all, given the capability check: lane C
+    ships its widening in backend/company_match.py and does not touch
+    entity_resolver.py, so it can perfectly well land without anything updating
+    a contract dict. This flag is the operator saying "the dict is stale, the
+    capability is real, and here is the commit". The capability check is what
+    makes that claim verifiable instead of polite.
+    """
+    ok = True
+
+    contract = _resolver_contract()
+    missing = [k for k in ("widened", "index_merged") if contract.get(k) is not True]
+    if not missing:
+        print(f"  capability present in the running tree: resolver_contract() = {contract!r}")
+    elif symbol and _symbol_is_importable(symbol):
+        print("  default probe found nothing, but the named capability resolves")
+    else:
+        print(f"  --lane-c-sha REJECTED: the running tree does not expose lane C's "
+              f"capability. resolver_contract() = {contract!r}; missing {missing}.")
+        print("  A commit hash cannot substitute for the code being present. Deploy "
+              "lane C, then attest it, naming the marker with --lane-c-symbol "
+              "module:attribute if it shipped somewhere the default probe cannot see.")
+        ok = False
+
     try:
         subprocess.run(["git", "rev-parse", "--verify", f"{sha}^{{commit}}"],
                        check=True, capture_output=True, timeout=30)
-        subprocess.run(["git", "merge-base", "--is-ancestor", sha, "origin/main"],
+        subprocess.run(["git", "merge-base", "--is-ancestor", sha, "HEAD"],
                        check=True, capture_output=True, timeout=30)
-        return True
+        print(f"  attested commit {sha!r} is an ancestor of HEAD")
     except Exception as ex:
-        print(f"  --lane-c-sha {sha!r} is not a commit merged into origin/main: {ex}")
-        return False
+        print(f"  --lane-c-sha {sha!r} is not a commit contained in HEAD: {ex}")
+        ok = False
+
+    return ok
+
+
+def _resolver_contract():
+    """Lane C's contract, preferring the live probe over the module snapshot."""
+    probe = getattr(entity_resolver, "resolver_contract", None)
+    if callable(probe):
+        return probe()
+    return getattr(entity_resolver, "RESOLVER_CONTRACT", None) or {}
+
+
+def _fetch_contract():
+    """Lane D's contract, preferring the live probe over the module snapshot.
+
+    The snapshot is evaluated at the bottom of wikidata.py so it sees the whole
+    module, but calling the probe removes any dependence on where a future merge
+    happens to place that assignment.
+    """
+    probe = getattr(wikidata, "fetch_contract", None)
+    if callable(probe):
+        return probe()
+    return getattr(wikidata, "FETCH_CONTRACT", None) or {}
 
 
 def _paced_fetch(name):
-    """Adapter onto whatever lane D lands. Returns (fetch_status, description).
+    """Adapter onto whatever lane D lands. Returns (status, description).
 
-    Deliberately thin. This script never reaches here unless
-    wikidata.FETCH_CONTRACT reports reports_http_status, which means lane D's
-    fetcher distinguishes a 429 from a genuine absence. Until then the
-    precondition check refuses and this function is unreachable.
+    The status is returned in the FETCHER's own words. run_rebuild translates it
+    through R.map_fetch_status, which is the one place that decides what a word
+    means, and in particular the one place that refuses to turn a label-check
+    miss into a row-blanking `absent`. This function must not translate.
+
+    The first cut of this called wikidata.fetch_wikidata_description_detailed,
+    a name lane D does not define and never did; lane D exposes
+    _lookup_wikidata(name) -> (status, description) instead. So the moment the
+    preconditions finally passed, tier 2 would have died on an AttributeError at
+    the first row. Both spellings are accepted now, real one first.
+
+    This script never reaches here unless the fetch contract reports
+    reports_http_status, which means the fetcher distinguishes a 429 from an
+    answered miss. Until then the precondition check refuses.
     """
+    lookup = getattr(wikidata, "_lookup_wikidata", None)
+    if callable(lookup):
+        result = lookup(name)
+        return result[0], result[1]
+
     fetch_detail = getattr(wikidata, "fetch_wikidata_description_detailed", None)
-    if fetch_detail is None:
-        raise R.PreconditionFailure(
-            "wikidata.FETCH_CONTRACT claims reports_http_status, but the module "
-            "exposes no fetch_wikidata_description_detailed(name) -> (status, description). "
-            "Lane D must ship both together."
-        )
-    return fetch_detail(name)
+    if callable(fetch_detail):
+        return fetch_detail(name)
+
+    raise R.PreconditionFailure(
+        "The fetch contract reports reports_http_status, but backend/wikidata.py "
+        "exposes neither _lookup_wikidata(name) -> (status, description) nor "
+        "fetch_wikidata_description_detailed(name) -> (status, description). "
+        "The contract and the module disagree; do not write with it."
+    )
 
 
 def main(argv=None):
@@ -142,10 +257,16 @@ def main(argv=None):
     ap.add_argument("--max-age-days", type=int, default=R.DEFAULT_MAX_AGE_DAYS,
                     help=f"TTL on trusted descriptions (default {R.DEFAULT_MAX_AGE_DAYS}; "
                          "0 disables the age sweep and leaves only version invalidation)")
+    ap.add_argument("--lane-c-symbol", default=None, metavar="MODULE:ATTR",
+                    help="name the symbol that carries lane C's capability, if it "
+                         "shipped somewhere the default probe cannot see. Verified "
+                         "by importing it. Only meaningful with --lane-c-sha.")
     ap.add_argument("--lane-c-sha", default=None,
-                    help="attest lane C shipped under a different marker. Verified as a "
-                         "merged ancestor of origin/main. There is no equivalent for "
-                         "lane D, on purpose.")
+                    help="attest lane C shipped under a different marker. Verified "
+                         "against the RUNNING TREE: the resolver capability must "
+                         "actually be importable, and the sha must be an ancestor of "
+                         "HEAD. A sha alone proves nothing and is rejected. There is "
+                         "no equivalent for lane D, on purpose.")
     args = ap.parse_args(argv)
 
     mode = args.mode
@@ -162,12 +283,13 @@ def main(argv=None):
           f"({R.MEASURED_CALLS_PER_WINDOW} calls / {R.MEASURED_WINDOW_S:.0f} s measured)")
     print("=" * 72)
 
-    lane_c_ok = bool(args.lane_c_sha) and _verify_merged_sha(args.lane_c_sha)
+    lane_c_ok = bool(args.lane_c_sha) and _verify_lane_c_attestation(
+        args.lane_c_sha, symbol=args.lane_c_symbol)
     try:
         for line in R.check_preconditions(
             mode,
-            resolver_contract=getattr(entity_resolver, "RESOLVER_CONTRACT", None),
-            fetch_contract=getattr(wikidata, "FETCH_CONTRACT", None),
+            resolver_contract=_resolver_contract(),
+            fetch_contract=_fetch_contract(),
             lane_c_sha_verified=lane_c_ok,
         ):
             print(f"  PASS  {line}")
