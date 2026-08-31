@@ -37,10 +37,10 @@ import { FONT_DISPLAY, FONT_MONO, FONT_SANS } from "@/components/mobile/fonts";
  * nothing on screen implies any of it is coming.
  *
  *   THE RECORD RING     The desk's `RecordHero` renders a percentage. No
- *                       aggregate rate or accuracy figure may appear on a
- *                       mobile surface, so this is not a layout that was too
- *                       wide to port: the figure itself is barred. Nothing here
- *                       counts, totals or divides.
+ *                       figure of that shape may appear on a mobile surface, so
+ *                       this is not a layout that was too wide to port: the
+ *                       figure itself is barred. Nothing here counts, totals or
+ *                       divides.
  *   THE PINNED HERO     Pins live in `localStorage` under `radar-calls-pinned`
  *                       and in no table. A phone pin list would be a DIFFERENT
  *                       list from the desk's, on the same account, with nothing

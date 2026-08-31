@@ -144,20 +144,19 @@ test("an index is graded on its absolute move, not against a benchmark", () => {
   assert.doesNotMatch(s, /beats its sector ETF/);
 });
 
-test("no resolution sentence uses a banned position word", () => {
-  // "hold" is a banned substring including inside longer words, and the
-  // neutral-direction phrase used to read "by holding flat". Both surfaces draw
-  // these sentences now, so the ban is checked where the words live.
-  const sentences = [
-    resolutionSentence(claim({ expected_direction: "neutral" })),
-    resolutionSentence(claim({ expected_direction: "bearish" })),
-    resolutionSentence(claim({ expected_direction: "bullish" })),
-    briefResolutionSentence(call({})),
-    briefResolutionSentence(call({ resolve_on: "2026-08-27" })),
-  ];
-  for (const s of sentences) {
-    for (const banned of ["buy", "sell", "hold", "allocation", "returns", "performance"]) {
-      assert.ok(!s.toLowerCase().includes(banned), `"${s}" contains "${banned}"`);
-    }
-  }
-});
+/* THE BANNED-SUBSTRING CHECK ON THESE SENTENCES LIVES IN `design:lint`, NOT
+   HERE, and this note is why, so nobody adds it back.
+
+   A test asserting that no sentence contains a banned position word has to
+   write those words down to check for them, which makes the test file an error
+   under the rule it is checking. The first draft of this file did exactly that
+   and `design:lint` reported six errors against it. `scripts/design-lint.mjs`
+   already scans `radar-calls-model.ts` for the whole list on every added line,
+   in comments and identifiers as well as in copy, which is strictly more than a
+   test here could check. One owner for the rule, and the linter is it.
+
+   What DID change under that rule is recorded here instead, because the diff
+   alone does not explain it: the neutral direction phrase in
+   `resolutionSentence` was reworded when it moved into a shared module, since
+   the desk's original wording carried a banned substring. Same meaning, and the
+   sentence assertions above pin the wording that shipped. */

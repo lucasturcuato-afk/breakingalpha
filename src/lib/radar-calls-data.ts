@@ -22,14 +22,15 @@ import type { BriefCallRow, UserClaim } from "./radar-calls-model.ts";
  * being true on one surface. So the route calls `loadRadarClaims` and so does
  * the phone, and the route's job shrinks to turning the result into a response.
  *
- * ADOPTED CLAIMS READ THEIR OWN OUTCOME. This is the rule most easily lost in a
- * copy, so it is stated where the query is: adopted claims previously resolved
+ * ADOPTED CLAIMS READ THEIR OWN OUTCOME. This is the rule a copy drops most
+ * easily, so it is stated where the query is: adopted claims previously resolved
  * through `adopted_from_call_id` to the originating brief call's
- * `morning_brief_call_outcomes` row. That was correct when adopting was a
- * bookmark. An adopted claim now carries its own forward window and is graded
- * independently over it, so the brief's verdict answers a different question,
- * and in live data it was strictly wrong: an adopted claim whose own window had
- * not closed rendered the brief call's same-session verdict from weeks earlier.
+ * `morning_brief_call_outcomes` row. That was the intended behaviour when
+ * adopting was a bookmark. An adopted claim now carries its own forward window
+ * and is graded independently over it, so the brief's verdict answers a
+ * different question, and in live data it misreported: an adopted claim whose
+ * own window had not closed rendered the brief call's same-session verdict from
+ * weeks earlier.
  * `adoptedOutcomes` is still read, as PROVENANCE ONLY. `src/lib/claim-outcome.ts`
  * is the single resolver and it takes no parameter through which that map could
  * reach a verdict.

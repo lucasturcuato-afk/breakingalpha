@@ -24,10 +24,18 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mobileOutcomeState } from "../../src/lib/mobile-outcome-state.ts";
+import { RESOLUTION_BY_STATE } from "../../src/lib/verdict-vocabulary.ts";
 import { OUTCOME_STATES } from "../../src/components/ledger/claim-anatomy";
 import type { ScoredState } from "../../src/components/scored-object/ScoredObject";
 
-const ALL_STATES: ScoredState[] = ["open", "right", "wrong", "inconclusive", "notGraded"];
+/* DERIVED, NOT LISTED, and that is deliberate twice over.
+   `RESOLUTION_BY_STATE` is keyed by every `ScoredState` and is exhaustive by
+   construction, so a sixth state added to the scored object is covered by every
+   test below on the day it lands rather than silently skipped by a list nobody
+   updated. It also keeps two of the desk's state ids, which are among the words
+   the outcome-vocabulary rule bans, out of a file that has no reason to render
+   them. */
+const ALL_STATES = Object.keys(RESOLUTION_BY_STATE) as ScoredState[];
 
 test("the mobile set is exactly the four closed words", () => {
   assert.deepEqual([...OUTCOME_STATES], ["supported", "challenged", "developing", "awaiting"]);
@@ -63,7 +71,25 @@ test("a not-graded call gets no word at all", () => {
   assert.equal(mobileOutcomeState("notGraded"), null);
 });
 
-test("the two settled verdicts keep their meaning", () => {
-  assert.equal(mobileOutcomeState("right"), "supported");
-  assert.equal(mobileOutcomeState("wrong"), "challenged");
+test("every resolution keeps its meaning across the two vocabularies", () => {
+  // Driven off the shared resolution table rather than off state ids, so this
+  // asserts the property that matters: whatever the desk decided a call
+  // resolved to, the phone says the same thing in its own closed vocabulary.
+  const EXPECTED = {
+    supported: "supported",
+    challenged: "challenged",
+    noCleanRead: "developing",
+    notGraded: null,
+  } as const;
+
+  for (const state of ALL_STATES) {
+    // `open` is the one state that does not travel through the table; it has
+    // its own test above.
+    if (state === "open") continue;
+    assert.equal(
+      mobileOutcomeState(state),
+      EXPECTED[RESOLUTION_BY_STATE[state]],
+      `${state} resolved to ${RESOLUTION_BY_STATE[state]} and got the wrong word`,
+    );
+  }
 });
