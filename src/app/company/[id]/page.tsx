@@ -7,6 +7,7 @@ import { CompanyDetailLayout } from "@/components/company/CompanyDetailLayout";
 import { CompanyDetailHeader } from "@/components/company/CompanyDetailHeader";
 import { EmptyState } from "@/components/company/states/EmptyState";
 import { CompanyAutoResolve } from "@/components/company/states/CompanyAutoResolve";
+import { CompanyPageViewEvent } from "@/components/company/states/CompanyPageViewEvent";
 import { PrimerWebMemo } from "@/components/company/states/PrimerWebMemo";
 import { CompanyAliasRibbon } from "@/components/company/CompanyAliasRibbon";
 import { CompanyKPIStrip } from "@/components/company/CompanyKPIStrip";
@@ -204,6 +205,24 @@ export default async function CompanyDetailPage({
   if (!companyDetail) {
     return (
       <LiveMoodShell pageTitle="Company Intel" mobileFullBleed>
+        {/* THE MISS IS THE MORE INFORMATIVE EVENT AND IT EMITS FIRST. Until
+            now this branch left no trace of any kind: a reader could ask for a
+            company forty times, get the empty state forty times, and the only
+            record anywhere would be a `/api/company/resolve` 404 in a log with
+            no reader, no session and no retention. `company_id` is null here,
+            correctly, because no row resolved; the slug and the reconstruction
+            the resolver was actually handed are both carried, because the gap
+            between those two strings is itself a known miss generator. This
+            branch flushes immediately rather than batching, since
+            CompanyAutoResolve below can navigate away inside a few hundred
+            milliseconds and a dropped miss biases the miss rate downward. */}
+        <CompanyPageViewEvent
+          slug={id}
+          query={companyName}
+          companyId={null}
+          outcome="empty"
+          articleCount={0}
+        />
         <CompanyAutoResolve query={companyName} />
         <EmptyState canonical={companyName} />
       </LiveMoodShell>
@@ -435,6 +454,28 @@ export default async function CompanyDetailPage({
           seconds. The class still decides VISIBILITY and is unchanged; the gate
           decides the MOUNT, on the same pixel. See DesktopTreeGate. */}
       <DesktopTreeGate>{desk}</DesktopTreeGate>
+      {/* THE HIT BRANCH, carrying `companies.id` and nothing that stands in for
+          it. `thin` and `content` are both hits; the split is the difference
+          between a page that answered and a page that rendered a header over
+          empty tabs, which the aggregate cannot currently tell apart. The count
+          is the CLASSIFIED articles, the same two lists the Primer's brief slot
+          branches on above, so the outcome recorded here is the outcome the
+          reader was shown rather than a second guess at it. Mounted outside
+          both trees so it emits once at every width: the mobile screen and the
+          desk tree are mutually exclusive mounts, and putting it inside either
+          would silently halve the denominator on the other half of the
+          devices. */}
+      <CompanyPageViewEvent
+        slug={id}
+        query={companyName}
+        companyId={companyDetail.companyId}
+        outcome={
+          developmentArticles.length === 0 && contextArticles.length === 0
+            ? "thin"
+            : "content"
+        }
+        articleCount={developmentArticles.length + contextArticles.length}
+      />
       <CompanyMemoModalListener
         companyName={canonical}
         memoContent={memoContent}

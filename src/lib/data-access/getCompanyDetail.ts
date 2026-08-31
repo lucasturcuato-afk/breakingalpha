@@ -36,6 +36,16 @@ export type CompanyDetailArticle = {
 };
 
 export interface CompanyDetail {
+  /**
+   * `companies.id` of the row this page resolved to: the ranked cluster head
+   * from `resolveAlias`, which is a real row primary key.
+   *
+   * It is carried so behavioural telemetry can name the row a page view landed
+   * on. Deliberately NOT a canonical entity id, a CIK, or any identifier a
+   * future identity registry might redefine, because an event keyed on the
+   * thing under review is unreadable once the review lands.
+   */
+  companyId: string;
   canonical: string;
   display: string;
   ticker: string | null;
@@ -231,6 +241,7 @@ export async function getCompanyDetail(
   });
 
   return {
+    companyId: head.id,
     canonical: head.name,
     display: head.name,
     ticker,

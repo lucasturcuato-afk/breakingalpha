@@ -75,6 +75,7 @@ function article(over: Partial<CompanyDetailArticle> = {}): CompanyDetailArticle
 
 function detail(over: Partial<CompanyDetail> = {}): CompanyDetail {
   return {
+    companyId: "00000000-0000-4000-8000-000000000001",
     canonical: "Broadcom",
     display: "Broadcom",
     ticker: "AVGO",
