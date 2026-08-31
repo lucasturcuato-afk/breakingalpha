@@ -56,6 +56,13 @@ import styles from "./commit.module.css";
  * NO TOAST. On a successful write the sheet closes and the record changes. The
  * change is the feedback, and `onCommitted` is what re-reads it.
  *
+ * THE SHEET IS A COLUMN: a scrolling body and a pinned footer, rather than one
+ * scrolling box. The press control used to sit last in the flow, so its
+ * position was a function of how long a sentence the desk wrote, and past
+ * 92dvh of content it left the viewport with nothing on screen saying so. The
+ * two children in the render carry the measurements and the reasoning, and
+ * `compose-screen.tsx` reached the same shape for the authored control first.
+ *
  * FACES. Every font names the loaded family through the back-compat variables
  * globals.css declares on `body`: `--font-playfair-display` is Fraunces,
  * `--font-inter` is Space Grotesk, `--font-jetbrains-mono` is IBM Plex Mono.
@@ -366,12 +373,22 @@ export function CommitSheet({ target, onDismiss, onCommitted }: CommitSheetProps
              unexplained in every handoff document; it is drawn at 14 to match
              its own top-left. Both are recorded in the PR body. */
           borderRadius: "14px 14px 0 0",
-          padding: "10px var(--v3-pad) 22px",
           /* No shadow token exists in the system. This is the design's own
              value, and it is one of two literals on this screen. */
           boxShadow: "0 -10px 34px rgba(26, 18, 8, 0.16)",
           maxHeight: "92dvh",
-          overflowY: "auto",
+          /* THE SHEET IS A COLUMN NOW AND IT NO LONGER SCROLLS ITSELF. A
+             scrollable body and a pinned footer sit inside it; the two
+             children below carry the reasoning and the measurements.
+
+             `overflow: hidden` rather than nothing, so a body scrolled to its
+             end is clipped by the 14px top corners instead of painting square
+             over them. The 10/20/22 padding moved into the children: a pad on
+             THIS box would sit outside the scrollport and the body would
+             slide under it. */
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
           /* The overlay is global and the trigger will not always be a phone:
              the same sheet is what desktop /radar/calls adopts later. Above
              the widest audited phone width it stops stretching and centres,
@@ -383,393 +400,483 @@ export function CommitSheet({ target, onDismiss, onCommitted }: CommitSheetProps
           margin: "0 auto",
         }}
       >
-        <div
-          aria-hidden="true"
-          style={{
-            width: "38px",
-            height: "4px",
-            borderRadius: "4px",
-            backgroundColor: "var(--c-handle)",
-            margin: "0 auto 18px",
-          }}
-        />
+        {/* THE BODY. Everything the reader reads and the one field they fill,
+            and the only part of this sheet that scrolls.
 
-        <h2
-          id={headingId}
-          style={{
-            margin: 0,
-            font: "700 21px/1.2 var(--font-playfair-display), serif",
-            color: "var(--c-ink)",
-          }}
-        >
-          Why do you think so?
-        </h2>
-        <p
-          style={{
-            margin: "10px 0 0",
-            font: "400 13px/1.55 var(--font-inter), sans-serif",
-            color: "var(--c-secondary)",
-            textWrap: "pretty",
-          }}
-        >
-          One line. This is what a reader of your record will actually judge, and it is what gets
-          read back to you when the date arrives.
-        </p>
+            WHY IT IS SPLIT OFF AT ALL. Before this the sheet was one scrolling
+            box and the press control was its last child but one, so the
+            control sat a fixed 128px above the sheet's BOTTOM CONTENT edge:
+            54 press, 8 gap, 44 dismiss, 22 pad. While the sheet fits that edge
+            is the viewport's, and the control lands at `viewport - 128` on its
+            own. The moment content passes 92dvh the sheet clamps, the content
+            keeps growing downward out of the scrollport, and the primary
+            action goes with it with nothing on screen saying so. Measured at
+            390x844 on the real adopt path by growing the claim in place:
+            content 638px puts the control's top at 716, content 785 at 724.97,
+            content 911 at 850.97 and content 1478 at 1417.97. The break is
+            content > 0.92 * viewport + 128, which is 904.5px at 844 and 741.6
+            at 667. Nothing about that is the reader's doing: it is how long a
+            sentence the desk wrote.
 
-        {/* The claim being committed to. The prototype omits it because its
-            sheet only ever opens over one card; a global overlay opened from
-            three surfaces has to say which call it is about. */}
-        <p
-          style={{
-            margin: "14px 0 0",
-            font: "500 15px/1.4 var(--font-playfair-display), serif",
-            color: "var(--c-ink)",
-            textWrap: "pretty",
-          }}
-        >
-          {target.claim}
-        </p>
+            So the action comes out of the flow and the flow gets its own
+            scrollport. The control's position stops being a function of the
+            claim's length.
 
+            `minHeight: 0` IS LOAD BEARING. A flex child defaults to
+            `min-height: auto`, which refuses to shrink below its content, so
+            without this the body would push the footer off the bottom edge and
+            rebuild the bug inside the fix.
+
+            The 14px bottom pad is the press control's old top margin, kept so
+            the last paragraph does not sit against the footer's rule. */}
         <div
           style={{
-            marginTop: "14px",
-            padding: "13px 14px",
-            border: `1px solid ${hasNote ? "var(--c-gold)" : "var(--c-border)"}`,
-            borderRadius: "12px",
-            backgroundColor: "var(--c-bg)",
-            transition: "border-color 180ms cubic-bezier(0.16, 1, 0.3, 1)",
+            flex: "1 1 auto",
+            minHeight: 0,
+            overflowY: "auto",
+            /* A body scrolled to either end does not hand the gesture to the
+               page behind the scrim, which is a live page under a modal. */
+            overscrollBehavior: "contain",
+            padding: "10px var(--v3-pad) 14px",
           }}
         >
-          <textarea
-            ref={noteRef}
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            maxLength={COMMIT_NOTE_MAX}
-            aria-label={ADOPT_NOTE_ARIA_LABEL}
-            aria-describedby={hintId}
-            /* The design writes a worked example into this field, an invented
-               claim about two named companies. The attribute below is a string
-               literal in a client component, so it ships in .next/static and is
-               downloadable whether or not anyone opens the sheet, which is
-               exactly the shape PR #676 removed from five screens. The prompt
-               teaches the same register and asserts nothing about anybody. */
-            placeholder="What has to be true for this, and what would change your mind."
-            style={{
-              width: "100%",
-              minHeight: "86px",
-              border: "none",
-              /* globals.css gives form controls a 4px default. The design
-                 draws the field as part of the box around it, not as a
-                 control of its own, so the corner belongs to the box. */
-              borderRadius: 0,
-              outline: "none",
-              resize: "none",
-              background: "transparent",
-              /* 16px IS THE iOS SAFARI FLOOR, not a type preference. Below it
-                 Safari zooms the viewport on focus, on iPhone and iPad alike,
-                 and this is the field the sheet exists to fill so it is the
-                 field that would zoom. It was drawn at 15 and PR (752) raised
-                 ten other sub-16px fields without reaching this one, because
-                 the sheet is a portalled overlay rather than a screen.
-
-                 The box does not grow with it. `minHeight` below is a fixed
-                 86px and the surrounding well's height is that plus its own
-                 13px padding pair and 1px border, so the sheet's total height
-                 and its gap to the tab bar are unchanged; only the line box
-                 inside grows, 24px to 25.6px. Measured both ways. */
-              font: "400 italic 16px/1.6 var(--font-playfair-display), serif",
-              color: "var(--c-ink)",
-              padding: 0,
-            }}
-          />
-        </div>
-
-        <div
-          style={{
-            marginTop: "8px",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: "12px",
-          }}
-        >
-          <span
-            id={hintId}
-            style={{ font: "400 11px/1 var(--font-inter), sans-serif", color: "var(--c-muted)" }}
-          >
-            {hasNote ? ADOPT_NOTE_HINT_WRITTEN : ADOPT_NOTE_HINT}
-          </span>
-          <span
+          <div
             aria-hidden="true"
             style={{
-              font: "400 10.5px/1 var(--font-jetbrains-mono), monospace",
-              letterSpacing: "0.045em",
-              color: "var(--c-muted)",
-              whiteSpace: "nowrap",
+              width: "38px",
+              height: "4px",
+              borderRadius: "4px",
+              backgroundColor: "var(--c-handle)",
+              margin: "0 auto 18px",
+            }}
+          />
+
+          <h2
+            id={headingId}
+            style={{
+              margin: 0,
+              font: "700 21px/1.2 var(--font-playfair-display), serif",
+              color: "var(--c-ink)",
             }}
           >
-            {trimmed > 0 ? `${trimmed} characters` : ""}
-          </span>
-        </div>
+            Why do you think so?
+          </h2>
+          <p
+            style={{
+              margin: "10px 0 0",
+              font: "400 13px/1.55 var(--font-inter), sans-serif",
+              color: "var(--c-secondary)",
+              textWrap: "pretty",
+            }}
+          >
+            One line. This is what a reader of your record will actually judge, and it is what gets
+            read back to you when the date arrives.
+          </p>
 
-        <div style={{ marginTop: "12px", height: "1px", backgroundColor: "var(--c-hair)" }} />
+          {/* The claim being committed to. The prototype omits it because its
+              sheet only ever opens over one card; a global overlay opened from
+              three surfaces has to say which call it is about. */}
+          <p
+            style={{
+              margin: "14px 0 0",
+              font: "500 15px/1.4 var(--font-playfair-display), serif",
+              color: "var(--c-ink)",
+              textWrap: "pretty",
+            }}
+          >
+            {target.claim}
+          </p>
 
-        <div
-          style={{
-            marginTop: "10px",
-            minHeight: "44px",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: "12px",
-          }}
-        >
-          <div>
-            <div style={{ font: "600 13px/1.3 var(--font-inter), sans-serif", color: "var(--c-ink)" }}>
-              {checkedOn ? `Checked on ${checkedOn}` : "Checked at the end of the window"}
-            </div>
-            <div
-              style={{
-                marginTop: "3px",
-                font: "400 11.5px/1.35 var(--font-inter), sans-serif",
-                color: "var(--c-secondary)",
-              }}
-            >
-              {/* The design writes "90 days, against XLF and SPY". The day
-                  count is real and comes from the window. The benchmark pair
-                  has NO read-time source anywhere in `src/` (batch-9 deviation
-                  9), so it is not written: naming benchmarks inside the thing
-                  the reader is agreeing to would make them part of the
-                  commitment on no evidence. */}
-              {spanDays === 1 ? "1 day" : `${spanDays} days`}, {adoptWindowPhrase(span)}
-            </div>
-          </div>
-
-          {/* The prototype's "change" is a `div` with `cursor:pointer`, no
-              handler, no tabindex and no role, which README's accessibility
-              rule names as a defect outright. The real behaviour already
-              exists in `TrackCallControl`'s untracked footer and is portable:
-              a select over `adoptWindowOptions`, defaulting to the call's own
-              span rather than to a bucket it is not. */}
-          {editingWindow ? (
-            <select
-              autoFocus
-              aria-label="How long this call runs"
-              value={adoptWindowValue(span)}
-              onChange={(e) => {
-                const next = adoptWindowOptions(span).find((o) => o.value === e.target.value);
-                if (next) setSpan(next.window);
-              }}
-              onBlur={() => setEditingWindow(false)}
-              style={{
-                minHeight: "44px",
-                maxWidth: "52%",
-                padding: "0 10px",
-                border: "1px solid var(--c-border)",
-                borderRadius: "9px",
-                backgroundColor: "var(--c-bg)",
-                font: "500 12.5px/1 var(--font-inter), sans-serif",
-                color: "var(--c-ink)",
-              }}
-            >
-              {adoptWindowOptions(span).map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setEditingWindow(true)}
-              style={{
-                appearance: "none",
-                background: "none",
-                border: 0,
-                margin: 0,
-                minHeight: "44px",
-                display: "flex",
-                alignItems: "center",
-                padding: "0 12px",
-                font: "500 12.5px/1 var(--font-inter), sans-serif",
-                color: "var(--c-secondary)",
-                textDecoration: "underline",
-                textUnderlineOffset: "3px",
-                cursor: "pointer",
-                whiteSpace: "nowrap",
-              }}
-            >
-              change
-            </button>
-          )}
-        </div>
-
-        <div style={{ marginTop: "6px", height: "1px", backgroundColor: "var(--c-hair)" }} />
-
-        <p
-          style={{
-            margin: "11px 0 0",
-            font: "400 11.5px/1.55 var(--font-inter), sans-serif",
-            color: "var(--c-muted)",
-            textWrap: "pretty",
-          }}
-        >
-          The window is fixed the moment you commit and cannot be moved afterwards. A miss stays on
-          the record, and the record is better for it.
-        </p>
-
-        {/* THE FAILURE STATE. It renders HERE, in the sheet, directly above the
-            control that produced it, with the note still in the field above.
-            `role="alert"` so it is announced rather than merely drawn. */}
-        {phase === "failed" ? (
           <div
-            role="alert"
-            className={styles.notice}
             style={{
               marginTop: "14px",
               padding: "13px 14px",
-              border: "1px solid var(--pill-bear-border)",
-              borderRadius: "9px",
-              backgroundColor: "var(--c-card)",
+              border: `1px solid ${hasNote ? "var(--c-gold)" : "var(--c-border)"}`,
+              borderRadius: "12px",
+              backgroundColor: "var(--c-bg)",
+              transition: "border-color 180ms cubic-bezier(0.16, 1, 0.3, 1)",
             }}
           >
-            <p
+            <textarea
+              ref={noteRef}
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              maxLength={COMMIT_NOTE_MAX}
+              aria-label={ADOPT_NOTE_ARIA_LABEL}
+              aria-describedby={hintId}
+              /* The design writes a worked example into this field, an invented
+                 claim about two named companies. The attribute below is a string
+                 literal in a client component, so it ships in .next/static and is
+                 downloadable whether or not anyone opens the sheet, which is
+                 exactly the shape PR #676 removed from five screens. The prompt
+                 teaches the same register and asserts nothing about anybody. */
+              placeholder="What has to be true for this, and what would change your mind."
               style={{
-                margin: 0,
-                font: "600 12.5px/1.4 var(--font-inter), sans-serif",
-                color: "var(--c-redink)",
-              }}
-            >
-              This call was not entered.
-            </p>
-            <p
-              style={{
-                margin: "7px 0 0",
-                font: "400 12px/1.55 var(--font-inter), sans-serif",
-                color: "var(--c-body)",
-                textWrap: "pretty",
-              }}
-            >
-              {/* The design says "The connection dropped", which names a cause
-                  this code cannot observe: a 500 is not a dropped connection.
-                  What is known is that the ledger did not acknowledge it, and
-                  that the route writes the row before it answers, so an
-                  unanswered request has no acknowledged row behind it. Trying
-                  again is safe either way: adopt is idempotent on
-                  adopted_from_call_id, so a second attempt after an ambiguous
-                  first one finds the row rather than making a second. */}
-              The ledger did not acknowledge it. Nothing was written, and your note is still here.
-            </p>
-            <button
-              type="button"
-              onClick={() => setPhase("editing")}
-              style={{
-                appearance: "none",
-                background: "none",
-                margin: "11px 0 0",
-                minHeight: "44px",
-                display: "inline-flex",
-                alignItems: "center",
-                padding: "0 15px",
-                border: "1px solid var(--c-ink)",
-                borderRadius: "9px",
-                font: "600 12.5px/1 var(--font-inter), sans-serif",
-                color: "var(--c-ink)",
-                cursor: "pointer",
-              }}
-            >
-              Try again
-            </button>
-          </div>
-        ) : null}
+                width: "100%",
+                minHeight: "86px",
+                border: "none",
+                /* globals.css gives form controls a 4px default. The design
+                   draws the field as part of the box around it, not as a
+                   control of its own, so the corner belongs to the box. */
+                borderRadius: 0,
+                outline: "none",
+                resize: "none",
+                background: "transparent",
+                /* 16px IS THE iOS SAFARI FLOOR, not a type preference. Below it
+                   Safari zooms the viewport on focus, on iPhone and iPad alike,
+                   and this is the field the sheet exists to fill so it is the
+                   field that would zoom. It was drawn at 15 and PR (752) raised
+                   ten other sub-16px fields without reaching this one, because
+                   the sheet is a portalled overlay rather than a screen.
 
-        {/* The press. A real button, so it is reachable by keyboard, and the
-            gesture is bound to pointer AND key events: a long press that
-            exists only on a pointer is a control a keyboard reader cannot
-            operate at all. `touchAction: none` stops the browser claiming the
-            press as a scroll. */}
-        <button
-          type="button"
-          disabled={!ready}
-          aria-disabled={!ready}
-          onPointerDown={startPress}
-          onPointerUp={endPress}
-          onPointerLeave={endPress}
-          onPointerCancel={endPress}
-          onKeyDown={(e) => {
-            if ((e.key === " " || e.key === "Enter") && !e.repeat) {
-              e.preventDefault();
-              startPress();
-            }
-          }}
-          onKeyUp={(e) => {
-            if (e.key === " " || e.key === "Enter") endPress();
-          }}
-          onBlur={endPress}
-          style={{
-            appearance: "none",
-            border: 0,
-            margin: "14px 0 0",
-            padding: 0,
-            width: "100%",
-            position: "relative",
-            minHeight: "54px",
-            borderRadius: "9px",
-            overflow: "hidden",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            userSelect: "none",
-            touchAction: "none",
-            backgroundColor: buttonFill,
-            cursor: ready ? "pointer" : "default",
-          }}
-        >
-          {phase === "pressing" ? (
-            <span
-              aria-hidden="true"
-              className={styles.fill}
-              style={{
-                position: "absolute",
-                left: 0,
-                top: 0,
-                bottom: 0,
-                backgroundColor: "var(--c-gold)",
+                   The box does not grow with it. `minHeight` below is a fixed
+                   86px and the surrounding well's height is that plus its own
+                   13px padding pair and 1px border, so the sheet's total height
+                   and its gap to the tab bar are unchanged; only the line box
+                   inside grows, 24px to 25.6px. Measured both ways. */
+                font: "400 italic 16px/1.6 var(--font-playfair-display), serif",
+                color: "var(--c-ink)",
+                padding: 0,
               }}
             />
-          ) : null}
-          <span
+          </div>
+
+          <div
             style={{
-              position: "relative",
-              font: "600 15px/1 var(--font-inter), sans-serif",
-              color: buttonInk,
+              marginTop: "8px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "12px",
             }}
           >
-            {pressLabel}
-          </span>
-        </button>
+            <span
+              id={hintId}
+              style={{ font: "400 11px/1 var(--font-inter), sans-serif", color: "var(--c-muted)" }}
+            >
+              {hasNote ? ADOPT_NOTE_HINT_WRITTEN : ADOPT_NOTE_HINT}
+            </span>
+            <span
+              aria-hidden="true"
+              style={{
+                font: "400 10.5px/1 var(--font-jetbrains-mono), monospace",
+                letterSpacing: "0.045em",
+                color: "var(--c-muted)",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {trimmed > 0 ? `${trimmed} characters` : ""}
+            </span>
+          </div>
 
-        <button
-          type="button"
-          onClick={onDismiss}
+          <div style={{ marginTop: "12px", height: "1px", backgroundColor: "var(--c-hair)" }} />
+
+          <div
+            style={{
+              marginTop: "10px",
+              minHeight: "44px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "12px",
+            }}
+          >
+            <div>
+              <div style={{ font: "600 13px/1.3 var(--font-inter), sans-serif", color: "var(--c-ink)" }}>
+                {checkedOn ? `Checked on ${checkedOn}` : "Checked at the end of the window"}
+              </div>
+              <div
+                style={{
+                  marginTop: "3px",
+                  font: "400 11.5px/1.35 var(--font-inter), sans-serif",
+                  color: "var(--c-secondary)",
+                }}
+              >
+                {/* The design writes "90 days, against XLF and SPY". The day
+                    count is real and comes from the window. The benchmark pair
+                    has NO read-time source anywhere in `src/` (batch-9 deviation
+                    9), so it is not written: naming benchmarks inside the thing
+                    the reader is agreeing to would make them part of the
+                    commitment on no evidence. */}
+                {spanDays === 1 ? "1 day" : `${spanDays} days`}, {adoptWindowPhrase(span)}
+              </div>
+            </div>
+
+            {/* The prototype's "change" is a `div` with `cursor:pointer`, no
+                handler, no tabindex and no role, which README's accessibility
+                rule names as a defect outright. The real behaviour already
+                exists in `TrackCallControl`'s untracked footer and is portable:
+                a select over `adoptWindowOptions`, defaulting to the call's own
+                span rather than to a bucket it is not. */}
+            {editingWindow ? (
+              <select
+                autoFocus
+                aria-label="How long this call runs"
+                value={adoptWindowValue(span)}
+                onChange={(e) => {
+                  const next = adoptWindowOptions(span).find((o) => o.value === e.target.value);
+                  if (next) setSpan(next.window);
+                }}
+                onBlur={() => setEditingWindow(false)}
+                style={{
+                  minHeight: "44px",
+                  maxWidth: "52%",
+                  padding: "0 10px",
+                  border: "1px solid var(--c-border)",
+                  borderRadius: "9px",
+                  backgroundColor: "var(--c-bg)",
+                  font: "500 12.5px/1 var(--font-inter), sans-serif",
+                  color: "var(--c-ink)",
+                }}
+              >
+                {adoptWindowOptions(span).map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setEditingWindow(true)}
+                style={{
+                  appearance: "none",
+                  background: "none",
+                  border: 0,
+                  margin: 0,
+                  minHeight: "44px",
+                  display: "flex",
+                  alignItems: "center",
+                  padding: "0 12px",
+                  font: "500 12.5px/1 var(--font-inter), sans-serif",
+                  color: "var(--c-secondary)",
+                  textDecoration: "underline",
+                  textUnderlineOffset: "3px",
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                change
+              </button>
+            )}
+          </div>
+
+          <div style={{ marginTop: "6px", height: "1px", backgroundColor: "var(--c-hair)" }} />
+
+          <p
+            style={{
+              margin: "11px 0 0",
+              font: "400 11.5px/1.55 var(--font-inter), sans-serif",
+              color: "var(--c-muted)",
+              textWrap: "pretty",
+            }}
+          >
+            The window is fixed the moment you commit and cannot be moved afterwards. A miss stays on
+            the record, and the record is better for it.
+          </p>
+        </div>
+
+        {/* THE FOOTER. The press, the way out, and the failure that lands on
+            them, pinned to the sheet's bottom edge at every scroll position and
+            on every state.
+
+            `flex: none` against the body's `1 1 auto`, so the body is what
+            gives way when the sheet clamps and this band keeps its measured
+            height. The reader can always see the primary action; what they may
+            have to scroll for is the context above it, which is the right way
+            round.
+
+            IT COSTS THE CONTENT VERTICAL SPACE, and the cost is stated rather
+            than hidden: 12px of pad and a 1px rule where the press control used
+            to carry a 14px top margin, so the sheet grows 13px overall and the
+            body's own area shrinks by the footer's 141px on any viewport where
+            the sheet clamps. On a real desk call at 844 the sheet still does
+            not scroll.
+
+            THE PRECEDENT IS IN THIS REPO. `compose-screen.tsx:909-933` pins the
+            authored commit control the same way, `flex: none` plus a top rule
+            and a `--c-bg` fill, after measuring that control ending 43px behind
+            the tab bar on every state tall enough to scroll. Same act, same
+            failure, already ruled on. Compose reaches it with `position:
+            sticky` because it is a page inside the shell's scrollport; this is
+            a self-contained overlay that owns its own column, so a flex sibling
+            gets there with fewer moving parts and no offset to resolve.
+
+            The fill is opaque `--c-bg`, the sheet's own ground, so body content
+            passing beneath cannot be read through it. The rule is `--c-hair`,
+            the same hairline the window row above is ruled with, rather than
+            compose's `--c-border`: inside this sheet the hairlines are the
+            existing vocabulary for a horizontal division. */}
+        <div
           style={{
-            appearance: "none",
-            background: "none",
-            border: 0,
-            padding: 0,
-            margin: "8px 0 0",
-            width: "100%",
-            minHeight: "44px",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            font: "500 13.5px/1 var(--font-inter), sans-serif",
-            color: "var(--c-secondary)",
-            cursor: "pointer",
+            flex: "none",
+            padding: "12px var(--v3-pad) 22px",
+            borderTop: "1px solid var(--c-hair)",
+            backgroundColor: "var(--c-bg)",
           }}
         >
-          Not this one
-        </button>
+          {/* THE FAILURE STATE. It renders HERE, in the footer, directly above the
+              control that produced it, with the note still in the field above.
+              `role="alert"` so it is announced rather than merely drawn.
+
+              It moved into the footer with the control, which is what "directly
+              above the control that produced it" has to mean once the control is
+              pinned. Left in the body it would be a message about a press the
+              reader may have to scroll to find, on the one screen whose header
+              says a write that fails quietly is the worst bug in the product.
+              Structural, so there is no scroll-into-view effect to forget. */}
+          {phase === "failed" ? (
+            <div
+              role="alert"
+              className={styles.notice}
+              style={{
+                margin: "0 0 12px",
+                padding: "13px 14px",
+                border: "1px solid var(--pill-bear-border)",
+                borderRadius: "9px",
+                backgroundColor: "var(--c-card)",
+              }}
+            >
+              <p
+                style={{
+                  margin: 0,
+                  font: "600 12.5px/1.4 var(--font-inter), sans-serif",
+                  color: "var(--c-redink)",
+                }}
+              >
+                This call was not entered.
+              </p>
+              <p
+                style={{
+                  margin: "7px 0 0",
+                  font: "400 12px/1.55 var(--font-inter), sans-serif",
+                  color: "var(--c-body)",
+                  textWrap: "pretty",
+                }}
+              >
+                {/* The design says "The connection dropped", which names a cause
+                    this code cannot observe: a 500 is not a dropped connection.
+                    What is known is that the ledger did not acknowledge it, and
+                    that the route writes the row before it answers, so an
+                    unanswered request has no acknowledged row behind it. Trying
+                    again is safe either way: adopt is idempotent on
+                    adopted_from_call_id, so a second attempt after an ambiguous
+                    first one finds the row rather than making a second. */}
+                The ledger did not acknowledge it. Nothing was written, and your note is still here.
+              </p>
+              <button
+                type="button"
+                onClick={() => setPhase("editing")}
+                style={{
+                  appearance: "none",
+                  background: "none",
+                  margin: "11px 0 0",
+                  minHeight: "44px",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  padding: "0 15px",
+                  border: "1px solid var(--c-ink)",
+                  borderRadius: "9px",
+                  font: "600 12.5px/1 var(--font-inter), sans-serif",
+                  color: "var(--c-ink)",
+                  cursor: "pointer",
+                }}
+              >
+                Try again
+              </button>
+            </div>
+          ) : null}
+
+          {/* The press. A real button, so it is reachable by keyboard, and the
+              gesture is bound to pointer AND key events: a long press that
+              exists only on a pointer is a control a keyboard reader cannot
+              operate at all. `touchAction: none` stops the browser claiming the
+              press as a scroll. */}
+          <button
+            type="button"
+            disabled={!ready}
+            aria-disabled={!ready}
+            onPointerDown={startPress}
+            onPointerUp={endPress}
+            onPointerLeave={endPress}
+            onPointerCancel={endPress}
+            onKeyDown={(e) => {
+              if ((e.key === " " || e.key === "Enter") && !e.repeat) {
+                e.preventDefault();
+                startPress();
+              }
+            }}
+            onKeyUp={(e) => {
+              if (e.key === " " || e.key === "Enter") endPress();
+            }}
+            onBlur={endPress}
+            style={{
+              appearance: "none",
+              border: 0,
+              /* The footer's own 12px pad is what used to be this 14px margin.
+                 Zero here, so the band's height is the footer's to state. */
+              margin: 0,
+              padding: 0,
+              width: "100%",
+              position: "relative",
+              minHeight: "54px",
+              borderRadius: "9px",
+              overflow: "hidden",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              userSelect: "none",
+              touchAction: "none",
+              backgroundColor: buttonFill,
+              cursor: ready ? "pointer" : "default",
+            }}
+          >
+            {phase === "pressing" ? (
+              <span
+                aria-hidden="true"
+                className={styles.fill}
+                style={{
+                  position: "absolute",
+                  left: 0,
+                  top: 0,
+                  bottom: 0,
+                  backgroundColor: "var(--c-gold)",
+                }}
+              />
+            ) : null}
+            <span
+              style={{
+                position: "relative",
+                font: "600 15px/1 var(--font-inter), sans-serif",
+                color: buttonInk,
+              }}
+            >
+              {pressLabel}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={onDismiss}
+            style={{
+              appearance: "none",
+              background: "none",
+              border: 0,
+              padding: 0,
+              margin: "8px 0 0",
+              width: "100%",
+              minHeight: "44px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              font: "500 13.5px/1 var(--font-inter), sans-serif",
+              color: "var(--c-secondary)",
+              cursor: "pointer",
+            }}
+          >
+            Not this one
+          </button>
+        </div>
       </div>
     </div>
   );
