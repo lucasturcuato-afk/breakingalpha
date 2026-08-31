@@ -65,7 +65,7 @@ test("loadWatch with no reader is an error stage, not an empty one", async () =>
   assert.equal(load.data, null);
 });
 
-test("loadAskCompanies returns null data on a faulted directory read, never an empty list", async () => {
+test("loadAskCompanies gives back null data on a faulted directory read, never an empty list", async () => {
   const load = await loadAskCompanies(faultingClient());
   assert.equal(load.stage, "error");
   assert.equal(load.data, null, "null, so the screen can tell a failed read from an empty corpus");

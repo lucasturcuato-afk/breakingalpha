@@ -317,7 +317,7 @@ export async function probeScreen(
         title: c.interactiveRole
           ? `${c.tag}${c.role ? `[role=${c.role}]` : ""} "${c.text || c.ariaLabel || ""}" activates and changes nothing`
           : `${c.tag} draws cursor:pointer and activates nothing`,
-        evidence: `path ${c.path}; after tap: url unchanged (${out.urlAfter}), structural DOM signature unchanged, 0 app requests${alreadyActive ? `; the control was ALREADY the selected option (aria state "${c.selectedState}"), so a no-op is the correct behaviour and this is recorded rather than charged` : ""}${volatile_ ? "; NOTE this screen self-mutates, so the DOM half of this reading is weak and the request half is what carries it" : ""}`,
+        evidence: `path ${c.path}; after tap: url unchanged (${out.urlAfter}), structural DOM signature unchanged, 0 app requests${alreadyActive ? `; the control was ALREADY the selected option (aria state "${c.selectedState}"), so a no-op is the intended behaviour and this is recorded rather than charged` : ""}${volatile_ ? "; NOTE this screen self-mutates, so the DOM half of this reading is weak and the request half is what carries it" : ""}`,
         basis: "measured",
       });
     }
