@@ -64,6 +64,18 @@ rendered-fixture proof substitutes for it on data-access and logic changes.
   pass. e2e is advisory, not a blocking gate. See the Preflight gate section.
 - Agents never merge to main, apply migrations, or dispatch production pipeline
   runs. Surface these for a human.
+- **This repo is PUBLIC. Never publish live product data to it.** PR bodies, PR
+  comments, issues and commit messages are world-readable. Keep out: row counts
+  and volumes (deals, graded calls, articles, follows, watchlist entries),
+  ingest cadence or freshness, any statement that a pipeline is behind or down,
+  timestamps of the last run, query latencies, and any verbatim product output
+  such as a claim, a thesis, a ticker rationale or a graded verdict sentence.
+  Argue in relative terms instead: "the count is legitimately zero for several
+  hours a day", "all four bucket counts match on both surfaces". The reasoning
+  survives; the figures are not needed to make it. Company names and headline
+  fragments already in the public source are fine. When in doubt, leave it out
+  and say what you left out.
+
 
 ## Preflight gate
 Hard gates, must pass before any PR: tsc (0 errors), lint (0 errors), build
