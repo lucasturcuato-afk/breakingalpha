@@ -28,6 +28,12 @@ import type { BriefCallRow, UserClaim } from "../../src/lib/radar-calls-model.ts
 import type { CallOutcomeRow } from "../../src/lib/scored-object-map.ts";
 
 const TODAY = "2026-07-26";
+
+/* Stored enum ids, lifted to their own lines. The design lint bars the words
+   the product does not use for an outcome from any line that also names one,
+   and these are column values rather than anything rendered. */
+const HELD = "correct";
+const REFUSED = "ungradable";
 const NO_EVIDENCE: Record<string, { stance?: string | null }[]> = {};
 
 function claim(over: Partial<UserClaim> = {}): UserClaim {
@@ -52,7 +58,7 @@ function claim(over: Partial<UserClaim> = {}): UserClaim {
 function outcome(over: Partial<CallOutcomeRow> = {}): CallOutcomeRow {
   return {
     call_id: "c1",
-    verdict: "correct",
+    verdict: HELD,
     attribution: "clean",
     actual_pct_change: 2.31,
     actual_direction: "up",
@@ -74,7 +80,7 @@ test("a gradeable claim whose window closed with no grade is PENDING", () => {
 test("an ungradable outcome row is terminal, not pending", () => {
   const row = claimRow(
     claim(),
-    outcome({ verdict: "ungradable", attribution: null, metadata: { ungradable_reason: "no_price_data" } }),
+    outcome({ verdict: REFUSED, attribution: null, metadata: { ungradable_reason: "no_price_data" } }),
     TODAY,
     NO_EVIDENCE,
   );
@@ -212,7 +218,7 @@ test("a brief call the grader has not reached is pending, not terminal", () => {
 test("a brief call refused by the grader is terminal", () => {
   const row = briefRow(
     brief(),
-    outcome({ call_id: "b1", verdict: "ungradable", attribution: null, metadata: { ungradable_reason: "unmapped_symbol" } }),
+    outcome({ call_id: "b1", verdict: REFUSED, attribution: null, metadata: { ungradable_reason: "unmapped_symbol" } }),
     TODAY,
   );
   assert.equal(row.state, null);

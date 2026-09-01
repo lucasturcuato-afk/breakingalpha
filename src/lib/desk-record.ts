@@ -138,11 +138,11 @@ export interface DeskRecord {
    * `graded_at` across every row. Null only when no row carries one.
    *
    * IT IS NOT A COLUMN THAT WAS MISSING. A previous pass recorded that no
-   * grader-run timestamp exists here, and that was half wrong: `graded_at` is
-   * non-null on every outcome row and `fetchDeskRecord` already selects it. It
-   * was the FIELD on this model that did not exist, so the mapper had nothing
-   * to read and set the screen's `lastGradedOn` to null, which in turn made the
-   * stale state unreachable by construction.
+   * grader-run timestamp exists here, and that was only half true.
+   * `graded_at` is non-null on every outcome row and `fetchDeskRecord` already
+   * selects it. It was the FIELD on this model that did not exist, so the
+   * mapper had nothing to read and set the screen's `lastGradedOn` to null,
+   * which in turn made the stale state unreachable by construction.
    *
    * A maximum, never the first row's value. `byRecencyDesc` sorts on brief_date
    * first, so the newest brief is not necessarily the most recently graded

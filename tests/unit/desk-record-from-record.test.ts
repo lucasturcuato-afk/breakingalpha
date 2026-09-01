@@ -28,7 +28,6 @@ function meta(symbol: string) {
     grader: "price_attribution",
     entity_symbol: symbol,
     entity_move_pct: 2.31,
-    thresholds_pct: { dead_band: 0.25, min_excess: 0.75 },
     benchmarks: [
       { symbol: "XLK", role: "sector", move_pct: 0.42, excess_pct: 1.89, meaningful_bar_pct: 0.75 },
       { symbol: "SPY", role: "market", move_pct: 0.15, excess_pct: 2.16, meaningful_bar_pct: 0.75 },

@@ -133,10 +133,10 @@ export function deskRecordToScreenData(record: DeskRecord): DeskRecordData {
         : null,
     entries,
     /* CORRECTED. This read "the record model carries no grader-run timestamp",
-       and that was half wrong: `graded_at` is non-null on every outcome row and
-       `fetchDeskRecord` has always selected it. What was missing was a field on
-       the model, which `buildDeskRecord` now folds as a maximum over every row
-       read. So the screen can answer "when was this last checked", which is the
+       and that was only half true. `graded_at` is non-null on every outcome
+       row and `fetchDeskRecord` has always selected it. What was missing was a
+       field on the model, which `buildDeskRecord` now folds as a maximum over
+       every row read. So the screen can answer "when was this last checked", which is the
        question a record invites and the one it could not answer.
 
        THIS DOES NOT SWITCH THE STAGE. `loadDeskRecord` still never yields
