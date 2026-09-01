@@ -164,7 +164,7 @@ test("the not-graded clause survives filtering", () => {
   assert.ok(filtered.some((l) => l.startsWith("Not-graded calls are counted")));
 });
 
-test("the not-graded clause is absent when the record holds none", () => {
+test("the not-graded clause is absent when the record carries none", () => {
   const filtered = accountingSentences({
     bucket: "challenged",
     countedInBucket: 30,
