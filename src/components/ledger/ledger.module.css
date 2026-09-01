@@ -81,6 +81,26 @@
   overflow: hidden;
 }
 
+/* One line. The collapsed row's summary.
+ *
+ * NOT the same rule as `.clamp` above and deliberately not parameterised by
+ * `--v3-clamp`: that token is the desk card's reading depth, three lines, and a
+ * collapsed row that followed it would reopen the wall the next time the card
+ * was retuned. The row clamps the CLAIM, which measures about 42 characters at
+ * a 350px column, and nearly every claim opens on its subject and verb, so one
+ * line is a real summary rather than a stump.
+ *
+ * Reversible, and that matters: the full text is in the DOM, so the accessible
+ * name of the row's control is the whole claim and nothing is truncated on the
+ * way in. */
+.clamp1 {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+  line-clamp: 1;
+  overflow: hidden;
+}
+
 /* A real button carrying none of the agent's default chrome. Used wherever the
  * design draws a control that is not shaped like a button, so the element is
  * still a <button> for keyboard and assistive technology. */

@@ -133,6 +133,22 @@ export interface DeskRecord {
   /** Earliest / latest brief_date present, for an honest window label. */
   firstBriefDate: string | null;
   lastBriefDate: string | null;
+  /**
+   * When the grader last wrote an outcome in this read, as the newest
+   * `graded_at` across every row. Null only when no row carries one.
+   *
+   * IT IS NOT A COLUMN THAT WAS MISSING. A previous pass recorded that no
+   * grader-run timestamp exists here, and that was half wrong: `graded_at` is
+   * non-null on every outcome row and `fetchDeskRecord` already selects it. It
+   * was the FIELD on this model that did not exist, so the mapper had nothing
+   * to read and set the screen's `lastGradedOn` to null, which in turn made the
+   * stale state unreachable by construction.
+   *
+   * A maximum, never the first row's value. `byRecencyDesc` sorts on brief_date
+   * first, so the newest brief is not necessarily the most recently graded
+   * call: a late grade against an older brief is exactly the case this answers.
+   */
+  lastGradedAt: string | null;
 }
 
 const EMPTY_RESOLUTIONS: Record<Resolution, number> = {
@@ -172,6 +188,7 @@ export function buildDeskRecord(
   const byResolution: Record<Resolution, number> = { ...EMPTY_RESOLUTIONS };
   let firstBriefDate: string | null = null;
   let lastBriefDate: string | null = null;
+  let lastGradedAt: string | null = null;
 
   const sorted = [...rows].sort(byRecencyDesc);
 
@@ -190,6 +207,12 @@ export function buildDeskRecord(
       if (!firstBriefDate || d < firstBriefDate) firstBriefDate = d;
       if (!lastBriefDate || d > lastBriefDate) lastBriefDate = d;
     }
+
+    /* Over every row read, not over the listed page. The list is truncated
+       below and the counts are not, and a "last checked" that moved when the
+       list limit changed would be a second figure describing the same read. */
+    const g = row.outcome.graded_at ?? null;
+    if (g && (!lastGradedAt || g > lastGradedAt)) lastGradedAt = g;
   }
 
   const entries = sorted.slice(0, limit).map((row): DeskRecordEntry => {
@@ -222,6 +245,7 @@ export function buildDeskRecord(
     entries,
     firstBriefDate,
     lastBriefDate,
+    lastGradedAt,
   };
 }
 

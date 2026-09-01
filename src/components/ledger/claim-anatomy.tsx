@@ -88,6 +88,18 @@ export interface ClaimAnatomyProps {
   /** Applied to the prose paragraph, e.g. the line clamp. */
   proseClassName?: string;
   /**
+   * Applied to the claim paragraph, e.g. the one-line clamp a collapsed row
+   * draws.
+   *
+   * The exact counterpart of `proseClassName` above, and additive in the same
+   * way: omitted, the paragraph renders as it always has, so nothing that
+   * consumes this primitive today moves. It exists because a row that collapses
+   * clamps the CLAIM rather than the reading, and the alternative was a second
+   * copy of the claim paragraph inside the wrapper, in a second copy of this
+   * file's type scale, which is the drift this primitive exists to prevent.
+   */
+  claimClassName?: string;
+  /**
    * Sits on the prose slot's trailing edge, top-aligned. The design puts a
    * chevron here on a card whose reading is clamped, and nothing here on a row.
    *
@@ -106,6 +118,7 @@ export function ClaimAnatomy({
   prose,
   meta,
   proseClassName,
+  claimClassName,
   proseTrailing,
 }: ClaimAnatomyProps) {
   const s = CLAIM_TYPE_SCALE[scale];
@@ -130,6 +143,7 @@ export function ClaimAnatomy({
     <>
       {lead}
       <p
+        className={claimClassName}
         style={{
           margin: s.claimMargin,
           font: s.claim,

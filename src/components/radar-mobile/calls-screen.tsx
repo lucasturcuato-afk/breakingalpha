@@ -1,8 +1,15 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useCallback, useState, type ReactNode } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ClaimAnatomy, LedgerEntryRow, type OutcomeState } from "@/components/ledger";
+import {
+  Chevron,
+  LedgerDisclosureRow,
+  OutcomeLead,
+  type OutcomeState,
+} from "@/components/ledger";
+import ledger from "@/components/ledger/ledger.module.css";
 import { SectionRule, WatchNotice, WatchSkeleton } from "@/components/watch";
 import {
   EVIDENCE_COPY,
@@ -20,19 +27,94 @@ import { FONT_DISPLAY, FONT_MONO, FONT_SANS } from "@/components/mobile/fonts";
  * fortnight grouped by what they are about. Both are graded, which is what
  * separates this half of Radar from Following and Watchlist beside it.
  *
- * IT DRAWS NO CARD ANATOMY OF ITS OWN. Every row here is `LedgerEntryRow`, the
- * same ruled row the mobile Desk record draws its list with, so the two graded
- * sections of Radar read as one thing rather than as two screens that happen to
- * be adjacent. `ScoredObject` is the desk's card and is deliberately not used:
- * it renders "No clean read", the mobile outcome vocabulary is closed at four
- * words, and a fifth word on a phone is a compliance defect rather than a style
- * difference. `src/lib/mobile-outcome-state.ts` carries that bridge and its
- * reasoning.
+ * ─────────────────────────────────────────────────────────────────────────
+ * WHY THE ROWS COLLAPSE, WHICH IS THE WHOLE OF THIS REVISION.
  *
- * THE JUDGEMENT IS NOT RE-DERIVED HERE. The caller maps rows through
- * `claimCardProps` and `scoredCallProps`, the same two pure functions the desk
- * uses, so what a verdict MEANS is decided in one place for both surfaces and
- * only the word and the row differ.
+ * The screen shipped as a wall and it was one in numbers, not in impression:
+ * three and a half viewport heights, fifteen rows, and seventy-one per cent of
+ * the entire scroll was row. Twelve of fifteen row heights sat inside a forty
+ * pixel band, so nothing on the screen was any bigger than anything else. There
+ * were nine controls, and all nine were chrome: a skip link, four section
+ * links, four tab-bar poles. Not one of them was on a row. Nothing collapsed,
+ * expanded, opened or led anywhere.
+ *
+ * THE HALF THAT GOES BEHIND THE CONTROL IS THE READING. Every row carries two
+ * paragraphs, the claim and then how it settled or what it is watching for, and
+ * the second is the single largest contributor to row height. It is also never
+ * the thing a reader is scanning for: they are scanning the state word and the
+ * name. So the row collapses to the state word, the instrument and the claim's
+ * first clause, and the reading is one tap away. `LedgerDisclosureRow` carries
+ * the mechanism and its reasoning.
+ *
+ * NO NUMBER SURVIVES ON A COLLAPSED ROW. Not a count, not a ratio, not a
+ * percentage. The evidence counts are inside the opened body or nowhere.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * THE EVIDENCE BLOCK RENDERED ON EVERY ROW AND WAS TRUE ON ALMOST NONE.
+ *
+ * It drew on all fifteen. It could say something true and useful on one. Four
+ * separate reasons, all of them structural rather than accidental, and
+ * `radar-calls-screen-data.ts` now holds each one at the point it is decided:
+ *
+ *   a brief row       `claim_evidence` keys on a `user_claims` id, so a brief
+ *                     call cannot be the subject of one for any reader on any
+ *                     day. Twelve rows drew "No new evidence yet." and could
+ *                     never have drawn anything else.
+ *   a settled row     the mapper deliberately does not look once a verdict
+ *                     exists, and the empty copy then reported that nothing was
+ *                     recorded. The truth is that nothing was read.
+ *   a not-graded row  two counts directly under a word saying no grade is
+ *                     coming, in the one place a reader is most likely to take
+ *                     a count for the missing verdict. This is the row the
+ *                     complaint was made about.
+ *   an unscanned type `backend/grading/claim_evidence.py` never matches index,
+ *                     aggregate or unclassified claims. Same false absence as a
+ *                     brief row, one list up.
+ *
+ * The block now renders under an open claim of a scanned type, and nowhere
+ * else. Silent under the ruling of 2026-08-29: no figure anywhere on the screen
+ * means anything different without it.
+ *
+ * AND IT NAMES ITS BASIS. A sector claim matches every article carrying its
+ * sector's label; a ticker claim matches the articles that name one company. So
+ * two rows in one list could carry counts orders of magnitude apart with
+ * nothing on screen saying why. The line now says which of the two it is.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * "NOT GRADED" WAS ONE WORD OVER TWO DIFFERENT FACTS.
+ *
+ * `mobile-outcome-state.ts` defines it as the case where "no credible grade
+ * exists and never will", and it is right to. But three structurally different
+ * routes reached it and the screen collapsed them into that one word:
+ *
+ *   the window closed and the grader has not run yet   PENDING, not terminal
+ *   an outcome row carrying `verdict = ungradable`     terminal
+ *   a claim written `gradeable: false`                 terminal by construction
+ *
+ * On the first the word is false. That row is gradeable, its window has closed,
+ * it satisfies every condition the grader scans for and it is queued. It reads
+ * Not graded yet, and its reading says so.
+ *
+ * THIS IS NOT A FIFTH OUTCOME WORD. `OUTCOME_STATES` is closed at four and is
+ * untouched; a fifth would need `claim-anatomy.tsx` to change, which is the
+ * friction that keeps it closed. Both markers here sit OUTSIDE that set, in
+ * this wrapper, exactly where "Not graded" already sat, and neither is rendered
+ * by `OutcomeLead`. Neither takes a filled dot: the four states each own one in
+ * a semantic hue and a fifth fill would read as a fifth state.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * WHERE A ROW GOES.
+ *
+ *   a brief row    `/claim/[id]` takes a `morning_brief_calls` id, which is
+ *                  exactly what a brief row is. It is one screen with no
+ *                  scroll and it carries Track this call, the only write path
+ *                  anywhere near this surface. The link sits INSIDE the opened
+ *                  body, never on the collapsed row: a row with two controls
+ *                  stacked on it is two taps competing for one thumb.
+ *   your own call  `/entry/[id]` renders the unwired stage in production and
+ *                  has no loader. There is no destination, so the row resolves
+ *                  in place and offers nothing that would fail. The day that
+ *                  route is wired the link goes here and nothing else changes.
  *
  * ─────────────────────────────────────────────────────────────────────────
  * WHAT THIS SECTION DOES NOT DRAW, AND WHY. None of it says so on screen,
@@ -54,9 +136,9 @@ import { FONT_DISPLAY, FONT_MONO, FONT_SANS } from "@/components/mobile/fonts";
  *                       row's own window line says.
  *   AUTHORING           `AuthorClaim` proposes a claim through a model pass and
  *                       then writes it. This section reads; the desk authors.
- *   ADOPT               `CallCommitFooter` and the adopt path are writes, and
- *                       they belong beside the authoring flow rather than on
- *                       their own on a read surface.
+ *   ADOPT               `CallCommitFooter` and the adopt path are writes. The
+ *                       Claim screen a brief row now opens carries the one that
+ *                       belongs on a read surface, on the screen built for it.
  *   THE EVIDENCE MAP    `EvidenceMap` is an SVG force graph, desktop-only by
  *                       construction.
  *   TRACKED VIEWS       73 `theses` rows and every one of them has a NULL
@@ -73,19 +155,11 @@ import { FONT_DISPLAY, FONT_MONO, FONT_SANS } from "@/components/mobile/fonts";
  *                       viewport; the page does not scroll sideways, because the
  *                       parent clips, but a link whose text is ellipsed to a
  *                       third of itself is not a link anybody can choose.
- *
- *                       The COUNTS are the part that carries meaning and they
- *                       are drawn, at mobile scale, off the same
- *                       `summarizeClaimEvidence` the desk strip uses. Only the
- *                       three links are dropped. Silent under the ruling of
- *                       2026-08-29: no figure on the screen means anything
- *                       different without them, and nothing implies a story list
- *                       is coming.
  *   THE JUMP NAV        `GroupJumpNav` is `sticky top-0` and its `bleed` prop
  *                       assumes a `p-6` desktop page. On a full-bleed phone
  *                       screen it would pin at the very top, over the section
- *                       row rather than under it. Six group headings on a list
- *                       of twelve is navigable by thumb.
+ *                       row rather than under it. The group headings are now a
+ *                       fraction of the scroll they were.
  * ─────────────────────────────────────────────────────────────────────────
  */
 
@@ -95,10 +169,16 @@ export type CallsStage = "ready" | "loading" | "error";
 export interface CallRow {
   id: string;
   /**
-   * The outcome word, or null when there is no credible grade and none is
-   * coming. Null is NOT "awaiting": see `src/lib/mobile-outcome-state.ts`.
+   * The outcome word, or null when there is no grade. Null is NOT "awaiting":
+   * see `src/lib/mobile-outcome-state.ts`. Whether null is terminal is
+   * `notGradedPending` below, and the two are not the same question.
    */
   state: OutcomeState | null;
+  /**
+   * True when the row has no grade YET: gradeable, window closed, queued. False
+   * on the terminal routes to the same absence. Only read when `state` is null.
+   */
+  notGradedPending?: boolean;
   /** Ticker and date, on the trailing edge of the state row. */
   instrument?: string;
   /** The claim in the words it was made in. Never rewritten, never truncated. */
@@ -109,6 +189,11 @@ export interface CallRow {
   notGradedReason?: string;
   /** Supporting and challenging stories logged while the claim waits. */
   evidence?: RawEvidenceRow[] | null;
+  /**
+   * What the evidence ledger was matched against, when it could be matched at
+   * all. Absent means the block does not render: see the header.
+   */
+  evidenceBasis?: { kind: "ticker" | "sector"; symbol: string };
 }
 
 export interface CallGroup {
@@ -162,6 +247,18 @@ export function CallsScreen({
   const retry = onRetry ?? (() => router.refresh());
   const loading = stage === "loading";
 
+  /* One open set for both lists. Ids are uuids out of two tables and cannot
+     collide, and a single set is what would let a later control close every
+     row without either list knowing the other exists. */
+  const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set<string>());
+  const toggle = useCallback((id: string) => {
+    setOpen((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
+  }, []);
+
   /* No reader, no calls. EARLY RETURN, so below this line TypeScript knows
      `data` is non-null and no later edit can bring an empty shape back by
      leaving the prop off. This is NOT an empty state: it says the screen could
@@ -183,6 +280,12 @@ export function CallsScreen({
   }
 
   const briefRows = data.brief.reduce((n, g) => n + g.rows.length, 0);
+  /* A heading over one group is a divider that divides nothing, and the shared
+     grouping rule is one quiet fortnight away from producing exactly that. The
+     rule itself is the desk's, lifted into `radar-calls-model.ts` so both
+     surfaces state it once, and it is NOT forked here. This decides only
+     whether the label is drawn. */
+  const showGroupLabels = data.brief.length > 1;
 
   return (
     <Frame nav={nav} busy={loading}>
@@ -222,8 +325,17 @@ export function CallsScreen({
         {!loading && !data.yoursFailed && !data.yoursUnavailable ? (
           <>
             {data.yours.map((row, i) => (
-              <Row key={row.id} row={row} first={i === 0} />
+              <Row
+                key={row.id}
+                row={row}
+                first={i === 0}
+                open={open.has(row.id)}
+                onToggle={() => toggle(row.id)}
+              />
             ))}
+            {/* Every row draws its own top hairline, so the last one needs a
+                bottom edge to sit against. */}
+            {data.yours.length > 0 ? <ListFoot /> : null}
             {data.yours.length === 0 ? (
               <WatchNotice
                 body="No calls tracked yet. Calls are made in your own words on the desk, or adopted there from one of the desk's own."
@@ -240,7 +352,7 @@ export function CallsScreen({
           marginTop="26px"
         />
         <Standfirst>
-          {`The desk's own calls from the last ${data.briefDays} days, grouped by what they are about. Only a move beyond sector and market counts.`}
+          {`The desk's own calls from the last ${data.briefDays} days. Only a move beyond sector and market counts.`}
         </Standfirst>
 
         {loading ? <WatchSkeleton rows={4} /> : null}
@@ -267,34 +379,44 @@ export function CallsScreen({
         {!loading && !data.briefFailed ? (
           <>
             {data.brief.map((group) => (
-              <div key={group.id} style={{ marginTop: "18px" }}>
-                <h2
-                  style={{
-                    margin: 0,
-                    display: "flex",
-                    alignItems: "baseline",
-                    gap: "9px",
-                    font: `600 11px/1.2 ${FONT_SANS}`,
-                    letterSpacing: "0.04em",
-                    color: "var(--c-secondary)",
-                  }}
-                >
-                  {group.label}
-                  <span
+              <div key={group.id} style={{ marginTop: showGroupLabels ? "16px" : 0 }}>
+                {showGroupLabels ? (
+                  <h2
                     style={{
-                      font: `400 10.5px/1 ${FONT_MONO}`,
-                      letterSpacing: "0.045em",
-                      color: "var(--c-muted)",
+                      margin: 0,
+                      display: "flex",
+                      alignItems: "baseline",
+                      gap: "9px",
+                      font: `600 11px/1.2 ${FONT_SANS}`,
+                      letterSpacing: "0.04em",
+                      color: "var(--c-secondary)",
                     }}
                   >
-                    {group.rows.length}
-                  </span>
-                </h2>
+                    {group.label}
+                    <span
+                      style={{
+                        font: `400 10.5px/1 ${FONT_MONO}`,
+                        letterSpacing: "0.045em",
+                        color: "var(--c-muted)",
+                      }}
+                    >
+                      {group.rows.length}
+                    </span>
+                  </h2>
+                ) : null}
                 {group.rows.map((row, i) => (
-                  <Row key={row.id} row={row} first={i === 0} />
+                  <Row
+                    key={row.id}
+                    row={row}
+                    first={showGroupLabels && i === 0}
+                    open={open.has(row.id)}
+                    onToggle={() => toggle(row.id)}
+                    href={`/claim/${row.id}`}
+                  />
                 ))}
               </div>
             ))}
+            {briefRows > 0 ? <ListFoot /> : null}
             {briefRows === 0 ? (
               <WatchNotice
                 body={`No calls in the desk's briefs over the last ${data.briefDays} days. That is a quiet fortnight, not a failed read.`}
@@ -354,7 +476,15 @@ function Masthead() {
       >
         {/* The counterpart of the line Following and Watchlist carry. It is a
             claim about the product, not about the reader, so it needs no read
-            behind it and is true in every state. */}
+            behind it and is true in every state.
+
+            NO "tap a call to open it" HERE, and that was measured rather than
+            argued. The second sentence cost a second line, which pushed the
+            first row eighteen pixels DOWN on a screen whose whole revision is
+            about what clears the fold. Every row draws a chevron, is a 44px
+            button and carries `aria-expanded`, so the affordance is on the
+            object itself. The record keeps its hint because a count strip that
+            filters is not self-evident; a chevron is. */}
         Everything in this section is graded, or waiting to be.
       </p>
     </div>
@@ -376,90 +506,158 @@ function Standfirst({ children }: { children: ReactNode }) {
   );
 }
 
+/** The bottom edge of a list of ruled rows. Each row draws only its own top. */
+function ListFoot() {
+  return <div aria-hidden="true" style={{ height: "1px", backgroundColor: "var(--c-hair)" }} />;
+}
+
 /**
  * One call.
  *
- * A graded or open row is `LedgerEntryRow` unchanged, which is the same row the
- * mobile Desk record draws. A row with NO credible grade cannot be, because
- * that component requires one of the four outcome states and there is no honest
- * member of the set for it. It gets the same anatomy at the same scale with a
- * quiet marker where the state dot would be, so the two sit in one list without
- * either pretending to be the other.
+ * A WRAPPER BESIDE THE ANATOMY, NEVER A BRANCH INSIDE IT, which is the house
+ * rule this function already obeyed and still does. What changed is which row
+ * it wraps: `LedgerDisclosureRow` rather than `LedgerEntryRow`, because the row
+ * now opens where it stands and the entry row's container is a NAVIGATION
+ * control that cannot carry `aria-expanded`.
+ *
+ * Two leads, one anatomy. A graded or open row gets `OutcomeLead` and one of
+ * the four words. A row with no grade gets a hollow ring and a marker that is
+ * not an outcome word at all, in one of two forms, because pending and terminal
+ * are two different facts and the screen used to say them with one.
  */
-function Row({ row, first }: { row: CallRow; first: boolean }) {
-  const strip = <EvidenceCounts rows={row.evidence} />;
+function Row({
+  row,
+  first,
+  open,
+  onToggle,
+  href,
+}: {
+  row: CallRow;
+  first: boolean;
+  open: boolean;
+  onToggle: () => void;
+  /** Present on a brief row only. See the header on destinations. */
+  href?: string;
+}) {
+  const pending = row.state === null && row.notGradedPending === true;
 
-  if (row.state === null) {
-    return (
-      <div
-        style={{
-          padding: "15px 0",
-          borderTop: "1px solid var(--c-hair)",
-          marginTop: first ? "10px" : 0,
-          display: "flex",
-          flexDirection: "column",
-          gap: "7px",
-        }}
-      >
-        <ClaimAnatomy
-          scale="row"
-          lead={
-            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              {/* A hollow ring, not a filled dot. The four states each own a
-                  filled dot in a semantic hue, and a fifth fill would read as a
-                  fifth state. This says there is nothing to fill in. */}
-              <span
-                aria-hidden="true"
-                style={{
-                  flex: "none",
-                  display: "inline-block",
-                  width: "7px",
-                  height: "7px",
-                  borderRadius: "50%",
-                  border: "1px solid var(--c-edge)",
-                }}
-              />
-              <span style={{ font: `600 11px/1 ${FONT_SANS}`, color: "var(--c-muted)" }}>
-                Not graded
-              </span>
-              {row.instrument ? (
-                <span
-                  style={{
-                    marginLeft: "auto",
-                    font: `400 10px/1 ${FONT_MONO}`,
-                    letterSpacing: "0.07em",
-                    color: "var(--c-muted)",
-                  }}
-                >
-                  {row.instrument}
-                </span>
-              ) : null}
-            </div>
-          }
-          claim={row.claim}
-          prose={row.notGradedReason ?? row.result}
+  const lead =
+    row.state !== null ? (
+      <OutcomeLead state={row.state} instrument={row.instrument} />
+    ) : (
+      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+        {/* A hollow ring, not a filled dot. The four states each own a filled
+            dot in a semantic hue, and a fifth fill would read as a fifth
+            state. This says there is nothing to fill in. Both markers share
+            it: pending and terminal differ in the word and never in the
+            colour, which is the rule `OutcomeLead` states for its own four. */}
+        <span
+          aria-hidden="true"
+          style={{
+            flex: "none",
+            display: "inline-block",
+            width: "7px",
+            height: "7px",
+            borderRadius: "50%",
+            border: "1px solid var(--c-edge)",
+          }}
         />
-        {strip}
+        <span style={{ font: `600 11px/1 ${FONT_SANS}`, color: "var(--c-muted)" }}>
+          {pending ? "Not graded yet" : "Not graded"}
+        </span>
+        {row.instrument ? (
+          <span
+            style={{
+              marginLeft: "auto",
+              font: `400 10px/1 ${FONT_MONO}`,
+              letterSpacing: "0.07em",
+              color: "var(--c-muted)",
+            }}
+          >
+            {row.instrument}
+          </span>
+        ) : null}
       </div>
     );
-  }
+
+  /* PENDING GETS ITS OWN SENTENCE and does not reuse the mapper's. That string
+     is "Window closed without a grade.", it is shared with the desk's card, and
+     read on its own it asserts the thing that turned out to be false: that the
+     window closed and no grade came. What is true is that the window closed and
+     the grade has not come YET. The mapper is left alone because the desk reads
+     it too and this screen does not own that surface; the defect is named in
+     the PR body. */
+  const reading = pending
+    ? "The window has closed and the grader has not reached this call yet. Nothing has been estimated in the meantime."
+    : row.state === null
+      ? (row.notGradedReason ?? row.result)
+      : row.result;
+
+  const hasDetail = Boolean(row.evidenceBasis) || Boolean(href);
 
   return (
-    <>
-      <LedgerEntryRow
-        state={row.state}
-        instrument={row.instrument}
-        claim={row.claim}
-        result={row.result}
-        first={first}
-      />
-      {strip}
-    </>
+    <LedgerDisclosureRow
+      lead={lead}
+      claim={row.claim}
+      reading={reading}
+      first={first}
+      open={open}
+      onToggle={onToggle}
+      detail={
+        hasDetail ? (
+          <>
+            {row.evidenceBasis ? (
+              <EvidenceCounts rows={row.evidence} basis={row.evidenceBasis} />
+            ) : null}
+            {href ? <OpenCall href={href} /> : null}
+          </>
+        ) : undefined
+      }
+    />
+  );
+}
+
+/**
+ * The destination, inside the opened body.
+ *
+ * A REAL ANCHOR, so it is a link to a link's keyboard, its assistive technology
+ * and its long press. `LedgerEntryRow`'s `onOpen` would have made the whole row
+ * a button calling `router.push`, which throws away all three and gives one row
+ * two competing meanings for one tap.
+ *
+ * The chevron points right, which is `Chevron`'s documented sense: the reading
+ * continues elsewhere. The row's own chevron points down for the opposite
+ * reason. Two directions, one vocabulary, and a reader can tell which control
+ * leaves the screen without reading either label.
+ */
+function OpenCall({ href }: { href: string }) {
+  return (
+    <Link
+      href={href}
+      className={`${ledger.bare} ${ledger.focusable}`}
+      style={{
+        minHeight: "44px",
+        display: "flex",
+        alignItems: "center",
+        gap: "6px",
+        font: `600 12.5px/1 ${FONT_SANS}`,
+        color: "var(--c-goldink)",
+      }}
+    >
+      Open this call
+      <Chevron direction="right" stroke="var(--c-goldink)" />
+    </Link>
   );
 }
 
 /**
  * What has landed against an open claim since it was committed, as counts.
+ *
+ * IT RENDERS ON ONE KIND OF ROW ONLY, and that is the fix rather than a detail
+ * of it. See the screen header: the block drew on fifteen of fifteen rows and
+ * said something true and useful on one. It is now gated on
+ * `row.evidenceBasis`, which `radar-calls-screen-data.ts` sets only for an open
+ * claim of a type the evidence pass actually scans.
  *
  * THE SUMMARY IS THE DESK'S, THE PRESENTATION IS NOT. `summarizeClaimEvidence`
  * and `evidenceCountLine` are the same pure functions `ClaimEvidenceStrip`
@@ -469,16 +667,30 @@ function Row({ row, first }: { row: CallRow; first: boolean }) {
  * inside a clipping parent, so a link's box measured 565px wide in a 320px
  * viewport. Neither is a control a thumb can use.
  *
+ * THE BASIS IS NAMED, and it answers a defect nobody had reported.
+ * `backend/grading/claim_evidence.py` matches a ticker claim on the articles
+ * that name one company and a sector claim on every article carrying that
+ * sector's label, so a sector claim absorbs everything written about its sector
+ * while a ticker claim gets single digits. Two rows in one list could carry
+ * counts orders of magnitude apart with nothing on screen saying why. The
+ * clause says which.
+ *
  * DELIBERATELY NOT A SCORE. No percentage, no ratio, no implied verdict. The
  * price-attribution grader is the only thing that resolves a claim, and this is
  * an observation log sitting under one that has not resolved yet.
  *
- * The empty line is drawn rather than omitted. Absence is the common state,
- * roughly four stories in five are neutral and record nothing, and a row that
- * silently loses its evidence block reads as a rendering failure beside rows
- * that have one.
+ * The empty line is still drawn rather than omitted, and now it is true when it
+ * is drawn: this row is a row the pass scans, so nothing matched means nothing
+ * matched. Absence is the common state, roughly four stories in five are
+ * neutral and record nothing.
  */
-function EvidenceCounts({ rows }: { rows: RawEvidenceRow[] | null | undefined }) {
+function EvidenceCounts({
+  rows,
+  basis,
+}: {
+  rows: RawEvidenceRow[] | null | undefined;
+  basis: NonNullable<CallRow["evidenceBasis"]>;
+}) {
   const summary = summarizeClaimEvidence(rows);
   /* `evidenceCountLine` is the assertion that the counts are sayable as one
      sentence, and it gives back null on an empty summary. Both halves are
@@ -488,10 +700,15 @@ function EvidenceCounts({ rows }: { rows: RawEvidenceRow[] | null | undefined })
      duplicates rather than replaces them. */
   const line = evidenceCountLine(summary);
 
+  const where =
+    basis.kind === "sector"
+      ? `across everything written about the ${basis.symbol} sector`
+      : `on ${basis.symbol}`;
+
   if (summary.isEmpty || line === null) {
     return (
       <p style={{ margin: 0, font: `400 11px/1.45 ${FONT_SANS}`, color: "var(--c-muted)" }}>
-        {EVIDENCE_COPY.empty}
+        {`${EVIDENCE_COPY.empty} Nothing has matched ${where} ${EVIDENCE_COPY.since}.`}
       </p>
     );
   }
@@ -501,7 +718,7 @@ function EvidenceCounts({ rows }: { rows: RawEvidenceRow[] | null | undefined })
       <span style={{ color: "var(--c-greenink)" }}>{summary.supporting} supporting</span>
       {", "}
       <span style={{ color: "var(--c-redink)" }}>{summary.challenging} challenging</span>{" "}
-      <span>{EVIDENCE_COPY.since}</span>
+      <span>{`${where} ${EVIDENCE_COPY.since}.`}</span>
     </p>
   );
 }
