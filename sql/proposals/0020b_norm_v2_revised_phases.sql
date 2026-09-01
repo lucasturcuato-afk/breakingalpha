@@ -720,6 +720,8 @@ DECLARE
   s_cik     bigint;
   got_t     text;
   got_c     bigint;
+  v_mentions bigint;
+  v_themes   text[];
 BEGIN
   SELECT * INTO cl FROM norm_v2.plan_cluster WHERE new_key = p_new_key FOR UPDATE;
   IF NOT FOUND THEN
@@ -777,6 +779,40 @@ BEGIN
   --   Cast-safe: company_mentions.id / sec_filings.id / insider_transactions.id
   --     are uuid and go into moved_row.row_id (text) via ::text.
   --   companies.key_themes is text[], so unnest() in the fold below is valid.
+  --
+  -- CONSTRAINT AUDIT on the TARGET table, added 2026-09-01 after a fourth
+  -- failure. The type audit above covered every DEPENDENT table and never
+  -- looked at public.companies itself, which is where the merge WRITES.
+  -- Enumerated 2026-09-01 from pg_constraint AND pg_indexes: two of the four
+  -- are PARTIAL UNIQUE INDEXES, which carry no pg_constraint row and are
+  -- invisible to any check that reads constraints alone.
+  --
+  --   companies_sec_cik_unique   UNIQUE (sec_cik) WHERE sec_cik IS NOT NULL
+  --     The one that fired. 793 non-null cik values, 793 distinct. The identity
+  --     inherit must not overlap a loser, hence the ordering below.
+  --
+  --   companies_name_norm_unique UNIQUE (lower(btrim(name))) WHERE sec_cik IS NULL
+  --     MEMBERSHIP DEPENDS ON sec_cik, so the inherit moves rows in and out of
+  --     it. Safe here in one direction only, and it is worth being precise
+  --     about which: a survivor that inherits a cik LEAVES the index, and
+  --     leaving an index can never raise. The survivor can never ENTER it,
+  --     because coalesce(c.sec_cik, got_c) cannot turn a non-null cik into
+  --     NULL. The DELETE only frees keys. So the merge cannot collide here.
+  --     Rollback 8b is the direction that CAN re-enter; see section 5.
+  --     Measured: 4,824 rows in the index, 0 sharing a normalized name, and 0
+  --     of the 66 inheriting survivors share a normalized name with any other
+  --     live row.
+  --
+  --   companies_name_key         UNIQUE (name)
+  --     This function never writes name, and DELETE only frees names. Safe on
+  --     the merge path. Rollback 8a re-inserts by name; see section 5.
+  --
+  --   companies_name_no_junk     CHECK (...)
+  --     Never writes name, so unreachable from here. Relevant to 8a only.
+  --
+  --   ticker is NOT unique: 17 values duplicated in live data (SSNLF x4,
+  --     BCSF x3, HOLX, BYD, ASTH, GEMI x2), so the ticker inherit cannot
+  --     collide. Measured, not assumed.
   --
   -- The collision analysis below was verified against pg_index, which answers
   -- ONLY whether two rows can collide on a unique key. It cannot report a
@@ -939,22 +975,46 @@ BEGIN
   SELECT nullif(btrim(c.ticker),''), c.sec_cik INTO s_ticker, s_cik
     FROM public.companies c WHERE c.id = survivor;
 
+  -- ORDERING. Two constraints pull in opposite directions and the original
+  -- statement order satisfied only one of them.
+  --
+  --   The FOLD must read the losers. mention_count sums and key_themes unions
+  --   across survivor + losers, so the aggregates are impossible once the
+  --   losers are gone.
+  --
+  --   The IDENTITY WRITE must NOT overlap the losers. public.companies carries
+  --   a UNIQUE constraint on sec_cik (companies_sec_cik_unique). Writing the
+  --   inherited cik onto the survivor while the loser still holds it raises
+  --   23505. Measured on 'corning': survivor takes cik 24741 from
+  --   'Corning Incorporated', which still had it.
+  --
+  -- Resolved by splitting the read from the write rather than by moving one
+  -- statement: aggregate into local variables, THEN delete, THEN write. The
+  -- delete releases the cik before anything claims it, and the fold values were
+  -- captured while the losers still existed.
+  --
+  -- ticker is deliberately NOT the same problem: 17 ticker values are
+  -- duplicated in live data (SSNLF x4, BCSF x3, HOLX, BYD, ASTH, GEMI x2), so
+  -- no unique constraint exists on it and the inherit cannot collide there.
+  SELECT sum(coalesce(mention_count,0))
+    INTO v_mentions
+    FROM public.companies
+   WHERE id = survivor OR id = ANY(losers);
+
+  SELECT array_agg(DISTINCT t)
+    INTO v_themes
+    FROM public.companies c2, unnest(coalesce(c2.key_themes,'{}')) t
+   WHERE c2.id = survivor OR c2.id = ANY(losers);
+
+  DELETE FROM public.companies WHERE id = ANY(losers);
+
   UPDATE public.companies c
-     SET mention_count = sub.total_mentions,
-         key_themes    = sub.themes,
+     SET mention_count = v_mentions,
+         key_themes    = v_themes,
          ticker        = coalesce(c.ticker, got_t),
          sec_cik       = coalesce(c.sec_cik, got_c),
          last_updated  = now()
-    FROM (
-      SELECT sum(coalesce(mention_count,0)) AS total_mentions,
-             (SELECT array_agg(DISTINCT t)
-                FROM public.companies c2, unnest(coalesce(c2.key_themes,'{}')) t
-               WHERE c2.id = survivor OR c2.id = ANY(losers)) AS themes
-        FROM public.companies WHERE id = survivor OR id = ANY(losers)
-    ) sub
    WHERE c.id = survivor;
-
-  DELETE FROM public.companies WHERE id = ANY(losers);
 
   UPDATE norm_v2.plan_cluster SET merged_at = now() WHERE new_key = p_new_key;
 
@@ -1035,3 +1095,62 @@ $$;
 --      AND m.id::text = j.row_id;
 --   -- repeat for sec_filings and insider_transactions, then restore the
 --   -- company rows per 0020 phase 8a/8b.
+--
+-- ROLLBACK ORDERING: RUN 8b BEFORE 8a. Same companies_sec_cik_unique that
+-- broke the fold breaks the documented rollback order, and it breaks it at the
+-- worst possible moment, when something has already gone wrong.
+--
+-- 8a re-inserts the deleted losers, each carrying its original sec_cik. But the
+-- survivor is still holding the cik it inherited from that loser, because 8b
+-- has not run yet. The INSERT raises 23505 and the rollback stops half done.
+--
+-- Reversing them is sufficient and needs no other change: 8b restores the
+-- survivor's own snapshot values first, which sets the inherited cik back to
+-- NULL and releases it, and only then does 8a re-insert the loser that owns it.
+-- 8b only touches rows that currently exist, so running it before the losers
+-- are back is correct rather than merely tolerable.
+--
+-- 8b AND companies_name_norm_unique. Setting sec_cik back to NULL puts the
+-- survivor BACK INTO that partial index, which is the one direction the merge
+-- itself never takes. It still cannot raise, for a reason that does not depend
+-- on measurement: 8b restores every row to its snapshot value, and the snapshot
+-- is a valid table state by construction, so the END state satisfies the index.
+-- The only remaining question is an INTERMEDIATE conflict inside the single
+-- UPDATE, which needs one surviving row to hold a key another surviving row
+-- must reclaim. The merge only ever moves a cik from a loser to a survivor, and
+-- the loser is DELETED, so no surviving row is holding a key another surviving
+-- row wants back. Nothing to serialize, nothing to defer.
+-- Confirmed against live data as well: 0 of the 66 inheriting survivors share a
+-- normalized name with any other row in the table.
+--
+-- 8a AND companies_name_key, WHICH IS TIME-SENSITIVE. Re-inserting a loser
+-- reclaims its exact name. That name was freed by the merge, so it is available
+-- IF NOTHING TOOK IT. The pipeline can take it: the miss path in
+-- backend/entity_resolver.py CREATES a company, so re-ingesting a deleted name
+-- mints a fresh row holding it, with a new id. 8a's guard is
+-- NOT EXISTS (... WHERE c.id = s.id), which keys on ID and will not see a
+-- same-name row under a different id, so the INSERT raises 23505 on
+-- companies_name_key and the rollback stops half done.
+--
+-- This is not hypothetical at the margins: 1,372 rows are deleted by the merge,
+-- 556 of them carry 5 or more mentions, and the most-mentioned are names ingest
+-- sees constantly ('Bank of America Corp' 192, 'Wells Fargo & Company' 178,
+-- 'American Express' 177). Rollback is therefore only reliable while the
+-- pipeline has not run since the merge. Check before running 8a:
+--
+--   SELECT s.id, s.name
+--     FROM norm_v2.snapshot_companies s
+--     JOIN public.companies c ON lower(btrim(c.name)) = lower(btrim(s.name))
+--                            AND c.id <> s.id
+--    WHERE NOT EXISTS (SELECT 1 FROM public.companies k WHERE k.id = s.id);
+--
+--   Zero rows means every deleted name is still free and 8a is safe. Any row is
+--   a name the pipeline re-minted: delete or rename that row first, and fold its
+--   mention_count into the restored one by hand.
+--
+-- 8a AND companies_name_no_junk. Snapshot rows were valid companies rows when
+-- the snapshot was taken, so they satisfy any CHECK that was VALID then. Worth
+-- one look if the constraint was added afterwards or added NOT VALID:
+--   SELECT conname, convalidated, pg_get_constraintdef(oid)
+--     FROM pg_constraint WHERE conrelid = 'public.companies'::regclass
+--      AND contype = 'c';
