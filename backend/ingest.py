@@ -34,12 +34,20 @@ from normalize import normalize_lookup_key
 # write key: see backend/company_match.py's module docstring.
 from company_match import (
     company_key_tokens,
+    elect_canonical_id,
     guarded_fold_candidates,
     index_tokens,
     looks_like_ticker,
     normalize_company_key,
     token_fold_candidates,
 )
+# The shared resolution ladder. entity_resolver's WRITE path and this file's
+# read-only fold both resolve through it, so the two cannot disagree about what
+# a name denotes.
+try:
+    import entity_ladder  # cron context: cwd=backend/
+except ImportError:  # pragma: no cover - import-style shim
+    from backend import entity_ladder  # test/dev context: cwd=repo-root
 from supabase_client import get_service_client
 try:
     from usage_log import accumulate_gemini_usage
@@ -2390,6 +2398,7 @@ def _reset_run_entity_caches() -> None:
     # against a stale index.
     _PRIMARY_INDEXED_CACHE.clear()
     _ENTITY_SNAPSHOT = None
+    entity_ladder.reset_snapshot()
 
 
 def _resolve_company_valid(company: str) -> bool:
@@ -2469,183 +2478,78 @@ TAGGING_PRIMARY_FOLD_ENABLED = os.getenv("TAGGING_PRIMARY_FOLD_ENABLED", "false"
 # canonical companies.name, or None when it resolves to nothing.
 _PRIMARY_INDEXED_CACHE: dict[str, Optional[str]] = {}
 
-#: One-shot in-memory snapshot of the entity index, for the resolution surfaces
-#: that cannot be expressed as a PostgREST filter on `companies.name`. ~5.4k
-#: companies + ~6.0k aliases, loaded once per process. None until first use;
-#: an empty snapshot (load failed) is cached as such so we do not retry per name.
+#: Back-compat alias for the shared snapshot cache in backend/entity_ladder.py.
+#: The snapshot itself moved there so the WRITE path (entity_resolver) and this
+#: read-only fold resolve against the SAME index instead of two.
 _ENTITY_SNAPSHOT: Optional[dict] = None
 
 
 def _select_all_rows(table: str, columns: str, page_size: int = 1000) -> list[dict]:
-    """Read every row of a SMALL table. PostgREST caps a response at 1000 rows.
-
-    .range() is LIMIT/OFFSET and therefore O(offset) per page, which is why the
-    article-scale readers in this file avoid it. That does not apply here: both
-    callers are ~5-6k row reference tables, so this is 6 pages, not 170.
-    """
-    out, page = [], 0
-    while True:
-        resp = (supabase.table(table).select(columns)
-                .range(page * page_size, page * page_size + page_size - 1).execute())
-        rows = resp.data or []
-        out.extend(rows)
-        if len(rows) < page_size:
-            return out
-        page += 1
+    """Read every row of a SMALL table. Delegates to entity_ladder."""
+    return entity_ladder.select_all_rows(supabase, table, columns, page_size)
 
 
 def _load_entity_snapshot() -> dict:
-    """Build the read-only alias / ticker / normalized-name lookup tables.
+    """Build the entity index. Delegates to entity_ladder.build_snapshot.
 
-    Loads every companies and aliases row once (~11k small rows) instead of
-    issuing per-name queries, so adding three resolution surfaces costs one
-    pair of reads per process rather than 3N round trips.
-
-    Every map is name/key -> SET of canonical ids. The sets are the point: a key
-    that reaches two different companies is ambiguous and the caller refuses to
-    fold it. sql/proposals/0020 measured 677 duplicate clusters over 1,779 of
-    4,865 company rows, so normalized ambiguity is common, not hypothetical.
-
-    Fail-soft: on any error returns empty maps, which degrades resolution to
-    exactly the pre-existing eq/ilike behavior rather than breaking ingest.
+    The maps and the fail-soft contract are unchanged; the loader moved so that
+    entity_resolver's write path reads the same index this fold does. One
+    addition: `row_by_id` carries ticker / sec_cik / mention_count, which the
+    ambiguity guard needs in order to elect an anchor row instead of refusing.
     """
-    snap = {"name_by_id": {}, "by_alias_key": {}, "by_ticker": {}, "by_norm": {},
-            "by_name_tokens": {}, "by_token_prefix": {}}
-    try:
-        companies = _select_all_rows("companies", "id, name, ticker")
-        for row in companies:
-            cid, name = row.get("id"), (row.get("name") or "").strip()
-            if not cid or not name:
-                continue
-            snap["name_by_id"][cid] = name
-            snap["by_norm"].setdefault(normalize_company_key(name), set()).add(cid)
-            index_tokens(snap["by_name_tokens"], snap["by_token_prefix"],
-                         company_key_tokens(name), cid, from_name=True)
-            ticker = (row.get("ticker") or "").strip().upper()
-            if ticker:
-                snap["by_ticker"].setdefault(ticker, set()).add(cid)
-
-        aliases = _select_all_rows("aliases", "lookup_key, canonical_id")
-        for row in aliases:
-            key, cid = (row.get("lookup_key") or "").strip(), row.get("canonical_id")
-            # An alias pointing at a company row we do not have is unusable.
-            if not key or cid not in snap["name_by_id"]:
-                continue
-            snap["by_alias_key"].setdefault(key, set()).add(cid)
-            # Aliases widen the normalized surface too: "Sony Group" reaches
-            # Sony through the alias even though no companies.name matches.
-            snap["by_norm"].setdefault(normalize_company_key(key), set()).add(cid)
-            index_tokens(snap["by_name_tokens"], snap["by_token_prefix"],
-                         company_key_tokens(key), cid, from_name=False)
-
-        print(f"  primary-fold: entity snapshot loaded "
-              f"({len(snap['name_by_id'])} companies, {len(snap['by_alias_key'])} alias keys, "
-              f"{len(snap['by_ticker'])} tickers, {len(snap['by_norm'])} normalized keys)")
-    except Exception as ex:
-        print(f"  primary-fold: entity snapshot load failed, falling back to "
-              f"name-only matching ({ex})")
-    return snap
+    return entity_ladder.build_snapshot(supabase)
 
 
 def _entity_snapshot() -> dict:
-    global _ENTITY_SNAPSHOT
-    if _ENTITY_SNAPSHOT is None:
-        _ENTITY_SNAPSHOT = _load_entity_snapshot()
-    return _ENTITY_SNAPSHOT
+    return entity_ladder.snapshot(supabase)
 
 
 def _unique_company_name(snap: dict, ids) -> Optional[str]:
-    """The canonical name when `ids` names exactly one company, else None.
+    """The canonical name when `ids` names EXACTLY one company, else None.
 
-    This is the ambiguity guard. Two companies behind one key means we cannot
-    say which article this is about, and a wrong fold is worse than a miss.
+    The strict guard: no election, no tiebreak. Kept because two callers still
+    want strictly-unique semantics, and because the tests pin the refusal
+    behavior on it directly.
+
+    The resolution ladder no longer uses this. It uses
+    `company_match.elect_canonical_id`, which is the same rule for the
+    zero-candidate and one-candidate cases and differs only in that a bucket
+    with a single non-conflicting identifier anchor is ELECTED rather than
+    refused. See that function for why refusing self-defeated.
     """
     if not ids or len(ids) != 1:
         return None
     return snap["name_by_id"].get(next(iter(ids)))
 
 
+def _elected_company_name(snap: dict, ids) -> Optional[str]:
+    """`elect_canonical_id` mapped back to a canonical companies.name."""
+    cid = elect_canonical_id(snap["row_by_id"], ids)
+    return snap["name_by_id"].get(cid) if cid else None
+
+
 def _resolve_primary_to_canonical(name: str) -> Optional[str]:
     """SELECT-only: resolve `name` to the canonical companies.name it denotes,
     or None. Memoized per process. Fail-closed on error. Writes nothing, and in
-    particular never calls resolve_entity, so it can never mint a company.
+    particular never mints a company.
 
-    Resolution order, first unique hit wins:
-      1. exact companies.name          (live query, unchanged from before)
-      2. case-insensitive name         (live query, unchanged from before)
-      3. aliases.lookup_key            (the project's own resolver surface)
-      4. companies.ticker              (bare symbols: primary_company holds
-                                        "ARM", the join key lives in a column)
-      5. suffix/punctuation-normalized (SAP SE -> SAP, The Boeing Company ->
-                                        Boeing), over names AND alias keys
-      6. leading-token relationship     (Truist Financial -> Truist, Klaviyo ->
-                                        Klaviyo Inc-A), guarded against generic
-                                        and short stems. See
-                                        company_match.token_fold_candidates.
-
-    Steps 1-2 stay live queries rather than reading the snapshot so that a
-    company minted earlier in THIS run is still visible, which is how the
-    pre-existing behavior worked. Steps 3-5 are pure snapshot lookups.
+    THE LADDER NOW LIVES IN backend/entity_ladder.py. This function is the
+    article-tagging caller of it, and `entity_resolver.resolve_entity` is the
+    write-path caller. They were two different resolvers with six surfaces and
+    one surface respectively, which is why the write path minted a duplicate
+    for 93.7% of the names in the measured sample while this one resolved them.
 
     Returns the CANONICAL name, not the input. That is the point: folding the
-    raw string "ARM" into companies[] does nothing for a reader querying
-    "Arm Holdings", and folding the wrong casing fails PostgREST `.contains`,
-    which is case-sensitive.
+    raw string "ARM" into companies[] does nothing for a reader querying "Arm
+    Holdings", and folding the wrong casing fails PostgREST `.contains`, which
+    is case-sensitive.
     """
     if name in _PRIMARY_INDEXED_CACHE:
         return _PRIMARY_INDEXED_CACHE[name]
-
-    resolved: Optional[str] = None
-    try:
-        r = supabase.table("companies").select("name").eq("name", name).limit(1).execute()
-        if r.data:
-            resolved = r.data[0]["name"]
-        else:
-            r2 = supabase.table("companies").select("name").ilike("name", name).limit(1).execute()
-            if r2.data:
-                resolved = r2.data[0]["name"]
-
-        if resolved is None:
-            snap = _entity_snapshot()
-            resolved = _unique_company_name(
-                snap, snap["by_alias_key"].get(normalize_lookup_key(name))
-            )
-            if resolved is None and looks_like_ticker(name):
-                resolved = _unique_company_name(
-                    snap, snap["by_ticker"].get(name.strip().upper())
-                )
-            norm_ids = None
-            if resolved is None:
-                norm_ids = snap["by_norm"].get(normalize_company_key(name))
-                resolved = _unique_company_name(snap, norm_ids)
-            # Step 6 may CONFIRM a step 5 refusal but never OVERRULE it.
-            # _unique_company_name yields None for an empty candidate set and
-            # for an ambiguous one alike, so `resolved is None` cannot tell a
-            # miss from a refusal. Unguarded, the fold fired on step 5's
-            # refusals and then picked, by a weaker relationship, a company step
-            # 5 had already declined to choose between. Measured false folds
-            # that caused: 'Southern Co.' -> 'Southern Tooling, Inc.',
-            # 'DOMINOS PIZZA INC' -> "Domino's Pizza China", "Domino's Pizza
-            # Group" -> "Domino's Pizza China", 'Aecon' -> 'Aecon Utilities'.
-            # In each one Direction A finds no stem, so Direction B reaches for
-            # a longer indexed name that step 5 had already found several
-            # candidates for. For 'Southern Co.' and 'Aecon' the key is a single
-            # token and leading_stems() yields nothing at all (n=1 makes
-            # range(0, 0, -1) empty), so Direction A cannot even run; the two
-            # Domino's strings key to ('dominos', 'pizza') and Direction A runs
-            # but finds no indexed company named just 'Dominos'.
-            # guarded_fold_candidates holds the rule, shared with the two tools
-            # that must agree with this function. See its docstring.
-            if resolved is None:
-                resolved = _unique_company_name(snap, guarded_fold_candidates(
-                    norm_ids, token_fold_candidates(
-                        snap["by_name_tokens"], snap["by_token_prefix"], name)))
-    except Exception as ex:
-        print(f"  primary-fold: resolution error [{name!r}]: {ex}")
-        resolved = None
-
+    resolved = entity_ladder.resolve_to_canonical_name(name, supabase)
     _PRIMARY_INDEXED_CACHE[name] = resolved
     return resolved
+
 
 
 def _fold_primary_into_companies(clean_companies, analysis):

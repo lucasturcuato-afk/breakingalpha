@@ -69,6 +69,7 @@ from company_match import (  # noqa: E402
     index_tokens,
     looks_like_ticker,
     normalize_company_key,
+    resolve_against_index,
     token_fold_candidates,
 )
 from normalize import normalize_lookup_key  # noqa: E402
@@ -99,10 +100,11 @@ def _page_all(table, columns, order_col="id", **eq):
 # Entity index, mirroring ingest._load_entity_snapshot
 # ---------------------------------------------------------------------------
 def build_index():
-    companies = _page_all("companies", "id, name, ticker")
+    companies = _page_all("companies", "id, name, ticker, sec_cik, mention_count")
     aliases = _page_all("aliases", "lookup_key, canonical_id", order_col="lookup_key")
 
     name_by_id, by_alias, by_ticker, by_norm = {}, defaultdict(set), defaultdict(set), defaultdict(set)
+    row_by_id = {}
     exact_names, lower_names = set(), {}
     by_name_tokens, by_token_prefix = {}, {}
 
@@ -111,6 +113,10 @@ def build_index():
         if not cid or not name:
             continue
         name_by_id[cid] = name
+        # The ambiguity guard elects on identifiers, so it needs them here too.
+        row_by_id[cid] = {"name": name, "ticker": r.get("ticker"),
+                          "sec_cik": r.get("sec_cik"),
+                          "mention_count": r.get("mention_count")}
         exact_names.add(name)
         lower_names.setdefault(name.lower(), name)
         by_norm[normalize_company_key(name)].add(cid)
@@ -128,7 +134,8 @@ def build_index():
         index_tokens(by_name_tokens, by_token_prefix, company_key_tokens(key), cid, from_name=False)
 
     return {
-        "name_by_id": name_by_id, "by_alias": by_alias, "by_ticker": by_ticker,
+        "name_by_id": name_by_id, "row_by_id": row_by_id,
+        "by_alias": by_alias, "by_ticker": by_ticker,
         "by_norm": by_norm, "exact_names": exact_names, "lower_names": lower_names,
         "by_name_tokens": by_name_tokens, "by_token_prefix": by_token_prefix,
     }
@@ -168,19 +175,11 @@ def resolve_after(idx, name):
     canonical = idx["lower_names"].get(name.lower())
     if canonical:
         return canonical
-    canonical = _unique(idx, idx["by_alias"].get(normalize_lookup_key(name)))
-    if canonical:
-        return canonical
-    if looks_like_ticker(name):
-        canonical = _unique(idx, idx["by_ticker"].get(name.strip().upper()))
-        if canonical:
-            return canonical
-    norm_ids = idx["by_norm"].get(normalize_company_key(name))
-    canonical = _unique(idx, norm_ids)
-    if canonical:
-        return canonical
-    return _unique(idx, guarded_fold_candidates(norm_ids, token_fold_candidates(
-        idx["by_name_tokens"], idx["by_token_prefix"], name)))
+    # Surfaces 3-6 are company_match.resolve_against_index, the ONE shared
+    # implementation. They used to be copied here, which is how this file
+    # drifted from ingest by 14 strings over 105 rows.
+    cid = resolve_against_index(idx, name)
+    return idx["name_by_id"].get(cid) if cid else None
 
 
 def oracle_candidates(idx, name):

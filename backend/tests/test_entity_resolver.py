@@ -21,11 +21,19 @@ from unittest.mock import MagicMock
 # itself is exercised by backend/finnhub_helper.py at integration time.
 os.environ["DISABLE_TICKER_POPULATION"] = "1"
 
+from backend import entity_resolver as _entity_resolver
 from backend.entity_resolver import (
     register_entity,
     resolve_entity,
     increment_mention_counts,
 )
+
+#: backend/ is on sys.path under pytest (see conftest), so entity_resolver's
+#: dual-path import binds the BARE `entity_ladder` module. Importing
+#: `backend.entity_ladder` here would create a SECOND module object with its
+#: own snapshot cache, and resetting that one would leave the resolver's cache
+#: stale across tests. Bind to whatever the resolver actually resolved.
+entity_ladder = _entity_resolver.entity_ladder
 
 
 class _FakeQuery:
@@ -66,6 +74,25 @@ class _FakeQuery:
         self.filters.append((column, tuple(values)))
         return self
 
+    # The resolution ladder reads through these. They existed on the real
+    # client all along; the fake did not have them, so before they were added
+    # every ladder call raised AttributeError, got swallowed by the
+    # fail-closed handler, and the resolver minted. The tests passed for the
+    # wrong reason. Anything asserting that the ladder RESOLVED needs these.
+    def ilike(self, column, value):
+        self.filters.append((column, value))
+        return self
+
+    def limit(self, n):
+        return self
+
+    def order(self, *a, **k):
+        return self
+
+    def range(self, lo, hi):
+        self.filters.append(("range", (lo, hi)))
+        return self
+
     def execute(self):
         # Record the call BEFORE resolving the response so tests can
         # observe attempts even when the mock raises (e.g., simulated
@@ -79,11 +106,28 @@ class _FakeQuery:
             }
         )
         data = self.parent._next_response(
-            table=self.table_name, op=self.op, filters=tuple(self.filters)
+            table=self.table_name, op=self.op, filters=tuple(self.filters),
+            columns=self.payload if self.op == "select" else None,
         )
         resp = MagicMock()
         resp.data = data
         return resp
+
+
+#: The exact column shapes the RESOLUTION LADDER reads, and nothing else does.
+#:
+#: The response queue is keyed on (table, op), which was unambiguous while
+#: resolve_entity issued one SELECT per table. The ladder adds three more
+#: reads, and they were silently draining responses queued for the resolver:
+#: the race test queued a companies row for _touch_existing and the ladder's
+#: name lookup ate it, resolved to it, and never minted. So ladder-shaped
+#: SELECTs default to EMPTY and are only answered when a test opts in with
+#: queue_ladder().
+_LADDER_SELECTS = {
+    ("companies", "id"),
+    ("companies", "id, name, ticker, sec_cik, mention_count"),
+    ("aliases", "lookup_key, canonical_id"),
+}
 
 
 class FakeSupabase:
@@ -103,10 +147,14 @@ class FakeSupabase:
         key = (table, op)
         self._responses.setdefault(key, []).append(data)
 
+    def queue_ladder(self, table, columns, data):
+        """Answer one ladder-shaped SELECT. See _LADDER_SELECTS."""
+        self._responses.setdefault((table, "select", columns), []).append(data)
+
     def raise_unique_on_companies_insert(self):
         self._raise_unique_on_companies_insert = True
 
-    def _next_response(self, *, table, op, filters):
+    def _next_response(self, *, table, op, filters, columns=None):
         if (
             table == "companies"
             and op == "insert"
@@ -114,6 +162,9 @@ class FakeSupabase:
         ):
             self._raise_unique_on_companies_insert = False
             raise Exception("duplicate key value violates unique constraint")
+        if op == "select" and (table, columns) in _LADDER_SELECTS:
+            keyed = self._responses.get((table, op, columns), [])
+            return keyed.pop(0) if keyed else []
         queue = self._responses.get((table, op), [])
         if queue:
             return queue.pop(0)
@@ -132,7 +183,19 @@ class FakeSupabase:
         ]
 
 
-class RegisterEntityTests(unittest.TestCase):
+class _LadderIsolatedTestCase(unittest.TestCase):
+    """The entity-ladder snapshot is a process-global cache. Every test builds
+    its own fake client, so the snapshot has to be dropped between them or the
+    second test resolves against the first one's table."""
+
+    def setUp(self):
+        entity_ladder.reset_snapshot()
+
+    def tearDown(self):
+        entity_ladder.reset_snapshot()
+
+
+class RegisterEntityTests(_LadderIsolatedTestCase):
     # Step 5 (miss) ------------------------------------------------------
     def test_zero_rows_creates_canonical_and_alias(self):
         sb = FakeSupabase()
@@ -296,8 +359,12 @@ class RegisterEntityTests(unittest.TestCase):
         # a companies UPDATE (not another INSERT).
         self.assertEqual(len(sb.calls_to("companies", "insert")), 1)
         self.assertEqual(len(sb.calls_to("companies", "update")), 1)
-        # Two alias-select calls (one per attempt).
-        self.assertEqual(len(sb.calls_to("aliases", "select")), 2)
+        # Two STEP-2 alias-select calls, one per attempt. Filtered on the
+        # column shape: the resolution ladder also reads the aliases table once
+        # to build its snapshot, and that read is not a resolution attempt.
+        step_two = [c for c in sb.calls_to("aliases", "select")
+                    if c["payload"] == "id, canonical_id, mention_count"]
+        self.assertEqual(len(step_two), 2)
         # No alias INSERT on the recovery path; the winner already
         # wrote the alias row.
         self.assertEqual(len(sb.calls_to("aliases", "insert")), 0)
@@ -367,7 +434,7 @@ class RegisterEntityTests(unittest.TestCase):
         self.assertEqual(companies_inserts[0]["payload"]["name"], raw)
 
 
-class DecoupledCountingTests(unittest.TestCase):
+class DecoupledCountingTests(_LadderIsolatedTestCase):
     """resolve_entity exposes (canonical_id, alias_id) and does not count;
     increment_mention_counts applies the per-mention tally in bulk."""
 
@@ -414,6 +481,187 @@ class DecoupledCountingTests(unittest.TestCase):
         increment_mention_counts(sb, "aliases", {"a1": 0})  # zero delta skipped
         self.assertEqual(len(sb.calls_to("companies", "update")), 0)
         self.assertEqual(len(sb.calls_to("aliases", "update")), 0)
+
+
+# ---------------------------------------------------------------------------
+# The resolution ladder: resolve_entity must exhaust every surface before it
+# creates a company.
+# ---------------------------------------------------------------------------
+#: The three real prod rows for ONEOK, read 2026-08-31. One company, three rows,
+#: and only the first carries identifiers. This shape is why the ladder exists.
+ONEOK_ROWS = [
+    {"id": "oke-anchor", "name": "Oneok", "ticker": "OKE",
+     "sec_cik": 1039684, "mention_count": 84},
+    {"id": "oke-dupe-1", "name": "ONEOK, Inc.", "ticker": None,
+     "sec_cik": None, "mention_count": 70},
+    {"id": "oke-dupe-2", "name": "ONEOK Inc", "ticker": None,
+     "sec_cik": None, "mention_count": 4},
+]
+
+#: The `hp` bucket, also verbatim from prod. TWO carriers that DISAGREE: the row
+#: named 'HP Inc.' carries Helmerich and Payne's ticker AND cik. Nothing here can
+#: say which company an article meant, so the guard must refuse.
+HP_ROWS = [
+    {"id": "hp-q", "name": "HP Inc", "ticker": "HPQ",
+     "sec_cik": 47217, "mention_count": 126},
+    {"id": "hp-hnp", "name": "HP Inc.", "ticker": "HP",
+     "sec_cik": 46765, "mention_count": 102},
+    {"id": "hp-bare", "name": "HP, Inc.", "ticker": None,
+     "sec_cik": None, "mention_count": 2},
+]
+
+#: The `eqt` bucket. ONE carrier, so carrier counting alone would elect. But
+#: 'EQT Holdings' is EQT Holdings Limited, the Australian company formerly named
+#: Equity Trustees, and NOT EQT Corporation the US gas producer. The legal-form
+#: condition is the one that catches this.
+EQT_ROWS = [
+    {"id": "eqt-corp", "name": "EQT", "ticker": "EQT",
+     "sec_cik": 33213, "mention_count": 342},
+    {"id": "eqt-holdings", "name": "EQT Holdings", "ticker": None,
+     "sec_cik": None, "mention_count": 5},
+    {"id": "eqt-holdings-ltd", "name": "EQT Holdings Ltd.", "ticker": None,
+     "sec_cik": None, "mention_count": 1},
+]
+
+
+class ResolutionLadderTests(_LadderIsolatedTestCase):
+    """resolve_entity had ONE lookup surface and minted on the first miss.
+
+    Measured against prod on 2026-08-31 over 300 names from
+    wikidata_entity_cache: 281 of 300 (93.7%) missed that single surface. The
+    table shows the result: 828 normalized-key buckets hold more than one
+    companies row, 2,239 of 5,610 rows (39.9%) sit in one, and 11,884 mentions
+    are stranded on ticker-less duplicates.
+    """
+
+    @staticmethod
+    def _sb(company_rows, alias_rows=(), alias_hit=()):
+        sb = FakeSupabase()
+        sb.queue("aliases", "select", list(alias_hit))   # step 2: the one old surface
+        sb.queue_ladder("companies", "id, name, ticker, sec_cik, mention_count",
+                        list(company_rows))
+        sb.queue_ladder("aliases", "lookup_key, canonical_id", list(alias_rows))
+        return sb
+
+    # -- THE NEGATIVE CONTROL -------------------------------------------
+    def test_a_novel_spelling_of_an_indexed_company_does_not_mint(self):
+        """THIS IS THE FIX, and it fails on main.
+
+        'ONEOK Incorporated' is not an alias key and is not any row's name, so
+        the old resolver went straight to _try_insert_canonical and created a
+        FOURTH ONEOK row. The normalized surface reaches all three existing
+        rows; only one carries identifiers; so the ladder elects the anchor.
+        """
+        sb = self._sb(ONEOK_ROWS)
+        result = resolve_entity("ONEOK Incorporated", sb)
+
+        self.assertEqual(result["canonical_id"], "oke-anchor")
+        self.assertEqual(len(sb.calls_to("companies", "insert")), 0)
+
+    def test_the_ladder_teaches_the_alias_table_the_new_surface_form(self):
+        """A ladder hit writes the alias, so the NEXT run resolves the same
+        string at step 2 for the cost of one equality lookup rather than
+        rebuilding the snapshot reasoning."""
+        sb = self._sb(ONEOK_ROWS)
+        resolve_entity("ONEOK Corp", sb)
+
+        inserts = sb.calls_to("aliases", "insert")
+        self.assertEqual(len(inserts), 1)
+        self.assertEqual(inserts[0]["payload"]["surface_form"], "ONEOK Corp")
+        # The stored key is still v1. The v2 key is a READ key and is never
+        # written; see backend/company_match.py's module docstring.
+        self.assertEqual(inserts[0]["payload"]["lookup_key"], "oneok corp")
+        self.assertEqual(inserts[0]["payload"]["canonical_id"], "oke-anchor")
+
+    def test_a_ladder_hit_is_logged_as_unambiguous(self):
+        sb = self._sb(ONEOK_ROWS)
+        resolve_entity("ONEOK Incorporated", sb)
+
+        logs = sb.calls_to("resolution_log", "insert")
+        self.assertEqual(len(logs), 1)
+        self.assertEqual(logs[0]["payload"]["resolved_canonical_id"], "oke-anchor")
+        self.assertFalse(logs[0]["payload"]["was_ambiguous"])
+
+    def test_the_old_single_surface_still_wins_when_it_hits(self):
+        """Step 2 is unchanged and still short-circuits, so the ladder costs
+        nothing on the overwhelmingly common path."""
+        sb = self._sb(ONEOK_ROWS,
+                      alias_hit=[{"id": "a1", "canonical_id": "oke-anchor",
+                                  "mention_count": 78}])
+        sb.queue("companies", "select",
+                 [{"id": "oke-anchor", "key_themes": []}])
+        result = resolve_entity("Oneok", sb)
+
+        self.assertEqual(result["alias_id"], "a1")
+        # No alias INSERT: the alias already existed.
+        self.assertEqual(len(sb.calls_to("aliases", "insert")), 0)
+
+    # -- The guard still refuses where it must ---------------------------
+    def test_two_carriers_that_disagree_still_refuse_and_the_name_mints(self):
+        """The `hp` bucket. Electing here would put Helmerich and Payne's CIK
+        behind a string that meant HP Inc, or the reverse. Minting a duplicate
+        is the lesser harm: filled-and-wrong is worse than empty."""
+        sb = self._sb(HP_ROWS)
+        sb.queue("companies", "insert", [{"id": "hp-new"}])
+        result = resolve_entity("HP Incorporated", sb)
+
+        self.assertEqual(result["canonical_id"], "hp-new")
+        self.assertEqual(len(sb.calls_to("companies", "insert")), 1)
+
+    def test_a_distinguishing_suffix_refuses_even_with_one_carrier(self):
+        """The `eqt` bucket. Carrier counting alone would elect EQT Corporation
+        for an EQT Holdings string, which is a different company. 'Holdings' is
+        not a legal form the way 'Inc' is."""
+        sb = self._sb(EQT_ROWS)
+        sb.queue("companies", "insert", [{"id": "eqt-new"}])
+        result = resolve_entity("EQT Holdings Limited", sb)
+
+        self.assertEqual(result["canonical_id"], "eqt-new")
+        self.assertEqual(len(sb.calls_to("companies", "insert")), 1)
+
+    def test_a_bucket_with_no_identifier_anchor_refuses(self):
+        """Emerson Electric has three prod rows and not one ticker or CIK among
+        them. There is nothing to elect, so it still mints."""
+        rows = [
+            {"id": "em1", "name": "Emerson Electric", "ticker": None,
+             "sec_cik": None, "mention_count": 1},
+            {"id": "em2", "name": "Emerson Electric Co.", "ticker": None,
+             "sec_cik": None, "mention_count": 1},
+        ]
+        sb = self._sb(rows)
+        sb.queue("companies", "insert", [{"id": "em-new"}])
+        result = resolve_entity("Emerson Electric Company", sb)
+
+        self.assertEqual(result["canonical_id"], "em-new")
+        self.assertEqual(len(sb.calls_to("companies", "insert")), 1)
+
+    # -- A real mint still behaves exactly as before ----------------------
+    def test_a_genuinely_new_company_still_mints(self):
+        sb = self._sb(ONEOK_ROWS)
+        sb.queue("companies", "insert", [{"id": "brand-new"}])
+        result = resolve_entity("Some Company Nobody Indexed", sb)
+
+        self.assertEqual(result["canonical_id"], "brand-new")
+        self.assertEqual(len(sb.calls_to("companies", "insert")), 1)
+
+    def test_a_mint_becomes_visible_to_the_rest_of_the_run(self):
+        """register_minted puts the new row on the EXACT surfaces, so a second
+        occurrence of the same string in the same run resolves to it. Only the
+        exact surfaces: see register_minted for why by_norm is left alone."""
+        sb = self._sb(ONEOK_ROWS)
+        sb.queue("companies", "insert", [{"id": "brand-new"}])
+        resolve_entity("Some Company Nobody Indexed", sb)
+
+        snap = entity_ladder._SNAPSHOT
+        self.assertEqual(snap["name_by_id"]["brand-new"],
+                         "Some Company Nobody Indexed")
+        self.assertIn("brand-new",
+                      snap["by_alias"]["some company nobody indexed"])
+        # by_norm deliberately untouched: adding a mint there can turn a
+        # one-member bucket into an ambiguous one mid-run, which would make the
+        # run's output depend on article order.
+        self.assertNotIn("brand-new",
+                         snap["by_norm"].get("some company nobody indexed", set()))
 
 
 if __name__ == "__main__":

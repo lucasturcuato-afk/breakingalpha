@@ -55,6 +55,14 @@ try:
 except ImportError:
     from backend.supabase_client import execute_with_retry  # test/dev context: cwd=repo-root
 
+# The shared resolution ladder (surfaces 2-6). This module used to have exactly
+# ONE lookup surface and minted on the first miss; entity_ladder is the same
+# ladder ingest's read-only fold already used. See its module docstring.
+try:
+    import entity_ladder  # cron context: cwd=backend/
+except ImportError:
+    from backend import entity_ladder  # test/dev context: cwd=repo-root
+
 
 # Cap recursion in the rare hot-race case where two workers keep
 # colliding. Three attempts is extremely conservative; in practice the
@@ -165,8 +173,61 @@ def resolve_entity(
         )
         return {"canonical_id": chosen_canonical_id, "alias_id": chosen["id"]}
 
-    # Step 5: miss. Try to INSERT a new canonical companies row, then the
-    # alias row, then the resolution_log row.
+    # Step 4b: THE LADDER, before anything is created.
+    #
+    # This is the fix for the mint rate. Until this existed, a miss on the
+    # single alias surface above went STRAIGHT to _try_insert_canonical, so any
+    # spelling the alias table had not seen created a new company. Measured on
+    # 300 names from wikidata_entity_cache against prod on 2026-08-31: 281 of
+    # 300 (93.7%) missed the alias surface. Meanwhile
+    # ingest._resolve_primary_to_canonical was resolving many of those same
+    # strings correctly through five further surfaces it did not share.
+    #
+    # The visible cost of that asymmetry, counted in prod: 828 normalized-key
+    # buckets hold more than one companies row, covering 2,239 of 5,610 rows
+    # (39.9%), and 11,884 mentions sit on ticker-less duplicates of a row that
+    # already carries a ticker or a CIK. ONEOK has three rows, IDACORP three,
+    # Franklin BSP Realty Trust four.
+    #
+    # On a ladder hit we do the same work the hit-one branch does, plus the
+    # alias INSERT that teaches the table this surface form, so the NEXT run
+    # resolves it at step 2 for the cost of one equality lookup.
+    ladder_id = entity_ladder.resolve_to_canonical_id(surface_form, supabase)
+    if ladder_id:
+        alias_ins = supabase.table("aliases").insert(
+            {
+                "surface_form": surface_form,
+                "lookup_key": lookup_key,
+                "canonical_id": ladder_id,
+                "mention_count": 0,
+                "last_seen_at": now_iso,
+            }
+        ).execute()
+        new_alias_id = (alias_ins.data or [{}])[0].get("id")
+        if new_alias_id:
+            _touch_existing(
+                supabase=supabase,
+                alias_id=new_alias_id,
+                canonical_id=ladder_id,
+                themes=themes,
+                now_iso=now_iso,
+            )
+        # was_ambiguous stays False: the ladder returns a single canonical id or
+        # nothing at all. Where a surface WAS ambiguous, the guard in
+        # company_match.elect_canonical_id already refused it and the ladder
+        # moved on, so an ambiguous bucket never reaches this line.
+        _write_resolution_log(
+            supabase=supabase,
+            surface_form=surface_form,
+            lookup_key=lookup_key,
+            resolved_canonical_id=ladder_id,
+            candidate_canonical_ids=[],
+            was_ambiguous=False,
+        )
+        return {"canonical_id": ladder_id, "alias_id": new_alias_id}
+
+    # Step 5: miss on EVERY surface. Try to INSERT a new canonical companies
+    # row, then the alias row, then the resolution_log row.
     #
     # Raw SQL intent:
     #   INSERT INTO companies (name) VALUES ($1)
@@ -237,6 +298,13 @@ def resolve_entity(
         }
     ).execute()
     new_alias_id = (alias_ins.data or [{}])[0].get("id")
+
+    # Make the new row visible to the EXACT surfaces of the ladder for the rest
+    # of this run, so a second novel spelling of the same company resolves to it
+    # instead of minting again. Deliberately partial; see register_minted.
+    entity_ladder.register_minted(
+        canonical_id=new_canonical_id, name=surface_form, lookup_key=lookup_key
+    )
 
     _write_resolution_log(
         supabase=supabase,

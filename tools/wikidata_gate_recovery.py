@@ -63,6 +63,7 @@ from supabase import create_client  # noqa: E402
 import wikidata  # noqa: E402
 from company_match import (  # noqa: E402
     company_key_tokens,
+    elect_canonical_id,
     guarded_fold_candidates,
     index_tokens,
     looks_like_ticker,
@@ -99,7 +100,8 @@ def _page_all(table, columns, order_col="id"):
 # ---------------------------------------------------------------------------
 def build_index(companies, aliases):
     idx = {
-        "name_by_id": {}, "meta_by_id": {}, "by_alias": defaultdict(set),
+        "name_by_id": {}, "meta_by_id": {}, "row_by_id": {},
+        "by_alias": defaultdict(set),
         "by_ticker": defaultdict(set), "by_norm": defaultdict(set),
         "exact_names": set(), "lower_names": {},
         "by_name_tokens": {}, "by_token_prefix": {},
@@ -110,6 +112,10 @@ def build_index(companies, aliases):
             continue
         idx["name_by_id"][cid] = name
         idx["meta_by_id"][cid] = (r.get("ticker"), r.get("sec_cik"), r.get("mention_count"))
+        # The ambiguity guard elects on identifiers, so it needs them by id.
+        idx["row_by_id"][cid] = {"name": name, "ticker": r.get("ticker"),
+                                 "sec_cik": r.get("sec_cik"),
+                                 "mention_count": r.get("mention_count")}
         idx["exact_names"].add(name)
         idx["lower_names"].setdefault(name.lower(), name)
         idx["by_norm"][normalize_company_key(name)].add(cid)
@@ -130,9 +136,16 @@ def build_index(companies, aliases):
 
 
 def _unique(idx, ids):
-    if not ids or len(ids) != 1:
-        return None
-    return idx["name_by_id"].get(next(iter(ids)))
+    """The shared ambiguity guard, mapped back to a canonical name.
+
+    Named `_unique` for continuity. It is now
+    company_match.elect_canonical_id, which is identical for the empty and
+    single-candidate cases and additionally elects a bucket whose members
+    carry non-conflicting identity. Same rule as ingest and primary_fold_eval,
+    which is the point: this tool sizes the recovery, so if it resolved
+    differently from the pipeline the size would be fiction.
+    """
+    return idx["name_by_id"].get(elect_canonical_id(idx["row_by_id"], ids))
 
 
 def resolve_existing(idx, name):

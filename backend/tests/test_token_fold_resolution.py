@@ -113,6 +113,17 @@ COMPANIES = [
     # so it disambiguates rather than overrules. 83 prod rows ride on this.
     {"id": "t25", "name": "Spotify", "ticker": "SPOT"},
     {"id": "t26", "name": "Spotify Technology SA", "ticker": None},
+    # --- A bucket with NO ANCHOR (see TokenFoldStepFiveRefusalTest) ---
+    # Verbatim shape of the prod 'Aecon' case. Two rows collapse to the key
+    # "aecon" and NEITHER carries a ticker or a CIK, so the guard has nothing
+    # to elect and still refuses. A third, unrelated row extends the token,
+    # which is what direction B reaches for. This is the shape the Southern and
+    # Domino's fixtures used to have before those two acquired an anchor; 325
+    # of the 828 ambiguous prod buckets look like this, so it is the common
+    # case, not a contrived one.
+    {"id": "t27", "name": "Aecon", "ticker": None},
+    {"id": "t28", "name": "Aecon Co", "ticker": None},
+    {"id": "t29", "name": "Aecon Utilities", "ticker": None},
 ]
 
 ALIASES = [
@@ -143,12 +154,18 @@ class _FoldCase(unittest.TestCase):
         self._patch = patch.object(ingest, "supabase", self.sb)
         self._patch.start()
         ingest._PRIMARY_INDEXED_CACHE.clear()
-        ingest._ENTITY_SNAPSHOT = None
+        # The snapshot cache lives in entity_ladder now, shared with the
+        # entity_resolver write path. Reached through `ingest` so this is the
+        # SAME module object ingest resolved, not a second copy.
+        ingest.entity_ladder.reset_snapshot()
 
     def tearDown(self):
         self._patch.stop()
         ingest._PRIMARY_INDEXED_CACHE.clear()
-        ingest._ENTITY_SNAPSHOT = None
+        # The snapshot cache lives in entity_ladder now, shared with the
+        # entity_resolver write path. Reached through `ingest` so this is the
+        # SAME module object ingest resolved, not a second copy.
+        ingest.entity_ladder.reset_snapshot()
 
     def resolve(self, name):
         return ingest._resolve_primary_to_canonical(name)
@@ -298,19 +315,48 @@ class TokenFoldStepFiveRefusalTest(_FoldCase):
         'Aecon'                 -> 'Aecon Utilities'
     """
 
-    def test_ambiguous_normalized_key_refuses_instead_of_folding(self):
+    def test_an_ambiguous_key_with_one_anchor_elects_it_and_not_the_fold(self):
         """Single-token key. 'Southern Co.' keys to ('southern',), which two
-        indexed rows share. Surface 5 refuses. Surface 6 must not then hand
-        back the unrelated 'Southern Tooling Inc'."""
-        self.assertIsNone(self.resolve("Southern Co."))
+        indexed rows share: 'Southern Co' [SO] and the bare 'Southern Company'.
 
-    def test_ambiguity_guard_is_not_only_about_single_token_keys(self):
+        THIS ASSERTION CHANGED, and the change is the point of the ladder. It
+        used to be assertIsNone. Refusing was safe but it was also the reason
+        the name minted a THIRD Southern row, and the same refusal is what
+        splits ONEOK into three and IDACORP into three in prod. One row in the
+        bucket carries identifiers and the other differs from it by a legal
+        form alone, so there is a defensible answer and the guard now gives it.
+
+        What has NOT changed is the thing the guard exists for: the unrelated
+        'Southern Tooling Inc' must still never come back.
+        """
+        self.assertEqual(self.resolve("Southern Co."), "Southern Co")
+        self.assertNotEqual(self.resolve("Southern Co."), "Southern Tooling Inc")
+
+    def test_the_election_is_not_only_about_single_token_keys(self):
         """Two-token key. 'DOMINOS PIZZA INC' keys to ('dominos', 'pizza'),
         shared by two rows, and direction B would reach the three-token
         "Domino's Pizza China". The apostrophe keeps the exact and
         case-insensitive name surfaces from short-circuiting the case, exactly
-        as the prod strings did."""
-        self.assertIsNone(self.resolve("DOMINOS PIZZA INC"))
+        as the prod strings did.
+
+        Also changed from assertIsNone. The bucket holds "Domino's Pizza Inc"
+        [DPZ] and a bare "Domino's Pizza Corp", one anchor and one legal-form
+        variant, so it elects. "Domino's Pizza China" is still refused, which
+        is the assertion that was ever load-bearing.
+        """
+        self.assertEqual(self.resolve("DOMINOS PIZZA INC"), "Domino's Pizza Inc")
+        self.assertNotEqual(self.resolve("DOMINOS PIZZA INC"), "Domino's Pizza China")
+
+    def test_a_bucket_with_no_anchor_still_refuses_and_the_fold_may_not_overrule(self):
+        """The refusal path, on a bucket the election cannot rescue.
+
+        'Aecon' and 'Aecon Co' both key to ('aecon',) and NEITHER carries a
+        ticker or a CIK. There is no identity to elect on, so surface 5 refuses
+        exactly as it always did, and surface 6 must not then hand back the
+        unrelated 'Aecon Utilities'. 325 of the 828 ambiguous prod buckets have
+        no anchor, so this is where most of the old behavior still lives.
+        """
+        self.assertIsNone(self.resolve("Aecon Group"))
 
     def test_a_clean_miss_on_surface_five_still_reaches_the_fold(self):
         """The guard must cost nothing when surface 5 genuinely found nothing.
@@ -360,7 +406,7 @@ class TokenFoldStepFiveRefusalTest(_FoldCase):
         self.assertNotIn("Spotify Technology", names)
         self.assertNotIn("spotify technology", {n.lower() for n in names})
         # Surface 3: the alias key is "spotify technology sa", so this misses.
-        self.assertIsNone(snap["by_alias_key"].get(_lk("Spotify Technology")))
+        self.assertIsNone(snap["by_alias"].get(_lk("Spotify Technology")))
         # Surface 5: two ids, so it refuses.
         norm_ids = snap["by_norm"].get(_nk("Spotify Technology"))
         self.assertEqual(len(norm_ids), 2)
@@ -413,7 +459,8 @@ class ResolverParityTest(_FoldCase):
         import primary_fold_eval
 
         idx = {
-            "name_by_id": {}, "by_alias": {}, "by_ticker": {}, "by_norm": {},
+            "name_by_id": {}, "row_by_id": {},
+            "by_alias": {}, "by_ticker": {}, "by_norm": {},
             "exact_names": set(), "lower_names": {},
             "by_name_tokens": {}, "by_token_prefix": {},
         }
@@ -423,6 +470,11 @@ class ResolverParityTest(_FoldCase):
         for r in COMPANIES + MORE_COMPANIES:
             cid, name = r["id"], r["name"]
             idx["name_by_id"][cid] = name
+            # The ambiguity guard elects on identifiers, so it reads them by id.
+            idx["row_by_id"][cid] = {
+                "name": name, "ticker": r.get("ticker"),
+                "sec_cik": r.get("sec_cik"), "mention_count": r.get("mention_count"),
+            }
             idx["exact_names"].add(name)
             idx["lower_names"].setdefault(name.lower(), name)
             idx["by_norm"][normalize_company_key(name)].add(cid)
@@ -443,6 +495,7 @@ class ResolverParityTest(_FoldCase):
     #: the confirmatory case that separates the narrow guard from a blunt one.
     NAMES = (
         "Southern Co.", "DOMINOS PIZZA INC", "Domino's Pizza Group", "Aecon",
+        "Aecon Group",
         "Truist Financial", "Klaviyo", "Kratos Defense & Security Solutions",
         "Eos Energy", "Teva Pharmaceuticals", "Crown Castle", "GE Vernova",
         "Spotify Technology", "Spotify", "Vertex", "American Express",
@@ -467,12 +520,15 @@ class ResolverParityTest(_FoldCase):
         _, idx = self._tool_index()
         import wikidata_gate_recovery as wgr
 
+        # 'Aecon Group' rather than 'Southern Co.': the Southern and Domino's
+        # buckets each acquired an identifier anchor, so surface 5 now ELECTS
+        # for them and they never reach the fold at all. The Aecon bucket has no
+        # anchor, so it still refuses, and the fold still has to be stopped from
+        # overruling that refusal.
         self.assertEqual(
-            wgr.resolve_widened(idx, "Southern Co.", guard_step_five_refusals=False),
-            "Southern Tooling Inc")
-        self.assertEqual(
-            wgr.resolve_widened(idx, "DOMINOS PIZZA INC", guard_step_five_refusals=False),
-            "Domino's Pizza China")
+            wgr.resolve_widened(idx, "Aecon Group", guard_step_five_refusals=False),
+            "Aecon Utilities")
+        self.assertIsNone(wgr.resolve_widened(idx, "Aecon Group"))
 
 
 if __name__ == "__main__":
