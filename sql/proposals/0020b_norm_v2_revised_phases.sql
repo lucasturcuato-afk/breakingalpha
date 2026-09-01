@@ -720,6 +720,8 @@ DECLARE
   s_cik     bigint;
   got_t     text;
   got_c     bigint;
+  v_mentions bigint;
+  v_themes   text[];
 BEGIN
   SELECT * INTO cl FROM norm_v2.plan_cluster WHERE new_key = p_new_key FOR UPDATE;
   IF NOT FOUND THEN
@@ -777,6 +779,15 @@ BEGIN
   --   Cast-safe: company_mentions.id / sec_filings.id / insider_transactions.id
   --     are uuid and go into moved_row.row_id (text) via ::text.
   --   companies.key_themes is text[], so unnest() in the fold below is valid.
+  --
+  -- CONSTRAINT AUDIT on the TARGET table, added 2026-09-01 after a fourth
+  -- failure. The type audit above covered every DEPENDENT table and never
+  -- looked at public.companies itself, which is where the merge WRITES.
+  --   companies_sec_cik_unique  UNIQUE(sec_cik)  -> the identity inherit must
+  --     not overlap a loser. 793 non-null cik values, 793 distinct.
+  --   ticker  NOT unique: 17 values duplicated in live data. No collision.
+  --   name    5,617 distinct of 5,617, so a unique constraint is possible, but
+  --     this function never writes name, so it cannot collide either way.
   --
   -- The collision analysis below was verified against pg_index, which answers
   -- ONLY whether two rows can collide on a unique key. It cannot report a
@@ -939,22 +950,46 @@ BEGIN
   SELECT nullif(btrim(c.ticker),''), c.sec_cik INTO s_ticker, s_cik
     FROM public.companies c WHERE c.id = survivor;
 
+  -- ORDERING. Two constraints pull in opposite directions and the original
+  -- statement order satisfied only one of them.
+  --
+  --   The FOLD must read the losers. mention_count sums and key_themes unions
+  --   across survivor + losers, so the aggregates are impossible once the
+  --   losers are gone.
+  --
+  --   The IDENTITY WRITE must NOT overlap the losers. public.companies carries
+  --   a UNIQUE constraint on sec_cik (companies_sec_cik_unique). Writing the
+  --   inherited cik onto the survivor while the loser still holds it raises
+  --   23505. Measured on 'corning': survivor takes cik 24741 from
+  --   'Corning Incorporated', which still had it.
+  --
+  -- Resolved by splitting the read from the write rather than by moving one
+  -- statement: aggregate into local variables, THEN delete, THEN write. The
+  -- delete releases the cik before anything claims it, and the fold values were
+  -- captured while the losers still existed.
+  --
+  -- ticker is deliberately NOT the same problem: 17 ticker values are
+  -- duplicated in live data (SSNLF x4, BCSF x3, HOLX, BYD, ASTH, GEMI x2), so
+  -- no unique constraint exists on it and the inherit cannot collide there.
+  SELECT sum(coalesce(mention_count,0))
+    INTO v_mentions
+    FROM public.companies
+   WHERE id = survivor OR id = ANY(losers);
+
+  SELECT array_agg(DISTINCT t)
+    INTO v_themes
+    FROM public.companies c2, unnest(coalesce(c2.key_themes,'{}')) t
+   WHERE c2.id = survivor OR c2.id = ANY(losers);
+
+  DELETE FROM public.companies WHERE id = ANY(losers);
+
   UPDATE public.companies c
-     SET mention_count = sub.total_mentions,
-         key_themes    = sub.themes,
+     SET mention_count = v_mentions,
+         key_themes    = v_themes,
          ticker        = coalesce(c.ticker, got_t),
          sec_cik       = coalesce(c.sec_cik, got_c),
          last_updated  = now()
-    FROM (
-      SELECT sum(coalesce(mention_count,0)) AS total_mentions,
-             (SELECT array_agg(DISTINCT t)
-                FROM public.companies c2, unnest(coalesce(c2.key_themes,'{}')) t
-               WHERE c2.id = survivor OR c2.id = ANY(losers)) AS themes
-        FROM public.companies WHERE id = survivor OR id = ANY(losers)
-    ) sub
    WHERE c.id = survivor;
-
-  DELETE FROM public.companies WHERE id = ANY(losers);
 
   UPDATE norm_v2.plan_cluster SET merged_at = now() WHERE new_key = p_new_key;
 
@@ -1035,3 +1070,17 @@ $$;
 --      AND m.id::text = j.row_id;
 --   -- repeat for sec_filings and insider_transactions, then restore the
 --   -- company rows per 0020 phase 8a/8b.
+--
+-- ROLLBACK ORDERING: RUN 8b BEFORE 8a. Same companies_sec_cik_unique that
+-- broke the fold breaks the documented rollback order, and it breaks it at the
+-- worst possible moment, when something has already gone wrong.
+--
+-- 8a re-inserts the deleted losers, each carrying its original sec_cik. But the
+-- survivor is still holding the cik it inherited from that loser, because 8b
+-- has not run yet. The INSERT raises 23505 and the rollback stops half done.
+--
+-- Reversing them is sufficient and needs no other change: 8b restores the
+-- survivor's own snapshot values first, which sets the inherited cik back to
+-- NULL and releases it, and only then does 8a re-insert the loser that owns it.
+-- 8b only touches rows that currently exist, so running it before the losers
+-- are back is correct rather than merely tolerable.
