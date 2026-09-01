@@ -1,277 +1,286 @@
-# companies.sec_cik: one column, three write policies, one silent no-op
+# Ticker hygiene: gating the author and the amplifier
 
-Scoped 2026-08-31 against prod (SELECT only). Nothing in this document has
-been applied. No migration is proposed. The code change gates future writes
-and never clears an existing `sec_cik`.
+Measured against prod on 2026-09-01. Base commit `aa555f92`.
 
-## 1. The two functions, and how they differ
+All prod access for this work was SELECT-only over PostgREST GET. No rows were
+written. The write paths were exercised against the offline `FakeSB` shim in
+`backend/tests/test_cik_stamp_name_agreement.py`, loaded with the real prod
+snapshot.
 
-`backend/edgar/cik_mapping.py:71` (before this PR), reached on every SEC
-ingest run via `backend/ingest_sec.py:72`:
+## Prod shape
 
-```python
-def _update_companies_sec_cik(sb: Client) -> int:
-    """Update companies.sec_cik by joining against cik_tickers on ticker."""
-    mappings = sb.table("cik_tickers").select("cik, ticker").execute().data or []
-    ticker_to_cik: dict[str, int] = {}
-    for row in mappings:
-        ticker_to_cik[row["ticker"]] = row["cik"]
-    ...
-        new_cik = ticker_to_cik.get(ticker)
-        if new_cik and c.get("sec_cik") != new_cik:
-            sb.table("companies").update({"sec_cik": new_cik}).eq("id", c["id"]).execute()
+| | count |
+|---|---|
+| `companies` | 5610 |
+| `companies.ticker NOT NULL` | 964 |
+| `companies.sec_cik NOT NULL` | 793 |
+| `cik_tickers` | 11072 |
+
+## The two defects, and which one is load-bearing
+
+### The author: an ungated ticker write off a fuzzy name search
+
+`finnhub_helper._pick_us_primary` took `primary[0]` from a Finnhub `/search`
+response with no check that the candidate had anything to do with the name we
+asked about. `/search` is fuzzy and always ranks something first, so rank 1 is
+a guess, not a match.
+
+Three call sites shared that behaviour:
+
+* `backend/scripts/backfill_tickers.py` writes the result onto an existing
+  row's `ticker`, leaving the row's Gemini-extracted name untouched. This is
+  the author of the named cross-wires: the row stays named `Ola` and acquires
+  ticker `KO`.
+* `backend/entity_resolver.py` mint path, gated to `mention_count >= 2` so it
+  is inert for brand-new rows but live for anything that recurs.
+* `src/lib/data-access/resolveOrCreateCompany.ts`, which does the same thing
+  in TypeScript with `results[0]` and additionally registers the user's query
+  as an **alias** of whatever it picked.
+
+Verified against live `/search` on 2026-09-01, 12 calls at 1/sec. The ungated
+code reproduces **10 of the 12** named prod cross-wires exactly:
+
+| our row | prod ticker | ungated pick | rank-1 description |
+|---|---|---|---|
+| Ola | KO | KO | Coca-Cola Co |
+| Gett | RGTI | RGTI | Rigetti Computing Inc |
+| CSL | CSL | CSL | CARLISLE COS INC |
+| Vanguard | AVD | AVD | American Vanguard Corp |
+| Fidelity | FIS | FIS | Fidelity National Information Services Inc |
+| LIC | RSG | RSG | Republic Services Inc |
+| GHO | WAB | WAB | Westinghouse Air Brake Technologies Corp |
+| Revolut | RVMD | RVMD | Revolution Medicines Inc |
+| YC | PAYX | PAYX | Paychex Inc |
+| Motive | ORLY | ORLY | O'Reilly Automotive Inc |
+| AXT Inc. | BAX | (no match today) | |
+| HP Inc. | HP | (no match today) | |
+
+With the gate, all 12 return `None`. The two blanks return no match from
+today's Finnhub index and cannot be reproduced live; they were written by the
+same code path.
+
+The resolver also **spreads** existing cross-wires through its ticker dedup
+guard. Prod holds these aliases today, both pointing at wrong companies:
+
+* `Fidelity National Information Services` -> the row named `Fidelity` (FIS)
+* `Revolut Ltd.` -> the row named `Revolut` (RVMD)
+
+### The amplifier: a ticker join with no name check and a truncated read
+
+`edgar.cik_mapping._update_companies_sec_cik` read `cik_tickers` with a bare
+`.execute()`. PostgREST caps that at 1000 rows and returns no error:
+
+```
+Content-Range: 0-999/11072
 ```
 
-Its mint-time twin, `backend/entity_resolver.py:485`:
+The visible window spans cik 2809..2149111. It is **not** the lowest-CIK
+block: there is no `ORDER BY`, so the rows come back in heap order and the
+window can shift between runs. The `companies` read returns all 964 rows and
+is not truncated, but sits 36 rows from the same cliff.
 
-```python
-def populate_sec_cik_for_mint(*, supabase, company_id: str, ticker: str) -> Optional[int]:
-    """
-    DEDUP HAZARD GUARD: before writing, SELECT for any company row that
-    already holds this sec_cik. If one exists (and it is not this row), do
-    NOT set sec_cik on the new row -- that would create a second CIK holder.
-    """
-    cik = lookup_cik_for_ticker(supabase, ticker)
-    ...
-    holder_ids = [r["id"] for r in existing if r.get("id") != company_id]
-    if holder_ids:
-        return None
-    supabase.table("companies").update({"sec_cik": cik}).eq("id", company_id).execute()
+The job then joined `companies` to `cik_tickers` on TICKER with no name check
+and no existence guard.
+
+Comparing `sec_cik` against `cik_tickers` **by ticker** is a tautology, since
+this job is what wrote it. The authority axis is the CIK: join on
+`sec_cik = cik_tickers.cik` and compare `cik_tickers.company_name` against
+`companies.name`.
+
+## Correction to an earlier claim
+
+A previous revision of this document, and of the `fix/cik-stamp-name-agreement`
+commit message, stated that *all seven named cross-wires currently hold
+`sec_cik = NULL`*. That is false. Re-measured on the CIK axis, **all twelve
+named cross-wires already hold a wrong `sec_cik`**:
+
+| our name | ticker | sec_cik | SEC registrant for that CIK |
+|---|---|---|---|
+| Ola | KO | 21344 | COCA COLA CO |
+| Gett | RGTI | 1838359 | Rigetti Computing, Inc. |
+| AXT Inc. | BAX | 10456 | BAXTER INTERNATIONAL INC |
+| CSL | CSL | 790051 | CARLISLE COMPANIES INC |
+| Vanguard | AVD | 5981 | AMERICAN VANGUARD CORP |
+| Fidelity | FIS | 1136893 | Fidelity National Information Services, Inc. |
+| LIC | RSG | 1060391 | REPUBLIC SERVICES, INC. |
+| GHO | WAB | 943452 | WESTINGHOUSE AIR BRAKE TECHNOLOGIES CORP |
+| Revolut | RVMD | 1628171 | Revolution Medicines, Inc. |
+| YC | PAYX | 723531 | PAYCHEX INC |
+| Motive | ORLY | 898173 | O REILLY AUTOMOTIVE INC |
+| HP Inc. | HP | 46765 | Helmerich & Payne, Inc. |
+
+This matters for scope. The gate governs writes and never clears an existing
+value, so **it does not repair any of these twelve**. They are already wrong
+and stay wrong until a human rules on them. What the gate does is stop the
+count from growing.
+
+These rows are not inert. The existence guard shows one of them actively
+blocking a correct stamp:
+
+```
+cik 1838359 already held by 'Gett'; not stamping 'Rigetti'
 ```
 
-They write the same column and agree on nothing else:
+The cross-wired `Gett` row squats on Rigetti Computing's CIK, so the
+legitimate `Rigetti` row cannot have it.
 
-| | sync path (`_update_companies_sec_cik`) | mint path (`populate_sec_cik_for_mint`) |
+## The matcher
+
+`backend/edgar/name_agreement.py`, mirrored by `src/lib/name-agreement.ts`.
+One policy, both runtimes. Parity is asserted over 881 fixtures drawn from the
+prod snapshot: **0 mismatches**, on both the verdict and the reason string.
+
+Accept clauses, in order: identical token sets; subset with >= 2 shared
+identity tokens; `difflib` ratio >= 0.80; acronym; bounded head prefix.
+
+FAIL OPEN: no authority name means no opinion and the write proceeds. The gate
+governs writes only and never clears an existing value, so a rejection costs a
+**missing** identifier, never a **wrong** one. Every tuning choice below
+resolves ties in that direction.
+
+### Four corrections to the first revision of the matcher
+
+**1. Acronym floor of 3 letters.** `HP Inc.` vs `Helmerich & Payne, Inc.`
+matched on the `{h, p}` initials and was accepted. That is a real prod
+cross-wire. Two-letter acronyms collide too freely to be evidence. Cost:
+genuine two-letter acronyms like `GE` vs `GENERAL ELECTRIC` now go unstamped.
+
+**2. Weak-identity tokens are kept for the acronym test.** The suffix list
+conflated legal forms (`inc`, `corp`) with generic words (`international`,
+`holdings`, `group`). Stripping `international` cost
+`INTERNATIONAL BUSINESS MACHINES` its I, so `IBM` failed to match itself. The
+list is now split: `_LEGAL` is dropped everywhere, `_WEAK` only for set
+comparison.
+
+**3. Bounded head prefix, on by default.** The first revision shipped head
+prefix matching OFF because unbounded it could not reject `Fidelity` inside
+`Fidelity National Information Services`. Bounding the authority to **at most
+one extra identity token** separates the two shapes:
+
+| | extra tokens | verdict |
 |---|---|---|
-| existence guard (refuse a 2nd CIK holder) | absent | **present** |
-| name agreement | absent | absent |
-| duplicate ticker | last write wins, unordered | **smallest CIK, logged** (`lookup_cik_for_ticker`) |
-| reads whole table | **no**, capped at 1000 | n/a, single-ticker `.eq()` |
-| scope | all 964 tickered rows, hourly | one freshly minted row |
+| `Coinbase` in `Coinbase Global, Inc.` | +1 | accept |
+| `Chime` in `Chime Financial, Inc.` | +1 | accept |
+| `Fidelity` in `Fidelity National Information Services` | +3 | reject |
+| `BNY` in `BNY MELLON STRATEGIC MUNICIPALS, INC.` | +3 | reject |
+| `xAI` in `XAI Floating Rate & Alternative Income Trust` | +4 | reject |
 
-The sync path is the weaker policy and it is the one that runs on every row,
-every hour.
+Position is load-bearing and cannot be relaxed to "appears anywhere":
+`Vanguard` is a +1 **interior** token of `AMERICAN VANGUARD CORP`.
 
-## 2. Does the job succeed in prod? PROVED: it succeeds and does nothing
+**4. The positional test runs on raw tokens.** Stripping legal forms from our
+side first let a brand that genuinely ends in one pose as a bare prefix:
+`Urban Company` reduces to `['urban']`, a +1 head prefix of
+`URBAN OUTFITTERS INC`. Urban Company is an Indian home-services firm. On raw
+tokens the second position disagrees. Nothing is lost, because a name
+differing only in legal form (`Foo Inc` vs `Foo Corporation`) is already
+accepted by the token-set equality clause.
 
-This was previously undeterminable. It is now settled from prod reads alone,
-with no pipeline run and no log access.
+Plus one tokenizer fix: **single-character tokens are dropped**. Stripping the
+dots out of `S.A.` and `N.V.` left loose letters that counted as unmatchable
+identity, which rejected `Globant` / `Globant S.A.`, `Spotify` /
+`Spotify Technology S.A.` and `Nebius` / `Nebius Group N.V.`.
 
-`ingest_sec.py:113` writes `str(stats)` into `pipeline_runs.error_notes`, and
-`stats["cik_sync"]` is the return value of `sync_cik_tickers`. The last 12
-`brief_type='edgar_ingestion'` rows are identical:
+### Measured on the 793 stamped rows, CIK axis
 
-```
-status=success  {'fetched': 10391, 'upserted': 10391, 'companies_updated': 0, 'coverage_pct': 82.3}
-```
-
-`companies_updated: 0` on every run, and it is not the bare `except` at
-`cik_mapping.py:52` swallowing an error. Replaying the function's exact reads
-against prod:
-
-```
-cik_tickers  unpaginated SELECT returned: 1000   (table truth: 11072)
-companies    unpaginated SELECT returned:  964   (table truth:   964)
-=> companies_updated the job WOULD report: 0
-```
-
-PostgREST caps a bare `.execute()` at 1000 rows and returns no error. The job
-sees **9 percent of `cik_tickers`**, and because the read comes back in CIK
-order that 9 percent is the lowest-CIK block, meaning the oldest and
-best-known registrants: AIR, ABT, AMD, AAPL, BA, BAC. Only **145 of the 944
-distinct company tickers** fall inside that window, and all 145 already agree.
-So the loop finds nothing to do, returns 0, raises nothing, and the run is
-logged `success`.
-
-`companies` squeaks under the same cap at 964 rows. It is 36 rows from
-silently truncating too.
-
-This also answers the `AWS`/`JWSMF` question. That row is not evidence of a
-failing write. `JWSMF` sits outside the visible window, so the job has never
-been able to see it.
-
-## 3. The premise correction: the cross-wires are latent, not realized
-
-PROVED: all seven named cross-wires currently hold `sec_cik = NULL`.
-
-```
-Ola       ticker KO    -> cik 21344   'COCA COLA CO'
-Vanguard  ticker AVD   -> cik 5981    'AMERICAN VANGUARD CORP'
-Gett      ticker RGTI  -> cik 1838359 'Rigetti Computing, Inc.'
-AXT Inc.  ticker BAX   -> cik 10456   'BAXTER INTERNATIONAL INC'
-Fidelity  ticker FIS   -> cik 1136893 'Fidelity National Information Services, Inc.'
-BYD       ticker BYD   -> cik 906553  'BOYD GAMING CORP'
-CSL       ticker CSL   -> cik 790051  'CARLISLE COMPANIES INC'
-```
-
-They carry a wrong **ticker**, and the CIK column shows what that ticker
-*would* resolve to. The harm is armed, not fired.
-
-That inverts the priority. **Fixing the pagination bug without adding the name
-gate immediately converts 74 ticker errors into CIK errors**, including all
-seven above. The gate is a prerequisite for the pagination fix, not an
-independent nicety, and the two must ship together.
-
-## 4. A third defect: duplicate tickers resolve to the wrong registrant
-
-Prod `cik_tickers` holds 11 tickers mapping to two CIKs each. SEC's own file
-has zero, because the table is accretive: a successor registrant is added
-beside the predecessor rather than replacing it. The sync path's dict-build is
-last-write-wins over a CIK-ordered read, so it picks the **higher** CIK every
-time, which is the newer shell. All 11 diverge from
-`lookup_cik_for_ticker`'s smallest-CIK rule:
-
-```
-XOM    job picks 2115436 'ExxonMobil Holdings Corp'   vs 34088  'EXXON MOBIL CORP'
-PARA   job picks 1826011 'Banzai International, Inc.' vs 813828 'Paramount Global'
-LCCCU  job picks 2125703 'Dance Emotion Studios Inc.' vs 2049248 'Lakeshore Acquisition III Corp.'
-```
-
-The `LCCCU` row confirms the known-wrong mapping independently. The `XOM` row
-matters most: `Exxon` is one of two prod rows the current job would
-**overwrite**, replacing a correct 34088 with 2115436.
-
-## 5. The name-agreement rule, stated before measuring
-
-Governing principle, inherited from the prior phase: **FAIL OPEN**. Prod's
-staleness is protective because `cik_tickers` is accretive, so no gated row
-lacks an authority row. The gate reads the LOCAL table only and makes no SEC
-HTTP call.
-
-Given our `companies.name` and the `cik_tickers.company_name` for the
-candidate CIK:
-
-0. **Fail open** if the ticker has no `cik_tickers` row, the authority name is
-   empty, or our name has no identity tokens. No authority means no opinion.
-1. Normalize both to token sets: lowercase, drop a trailing `/ QUALIFIER`,
-   strip punctuation, drop legal-form stopwords (`inc corp co ltd plc holdings
-   group the class common stock ...`).
-2. **ALLOW** if any of: token sets equal; one set is a subset of the other
-   **and** shares at least `MIN_SHARED_TOKENS = 2`; `difflib` ratio on the
-   joined normalized strings `>= RATIO_ACCEPT = 0.80`; one side is an acronym
-   of the other.
-3. Otherwise **FLAG**, meaning do not write, and log the row.
-
-A flag never clears an existing value, so its cost is a missing CIK, never a
-wrong one.
-
-`ALLOW_HEAD_PREFIX` is a second, **default-off** clause: accept when our
-tokens form a leading run of the registrant's token sequence. Measured below.
-
-## 6. The measurement, both directions
-
-Two populations, both from a prod snapshot of 5,599 companies and 11,072
-`cik_tickers` rows taken 2026-08-31.
-
-- **A, retroactive audit**: the 793 rows that already hold a `sec_cik`.
-- **B, forward-looking**: the 74 rows a pagination-fixed job would write.
-
-| | strict (shipped default) | `ALLOW_HEAD_PREFIX=True` |
+| | inherited strict | this PR |
 |---|---|---|
-| A: flagged of 793 stamped | 131 (16.52%) | 77 (9.71%) |
-| B: blocked of 74 writes | 68 | 43 |
-| B: allowed | 6 | 31 |
+| flagged of 793 | 131 (16.5%) | **85 (10.7%)** |
+| name IS the ticker, not adjudicable | 37 | 27 |
+| adjudicable | 94 | **58** |
+| true positives (stamp really is wrong) | 44 | **47** |
+| false rejections | 50 | **11** |
 
-Fail-open rate on A is **0 of 793**: every stamped CIK has an authority row,
-which is what the accretive table guarantees. 102 tickered companies have no
-`cik_tickers` row at all and are skipped before the gate is consulted.
+The new matcher finds **more** genuine errors while making **a fifth** as many
+false rejections. The 11 remaining false rejections are `Allbirds`, `Apollo`,
+`Chipotle`, `Disney`, `Kingsway Financial`, `Nordic`, `Raytheon`, `SpaceX`,
+`The Metals Company`, `TopBuild` and `United Bank`.
 
-### The 131 strict flags, adjudicated by hand
+### Shapes that stay rejected, and why that is acceptable
 
-Counts reconcile: 47 + 47 + 37 = 131.
+`Raytheon` / `RTX Corp`, `MicroStrategy` / `Strategy Inc`, `SpaceX` /
+`SPACE EXPLORATION TECHNOLOGIES CORP` and `Disney` / `Walt Disney Co`.
 
-| bucket | n | reading |
-|---|---|---|
-| OTHER | 47 | 41 true positives, 6 false rejections |
-| HEAD-PREFIX | 47 | 44 same company, 3 different company |
-| PLACEHOLDER | 37 | the gate has no name to judge |
+The first three are renames with little or no shared string; no string matcher
+can connect them, and recovering them needs an alias or an override, not a
+looser threshold. `Raytheon` and `SpaceX` already have entries in
+`HARD_TICKER_OVERRIDES`, which returns before the gate.
 
-**Direction 1, true positives (44 of 94 adjudicable flags).** Rows whose
-stamped CIK belongs to a differently-named registrant. Beyond the seven named
-above: `ABC` on LabCorp, `ARK Invest` on PennantPark, `Acer` on Macerich,
-`Arbor` on Clean Harbors, `Bed Bath & Beyond` on NEIGHBORHOOD INTELLIGENCE,
-`Magna` on MagnaChip, `NASA` on Renasant, `Revolut` on Revolution Medicines,
-`Science Corp.` on Gilead Sciences, `TopBuild Corp.` on QXO Insulation,
-`YC` on Paychex.
+`Disney` is the direct price of blocking `Vanguard`. Both are one-extra-token
+matches where our name is not in leading position. Relaxing the rule to accept
+`Disney` inside `Walt Disney Co` necessarily accepts `Vanguard` inside
+`AMERICAN VANGUARD CORP`. All four are already stamped, and the gate never
+clears, so today's cost is zero.
 
-**Direction 2, false rejections (50 of 94 under strict; 6 with head-prefix
-on).** Rows where the strings genuinely differ but the company is the same,
-so flagging is itself harm. Named:
+## Duplicate tickers
 
-- `Disney` inside `Walt Disney Co`
-- `SpaceX` against `SPACE EXPLORATION TECHNOLOGIES CORP`
-- `Raytheon` against `RTX Corp`
-- `The Metals Company` against `TMC the metals Co Inc.`
-- `Kingsway Financial` against `KINGSWAY Corp`
-- `United Bank` against `UNITED BANKSHARES INC/WV`
+Prod holds 11 tickers mapping to two CIKs each; SEC's own file has none,
+because `cik_tickers` is accretive and a successor registrant is added
+alongside its predecessor. The previous behaviour was last-write-wins over an
+**unordered** read, which picked the higher CIK every time.
 
-plus the 44 head-prefix rows strict mode rejects: `Amazon`/`AMAZON COM INC`,
-`Cisco`/`CISCO SYSTEMS`, `Exxon`/`EXXON MOBIL CORP`, `Ford`/`FORD MOTOR CO`,
-`Verizon`/`VERIZON COMMUNICATIONS`, `Palantir`/`Palantir Technologies`, and 38
-more of the same shape.
+The rule is now **smallest CIK**, matching what
+`entity_resolver.lookup_cik_for_ticker` already did. One rule, not two. Every
+collapse is logged.
 
-**The line the prior phase said cannot be drawn is confirmed, and it is wider
-than reported.** `Disney` inside `Walt Disney Co` and `Vanguard` inside
-`AMERICAN VANGUARD CORP` are one instance of it. `Fidelity` inside `Fidelity
-National Information Services` and `Chime` inside `Chime Financial` are a
-second, structurally identical pair on the head-prefix clause. `Advent` inside
-`ADVENT CONVERTIBLE & INCOME FUND` and `Peloton` inside `PELOTON INTERACTIVE`
-are a third. No threshold separates any of these pairs, and `SpaceX` as a
-portmanteau of `SPACE EXPLORATION` remains unreachable by any token or ratio
-rule. These are reported, not tuned away.
+| ticker | chosen (smallest) | discarded | note |
+|---|---|---|---|
+| XOM | 34088 EXXON MOBIL CORP | 2115436 ExxonMobil Holdings Corp | fixes a wrong resolution |
+| PARA | 813828 Paramount Global | 1826011 Banzai International, Inc. | fixes a wrong resolution |
+| LCCCU | 2049248 Lakeshore Acquisition III Corp. | 2125703 Dance Emotion Studios Inc. | fixes a wrong resolution |
+| EQR | 906107 EQUITY RESIDENTIAL | 931182 ERP OPERATING LTD PARTNERSHIP | operating partnership, not the REIT |
+| GORO | 1160791 GOLD RESOURCE CORP | 1515964 Goldgroup Mining Inc. | fixes a wrong resolution |
+| NVRI | 45876 ENVIRI Corp | 2104052 Enviri Corp | same company, legacy CIK |
+| XPRO | 1575828 EXPRO GROUP HOLDINGS N.V. | 2126198 Expro Ltd | same company, legacy CIK |
+| CBAT | 1117171 CBAK Energy Technology, Inc. | 2086841 CBAK Energy Technology Ltd | same company |
+| CLBK | 1723596 Columbia Financial, Inc. | 2115119 Columbia Financial, Inc./MD/ | same company |
+| UROY | 1711570 Uranium Royalty Corp. | 2143673 Uranium Royalty Corp. | identical names |
+| MF | 1851682 Missfresh Ltd | 1888525 MindForge Inc. | see below |
 
-Turning `ALLOW_HEAD_PREFIX` on trades **3 true positives (including
-`Fidelity`) for 44 fewer false rejections**: 41/44 caught at 0.76%
-row-weighted false rejection, against strict's 44/44 at 6.31%. That is a
-product call, so it ships off with the numbers attached.
+Smallest-CIK is right or harmless in 10 of 11. `MF` is the one case where the
+newer registrant may be the live one; neither company is in `companies`, so
+nothing turns on it today, and the name gate would catch a mismatch anyway.
 
-### The third bucket: 37 rows the gate cannot judge
+## Pagination: safe now, with the numbers
 
-`companies.name` is literally the ticker string: `IBM`, `COIN`, `DVN`, `HIG`,
-`MUFG`, `Meta`, `Uber`, `Teva`, `BCG`, `CWAN`. There is no independent name to
-compare, so the only evidence is the ticker, and the ticker is exactly what is
-in doubt.
+Paginating the `cik_tickers` read **without** the gate would attempt 74
+writes, every one of them a fresh stamp onto a currently-NULL `sec_cik` and
+every one of them a new cross-wire, including `AWS` -> Jaws Mustang
+Acquisition, `Neuberger` -> Getty Images, `BNY` -> BNY Mellon Strategic
+Municipals, `xAI` -> XAI Floating Rate, and both `BYD` rows -> Boyd Gaming.
 
-This is the tautology from the prior run reappearing. It is why the
-row-weighted false-rejection rate above is computed over the 94 adjudicable
-flags and the 793 stamped rows, never over a set the gate itself defined. A
-name-agreement gate cannot fix these. They need the resolver.
+Dry run of the shipping code against the prod snapshot through `FakeSB`:
 
-### Control set provenance
+```
+{'considered': 74, 'blocked_name': 54, 'blocked_holder': 4, 'updated': 16, 'failed': 0}
+```
 
-`backend/scripts/backfill_sec_ciks.py` was read and its control set was
-**not** inherited. That script targets only rows where `sec_cik IS NULL`
-(`fetch_targets`, line 185) and routes disagreements at `RATIO_THRESHOLD =
-0.60` into a B3 bucket described as "NEVER auto-included", so measuring
-against its output would score the gate on rows a weaker version of the same
-check had already filtered. Both populations here are drawn directly from
-`companies`, unfiltered: A is every row with a non-null `sec_cik`, B is every
-row the fixed job would write.
+All 16 writes land on rows whose `sec_cik` is NULL. There are no overwrites.
+Hand-adjudicated: 15 are correct (`Aspire`, `Chime`, `Euronet`, `Huron`,
+`KalVista`, `Klaviyo`, `Lake Shore Bancorp`, `Lyra`, `Mako`, `Richtech
+Robotics`, `Seaport`, `Skye`, `Sunlands`, `Twist Bioscience`, `Voyager`).
 
-## 7. What the fix does
+One is **not verifiable**: `BCG` -> Binah Capital Group, cik 1953984. Our row
+is named `BCG`, which in news copy almost certainly means Boston Consulting
+Group, a private firm. The name is identical to the ticker, so it carries no
+independent identity and no name gate can adjudicate it. It falls in the
+27-row blind spot below. A human should rule on this one.
 
-`backend/edgar/name_agreement.py` (new) is the single shared policy. Both
-write sites call it, so the column has one policy instead of three.
+The 4 rows blocked by the existence guard are all duplicate rows wanting a CIK
+another row already holds: `Bain Capital` (held by `Bain Capital Insurance`),
+`Peloton` (held by `Peloton Interactive Inc.`), `NCLH` (held by
+`Norwegian Cruise Line`), and `Rigetti` (held by the cross-wired `Gett`).
 
-`_update_companies_sec_cik`:
-1. paginates both reads (`_page_all`)
-2. resolves duplicate tickers to the smallest CIK, matching
-   `lookup_cik_for_ticker`
-3. applies the name gate, fail open
-4. refuses to mint a second holder of a CIK, matching the mint path
-5. returns per-outcome counts (`updated / blocked_name / blocked_holder /
-   failed / considered`) into `cik_sync.cik_update_detail`, so a zero can no
-   longer mean both "nothing to do" and "the read returned 9 percent"
+## Known blind spot
 
-`populate_sec_cik_for_mint` gains the name gate via an optional `our_name`
-argument. Omitting it preserves today's behavior exactly.
+27 of the 793 stamped rows have a name identical to their ticker. For those
+the name provides no corroboration and the gate is structurally blind. This is
+a property of the data, not of the matcher; closing it needs a second
+authority axis (exchange listing, or a Wikidata check), not a stricter string
+rule.
 
-## 8. Not done here, deliberately
+## Not in this change
 
-- No migration, and none is proposed. The 44 adjudicated true positives in
-  population A are wrong today and stay wrong until a human rules on them.
-  Correcting them is a data change on prod, not a code change.
-- `companies` is 36 rows from hitting the same 1000-row cap on the read at
-  `cik_mapping.py:78`. `_page_all` removes that specific fuse, but the same
-  bare `.execute()` pattern should be swept for repo-wide.
-- The 37 placeholder-named rows need the resolver, not this gate.
+No migration. The 47 true positives and the 12 named cross-wires are wrong
+today and stay wrong until a human rules on them. The gate stops the bleeding;
+it does not clean the wound.

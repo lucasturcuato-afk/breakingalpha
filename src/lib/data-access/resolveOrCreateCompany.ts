@@ -3,6 +3,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { resolveAlias, type ResolverRow } from "@/lib/data-access/aliasResolver";
+import { namesAgree } from "@/lib/name-agreement";
 import { normalizeLookupKey } from "@/lib/normalize-lookup-key";
 import { getServiceSupabase } from "@/lib/supabase-service";
 
@@ -93,6 +94,19 @@ async function finnhubResolve(
   const pick = exact ?? (looksLikeTicker ? null : results[0]);
   if (!pick) return null;
 
+  // NAME AGREEMENT on the fuzzy branch. /search always ranks SOMETHING first,
+  // so results[0] for a name query is a guess, not a match: it is what pairs
+  // "Revolut" with Revolution Medicines and "Motive" with O'Reilly
+  // Automotive. An exact symbol hit is already identity and skips the check.
+  //
+  // A veto, never a re-rank. Scanning down the list for the first agreeing
+  // candidate looks like a free rescue and is not: measured against live
+  // /search, "Fidelity" rescues from FIS to FDBC, a Pennsylvania community
+  // bank, and "Vanguard" to a Taiwanese issuer that is not a SEC registrant.
+  // Trading one wrong answer for a more plausible wrong answer is a loss.
+  // Same policy as backend/edgar/name_agreement.py.
+  if (!exact && !namesAgree(query, pick.description).agrees) return null;
+
   const symbol = (pick.displaySymbol || pick.symbol || "").trim().toUpperCase();
   const name = pick.description ? titleCase(pick.description.trim()) : "";
   if (!symbol || !name) return null;
@@ -180,9 +194,21 @@ export async function resolveOrCreateCompany(
   if (!resolved) return { status: "not_found", company: null, created: false };
   const { symbol, name } = resolved;
 
-  // (3a) Dedup guard - ticker.
+  // (3a) Dedup guard - ticker. Adopting a row purely because it carries this
+  // symbol is how an existing cross-wire SPREADS: prod holds a row named
+  // 'Fidelity' with ticker FIS, so a search for "Fidelity National
+  // Information Services" resolved FIS here, adopted that row, and wrote the
+  // full correct name into aliases as a surface form of the wrong company.
+  // Both of those aliases are in prod today. Require the stored row's name to
+  // agree with the name Finnhub returned before reusing it.
   const byTicker = await fetchCompanyByTicker(svc, symbol);
   if (byTicker) {
+    if (!namesAgree(byTicker.name, name).agrees) {
+      // Refuse rather than insert a second holder of this symbol. The cost is
+      // an EmptyState the user can retry, not a wrong company and not a
+      // permanent alias pointing at one.
+      return { status: "not_found", company: null, created: false };
+    }
     await registerAlias(svc, query, byTicker.id);
     return { status: "exists", company: byTicker, created: false };
   }

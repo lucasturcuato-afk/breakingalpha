@@ -36,6 +36,11 @@ from typing import Iterable, Optional
 
 import requests
 
+try:
+    from edgar.name_agreement import names_agree  # cron context: cwd=backend/
+except ImportError:  # test/dev context: cwd=repo-root
+    from backend.edgar.name_agreement import names_agree
+
 FINNHUB_SEARCH_URL = "https://finnhub.io/api/v1/search"
 FINNHUB_TIMEOUT_SEC = 5
 RATE_LIMIT_SLEEP_SEC = 60
@@ -306,7 +311,9 @@ def _do_finnhub_call(
     return result if isinstance(result, list) else None
 
 
-def _pick_us_primary(result: Iterable[dict]) -> Optional[str]:
+def _pick_us_primary(
+    result: Iterable[dict], our_name: Optional[str] = None
+) -> Optional[str]:
     """
     Apply the canonical W2-C type + US-primary filters to a Finnhub
     /search result list. Returns the chosen symbol or None.
@@ -316,6 +323,18 @@ def _pick_us_primary(result: Iterable[dict]) -> Optional[str]:
     foreign symbol that the chart UI may not handle gracefully is
     higher than the cost of leaving the row NULL and letting the lazy
     lookup retry next visit.
+
+    NAME AGREEMENT. When `our_name` is given, a candidate is only eligible
+    if its `description` agrees with it. /search is a FUZZY search: it
+    always ranks something first, and taking rank 1 unconditionally is what
+    wrote KO onto 'Ola', ORLY onto 'Motive', PAYX onto 'YC' and RVMD onto
+    'Revolut'. The filter runs over the whole candidate list rather than
+    rejecting after the pick, so a query whose true match sits at rank 2
+    still resolves. If nothing agrees the answer is None and the row keeps
+    a NULL ticker, which the lazy lookup retries later.
+
+    `our_name=None` preserves the old unchecked behaviour and exists only
+    for callers that have already established identity by other means.
     """
     candidates = [
         c
@@ -334,6 +353,20 @@ def _pick_us_primary(result: Iterable[dict]) -> Optional[str]:
 
     primary = [c for c in candidates if _is_us_primary(c)]
     if not primary:
+        return None
+
+    # NAME AGREEMENT: a VETO on the candidate we were going to take, never a
+    # re-rank. Scanning down the list for something that agrees looks like a
+    # free rescue and is not: for an ambiguous bare name there is usually
+    # SOME lower-ranked listing that head-prefixes it, so the scan trades one
+    # wrong answer for a different, more plausible-looking wrong answer.
+    # Measured against live /search: 'Vanguard' rank 1 is American Vanguard
+    # (today's cross-wire) and the first agreeing candidate is ESQF, a
+    # Taiwanese issuer that is not even a SEC registrant; 'Fidelity' rescues
+    # to FDBC, a Pennsylvania community bank. A veto can only turn a write
+    # into a no-write, which is the direction this gate is allowed to fail.
+    # The retry chain below still gets a second chance with a reworded query.
+    if our_name and not names_agree(our_name, primary[0].get("description"))[0]:
         return None
 
     sym = primary[0].get("symbol")
@@ -387,7 +420,7 @@ def search_finnhub_ticker(
     # Try the (canonicalized) name as-is first.
     result = _do_finnhub_call(base, key)
     if result is not None:
-        sym = _pick_us_primary(result)
+        sym = _pick_us_primary(result, our_name=base)
         if sym:
             return sym
 
@@ -408,7 +441,7 @@ def search_finnhub_ticker(
         retry = _do_finnhub_call(candidate, key)
         if retry is None:
             continue
-        sym = _pick_us_primary(retry)
+        sym = _pick_us_primary(retry, our_name=base)
         if sym:
             return sym
 

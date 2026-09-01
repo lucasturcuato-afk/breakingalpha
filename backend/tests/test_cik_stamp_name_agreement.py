@@ -25,6 +25,7 @@ from backend.edgar.cik_mapping import (
     _update_companies_sec_cik,
 )
 from backend.edgar.name_agreement import names_agree
+from backend.finnhub_helper import _pick_us_primary
 
 
 class _Resp:
@@ -213,3 +214,142 @@ class UpdateCompaniesTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class MatcherCorrectionTests(unittest.TestCase):
+    """Cases the first revision of the matcher got wrong. Each one is a real
+    prod row or a shape measured against live Finnhub /search."""
+
+    def test_two_letter_acronym_floor_blocks_hp(self):
+        # 'HP Inc.' vs 'Helmerich & Payne, Inc.' matches on the {h, p}
+        # initials and is a real prod cross-wire: companies.ticker HP,
+        # sec_cik 46765, which is Helmerich & Payne. HP Inc. is HPQ / 47217.
+        self.assertFalse(names_agree("HP Inc.", "Helmerich & Payne, Inc.")[0])
+
+    def test_three_letter_acronyms_still_match(self):
+        for ours, authority in [
+            ("AMD", "ADVANCED MICRO DEVICES INC"),
+            ("IBM", "INTERNATIONAL BUSINESS MACHINES CORP"),
+            ("UPS", "UNITED PARCEL SERVICE INC"),
+        ]:
+            self.assertTrue(names_agree(ours, authority)[0], f"{ours}/{authority}")
+
+    def test_weak_tokens_survive_into_the_acronym_test(self):
+        # 'international' is dropped for set comparison but MUST be kept for
+        # the acronym test, or INTERNATIONAL BUSINESS MACHINES loses its I
+        # and IBM stops matching itself.
+        self.assertTrue(names_agree("IBM", "International Business Machines")[0])
+
+    def test_bounded_head_prefix_accepts_a_single_extra_token(self):
+        for ours, authority in [
+            ("Coinbase", "Coinbase Global, Inc."),
+            ("Amazon", "AMAZON COM INC"),
+            ("Chime", "Chime Financial, Inc."),
+            ("Lyra", "Lyra Therapeutics, Inc."),
+            ("Huron", "Huron Consulting Group Inc."),
+        ]:
+            self.assertTrue(names_agree(ours, authority)[0], f"{ours}/{authority}")
+
+    def test_bounded_head_prefix_rejects_more_than_one_extra_token(self):
+        # The bound is the only thing separating these from the cases above.
+        for ours, authority in [
+            ("Fidelity", "Fidelity National Information Services, Inc."),
+            ("BNY", "BNY MELLON STRATEGIC MUNICIPALS, INC."),
+            ("xAI", "XAI Floating Rate & Alternative Income Trust"),
+            ("Bain", "Bain Capital Specialty Finance, Inc."),
+        ]:
+            self.assertFalse(names_agree(ours, authority)[0], f"{ours}/{authority}")
+
+    def test_head_position_is_load_bearing(self):
+        # 'Vanguard' is a one-extra-token INTERIOR match of 'AMERICAN
+        # VANGUARD CORP'. Only the leading-position requirement rejects it,
+        # which is why the rule cannot be relaxed to "appears anywhere".
+        self.assertFalse(names_agree("Vanguard", "AMERICAN VANGUARD CORP")[0])
+
+    def test_head_prefix_runs_on_raw_tokens(self):
+        # 'Urban Company' reduces to ['urban'] once 'company' is stripped as
+        # a legal form, which makes it a +1 head prefix of URBAN OUTFITTERS.
+        # Urban Company is an Indian home-services firm. On raw tokens the
+        # second position disagrees and the rule declines.
+        self.assertFalse(names_agree("Urban Company", "URBAN OUTFITTERS INC")[0])
+
+    def test_single_character_debris_is_not_identity(self):
+        # Stripping the dots out of 'S.A.' and 'N.V.' leaves loose letters
+        # that the other side cannot match. All three are real prod rows.
+        for ours, authority in [
+            ("Globant", "Globant S.A."),
+            ("Spotify", "Spotify Technology S.A."),
+            ("Nebius", "Nebius Group N.V."),
+        ]:
+            self.assertTrue(names_agree(ours, authority)[0], f"{ours}/{authority}")
+
+    def test_renames_are_rejected_and_that_is_the_cheap_direction(self):
+        # No string matcher can connect these. The gate never clears an
+        # existing sec_cik, so the cost is a missing stamp on a re-run, not a
+        # wrong one. Recovering them needs an alias, not a looser matcher.
+        for ours, authority in [
+            ("Raytheon", "RTX Corp"),
+            ("Disney", "Walt Disney Co"),
+            ("SpaceX", "SPACE EXPLORATION TECHNOLOGIES CORP"),
+        ]:
+            self.assertFalse(names_agree(ours, authority)[0], f"{ours}/{authority}")
+
+
+class FinnhubAuthorGateTests(unittest.TestCase):
+    """The gate on the write that AUTHORS a cross-wire.
+
+    finnhub_helper._pick_us_primary took the first accepted /search candidate
+    with no name check. Against live /search on 2026-09-01 that reproduced 10
+    of the 12 named prod cross-wires exactly.
+    """
+
+    @staticmethod
+    def _c(symbol, description, type_="Common Stock"):
+        return {
+            "symbol": symbol,
+            "displaySymbol": symbol,
+            "description": description,
+            "type": type_,
+        }
+
+    def test_ungated_call_still_takes_rank_one(self):
+        res = [self._c("KO", "Coca-Cola Co")]
+        self.assertEqual(_pick_us_primary(res), "KO")
+
+    def test_gate_vetoes_the_named_cross_wires(self):
+        for name, symbol, description in [
+            ("Ola", "KO", "Coca-Cola Co"),
+            ("Gett", "RGTI", "Rigetti Computing Inc"),
+            ("CSL", "CSL", "CARLISLE COS INC"),
+            ("Vanguard", "AVD", "American Vanguard Corp"),
+            ("Fidelity", "FIS", "Fidelity National Information Services Inc"),
+            ("LIC", "RSG", "Republic Services Inc"),
+            ("GHO", "WAB", "Westinghouse Air Brake Technologies Corp"),
+            ("Revolut", "RVMD", "Revolution Medicines Inc"),
+            ("YC", "PAYX", "Paychex Inc"),
+            ("Motive", "ORLY", "O'Reilly Automotive Inc"),
+        ]:
+            res = [self._c(symbol, description)]
+            self.assertEqual(_pick_us_primary(res), symbol, f"{name} ungated")
+            self.assertIsNone(
+                _pick_us_primary(res, our_name=name), f"{name} gated"
+            )
+
+    def test_gate_passes_a_genuine_match(self):
+        res = [self._c("KO", "Coca-Cola Co")]
+        self.assertEqual(_pick_us_primary(res, our_name="Coca-Cola"), "KO")
+
+    def test_gate_fails_open_without_a_description(self):
+        res = [self._c("AAPL", None)]
+        self.assertEqual(_pick_us_primary(res, our_name="Apple"), "AAPL")
+
+    def test_gate_is_a_veto_not_a_rerank(self):
+        # Rank 1 disagrees and a lower-ranked candidate agrees. A re-ranking
+        # gate would return FDBC here. Measured on live /search, that is
+        # exactly how 'Fidelity' lands on a Pennsylvania community bank:
+        # a different wrong answer, which is not an improvement.
+        res = [
+            self._c("FIS", "Fidelity National Information Services Inc"),
+            self._c("FDBC", "Fidelity D & D Bancorp Inc"),
+        ]
+        self.assertIsNone(_pick_us_primary(res, our_name="Fidelity"))
