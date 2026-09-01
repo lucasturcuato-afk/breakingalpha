@@ -216,12 +216,18 @@ class _ResolutionCase(unittest.TestCase):
         self._patch = patch.object(ingest, "supabase", self.sb)
         self._patch.start()
         ingest._PRIMARY_INDEXED_CACHE.clear()
-        ingest._ENTITY_SNAPSHOT = None
+        # The snapshot cache lives in entity_ladder now, shared with the
+        # entity_resolver write path. Reached through `ingest` so this is the
+        # SAME module object ingest resolved, not a second copy.
+        ingest.entity_ladder.reset_snapshot()
 
     def tearDown(self):
         self._patch.stop()
         ingest._PRIMARY_INDEXED_CACHE.clear()
-        ingest._ENTITY_SNAPSHOT = None
+        # The snapshot cache lives in entity_ladder now, shared with the
+        # entity_resolver write path. Reached through `ingest` so this is the
+        # SAME module object ingest resolved, not a second copy.
+        ingest.entity_ladder.reset_snapshot()
 
     def resolve(self, name):
         return ingest._resolve_primary_to_canonical(name)
@@ -313,8 +319,9 @@ class ResolutionGuardsTest(_ResolutionCase):
     def test_snapshot_load_failure_degrades_to_name_only(self):
         """Fail-soft: a broken snapshot must leave the pre-existing eq/ilike
         behavior working rather than breaking ingest."""
-        with patch.object(ingest, "_select_all_rows", side_effect=RuntimeError("boom")):
-            ingest._ENTITY_SNAPSHOT = None
+        with patch.object(ingest.entity_ladder, "select_all_rows",
+                          side_effect=RuntimeError("boom")):
+            ingest.entity_ladder.reset_snapshot()
             ingest._PRIMARY_INDEXED_CACHE.clear()
             self.assertEqual(self.resolve("Arm Holdings"), "Arm Holdings")  # live query
             self.assertIsNone(self.resolve("ARM"))                          # snapshot surface gone

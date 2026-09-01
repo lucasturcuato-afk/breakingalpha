@@ -10,10 +10,19 @@ a v2 key into the resolver, turns ~2,172 alias lookups into misses and mints
 duplicate company rows. That is the single most dangerous thing anyone could do
 in this area.
 
-This module therefore defines a SEPARATE, strictly READ-ONLY key. It is used
-only to decide whether a primary_company string names a company the index
-already contains. It never reaches resolve_entity, never becomes a stored key,
-and never causes a write.
+This module therefore defines a SEPARATE key that IS NEVER STORED. It never
+becomes an aliases.lookup_key, so the 6,237 alias rows keyed on v1 keep
+resolving exactly as they do today. That is the invariant, and it still holds.
+
+WHAT CHANGED, DELIBERATELY. The original wording here also said this module
+"never reaches resolve_entity". It does now. `resolve_entity` used to have
+exactly one lookup surface, aliases.lookup_key equality, and minted a new
+company on the first miss; measured on a 300-name sample, 93.7% minted.
+`resolve_against_index` below is the shared read ladder the resolver now
+consults BEFORE minting. The v2 key is used to FIND an existing canonical row.
+The key WRITTEN to aliases.lookup_key is still v1, from
+`normalize.normalize_lookup_key`. Read key and write key stay separate, which
+is the part that was actually load-bearing.
 
 `normalize_company_key` is a faithful Python port of
 `norm_v2.lookup_key_v2` in `sql/proposals/0020_normalize_lookup_key_v2.sql`,
@@ -391,3 +400,211 @@ def guarded_fold_candidates(norm_ids, fold_ids) -> set:
     if fold_ids and set(fold_ids) <= set(norm_ids):
         return fold_ids
     return set()
+
+
+# ---------------------------------------------------------------------------
+# The ambiguity guard, and the narrow case where it ELECTS instead of refusing
+# ---------------------------------------------------------------------------
+#: Suffix tokens from BASE_SUFFIXES that can DISTINGUISH two real companies
+#: rather than merely naming a legal form.
+#:
+#: This split exists because of a measured false fold. The `eqt` normalized
+#: bucket holds three prod rows: 'EQT' [EQT, cik 33213], which is EQT
+#: Corporation the US natural-gas producer, plus 'EQT Holdings' and 'EQT
+#: Holdings Ltd.', which are EQT Holdings Limited, the Australian company
+#: formerly named Equity Trustees. Those are two different companies. Only the
+#: first carries identifiers, so a rule that elects on carrier count alone
+#: elects EQT Corporation for an EQT Holdings string. That is the
+#: "filled-and-wrong" outcome, which is worse than resolving to nothing.
+#:
+#: "inc" / "corp" / "ltd" and friends never distinguish: 'ONEOK', 'ONEOK Inc'
+#: and 'ONEOK, Inc.' are one company written three ways. "holdings" and "group"
+#: sometimes do. So election requires that every row in the bucket agree once
+#: ONLY the pure legal-form tokens are stripped.
+#:
+#: Measured over prod on 2026-08-31 (5,610 companies rows, 828 ambiguous
+#: normalized buckets): carrier counting alone elects in 502 buckets; adding
+#: this condition elects in 446 and refuses 56, EQT among them.
+ENTITY_DISTINGUISHING_SUFFIXES = ("holdings", "group")
+
+#: BASE + EXTRA minus the distinguishing tokens. Every token left names a legal
+#: form and nothing else.
+LEGAL_FORM_SUFFIXES = tuple(
+    t for t in BASE_SUFFIXES if t not in ENTITY_DISTINGUISHING_SUFFIXES
+) + EXTRA_SUFFIXES
+
+_LEGAL_FORM_RE = re.compile(
+    r"\s+(" + "|".join(LEGAL_FORM_SUFFIXES) + r")$"
+)
+
+
+def legal_form_key(s: str) -> str:
+    """normalize_company_key, but stripping ONLY pure legal-form suffixes.
+
+    Strictly less aggressive than normalize_company_key: it leaves "holdings"
+    and "group" in place. Two names with the same normalize_company_key but
+    DIFFERENT legal_form_key differ by a word that can name a different
+    company. READ-ONLY, same contract as the rest of this module.
+    """
+    base = normalize_lookup_key(s or "")
+    punct = _PUNCT_TO_DELETE_RE.sub("", base)
+    punct = _PUNCT_TO_SPACE_RE.sub(" ", punct)
+    punct = re.sub(r"\s+", " ", punct).strip()
+
+    out = punct
+    for _ in range(_SUFFIX_PASSES):
+        prev = out
+        out = _LEGAL_FORM_RE.sub("", out)
+        if out == prev:
+            break
+    return out or punct
+
+
+def carries_identifier(row) -> bool:
+    """True when the row carries an exchange ticker or an SEC CIK.
+
+    Identifiers are the only evidence in this table that a row is the indexed,
+    resolvable instance of a company rather than a bare duplicate minted from a
+    surface form. 39.9% of companies rows sit in an ambiguous normalized
+    bucket; identifier-bearing rows are the anchors inside them.
+    """
+    if not row:
+        return False
+    return bool((row.get("ticker") or "").strip()) or row.get("sec_cik") is not None
+
+
+def elect_canonical_id(row_by_id, ids):
+    """THE ONE DEFINITION of the ambiguity guard. Returns a canonical id or None.
+
+    `row_by_id` maps canonical id -> {"name", "ticker", "sec_cik",
+    "mention_count"}. `ids` is a candidate set from any resolution surface.
+
+    Unchanged from the original guard for the two easy cases: no candidates
+    yields None, exactly one candidate yields it.
+
+    THE CHANGE. The original guard refused every set larger than one, and that
+    refusal SELF-DEFEATS on the case it most needs to handle. All ten indexed
+    ONEOK surface forms normalize to `oneok`; the bucket holds three ids, so
+    the guard refused, the token fold was then guarded off the same refusal and
+    returned nothing, and the name minted a FOURTH ONEOK row. The mechanism
+    meant to prevent the split was driving it.
+
+    Two conditions, both required, or it still refuses:
+
+      1. IDENTITY IS NOT IN CONFLICT. Either exactly one row in the bucket
+         carries identifiers, or every carrier agrees on ticker and on CIK.
+         Two carriers that DISAGREE are two companies and the guard refuses:
+         the `hp` bucket holds 'HP Inc' [HPQ, cik 47217] and 'HP Inc.'
+         [HP, cik 46765], the second carrying Helmerich and Payne's identifiers,
+         and nothing here can say which one an article meant.
+
+      2. THE NAMES DIFFER BY LEGAL FORM ALONE. See
+         ENTITY_DISTINGUISHING_SUFFIXES. This is the condition that refuses
+         EQT, where carrier counting alone would have elected.
+
+    The winner is the highest-mention_count carrier, ties broken on id so the
+    result is deterministic across processes rather than set-iteration order.
+
+    NOTE what this does NOT do. It never merges rows and never writes. It
+    chooses which existing row a name resolves TO. The duplicates stay until a
+    repointing migration a human applies.
+    """
+    ids = list(ids or [])
+    if not ids:
+        return None
+    if len(ids) == 1:
+        return ids[0]
+
+    rows = [row_by_id.get(i) for i in ids]
+    if any(r is None for r in rows):
+        # A candidate we have no row for. Fail closed rather than electing on a
+        # partial view of the bucket.
+        return None
+
+    carriers = [(i, r) for i, r in zip(ids, rows) if carries_identifier(r)]
+    if not carriers:
+        return None
+
+    tickers = {(r.get("ticker") or "").strip().upper()
+               for _, r in carriers if (r.get("ticker") or "").strip()}
+    ciks = {r["sec_cik"] for _, r in carriers if r.get("sec_cik") is not None}
+    if len(tickers) > 1 or len(ciks) > 1:
+        return None
+
+    if len({legal_form_key(r.get("name") or "") for r in rows}) != 1:
+        return None
+
+    return max(carriers, key=lambda pair: ((pair[1].get("mention_count") or 0), pair[0]))[0]
+
+
+def resolve_against_index(idx, name):
+    """The INDEX half of the resolution ladder. Returns a canonical id or None.
+
+    THE ONE IMPLEMENTATION of resolution surfaces 3-6, shared by every caller
+    that resolves a company name against the entity index:
+
+        backend/entity_ladder.resolve_to_canonical_id   the ingest WRITE path,
+                                                        via entity_resolver
+        backend/ingest._resolve_primary_to_canonical    the article tagging fold
+        tools/primary_fold_eval.resolve_after           what backfill --apply writes
+        tools/wikidata_gate_recovery.resolve_widened    how the recovery is sized
+
+    Surfaces 1-2 (exact and case-insensitive companies.name) stay with the
+    callers, because the pipeline callers run them as LIVE queries so a company
+    minted earlier in the same run is still visible.
+
+      3. aliases.lookup_key   the project's own stored resolution surface
+      4. companies.ticker     bare symbols, guarded by looks_like_ticker
+      5. normalized key       suffix and punctuation folding
+      6. leading-token fold   guarded by guarded_fold_candidates
+
+    ORDER. Surfaces 3-4 come before 5-6 because an exact stored key is a
+    stronger identity claim than a suffix-folded one. This matters: 'EQT
+    Holdings' has its own indexed row, so putting the normalized surface ahead
+    of the exact ones would fold it into EQT Corporation. Reordering here is
+    not free, and the ONEOK forms do not need it.
+
+    `idx` needs: by_alias (key -> ids), by_ticker, by_norm, by_name_tokens,
+    by_token_prefix, row_by_id. READ-ONLY: writes nothing.
+    """
+    def elect(ids):
+        return elect_canonical_id(idx["row_by_id"], ids)
+
+    cid = elect(idx["by_alias"].get(normalize_lookup_key(name)))
+    if cid:
+        return cid
+
+    if looks_like_ticker(name):
+        cid = elect(idx["by_ticker"].get(name.strip().upper()))
+        if cid:
+            return cid
+
+    norm_ids = idx["by_norm"].get(normalize_company_key(name))
+    cid = elect(norm_ids)
+    if cid:
+        return cid
+
+    # SURFACE 6 KEEPS THE STRICT GUARD. This is measured, not cautious by
+    # temperament.
+    #
+    # Election is safe on surfaces 3-5 because the query MATCHES THE BUCKET'S
+    # KEY: every row under `oneok` and the string 'ONEOK Incorporated' are the
+    # same normalized name, so the only open question is which of several rows
+    # for one company to pick, and the two conditions answer it.
+    #
+    # Surface 6 is a different claim. The query only shares a LEADING STEM with
+    # the candidates, so a consistent bucket does not mean the query belongs to
+    # it. Measured over 2,000 recent article rows, electing here produced:
+    #     'Science Applications International Corp'
+    #         -> 'Science Corp.', a row carrying GILEAD's ticker
+    #     'National Healthcare Properties, Inc.'
+    #         -> 'NATIONAL HEALTHCARE CORP' [NHC], a different company
+    # It also produced three correct folds ('Cheniere' -> Cheniere Energy,
+    # 'Hyatt' -> Hyatt Hotels, 'Patterson-UTI' -> Patterson-UTI Energy). Three
+    # right for two wrong is not a trade worth taking when the wrong ones fill a
+    # company page with another company's filings. Filled-and-wrong is worse
+    # than empty, so surface 6 still requires exactly one candidate.
+    fold_ids = guarded_fold_candidates(norm_ids, token_fold_candidates(
+        idx["by_name_tokens"], idx["by_token_prefix"], name))
+    fold_ids = list(fold_ids or [])
+    return fold_ids[0] if len(fold_ids) == 1 else None

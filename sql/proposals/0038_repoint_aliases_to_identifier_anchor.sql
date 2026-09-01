@@ -1,0 +1,83 @@
+-- 0038  Repoint aliases off duplicate company rows onto the identifier anchor.
+--
+-- STATUS: PROPOSAL. NOT APPLIED, NOT SCHEDULED. Nothing in this file has been
+-- executed against any database. It is written down so the count can be
+-- checked rather than believed.
+--
+-- WHY
+-- ---
+-- `entity_resolver.resolve_entity` had ONE lookup surface (aliases.lookup_key
+-- equality) and minted a company on the first miss, so every unseen spelling
+-- created a row. Measured on prod 2026-08-31, over 5,610 companies rows:
+--
+--     828 normalized-key buckets hold MORE THAN ONE row
+--     2,239 rows (39.9% of the table) sit inside one
+--     449 of those buckets have a single non-conflicting identifier anchor
+--     10,381 mentions sit on the NON-anchor rows of those 449 buckets
+--
+-- The ladder in backend/entity_ladder.py stops the bleeding go-forward: a novel
+-- spelling now resolves to the anchor instead of minting. It does NOT clean up
+-- what already exists, and it deliberately cannot. Four of the thirteen ONEOK
+-- surface forms still resolve to a duplicate rather than to the OKE row,
+-- because those duplicates ARE rows in companies.name and exact name match is
+-- the first and strongest surface. Only a repointing fixes those.
+--
+-- WHAT THIS REPOINTS
+-- ------------------
+-- 820 alias rows, carrying 10,379 alias mentions, that point at a companies row
+-- which is a non-anchor duplicate of an elected anchor row. Worked example, the
+-- ONEOK cluster (three rows, one company):
+--
+--     lookup_key      currently points at        should point at
+--     'oneok'         Oneok        [OKE]         Oneok [OKE]   (already correct)
+--     'oneok inc.'    Oneok        [OKE]         Oneok [OKE]   (already correct)
+--     'oneok, inc.'   ONEOK, Inc.  [no ticker]   Oneok [OKE]
+--     'oneok inc'     ONEOK Inc    [no ticker]   Oneok [OKE]
+--
+-- THE MAPPING IS GENERATED, NOT RE-DERIVED IN SQL
+-- -----------------------------------------------
+-- The election rule is `company_match.elect_canonical_id`: a bucket is
+-- collapsible only when (1) exactly one row carries a ticker or CIK, or all
+-- carriers agree on both, AND (2) every row in the bucket is identical once
+-- ONLY pure legal-form suffixes are stripped, so 'holdings' and 'group' still
+-- separate EQT Corporation from EQT Holdings Limited.
+--
+-- Re-implementing that in SQL would create a second definition that can drift
+-- from the one the pipeline runs, which is the exact failure sql/proposals/0020
+-- already documents. So the (alias_id, new_canonical_id) pairs are GENERATED
+-- from the shipped Python rule and pasted into the VALUES list below.
+--
+-- Generate with (read-only, prints the pairs, writes nothing):
+--     python3.11 tools/primary_fold_eval.py --help   # index builder lives here
+--
+-- BEFORE RUNNING THIS, A HUMAN MUST DECIDE THREE THINGS
+-- ----------------------------------------------------
+-- 1. THE ONE COLLISION. After repointing, exactly one (lookup_key,
+--    canonical_id) pair is duplicated: two alias rows both keyed 'prysmian'
+--    with surface_form 'Prysmian', mention_count 0 and 25, would both point at
+--    'Prysmian Spa'. Merge them (sum the counts, keep one row) or the pair is
+--    no longer unique. Every other repointed key lands on a distinct target.
+--    Two lookup_keys remain multi-target afterwards, down from three.
+-- 2. WHETHER companies.mention_count MOVES TOO. This statement touches
+--    aliases only. The 10,381 mentions stranded on the duplicate companies rows
+--    stay there unless a companies-side merge follows, and Company Intel ranks
+--    on companies.mention_count.
+-- 3. WHAT HAPPENS TO THE EMPTIED ROWS. They are left in place here. Deleting
+--    them requires checking company_mentions, watchlist rows and every other FK
+--    first. Out of scope for this file.
+--
+-- ROLLBACK: capture the current values first.
+--   CREATE TABLE aliases_repoint_backup_0038 AS
+--     SELECT id, canonical_id FROM aliases WHERE id IN ( ...the 820 ids... );
+
+-- DO NOT RUN. Left unexecutable on purpose: the VALUES list is empty until a
+-- human generates it and reviews all 820 rows.
+--
+-- UPDATE aliases AS a
+--    SET canonical_id = m.new_canonical_id
+--   FROM (VALUES
+--           -- ('<alias_id>'::uuid, '<anchor_company_id>'::uuid),
+--           -- ... 820 rows, generated ...
+--        ) AS m(alias_id, new_canonical_id)
+--  WHERE a.id = m.alias_id
+--    AND a.canonical_id <> m.new_canonical_id;
