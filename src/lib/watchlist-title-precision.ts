@@ -117,7 +117,9 @@ export function titleMentionIsGenuine(title: string, term: string): boolean {
     if (taggedAfter || taggedBefore) continue;
 
     // Venue or index construction: "Nasdaq Stockholm", "Nasdaq futures".
-    const nextWord = after.match(/^[\s\-–—]+([A-Za-z0-9]+)/);
+    // The class covers space, hyphen, and the two long dashes headlines use as
+    // separators (U+2013 en, U+2014 em), written as escapes.
+    const nextWord = after.match(/^[\s\-\u2013\u2014]+([A-Za-z0-9]+)/);
     if (nextWord && VENUE_QUALIFIERS.has(nextWord[1].toLowerCase())) continue;
 
     // A mention that is neither of those is the real thing.
