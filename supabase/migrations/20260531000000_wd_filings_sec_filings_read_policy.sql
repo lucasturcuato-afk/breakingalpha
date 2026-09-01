@@ -14,10 +14,13 @@
 -- (backend/ingest_sec.py); no INSERT/UPDATE/DELETE policy is added, so this is
 -- not a write over-grant. Role target mirrors articles (public, USING true).
 --
--- insider_transactions has the identical RLS-enabled-no-policy gap but is
--- deliberately NOT touched here: the Insider tab is a coming-soon stub and the
--- table is empty. Add the matching SELECT policy in a follow-up when Insider
--- ships.
+-- insider_transactions had the identical RLS-enabled-no-policy gap and was
+-- deliberately NOT touched here, because at the time the Insider tab was a
+-- coming-soon stub and the table was empty. That follow-up has since shipped:
+-- sql/0019_insider_transactions_read_policy.sql adds the matching SELECT
+-- policy and IS APPLIED. The table now holds 5,084 rows and the Insider tab is
+-- live. This paragraph described the state on 2026-05-31 and is kept for
+-- history; do not read it as current.
 --
 -- Apply cadence follows the repo convention (committed migration, applied by
 -- Noah via Studio/CLI). NOT yet applied to pnfjelfvtypkpnwpflmv as of
