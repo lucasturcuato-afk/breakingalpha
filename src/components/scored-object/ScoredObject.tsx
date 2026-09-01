@@ -18,15 +18,23 @@
  * row; hand-written resolved props belong exclusively to /preview/scored-object.
  *
  * "notGraded" is the honest absence-of-verdict state: the call's window closed
- * but no credible grade exists (ungradable outcome, or never graded). It must
- * not look like a verdict (no gold seal, no verdict word) and must not look
- * like a still-pending Open either.
+ * and no verdict is on the card. It must not look like a verdict (no gold seal,
+ * no verdict word) and must not look like a still-pending Open either.
+ *
+ * IT IS NOT ALWAYS TERMINAL, and this header used to say it was: "no credible
+ * grade exists (ungradable outcome, or never graded)". Three routes reach this
+ * state and only two of them are settled. An `ungradable` outcome row and a
+ * row the grader refused are terminal; a closed window with no outcome row at
+ * all is a call still waiting for a run it satisfies every condition for. The
+ * card cannot tell them apart on its own, which is why the REASON line carries
+ * the distinction and why both of its sentences now come from
+ * `@/lib/verdict-vocabulary` rather than from literals here.
  */
 
 import type { ReactNode } from "react";
 
 import { RESOLVED_ZONE_TYPE, typeVar } from "@/lib/scored-object-type-scale";
-import { verdictWordForState } from "@/lib/verdict-vocabulary";
+import { NOT_GRADED_UNSPECIFIED_REASON, verdictWordForState } from "@/lib/verdict-vocabulary";
 
 export type ScoredState = "open" | "right" | "wrong" | "inconclusive" | "notGraded";
 
@@ -74,8 +82,15 @@ export interface ScoredObjectProps {
 
   // ── notGraded-state verdict zone ──
   /**
-   * Why no grade exists, e.g. "Window closed without a grade." or
-   * "No price data for the session." Rendered muted; never a verdict.
+   * Why no grade exists, e.g. `NOT_GRADED_PENDING_REASON` or "No price data for
+   * the session." Rendered muted; never a verdict.
+   *
+   * The example here used to be a literal copy of the mapper's own string, and
+   * the fallback at the render site used to be a SECOND copy of it. Both said
+   * the window had closed without a grade, which is settled in tone and false
+   * on the one route that reaches this state with a run still to come. Both
+   * now read from `verdict-vocabulary.ts`, which is where a state becomes
+   * words.
    */
   notGradedReason?: string;
 
@@ -223,7 +238,13 @@ export function ScoredObject(props: ScoredObjectProps) {
               className="text-text-muted"
               style={{ fontSize: "var(--type-receipt-size)", lineHeight: "var(--type-receipt-leading)" }}
             >
-              {props.notGradedReason ?? "Window closed without a grade."}
+              {/* The fallback is deliberately the weaker of the two sentences.
+                  It fires for a caller that supplies no reason, and that caller
+                  may hold a TERMINAL row as easily as a pending one, so it has
+                  to assert neither that a grade is coming nor that none ever
+                  will. The pending sentence belongs to the mapper's own branch,
+                  where the condition is known. */}
+              {props.notGradedReason ?? NOT_GRADED_UNSPECIFIED_REASON}
             </p>
           </>
         ) : (

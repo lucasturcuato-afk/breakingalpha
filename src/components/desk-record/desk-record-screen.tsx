@@ -8,6 +8,7 @@ import { DESK_RECORD_COPY, RESOLUTION_ORDER, type Resolution } from "@/lib/desk-
    this client component's chunk in `.next/static` whether or not it can ever
    paint, which is design-lint rule `fixture-in-client-bundle`. Types erase. */
 import type { DeskEntryFixture, DeskRecordData } from "./fixture";
+import { accountingSentences } from "./accounting";
 /* One shimmer and one entrance curve in the redesign, not two. The Ledger's
    module already carries both, already rests in its drawn state, and already
    has the reduced-motion guard, so this screen consumes it rather than
@@ -126,14 +127,6 @@ const CELL_LABEL: Record<Resolution, string> = {
   notGraded: DESK_RECORD_COPY.bucketLabel.notGraded,
 };
 
-/** The word a filter line uses for a bucket, lower case, in a sentence. */
-const CELL_PHRASE: Record<Resolution, string> = {
-  supported: "supported",
-  challenged: "challenged",
-  noCleanRead: "developing",
-  notGraded: "not graded",
-};
-
 export function DeskRecordScreen({
   stage = "ready",
   data,
@@ -215,6 +208,15 @@ export function DeskRecordScreen({
     [entries, bucket],
   );
 
+  /* What the STRIP counts, per bucket. Hoisted out of `CountStrip` because the
+     accounting under the list heading needs the same numbers: a reader looking
+     at one outcome has to be able to reconcile that outcome's cell against that
+     outcome's rows, and it cannot do that from a total. */
+  const countedByBucket = useMemo(
+    () => new Map((data?.counts ?? []).map((c) => [c.bucket, c.count])),
+    [data],
+  );
+
   const choose = useCallback((next: Resolution) => {
     setBucket((prev) => (prev === next ? null : next));
     /* Every row closes when the list changes underneath it. A row left open
@@ -239,6 +241,16 @@ export function DeskRecordScreen({
     );
   }
 
+  /* Composed from the model only, never from the rendered rows' text. */
+  const accountingLines = accountingSentences({
+    bucket,
+    countedInBucket: bucket === null ? 0 : (countedByBucket.get(bucket) ?? 0),
+    listed: visible.length,
+    listCap: data.listCap,
+    hasUnlistedNotGraded: data.hasUnlistedNotGraded,
+    label: bucket === null ? "" : CELL_LABEL[bucket],
+  });
+
   return (
     <DeskChrome nav={nav} lastGradedOn={settled ? data.lastGradedOn : null}>
       {stage === "loading" ? <DeskSkeleton /> : null}
@@ -252,7 +264,7 @@ export function DeskRecordScreen({
           ) : null}
 
           <CountStrip
-            data={data}
+            countedByBucket={countedByBucket}
             selected={bucket}
             listedByBucket={listedByBucket}
             onChoose={choose}
@@ -284,7 +296,7 @@ export function DeskRecordScreen({
 
           {/* THE ACCOUNTING, IN ONE PLACE, BEFORE THE READER COUNTS ROWS.
               Three ways a count in the strip and this list can disagree, and
-              every one of them is named here rather than left to be inferred:
+              every one of them is named rather than left to be inferred:
 
                 the filter    the reader's own choice, and the only one that
                               was not already a defect. Reversible from the
@@ -295,10 +307,15 @@ export function DeskRecordScreen({
                 not graded    counted in the strip, never listed, because
                               there is no verdict word for it.
 
-              The two sentences that already did the second and third are
-              carried forward verbatim. What changed is that they sit together,
-              above the rows, instead of one above the list and one below it. */}
-          {(bucket !== null || data.listCap !== null || data.hasUnlistedNotGraded) ? (
+              PER BUCKET WHEN A BUCKET IS CHOSEN. The first cut kept the global
+              sentence and appended the bucket's name to it, which put three
+              denominators on one screen with no clause tying the two that
+              matter together. That is the failure this paragraph exists to
+              stop, and filtering made it worse rather than better. The
+              sentences live in `accounting.ts` with their branches and their
+              test, because this is the one paragraph on the screen that may
+              not be wrong. */}
+          {accountingLines.length > 0 ? (
             <p
               style={{
                 margin: "11px 0 0",
@@ -307,15 +324,7 @@ export function DeskRecordScreen({
                 textWrap: "pretty",
               }}
             >
-              {bucket !== null
-                ? `Showing the ${CELL_PHRASE[bucket]} calls in this list only. Press ${CELL_LABEL[bucket]} again for all of them. `
-                : ""}
-              {data.listCap !== null
-                ? `Only the ${data.listCap.read} most recent calls in the record are read into this list. All ${data.listCap.counted} are counted in the strip above. `
-                : ""}
-              {data.hasUnlistedNotGraded
-                ? "Not-graded calls are counted in the strip above and are not listed here, because they carry no verdict."
-                : ""}
+              {accountingLines.join(" ")}
             </p>
           ) : null}
 
@@ -366,6 +375,17 @@ export function DeskRecordScreen({
  * foot. It is the reason to read the record rather than a description of it,
  * and it was three lines of the fold above the first number. Nothing is
  * rewritten and nothing is dropped.
+ *
+ * "A GRADED OUTCOME", NOT "AN OUTCOME", and the word is doing real work. The
+ * strip draws four cells and one of them cannot be pressed, so a sentence
+ * saying "press an outcome" was true of three quarters of what it pointed at.
+ * The three pressable cells are exactly the three GRADED buckets and the inert
+ * one is the not-graded bucket, so the qualifier is not a hedge: it names the
+ * condition precisely, in the cell's own word.
+ *
+ * BOTH HALVES HAD TO GIVE. The copy was overclaiming AND the cell was drawn
+ * identically to the live ones, so fixing either alone would have left the
+ * other lying. `CountStrip` carries the cell half and its reasoning.
  */
 function DeskChrome({
   children,
@@ -422,8 +442,8 @@ function DeskChrome({
             textWrap: "pretty",
           }}
         >
-          The desk&apos;s own calls, graded on the same bar as yours. Press an outcome to scope
-          the list.
+          The desk&apos;s own calls, graded on the same bar as yours. Press a graded outcome to
+          scope the list.
         </p>
         {lastGradedOn ? (
           <p
@@ -540,17 +560,19 @@ function BackToLedger() {
  * the skeleton beside them still prefigures the same box.
  */
 function CountStrip({
-  data,
+  countedByBucket,
   selected,
   listedByBucket,
   onChoose,
 }: {
-  data: DeskRecordData;
+  /** The model's counts, in the model's own order. Passed rather than rebuilt:
+   *  the accounting under the list reads the same map, and two copies of it is
+   *  how a cell and the sentence explaining it come to disagree. */
+  countedByBucket: Map<Resolution, number>;
   selected: Resolution | null;
   listedByBucket: Map<Resolution, number>;
   onChoose: (bucket: Resolution) => void;
 }) {
-  const byBucket = new Map(data.counts.map((c) => [c.bucket, c.count]));
   return (
     <div
       role="group"
@@ -565,6 +587,9 @@ function CountStrip({
     >
       {RESOLUTION_ORDER.map((bucket) => {
         const on = selected === bucket;
+        /* A cell is a control only when it has rows to scope to, which on a
+           real record is every bucket except this one. */
+        const live = (listedByBucket.get(bucket) ?? 0) > 0;
         const cell = (
           <>
             <div
@@ -579,11 +604,31 @@ function CountStrip({
             <div
               style={{
                 marginTop: "7px",
-                font: `500 17px/1 ${FONT_MONO}`,
-                color: "var(--c-ink)",
+                /* THE INERT CELL LOOKS INERT, and until this it did not.
+                   It was drawn identically to the three live ones in both
+                   themes; the only difference was `cursor`, and there is no
+                   cursor on a phone. So the accessibility tree was honest and
+                   the glass was not, on the one cell built specifically to
+                   obey the rule that a control with nothing behind it lies.
+
+                   The number is the loudest thing in the strip, so it is the
+                   thing that changes: ink at 500 on a cell you can press, muted
+                   at 400 on the one you cannot. TWO channels, weight and hue,
+                   because a state carried by hue alone is a state carried by
+                   nothing for some readers, and both tokens are already used in
+                   this strip in both themes.
+
+                   Rejected: a second background fill, which would put three
+                   cell backgrounds on a four-cell row and make the pressed
+                   state ambiguous; and a resting rule under the live cells,
+                   which lands on the strip's own bottom border where the gold
+                   pressed mark already sits and reads as a thicker border
+                   rather than as an affordance. */
+                font: `${live ? 500 : 400} 17px/1 ${FONT_MONO}`,
+                color: live ? "var(--c-ink)" : "var(--c-muted)",
               }}
             >
-              {byBucket.get(bucket) ?? 0}
+              {countedByBucket.get(bucket) ?? 0}
             </div>
           </>
         );
@@ -603,7 +648,7 @@ function CountStrip({
           justifyContent: "center",
         };
 
-        if ((listedByBucket.get(bucket) ?? 0) === 0) {
+        if (!live) {
           return (
             <div key={bucket} style={box}>
               {cell}

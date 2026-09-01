@@ -580,18 +580,16 @@ function Row({
       </div>
     );
 
-  /* PENDING GETS ITS OWN SENTENCE and does not reuse the mapper's. That string
-     is "Window closed without a grade.", it is shared with the desk's card, and
-     read on its own it asserts the thing that turned out to be false: that the
-     window closed and no grade came. What is true is that the window closed and
-     the grade has not come YET. The mapper is left alone because the desk reads
-     it too and this screen does not own that surface; the defect is named in
-     the PR body. */
-  const reading = pending
-    ? "The window has closed and the grader has not reached this call yet. Nothing has been estimated in the meantime."
-    : row.state === null
-      ? (row.notGradedReason ?? row.result)
-      : row.result;
+  /* THE PENDING SENTENCE IS THE MAPPER'S NOW, not this screen's.
+     `scored-object-map.ts` used to write "Window closed without a grade." for
+     this branch, which reads as a window that closed and produced nothing, and
+     this screen wrote its own truthful sentence beside it rather than touch a
+     string the desk also renders. That left the desk saying the false thing and
+     put two sentences in the repo for one fact. Both literals are gone: the
+     sentence lives in `verdict-vocabulary.ts` with the rest of the vocabulary
+     and every surface reads it from there, so this row simply renders the
+     reason it was given. */
+  const reading = row.state === null ? (row.notGradedReason ?? row.result) : row.result;
 
   const hasDetail = Boolean(row.evidenceBasis) || Boolean(href);
 

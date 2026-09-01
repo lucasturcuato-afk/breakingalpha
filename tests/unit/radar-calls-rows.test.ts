@@ -26,6 +26,10 @@ import {
 } from "../../src/lib/radar-calls-screen-data.ts";
 import type { BriefCallRow, UserClaim } from "../../src/lib/radar-calls-model.ts";
 import type { CallOutcomeRow } from "../../src/lib/scored-object-map.ts";
+import {
+  NOT_GRADED_PENDING_REASON,
+  NOT_GRADED_UNSPECIFIED_REASON,
+} from "../../src/lib/verdict-vocabulary.ts";
 
 const TODAY = "2026-07-26";
 
@@ -223,4 +227,47 @@ test("a brief call refused by the grader is terminal", () => {
   );
   assert.equal(row.state, null);
   assert.equal(row.notGradedPending, false);
+});
+
+/* ── the pending sentence is the vocabulary's, in one place ─────────── */
+
+test("a pending row's reading is the shared sentence, not a per-surface copy", () => {
+  // There were two literals of "Window closed without a grade.", one in the
+  // mapper and one as a fallback default inside ScoredObject, and the mobile
+  // screen wrote a third truthful sentence beside them rather than touch either.
+  // All three are gone. A row that reaches this state renders the sentence the
+  // vocabulary module owns, whichever surface draws it.
+  const row = claimRow(claim(), null, TODAY, NO_EVIDENCE);
+  assert.equal(row.notGradedPending, true);
+  assert.equal(row.notGradedReason, NOT_GRADED_PENDING_REASON);
+  assert.equal(row.notGradedReason?.includes("without a grade"), false);
+});
+
+test("the shared sentence is pending in tone, and the fallback is neither", () => {
+  // The mapper's branch KNOWS the condition, so it may say a run is still to
+  // come. The component's fallback fires for a caller that supplied no reason
+  // at all, and that caller may hold a terminal row, so it must claim neither.
+  assert.match(NOT_GRADED_PENDING_REASON, /has not reached this call yet/);
+  assert.equal(/never|no credible grade/i.test(NOT_GRADED_PENDING_REASON), false);
+  assert.equal(/yet|never/i.test(NOT_GRADED_UNSPECIFIED_REASON), false);
+});
+
+test("a terminal row keeps its own reason and never borrows the pending one", () => {
+  const refused = claimRow(
+    claim(),
+    outcome({ verdict: REFUSED, attribution: null, metadata: { ungradable_reason: "no_price_data" } }),
+    TODAY,
+    NO_EVIDENCE,
+  );
+  assert.equal(refused.notGradedPending, false);
+  assert.notEqual(refused.notGradedReason, NOT_GRADED_PENDING_REASON);
+
+  const context = claimRow(
+    claim({ gradeable: false, gradeability_note: "Tracked as context only." }),
+    null,
+    TODAY,
+    NO_EVIDENCE,
+  );
+  assert.equal(context.notGradedPending, false);
+  assert.notEqual(context.notGradedReason, NOT_GRADED_PENDING_REASON);
 });

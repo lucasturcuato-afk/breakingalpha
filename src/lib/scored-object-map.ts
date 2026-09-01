@@ -22,6 +22,7 @@
  */
 
 import type { ScoredObjectProps } from "@/components/scored-object/ScoredObject";
+import { NOT_GRADED_PENDING_REASON } from "./verdict-vocabulary.ts";
 
 /** Short "Apr 8" style date; returns undefined for missing/invalid input. */
 export function shortDate(iso: string | null | undefined): string | undefined {
@@ -308,11 +309,18 @@ export function scoredCallProps(
     // No outcome row. Open only while the window is genuinely live;
     // afterwards, an honest "not graded", never an eternal pending.
     if (c.brief_date && c.brief_date < todayPtDate) {
+      /* PENDING, NOT TERMINAL, and the sentence used to say the opposite.
+         "Window closed without a grade." reads as a window that closed and
+         produced nothing. What is true on this branch is that the window
+         closed and the grader has not run against it: the call is gradeable,
+         it has no outcome row, and it satisfies every condition the grader
+         scans for. The sentence is now `verdict-vocabulary.ts`'s, so the desk
+         card, the record and both mobile sections say it once. */
       return {
         ...open,
         state: "notGraded",
         resolvesSource: undefined,
-        notGradedReason: "Window closed without a grade.",
+        notGradedReason: NOT_GRADED_PENDING_REASON,
       };
     }
     return open;

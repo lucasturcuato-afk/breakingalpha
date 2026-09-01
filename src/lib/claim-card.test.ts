@@ -21,6 +21,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import { claimCardProps, CONTEXT_ONLY_REASON, type ClaimCardInput } from "./claim-card.ts";
+import { NOT_GRADED_PENDING_REASON } from "./verdict-vocabulary.ts";
 import { ScoredObject } from "@/components/scored-object/ScoredObject";
 import type { CallOutcomeRow } from "./scored-object-map.ts";
 
@@ -128,7 +129,14 @@ test("a gradeable claim whose window closed unresolved says so, not Open", () =>
     }),
   );
   assert.equal(html.includes(RESOLVES_LINE), false);
-  assert.ok(html.includes("Window closed without a grade."));
+  /* The sentence is the vocabulary module's, and it is asserted through the
+     export rather than retyped: the literal it replaced existed in two places
+     and a test holding a third copy is how the next edit half-lands. */
+  assert.ok(html.includes(NOT_GRADED_PENDING_REASON));
+  /* And it is not the settled sentence it replaced. That string described a
+     window that closed and produced nothing, on a row where the grader has
+     simply not run yet. */
+  assert.equal(html.includes("without a grade"), false);
 });
 
 test("a verdict that exists is rendered even on a gradeable:false row", () => {

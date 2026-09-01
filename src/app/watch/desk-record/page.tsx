@@ -23,8 +23,9 @@ import { FONT_DISPLAY, FONT_SANS } from "@/components/mobile/fonts";
  *
  * The desktop `/radar/desk-record` runs the same `fetchDeskRecord` through its
  * own desktop view, so all three surfaces read one record. The acceptance test
- * for that is a bucket-count comparison between this route and `/desk-record`,
- * and it is in the PR body.
+ * for that is a rendered comparison between this route and `/desk-record`, over
+ * the strip's four cells, the ordered list of rows text for text, the
+ * last-graded stamp and the accounting line, and it is in the PR body.
  *
  * `/ledger` IS A DIFFERENT RECORD AND IS NOT TOUCHED. `loadLedger` reads today's
  * brief plus the reader's own claims and never calls `fetchDeskRecord`. Nothing
@@ -46,12 +47,40 @@ import { FONT_DISPLAY, FONT_SANS } from "@/components/mobile/fonts";
  * fallback, so the four real states still arrive from the loader and only from
  * the loader.
  *
- * WHAT THIS SECTION DOES NOT DRAW. Nothing is subtracted from the screen: the
- * weakness heading and its prose are already null with a note in
- * `deskRecordToScreenData` because no column carries them, and `lastGradedOn` is
- * already null because the record model holds no grader-run timestamp, so the
- * stale state has nothing to name. Those are the view's own omissions and they
- * are identical on both entrances, which is the point.
+ * WHAT THIS SECTION DOES NOT DRAW. Nothing is subtracted from the screen. The
+ * weakness heading and its prose are null, with a note in
+ * `deskRecordToScreenData`, because no column carries them. That is the view's
+ * own omission and it is identical on both entrances, which is the point.
+ *
+ * THIS PARAGRAPH USED TO CARRY A SECOND OMISSION AND IT IS NO LONGER TRUE. It
+ * read that `lastGradedOn` is "already null because the record model holds no
+ * grader-run timestamp, so the stale state has nothing to name". `graded_at` is
+ * non-null on every outcome row and `fetchDeskRecord` has always selected it;
+ * what was missing was a FIELD on the model. `buildDeskRecord` now folds it as a
+ * maximum over every row read, the mapper reads it, and the screen draws it as
+ * one stamp under the title. Both entrances get it off the same call, so it is
+ * one record with one answer rather than a second one. The stale STAGE is still
+ * never selected on the wired path, for a reason that has nothing to do with
+ * the date: the notice claims that calls closed after the last run are missing
+ * from the record, and no fact in this read establishes that claim.
+ *
+ * THE SCREEN IS NO LONGER A LIST YOU ONLY SCROLL, and that is the other thing
+ * this header outlived. The count strip is a segmented control, three of whose
+ * four cells scope the list to one outcome; every row opens where it stands and
+ * carries a link to `/claim/[id]`; and the standing explanation sits behind one
+ * control below the list. NONE OF THAT REACHES THE RECORD. It is view state in
+ * the strict sense: it selects among the entries `loadDeskRecord` handed down
+ * and can reach nothing else. No fetch, no re-bucket, no re-sort, no
+ * persistence, and no list limit that differs by entrance. The bucket a cell
+ * scopes by is carried through from the model rather than inverted from the
+ * rendered word, and whether a cell is a control at all is decided from the
+ * rows the list actually carries.
+ *
+ * A COUNT MAY NOW DISAGREE WITH THE LIST BY THE READER'S OWN CHOICE, which is a
+ * third way to reach the gap the two standing sentences already covered.
+ * `src/components/desk-record/accounting.ts` owns all three sentences and the
+ * branches between them, and a chosen bucket gets that bucket's own arithmetic
+ * rather than the record's total. Nothing is hidden to make the numbers agree.
  */
 
 /**
