@@ -13,6 +13,7 @@ import { withCompanyLine } from "@/lib/memo-company-line";
 import { SignInModal } from "@/components/auth/sign-in-modal";
 import { buildArticleOrFilter } from "@/lib/watchlist-utils";
 import { filterImpreciseTitleMatches } from "@/lib/watchlist-title-precision";
+import { isBriefFresh } from "@/lib/watchlist-brief-ttl";
 import { clusterArticles, type ArticleCluster } from "@/lib/clustering-utils";
 import { useLiveMood } from "@/hooks/useLiveMood";
 
@@ -212,18 +213,17 @@ export default function WatchlistIdentifierPage({
     let cancelled = false;
 
     async function load() {
-      // Load cached brief (if within 12-hour TTL)
-      const TWELVE_HOURS_MS = 12 * 60 * 60 * 1000;
+      // Load cached brief (if within the shared brief TTL). The window used to
+      // be a local constant here and nowhere else, which is how
+      // /api/export/company-pdf ended up exporting briefs this page refused to
+      // render. Both now read src/lib/watchlist-brief-ttl.ts.
       try {
         const { data: briefRow } = await getSupabase()
           .from("watchlist_briefs")
           .select("brief_text, generated_at")
           .eq("identifier", decoded)
           .maybeSingle();
-        if (
-          briefRow &&
-          Date.now() - new Date(briefRow.generated_at).getTime() < TWELVE_HOURS_MS
-        ) {
+        if (briefRow && isBriefFresh(briefRow.generated_at)) {
           if (!cancelled) {
             setCachedBriefText(briefRow.brief_text);
             setCachedBriefGeneratedAt(new Date(briefRow.generated_at));
