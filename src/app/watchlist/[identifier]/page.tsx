@@ -12,6 +12,7 @@ import { MemoModal } from "@/components/memo/MemoModal";
 import { withCompanyLine } from "@/lib/memo-company-line";
 import { SignInModal } from "@/components/auth/sign-in-modal";
 import { buildArticleOrFilter } from "@/lib/watchlist-utils";
+import { filterImpreciseTitleMatches } from "@/lib/watchlist-title-precision";
 import { clusterArticles, type ArticleCluster } from "@/lib/clustering-utils";
 import { useLiveMood } from "@/hooks/useLiveMood";
 
@@ -357,9 +358,20 @@ export default function WatchlistIdentifierPage({
 
         if (cancelled) return;
 
-        const merged = (articleResult.data || [])
-          .map(mapRow)
-          .filter((a) => isEnglishTitle(a.title));
+        /* This surface had no precision filter at all, for any entry type, so
+         * the unanchored `title ILIKE '%term%'` arm of buildArticleOrFilter
+         * reached the reader unchecked. Same defect and same fix as
+         * src/app/radar/watchlist/page.tsx; see
+         * src/lib/watchlist-title-precision.ts for the measurement. Applied
+         * before the slice so the empty-result fallback below still fires. */
+        const merged = filterImpreciseTitleMatches(
+          (articleResult.data || [])
+            .map(mapRow)
+            .filter((a) => isEnglishTitle(a.title)),
+          decoded,
+          displayNameForSearch,
+          watchlistRow?.type ?? "ticker",
+        );
 
         merged.sort((a, b) =>
           new Date(b.published_at || 0).getTime() - new Date(a.published_at || 0).getTime(),

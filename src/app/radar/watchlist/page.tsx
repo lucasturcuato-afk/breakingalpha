@@ -48,6 +48,7 @@ import { MemoModal } from "@/components/memo/MemoModalLazy";
 import { withCompanyLine } from "@/lib/memo-company-line";
 import { WatchlistAddInput, type AddType } from "@/components/watchlist/WatchlistAddInput";
 import { buildArticleOrFilter } from "@/lib/watchlist-utils";
+import { filterImpreciseTitleMatches } from "@/lib/watchlist-title-precision";
 import { trackClientEvent } from "@/lib/track-event";
 import { useLiveMood } from "@/hooks/useLiveMood";
 
@@ -375,8 +376,29 @@ async function fetchArticlesForEntry(entry: WatchlistEntry): Promise<ArticleRead
 
   if (error) return FAILED_READ;
 
-  const result = dedupeAndSort((data || []).map(mapArticle));
+  /* buildArticleOrFilter emits an unanchored `title ILIKE '%term%'` for every
+   * term of 6 characters or more, and headline house style puts an exchange
+   * qualifier in the title, so a NDAQ entry pulls "Urban Outfitters
+   * (NASDAQ:URBN) Downgraded" and "Nasdaq futures fall". Measured against prod
+   * 2026-08-31 on this exact query: 18 of 30 rows arrived only through that
+   * arm and none were about the company. The filter keeps a row when
+   * primary_company corroborates OR the title mention is genuine, so the
+   * recall the arm exists for (Anthropic news filed under pc=Salesforce) is
+   * preserved. It can only narrow, so the fallbacks below still fire when it
+   * empties the set. watchlist-utils.ts is propose-only; the fix lives here. */
+  const result = filterImpreciseTitleMatches(
+    dedupeAndSort((data || []).map(mapArticle)),
+    entry.identifier,
+    displayNameForSearch,
+    entry.type,
+  );
 
+  /* Retained deliberately. As a filter this is a no-op: for a company entry
+   * displayNameForSearch is null, so the only term is the identifier, the
+   * title arm is off below 6 characters, and every row already satisfied
+   * primary_company ILIKE '%identifier%'. It is NOT a no-op as control flow:
+   * it returns early and skips the GDELT fallback for short company names.
+   * Removing it would change that behaviour, which is not this PR's job. */
   if (entry.type === "company" && entry.identifier.length < 6) {
     return ready(result.filter(a =>
       a.primary_company?.toLowerCase().includes(entry.identifier.toLowerCase())
