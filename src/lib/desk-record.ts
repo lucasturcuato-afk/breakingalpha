@@ -77,7 +77,7 @@ export const DESK_RECORD_COPY = {
   } as Record<Resolution, string>,
   bucketNote: {
     supported: "The call's direction held, and the move was attributable to it.",
-    challenged: "The call's direction did not hold. It stays on the record.",
+    challenged: "The evidence challenged the call's direction. It stays on the record.",
     noCleanRead:
       "The move could not be separated from the sector or the wider market, or it sat under the attribution bar.",
     notGraded:
