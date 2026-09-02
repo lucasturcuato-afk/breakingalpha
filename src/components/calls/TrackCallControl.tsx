@@ -19,10 +19,11 @@
  *   untracked   the reader's own reasoning, then the window being committed
  *               to, in words, preselected from the call's OWN span (any number
  *               of days, not one of three buckets) and still changeable, next
- *               to a real button. The button does not unlock until the note
- *               clears COMMIT_NOTE_MIN: ruling 11 puts the note inside what
- *               adopting a call MEANS, so the phone sheet and the two desk
- *               surfaces now ask for the same thing in the same words.
+ *               to a real button. The button is live from the first render:
+ *               every surface this control serves ADOPTS, and
+ *               `decisions/commit-note-optional-when-adopting.md` reverses the
+ *               half of ruling 11 that put a note inside what adopting means.
+ *               The field stays and asks; nothing is withheld behind it.
  *   ungradeable no control at all, and a sentence saying why. Offering a commit
  *               the system cannot resolve is worse than offering nothing.
  *   tracked     a ledger entry: when it was logged, when it is reviewed, the
@@ -52,7 +53,15 @@ import {
    CommitSheet and CommitSheetProvider, so importing the two numbers through it
    would drag createPortal and next/navigation into the brief, the wrap and
    /radar/calls bundles to read two integers. commit-target imports nothing. */
-import { COMMIT_NOTE_MAX, COMMIT_NOTE_MIN } from "@/components/commit/commit-target";
+import { COMMIT_NOTE_MAX } from "@/components/commit/commit-target";
+/* The ruling itself, from the module PR #761 put it in, for the same reason
+   the line above names the direct module: `@/components/commit` re-exports the
+   sheet. `commit-gate` imports one integer and nothing else. */
+import {
+  ADOPT_NOTE_HINT,
+  ADOPT_NOTE_HINT_WRITTEN,
+  noteSatisfiesGate,
+} from "@/components/commit/commit-gate";
 import { COMMIT_BLOCK_REASON } from "@/lib/commit-legality";
 
 /**
@@ -85,14 +94,39 @@ export const TRACK_TRUST_LINE =
 export const UNGRADEABLE_REASON = COMMIT_BLOCK_REASON.notPriceable;
 
 /**
- * The note gate, as a function, so the twelve is testable with no DOM.
+ * True when anything has actually been written, once trimmed.
  *
- * Trimmed, because that is what gets stored: the adopt route trims before it
- * writes and the column checks `length(btrim(commit_note)) > 0`. A gate that
- * counted raw characters would unlock on twelve spaces and then write nothing.
+ * THIS IS NOT A GATE AND NOTHING IS LOCKED BELOW IT. It is what the field's
+ * border and its hint line respond to, so a reader who writes gets an
+ * acknowledgement and a reader who does not is never told they failed a check.
+ * Same predicate and same role as `commit-sheet.tsx`'s `hasNote`.
+ *
+ * Trimmed because that is what gets stored: the adopt route trims before it
+ * writes and the column checks `length(btrim(commit_note)) > 0`, so whitespace
+ * alone must not light the border for a value that will land as null.
  */
-export function noteMeetsGate(note: string): boolean {
-  return note.trim().length >= COMMIT_NOTE_MIN;
+export function noteHasContent(note: string): boolean {
+  return note.trim().length > 0;
+}
+
+/**
+ * Whether the desk's press is live, as a function, so the ruling is assertable
+ * with no DOM.
+ *
+ * THIS IS THE ONE PLACE THE RULING IS APPLIED ON THIS SURFACE, and it applies
+ * it by calling the shared module rather than restating it. Every surface this
+ * control serves adopts, so `noteSatisfiesGate(_, "adopted")` is constantly
+ * true; it is called anyway so the file names which side of the ruling it is
+ * on in code that cannot drift from a comment. The only thing that can lock
+ * the press is a write already in flight.
+ *
+ * The predecessor was `noteMeetsGate`, a desk-local copy of the authored
+ * branch: `note.trim().length >= COMMIT_NOTE_MIN`, applied on three adopt
+ * surfaces. It is gone rather than relaxed, because a second implementation of
+ * a rule is how the rule ends up with two answers.
+ */
+export function trackPressReady(note: string, busy: boolean): boolean {
+  return noteSatisfiesGate(note, "adopted") && !busy;
 }
 
 /**
@@ -128,11 +162,17 @@ export function noteLandedOnRow(res: {
   return res.alreadyAdopted !== true && res.noteWritten === true;
 }
 
-/* ── The note copy, all four strings reused verbatim from the commit sheet ──
+/* ── The note copy. Still zero new strings, and now two fewer of them ───────
  *
- * Zero new strings. The sheet is the surface where this requirement was
- * written and argued, and the whole point of ruling 11 is that a reader meets
- * the same demand whichever screen they are on, in the same words.
+ * The two hint strings are GONE FROM THIS FILE and are imported from
+ * `commit-gate` instead. They were byte-identical twins of the sheet's, and
+ * one of the pair described a floor that no longer exists: "A sentence is
+ * enough." is a statement about a minimum, and there is no minimum on this
+ * path any more. PR #761 already argued and replaced that string on the sheet;
+ * re-deriving a desk answer would be the second implementation of a decision
+ * that has one.
+ *
+ * The two that remain are desk-specific and are argued below.
  *
  * Exported beside the trust line above so a test can assert them the way
  * TrackCallControl.test.ts already asserts TRACK_TRUST_LINE.
@@ -150,63 +190,60 @@ export function noteLandedOnRow(res: {
 export const TRACK_NOTE_PROMPT =
   "What has to be true for this, and what would change your mind.";
 
-/** Under the field before the gate is met. */
-export const TRACK_NOTE_HINT = "A sentence is enough.";
-
-/** Under the field once it is. Says what the record is worth, not "valid". */
-export const TRACK_NOTE_HINT_READY = "Timestamped before the outcome is known.";
-
-/** The button while the gate is unmet. Names the missing thing, not the rule. */
-export const TRACK_NOTE_GATED_LABEL = "Write your reasoning first";
+/**
+ * The button, in its one resting state.
+ *
+ * THERE IS NO SECOND LABEL. "Write your reasoning first" was the gate's voice,
+ * naming a step the reader had to take before the control would work. With
+ * nothing to take first, a control that still said it would be describing a
+ * rule that does not exist. Same deletion the sheet made at
+ * `commit-gate.ts`'s ADOPT_PRESS_LABEL, for the same reason.
+ *
+ * The sheet's own label is NOT reused: it reads "Press to enter this on your
+ * ledger" because that control is a press-and-hold, and the desk's is a click.
+ * A label naming a gesture the desk does not use would be false.
+ */
+export const TRACK_PRESS_LABEL = "Track this call";
 
 /** The field's accessible name. It has no visible label by design. */
 export const TRACK_NOTE_ARIA_LABEL = "Your reasoning";
 
 /**
- * The note pair, as a discriminated union, so the broken shape cannot be
- * written down.
+ * The note pair. A plain required pair, which is what the union that used to
+ * live here said to collapse it to.
  *
- * An earlier version derived the gate from `typeof onNoteChange === "function"`
- * and that was wrong: a caller who passed `note` and forgot `onNoteChange` got
- * an ungated footer with a dead read-only field and NO type error. Presence is
- * not a contract. `noteGate: true` is, and it drags both halves in with it.
+ * THE UNION IS GONE. Its second member existed for exactly one caller,
+ * `src/app/radar/calls/page.tsx`, which was under the /radar sprint fence and
+ * therefore could not be wired; `noteGate: false` bought that page a footer
+ * with no field rather than a permanently disabled button. The fence is off,
+ * the page is wired, and the carve-out has no member left. Its own comment
+ * said to delete this paragraph when that happened.
  *
- * The second member is the fenced /radar/calls page: it passes neither half
- * and keeps today's ungated footer. `never` on both keys means it cannot pass
- * one by accident either.
- *
- * WHY THE PAIR IS OPTIONAL AT ALL, since ruling 11 says every surface gates.
- * RULED DEVIATION, not drift. Required props would not compile against
- * src/app/radar/calls/page.tsx, which is under the /radar sprint fence and may
- * not be edited on this branch, and a required prop defaulted to "" would
- * leave that page's Track button permanently disabled, which is a live
- * regression rather than a deferral. The exact wiring diff is in the PR body
- * marked NOT APPLIED. When it lands, collapse this union to a plain required
- * pair and delete this paragraph.
+ * Required, not optional, and that is the whole contract. An older version
+ * derived behaviour from `typeof onNoteChange === "function"`, which let a
+ * caller pass `note` and forget `onNoteChange` and get a dead read-only field
+ * with NO type error. Presence is not a contract. Two required props are.
  */
-export type CallCommitNoteProps =
-  | {
-      /** This surface has adopted ruling 11. Both halves below are required. */
-      noteGate: true;
-      /**
-       * The reader's note in progress. It lives in the CALLER's state keyed by
-       * call id, never in this footer.
-       *
-       * That placement is the whole failure contract. A footer that owned its
-       * own note would lose it the moment a failed adopt re-rendered the card,
-       * and the sentence a reader wrote is the one thing on this control that
-       * cannot be reconstructed. README: "A call that silently fails to save is
-       * the worst possible bug in this product." Kept above, a 500 leaves the
-       * sentence on screen and the retry costs a click.
-       */
-      note: string;
-      onNoteChange: (note: string) => void;
-    }
-  | {
-      noteGate?: false;
-      note?: never;
-      onNoteChange?: never;
-    };
+export interface CallCommitNoteProps {
+  /**
+   * The reader's note in progress. It lives in the CALLER's state keyed by
+   * call id, never in this footer.
+   *
+   * That placement is the whole failure contract. A footer that owned its own
+   * note would lose it the moment a failed adopt re-rendered the card, and the
+   * sentence a reader wrote is the one thing on this control that cannot be
+   * reconstructed. README: "A call that silently fails to save is the worst
+   * possible bug in this product." Kept above, a 500 leaves the sentence on
+   * screen and the retry costs a click.
+   *
+   * It matters MORE now, not less. Nothing withholds the button, so a reader
+   * can write a considered sentence and press in one motion, and losing it on
+   * a failed write would be losing the only unreconstructable thing on the
+   * card at the exact moment the reader is least willing to retype it.
+   */
+  note: string;
+  onNoteChange: (note: string) => void;
+}
 
 /** What the control needs to know about an existing claim. Server-shaped. */
 export interface TrackedClaimLike {
@@ -333,7 +370,6 @@ export function CallCommitFooter({
   busy,
   window,
   onWindowChange,
-  noteGate = false,
   note,
   onNoteChange,
   onTrack,
@@ -429,8 +465,7 @@ export function CallCommitFooter({
     <UntrackedFooter
       window={window}
       onWindowChange={onWindowChange}
-      gated={noteGate === true}
-      note={note ?? ""}
+      note={note}
       onNoteChange={onNoteChange}
       onTrack={onTrack}
       busy={busy}
@@ -454,7 +489,6 @@ export function CallCommitFooter({
 function UntrackedFooter({
   window,
   onWindowChange,
-  gated,
   note,
   onNoteChange,
   onTrack,
@@ -464,10 +498,8 @@ function UntrackedFooter({
 }: {
   window: AdoptWindow;
   onWindowChange: (w: AdoptWindow) => void;
-  /** Explicit, never inferred from whether a handler happens to be present. */
-  gated: boolean;
   note: string;
-  onNoteChange?: (note: string) => void;
+  onNoteChange: (note: string) => void;
   onTrack: (note: string) => void;
   busy: boolean;
   trustLineId: string;
@@ -478,10 +510,18 @@ function UntrackedFooter({
   // The call's own window first when it is off-bucket, then the three named
   // alternatives. No date picker.
   const options = adoptWindowOptions(window);
-  /* `gated` arrives as a boolean from CallCommitNoteProps. An ungated caller
-     is the fenced /radar/calls page and keeps today's footer unchanged; see
-     that type for why the carve-out exists and when it goes. */
-  const noteReady = gated ? noteMeetsGate(note) : true;
+
+  /* Whether anything has been written. It moves the border and the hint line
+     and it locks NOTHING. See `noteHasContent`. */
+  const written = noteHasContent(note);
+
+  /* The only thing that can lock the button is a write already in flight.
+     `noteSatisfiesGate(_, "adopted")` is constantly true and is called anyway,
+     so this file names which side of the ruling it is on at the one place the
+     decision is used rather than in a comment that can drift from the code.
+     Copied deliberately from `commit-sheet.tsx:145`, which is the shape PR
+     #761 left behind. */
+  const ready = trackPressReady(note, busy);
 
   return (
     <div data-testid="track-state-untracked">
@@ -492,8 +532,10 @@ function UntrackedFooter({
           846px brief footer, so one number serves both surfaces), and it
           clears the 44px tap floor with room over.
 
-          The border goes gold when the gate is met, the same signal the sheet
-          gives at commit-sheet.tsx:337. DESK tokens only: --gold, not --c-gold.
+          The border goes gold once anything is WRITTEN, which is the signal
+          the sheet gives and is no longer the same thing as a gate being met:
+          it acknowledges the reader, it does not report a check passing.
+          DESK tokens only: --gold, not --c-gold.
           tokens.css:50-53 records that the --c-* family is a set of NEAR
           values, identical on light and divergent on dark, so mixing the two
           families on one surface is the token-role error ruling 10 covers.
@@ -501,17 +543,21 @@ function UntrackedFooter({
           No outline is suppressed here. Unlike the sheet, this field is the
           arrival target for /radar/calls?adopt=<id>, and the gold ring
           globals.css:217 already draws on :focus-visible is what says so. */}
-      {gated ? (
+      {/* UNCONDITIONAL. The field used to render only for a caller that opted
+          into the gate, which meant dropping the gate would have deleted the
+          field from the surfaces that had one and left /radar/calls with
+          neither. The ruling keeps the field on every adopt surface and drops
+          the gate on every adopt surface, so the two stopped being one flag. */}
       <>
         <div
           className={`mb-2.5 rounded-[9px] border bg-transparent px-3 py-2.5 transition-colors duration-[var(--duration-fast)] ease-[var(--ease-out)] motion-reduce:transition-none ${
-            noteReady ? "border-[var(--gold)]" : "border-border-default"
+            written ? "border-[var(--gold)]" : "border-border-default"
           }`}
         >
           <textarea
             data-testid="track-note-field"
             value={note}
-            onChange={(e) => onNoteChange?.(e.target.value)}
+            onChange={(e) => onNoteChange(e.target.value)}
             /* readOnly, NOT disabled. A hung request would otherwise lock the
                reader out of the one thing on this card that cannot be
                reconstructed, which is the exact failure this control exists to
@@ -531,10 +577,9 @@ function UntrackedFooter({
           data-testid="track-note-hint"
           className="mb-3 font-sans text-[11px] leading-snug text-text-muted"
         >
-          {noteReady ? TRACK_NOTE_HINT_READY : TRACK_NOTE_HINT}
+          {written ? ADOPT_NOTE_HINT_WRITTEN : ADOPT_NOTE_HINT}
         </p>
       </>
-      ) : null}
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
         {editing ? (
           <label className="flex items-center gap-1.5 font-sans text-[11px] text-text-muted">
@@ -581,13 +626,13 @@ function UntrackedFooter({
             not a purchase. */}
         <button
           type="button"
-          disabled={busy || !noteReady}
+          disabled={!ready}
           onClick={() => onTrack(note)}
           aria-describedby={trustLineId}
           data-testid="track-call-button"
           className="rounded-md border border-border-default bg-transparent px-3 py-1.5 font-sans text-[11px] font-semibold text-text-primary transition-colors duration-[var(--duration-fast)] ease-[var(--ease-out)] hover:border-gold hover:text-espresso disabled:cursor-default disabled:opacity-50"
         >
-          {busy ? "Tracking…" : noteReady ? "Track this call" : TRACK_NOTE_GATED_LABEL}
+          {busy ? "Tracking…" : TRACK_PRESS_LABEL}
         </button>
       </div>
       {error ? (

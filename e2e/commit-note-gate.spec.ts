@@ -1,9 +1,17 @@
 /**
- * The commit-note gate, on the two desk surfaces (ruling 11, PR #694).
+ * The commit note on the three desk adopt surfaces.
  *
- * A call is not adopted until the reader has written why. The phone commit
- * sheet has held that line since it shipped; this suite is the same line on
- * the desk, in the same words, at 1440x900.
+ * THE GATE IS GONE AND THIS SUITE IS WHAT PROVES IT STAYS GONE.
+ * `decisions/commit-note-optional-when-adopting.md` reverses the half of
+ * DECISIONS.md ruling 11 that put a note inside what adopting a call means:
+ * required when authoring through Compose, optional when adopting a call the
+ * desk already reasoned about. PR #761 shipped it on the phone commit sheet;
+ * the desk followed on 2026-09-02.
+ *
+ * The field STAYS on every surface and asks. Nothing is withheld behind it.
+ * This suite asserts both halves of that at 1440x900, because a suite that
+ * only asserted the button was live would pass on a surface that had deleted
+ * the field. The file keeps its name so the history is followable.
  *
  * NOTHING HERE MAY WRITE A ROW. `/api/radar/claims/adopt` is intercepted in
  * the FIXTURE below, before the first `page.goto` of every test in this file,
@@ -37,14 +45,22 @@
  */
 import { test as base, expect, type Page, type Route } from "@playwright/test";
 
-/** Eleven characters. One short, on purpose. */
+/** One character. Under every threshold this control has ever had. */
+const ONE = "x";
+/** Eleven. One short of the floor that used to be here. */
 const ELEVEN = "abcdefghijk";
-/** Twelve. The gate exactly. */
+/** Twelve. Exactly the old floor, which is now just a length. */
 const TWELVE = "abcdefghijkl";
 /** Nine once trimmed, and the boundary the column's btrim() also depends on. */
 const PADDED_NINE = "   abc   ";
 /** Twelve once trimmed. Padding is not content, but it is not poison either. */
 const PADDED_TWELVE = "   abcdefghijkl   ";
+/** The empty-field hint. Says what the note is for and asks for nothing. */
+const HINT_EMPTY = "A sentence is what you will read back.";
+/** Once anything is written. */
+const HINT_WRITTEN = "Timestamped before the outcome is known.";
+/** The press, in the one label it has. */
+const PRESS = "Track this call";
 
 /** The route no test in this file may reach. */
 const ADOPT = "**/api/radar/claims/adopt";
@@ -101,17 +117,24 @@ async function waitForUntracked(page: Page, path: string) {
 }
 
 /* ────────────────────────────────────────────────────────────────────────
-   SPEC 1. The gate, on every surface that offers a commitment.
+   SPEC 1. The field is offered, and it withholds nothing.
+
+   All three surfaces run the same control
+   (src/components/calls/TrackCallControl.tsx) and all three ADOPT: they post
+   to /api/radar/claims/adopt, which accepts a note and requires neither its
+   presence nor its length. So there is one expected behaviour and it is
+   asserted identically on each.
    ──────────────────────────────────────────────────────────────────────── */
 
-/** The surfaces that carry the gate on this branch. */
-const GATED_SURFACES = [
+/** Every desk surface that offers a commitment. There is no fenced one left. */
+const ADOPT_SURFACES = [
   { path: "/morning-brief", name: "morning brief" },
   { path: "/evening-wrap", name: "evening wrap" },
+  { path: "/radar/calls", name: "radar calls" },
 ] as const;
 
-for (const surface of GATED_SURFACES) {
-  test.describe(`commit-note gate: ${surface.name}`, () => {
+for (const surface of ADOPT_SURFACES) {
+  test.describe(`commit note: ${surface.name}`, () => {
     test(`${surface.name}: the note field is offered above the commit control`, async ({
       page,
     }) => {
@@ -120,7 +143,10 @@ for (const surface of GATED_SURFACES) {
 
       await expect(field).toBeVisible();
       await expect(field).toHaveAttribute("aria-label", "Your reasoning");
-      await expect(hint).toHaveText("A sentence is enough.");
+      // NOT "A sentence is enough." That described a floor, and there is no
+      // floor. This states the payoff, and it is the literal truth of the
+      // Review screen, which reads this field back under "YOU WROTE".
+      await expect(hint).toHaveText(HINT_EMPTY);
 
       // Above, not below. The reading order is the decision order: say why,
       // then choose how long, then commit.
@@ -130,86 +156,54 @@ for (const surface of GATED_SURFACES) {
       expect(buttonBox).not.toBeNull();
       expect(fieldBox!.y).toBeLessThan(buttonBox!.y);
 
-      // Three line boxes at 15px/1.6. One number for both surfaces.
+      // Three line boxes at 15px/1.6. One number for every surface.
       expect(fieldBox!.height).toBeGreaterThanOrEqual(72);
     });
 
-    test(`${surface.name}: eleven characters do not unlock the commit`, async ({ page }) => {
+    test(`${surface.name}: an empty note does not withhold the commit`, async ({ page }) => {
       await waitForUntracked(page, surface.path);
-      const { field, button } = firstUntracked(page);
+      const { button } = firstUntracked(page);
 
-      // Empty is the starting state, and it is already closed.
-      await expect(button).toBeDisabled();
-      await expect(button).toHaveText("Write your reasoning first");
-
-      await field.fill(ELEVEN);
-      await expect(button).toBeDisabled();
-      await expect(button).toHaveText("Write your reasoning first");
-    });
-
-    test(`${surface.name}: twelve characters unlock it`, async ({ page }) => {
-      await waitForUntracked(page, surface.path);
-      const { field, hint, button } = firstUntracked(page);
-
-      await field.fill(TWELVE);
+      // The starting state, untouched, and it is already open.
       await expect(button).toBeEnabled();
-      await expect(button).toHaveText("Track this call");
-      await expect(hint).toHaveText("Timestamped before the outcome is known.");
+      // One label, in every state the reader can act from. "Write your
+      // reasoning first" was the gate's voice and went with the gate.
+      await expect(button).toHaveText(PRESS);
     });
 
-    test(`${surface.name}: padding is trimmed before counting, both ways`, async ({
+    test(`${surface.name}: nothing changes at one, eleven or twelve characters`, async ({
       page,
     }) => {
       await waitForUntracked(page, surface.path);
       const { field, button } = firstUntracked(page);
 
-      // Nine real characters wrapped in whitespace. The raw string is long
-      // enough and the stored value is not. The column agrees: 0033 checks
-      // length(btrim(commit_note)) > 0, and the route trims before storing.
-      await field.fill(PADDED_NINE);
-      await expect(button).toBeDisabled();
+      for (const value of [ONE, ELEVEN, TWELVE, PADDED_NINE, PADDED_TWELVE]) {
+        await field.fill(value);
+        await expect(button).toBeEnabled();
+        await expect(button).toHaveText(PRESS);
+      }
+    });
 
-      // Twelve real characters, also wrapped. Padding is not content, but it
-      // does not spoil the content it surrounds.
-      await field.fill(PADDED_TWELVE);
+    test(`${surface.name}: the hint acknowledges writing, it does not report a check`, async ({
+      page,
+    }) => {
+      await waitForUntracked(page, surface.path);
+      const { field, hint, button } = firstUntracked(page);
+
+      // ONE character flips it. Under the old rule this needed twelve, and
+      // under it the button moved too. Now only the hint moves.
+      await field.fill(ONE);
+      await expect(hint).toHaveText(HINT_WRITTEN);
+      await expect(button).toBeEnabled();
+
+      // Whitespace alone is not writing: it stores as null.
+      await field.fill("     ");
+      await expect(hint).toHaveText(HINT_EMPTY);
+      // And the press is open anyway, which is the distinction.
       await expect(button).toBeEnabled();
     });
   });
 }
-
-/**
- * The third surface, stated rather than skipped.
- *
- * src/app/radar/calls/page.tsx is under the /radar sprint fence, so this
- * branch may not wire it and it keeps today's ungated footer. The exact diff
- * is in PR #694's body marked NOT APPLIED.
- *
- * This is written as an assertion about TODAY, not as an expected-failure of
- * the gate. Two reasons. It is deterministic and fast, where `test.fail()` on
- * a field that does not exist makes every locator wait out the full test
- * timeout, and Playwright does not absorb a TIMEOUT under an expected-failure
- * the way it absorbs an assertion failure: those cases were reported as hard
- * failures, which is worse than useless in a suite whose whole job is to
- * distinguish deliberate reds from real ones.
- *
- * It still tells you the day the proposal lands: wiring the page makes the
- * field appear and this test goes red, which is the signal to delete it and
- * move /radar/calls into GATED_SURFACES above.
- */
-test.describe("commit-note gate: radar calls", () => {
-  test("radar calls is still ungated, and that is the sprint fence", async ({ page }) => {
-    await waitForUntracked(page, "/radar/calls");
-    const { card, field, button } = firstUntracked(page);
-
-    await expect(card).toBeVisible();
-    // No field, so no gate. When this count becomes 1, wire the surface in.
-    await expect(field).toHaveCount(0);
-    // And the button is open with no reasoning written, which is the state
-    // ruling 11 exists to end.
-    await expect(button).toBeEnabled();
-    await expect(button).toHaveText("Track this call");
-  });
-});
 
 /* ────────────────────────────────────────────────────────────────────────
    SPEC 3. The deep link. WRITTEN TO GO RED.
@@ -224,7 +218,12 @@ test.describe("commit-note gate: radar calls", () => {
    `{loading ? null : (` at :526. The effect fires against a tree that has no
    call-<id> node yet, getElementById gives back null, and nothing re-runs
    it. Fix is one line: add `loading` to the dependency array and early-return
-   while it is true. That diff is in the PR body, NOT APPLIED (sprint fence).
+   while it is true. STILL NOT APPLIED, and the /radar sprint fence is no
+   longer the reason: it is a scroll-behaviour change on a page this branch
+   only touched to wire a note, and it deserves its own verification. It got
+   worse rather than better, though, and that is recorded here: the arrival
+   target is now a note field the reader is meant to type into, and they land
+   1300px above it.
 
    toBeInViewport() is the assertion, deliberately. `toBeVisible()` passes on
    this bug: the node is rendered, painted and 1300px below the fold, which is

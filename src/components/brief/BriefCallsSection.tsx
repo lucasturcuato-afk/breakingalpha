@@ -505,9 +505,13 @@ export default function BriefCallsSection({
           // The real span, so a 13-day commitment is not filed as a week.
           window_days: adoptWindowRequest(window).window_days ?? null,
           window_kind: window.kind,
-          // The gate, observable in production without reading the table. A
-          // run of these below COMMIT_NOTE_MIN means a surface is writing
-          // rows the gate never held.
+          // No longer the gate: there is none on this path. This is now the
+          // measurement ruling 11 asked for and never got, and it is the one
+          // thing that would reopen the question. If adopted entries land
+          // overwhelmingly at zero once real accounts are adopting, the field
+          // is decorative. See "What would change the answer" in
+          // decisions/commit-note-optional-when-adopting.md. Zero is a
+          // legitimate value here and is not evidence of a broken surface.
           note_length: note.trim().length,
           already_tracked: json.alreadyAdopted === true,
           gradeable: json.gradeable ?? null,
@@ -578,9 +582,11 @@ export default function BriefCallsSection({
                 onWindowChange={(w) =>
                   setWindowFor((prev) => ({ ...prev, [c.id]: w }))
                 }
-                // This surface has adopted ruling 11. `noteGate` drags both
-                // halves below in with it, so the pair cannot come apart.
-                noteGate
+                // The pair below is REQUIRED by the footer's props, so it
+                // cannot come apart. There is no longer a flag opting this
+                // surface into a gate: the field is on every adopt surface and
+                // the gate is on none of them.
+                //
                 // Empty is not a stand-in for data that failed to arrive. It
                 // is a true statement about the draft: the reader has typed
                 // nothing yet. Same shape as `windowFor[c.id] ?? offered`

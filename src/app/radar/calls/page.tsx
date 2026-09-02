@@ -39,6 +39,7 @@ import { useMotionSettled } from "@/lib/use-motion-settled";
 import { useTopicClusters } from "@/lib/use-topic-clusters";
 import {
   CallCommitFooter,
+  noteLandedOnRow,
   CallsTrustLine,
   hasCommitFooter,
 } from "@/components/calls/TrackCallControl";
@@ -215,6 +216,17 @@ export default function CallsPage() {
   const [adoptBusy, setAdoptBusy] = useState<string | null>(null);
   /** Per-call horizon picked in the track control. Defaults per call, not globally. */
   const [adoptWindow, setAdoptWindow] = useState<Record<string, AdoptWindow>>({});
+  /**
+   * Per-call note in progress, keyed by call id.
+   *
+   * IT LIVES HERE AND NOT IN THE FOOTER, which is the footer's own contract:
+   * a footer that owned its note would lose it the moment a failed adopt
+   * re-rendered the card, and the sentence a reader wrote is the one thing on
+   * the card that cannot be reconstructed. This page draws twelve untracked
+   * footers, so a shared single string would also let one card's draft appear
+   * under another. Keyed, therefore, not scalar.
+   */
+  const [adoptNote, setAdoptNote] = useState<Record<string, string>>({});
   /** Inline per-call failure text. Replaces the adopt toast, which adopt was
    *  the only writer of; tracking state now resolves in place on the card. */
   const [adoptError, setAdoptError] = useState<Record<string, string>>({});
@@ -362,7 +374,7 @@ export default function CallsPage() {
    * Resolves inline: the card swaps to a tracked state in place. No toast, no
    * modal, no navigation, so the user never loses their position in the list.
    */
-  const adopt = async (callId: string, window: AdoptWindow) => {
+  const adopt = async (callId: string, window: AdoptWindow, note: string) => {
     setAdoptBusy(callId);
     setAdoptError((prev) => {
       const next = { ...prev };
@@ -375,7 +387,18 @@ export default function CallsPage() {
         headers: { "Content-Type": "application/json" },
         // window_days rides along for an off-bucket span; the route already
         // accepts it (resolveAdoptWindow's explicitDays). No API change.
-        body: JSON.stringify({ call_id: callId, ...adoptWindowRequest(window) }),
+        //
+        // `commit_note` likewise needs no API change: the adopt route's own
+        // header states it is ACCEPTED and NOT REQUIRED, and it trims, caps at
+        // COMMIT_NOTE_MAX and stores null for anything empty. Sent trimmed
+        // because that is what the column stores, so an all-whitespace draft
+        // arrives as the nothing it is rather than as a value the check
+        // constraint rejects.
+        body: JSON.stringify({
+          call_id: callId,
+          ...adoptWindowRequest(window),
+          commit_note: note.trim(),
+        }),
       });
       const json = await res.json();
       if (!res.ok) {
@@ -384,6 +407,20 @@ export default function CallsPage() {
         return;
       }
       setStamped((prev) => new Set(prev).add(callId));
+      /* The draft is dropped ONLY when the row proves it carries this
+         caller's note. `noteLandedOnRow` answers false to every shape of the
+         already-adopted branch, because that branch's `noteWritten` means
+         "this row has a note" and not "your note was written". A stale draft
+         under a tracked card is a nuisance; a sentence deleted on a flag read
+         as answering a question it does not answer is the failure the whole
+         control exists to prevent. */
+      if (noteLandedOnRow(json)) {
+        setAdoptNote((prev) => {
+          const next = { ...prev };
+          delete next[callId];
+          return next;
+        });
+      }
       // Peripheral confirmation on the Radar nav row. No toast, no navigation.
       notifyRadarLanded();
       await load();
@@ -739,7 +776,13 @@ export default function CallsPage() {
                                 onWindowChange={(w: AdoptWindow) =>
                                   setAdoptWindow((prev) => ({ ...prev, [c.id]: w }))
                                 }
-                                onTrack={() => void adopt(c.id, chosen)}
+                                note={adoptNote[c.id] ?? ""}
+                                onNoteChange={(next: string) =>
+                                  setAdoptNote((prev) => ({ ...prev, [c.id]: next }))
+                                }
+                                onTrack={(note: string) =>
+                                  void adopt(c.id, chosen, note)
+                                }
                                 justStamped={stamped.has(c.id)}
                                 gradeable={isPriceableClaimType(c.claim_type)}
                                 trustLineId={BRIEF_TRUST_LINE_ID}

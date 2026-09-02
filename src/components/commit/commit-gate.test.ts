@@ -72,6 +72,10 @@ test("authoring still requires a note", () => {
 
 test("compose still counts twelve, from the same single literal", () => {
   assert.equal(COMMIT_NOTE_MIN, 12);
+  // compose-screen.tsx no longer reads this constant: it calls
+  // noteSatisfiesGate(note, "authored") and gets the floor through this
+  // module. NOTE_MIN_CHARS remains compose-data's documented statement of the
+  // same number, and this asserts the two cannot say different things.
   assert.equal(NOTE_MIN_CHARS, COMMIT_NOTE_MIN);
 });
 

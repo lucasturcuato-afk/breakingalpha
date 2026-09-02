@@ -146,6 +146,24 @@ describe("the landing page is wired for the arriving id", () => {
   });
 
   test("the track control is wired on the same row", () => {
-    assert.ok(page.includes("onTrack={() => void adopt(c.id, chosen)}"));
+    // The note now rides along, so the callback takes it. The deep link's
+    // arrival target is this footer's field, so a wiring that dropped the note
+    // would land the reader on a field whose contents go nowhere.
+    assert.ok(page.includes("void adopt(c.id, chosen, note)"));
+  });
+
+  test("the arriving reader gets a note field, and it is per call", () => {
+    // `decisions/commit-note-optional-when-adopting.md`: the field is on every
+    // adopt surface. This page draws twelve untracked footers, so the draft is
+    // keyed by call id and one card's sentence cannot appear under another.
+    assert.ok(page.includes("note={adoptNote[c.id] ?? \"\"}"));
+    assert.ok(page.includes("setAdoptNote((prev) => ({ ...prev, [c.id]: next }))"));
+  });
+
+  test("the note reaches the route, trimmed, and no gate withholds the press", () => {
+    assert.ok(page.includes("commit_note: note.trim()"));
+    // The reversed rule, absent by name. A page that reintroduced a length
+    // check would have to say so here.
+    assert.equal(/COMMIT_NOTE_MIN|noteMeetsGate/.test(page), false);
   });
 });

@@ -93,3 +93,16 @@ still gates on twelve characters. The ruling reaches it and this branch does not
 touch it, because `/radar` was fenced off for other work in flight. It is the
 one surface left to follow, and it is recorded here rather than left for someone
 to find as an inconsistency.
+
+**Followed through 2026-09-02.** The paragraph above is kept as written because
+it is the record of what this branch did and did not do. It is no longer
+outstanding, and its scope was one surface short of the truth: the shared
+control it names serves THREE desk surfaces, not one. `/radar/calls` rendered no
+note field at all; the morning brief and the evening wrap, wired by PR #694
+through `BriefCallsSection`, were the two that actually gated. All three now
+carry the field with no gate, applying `noteSatisfiesGate(_, "adopted")` from
+this ruling's own module rather than a fourth copy of the rule. Compose is
+unchanged in behaviour and now reads its half from the same function.
+
+`DECISIONS.md` ruling 11 carries an in-place amendment quoting its reversed
+half, so a reader who lands there rather than here cannot read it as current.

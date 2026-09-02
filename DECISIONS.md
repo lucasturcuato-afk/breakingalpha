@@ -89,16 +89,57 @@ programme spent its run removing.
 It must NOT fall back to `created_at`. That would put a real-looking timestamp
 above a note that does not exist.
 
-**2. Requiring a note will lower adoption conversion. That is intended.**
+**2. ~~Requiring a note will lower adoption conversion. That is intended.~~
+REVERSED for adopting, 2026-08-30. See the amendment directly below.**
 
-A gate that costs nothing is not a gate. The point is that adopting a call
-should require saying why, and some people will decline — which is the feature
-working, not failing.
+**Amended 2026-08-30 by Noah, and followed through on desktop on 2026-09-02.
+This half is REVERSED for adopting and does not describe current behaviour.**
+It originally read, verbatim:
 
-But it should be **measured**, and it cannot be measured yet: the only accounts
-using this are the founders', and two people are not a conversion signal.
-**Measure once anyone outside the founder accounts is adopting calls**, and
-compare against the pre-gate rate rather than against an expectation.
+> **2. Requiring a note will lower adoption conversion. That is intended.**
+>
+> A gate that costs nothing is not a gate. The point is that adopting a call
+> should require saying why, and some people will decline — which is the
+> feature working, not failing.
+>
+> But it should be **measured**, and it cannot be measured yet: the only
+> accounts using this are the founders', and two people are not a conversion
+> signal. **Measure once anyone outside the founder accounts is adopting
+> calls**, and compare against the pre-gate rate rather than against an
+> expectation.
+
+The reversal is ruled in full in
+[`decisions/commit-note-optional-when-adopting.md`](decisions/commit-note-optional-when-adopting.md).
+**The note is required when authoring and optional when adopting.** Authoring a
+claim is the reader making one and the note is that claim's reasoning, so the
+floor stands in Compose. Adopting is agreeing with a call the desk already
+reasoned about, and a restatement demanded at that moment makes a considered
+note indistinguishable from one typed to clear a gate.
+
+The original is quoted rather than deleted because PR bodies, code comments and
+`FIXES.md` all cite this paragraph, and a silently rewritten ruling cannot be
+checked against what was actually decided. It is quoted the way ruling 19's
+amendment quotes its own original, for the same reason.
+
+**The measurement this half asked for was never taken and is still owed.** It
+did not happen before the reversal, so the reversal was decided on the argument
+and not on a conversion number, and must not be described later as a measured
+result. It remains the thing that would reopen the question: see "What would
+change the answer" in the ruling file.
+
+**Do not restore the gate from this paragraph.** Two surfaces have already been
+built from it after it stopped being true. PR #694 grew the requirement onto
+the morning brief and the evening wrap and wrote a third diff for
+`/radar/calls`; `docs/pr/commit-note-gate-desktop.md` is that PR's body and
+still argues for the gate throughout. It is a historical record of a shipped
+change, not a live instruction, and the desktop control it describes now
+follows the ruling instead.
+
+**The first half of this ruling is untouched and still stands.** The permanent
+null note on pre-2026-08-25 claims, the ban on backfilling it, and the ban on
+falling back to `created_at` are all unaffected by any of the above, and matter
+more now: a null note is no longer only a claim that predates the column, it is
+also a claim the reader was deliberately not asked for one on.
 
 ### Ruling 17: what the Radar name does and does not promise
 
