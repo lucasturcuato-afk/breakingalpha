@@ -9,14 +9,14 @@ import { loadClaim } from "@/lib/claim-data";
  * happens before a byte of the screen is sent and the query never reaches the
  * browser.
  *
- * WIRED. `src/lib/claim-data.ts` reads the row by id, asks whether the desk has
- * graded it and whether this reader has already taken it onto their own record,
- * and gives back the shape `ClaimScreen` consumes. There is no fixture and no
+ * WIRED. `src/lib/claim-data.ts` reads the row by id, reads how the desk graded
+ * it and whether this reader has already taken it onto their own record, and
+ * gives back the shape `ClaimScreen` consumes. There is no fixture and no
  * `?stage=` switch: every state this screen has is now reachable by reproducing
  * its condition, which is what that switch existed to stand in for. The
  * `unwired` state went with the fixture.
  *
- * WHICH BLOCKS OF THE DESIGN ARE ABSENT, AND WHY. Three, and THE REASON IS NO
+ * WHICH BLOCKS OF THE DESIGN ARE ABSENT, AND WHY. Two, and THE REASON IS NO
  * COLUMN, NOT NO TIME:
  *
  *   the "what the desk sees" paragraphs   no column. `morning_brief_calls`
@@ -24,18 +24,21 @@ import { loadClaim } from "@/lib/claim-data";
  *                                         nothing behind it.
  *   the "WHAT WOULD SETTLE IT" well       no column. Nothing stores what would
  *                                         falsify the claim.
- *   the "Measured against" row            no value at read time, and NOT
- *                                         derived on purpose. The grader picks
- *                                         the benchmark when it runs, so
- *                                         deriving it here would print this
- *                                         screen's prediction of that choice.
+ *
+ * "MEASURED AGAINST" WAS A THIRD AND IS NO LONGER. It was cut because the
+ * grader picks its benchmark when it RUNS, so naming one beforehand would print
+ * this screen's prediction of that choice. After grading it is not a
+ * prediction: the outcome row's `metadata.benchmarks` names the symbols the
+ * grader used and the move it measured, and the screen prints those. The value
+ * is unavailable only BEFORE grading, and the block is absent exactly there.
  *
  * `sql/0003_brief_self_grading.sql:14-24` plus 0013 and 0014 are the whole
- * column list, and `backend/synthesize.py:1497-1518` writes exactly those. None
- * of the three is stubbed and none is drawn empty. What is left is still the
- * only surface where a reader can see a call's window and its settlement date
- * and commit to it, and it is the ONLY surface that shows an ADOPTED call while
- * its window is still open: the record lists graded entries only.
+ * column list, and `backend/synthesize.py:1497-1518` writes exactly those.
+ * Neither remaining block is stubbed and neither is drawn empty. What is left
+ * is still the only surface where a reader can see a call's window, its
+ * settlement date, how the desk settled it and the window their own commitment
+ * would open, and it is the ONLY surface that shows an ADOPTED call while its
+ * window is still open: the record lists graded entries only.
  *
  * `[id]` IS A morning_brief_calls id. `src/app/entry/[id]/page.tsx` is the
  * sibling route and takes a user_claims id; both are uuids, so the string

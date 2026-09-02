@@ -1,60 +1,92 @@
 "use client";
 
+import type { ReactNode } from "react";
 import Link from "next/link";
-import { ClaimAnatomy, Chevron } from "@/components/ledger";
+import { ClaimAnatomy, Chevron, OutcomeLead } from "@/components/ledger";
 import { useCommitSheet } from "@/components/commit/commit-sheet-provider";
-import type { ClaimData, ClaimStage } from "@/lib/claim-data";
+import type { ClaimData, ClaimOutcomeRead, ClaimStage } from "@/lib/claim-data";
 import styles from "./claim.module.css";
 
 /**
- * The Claim screen. One desk call opened out of the Ledger: the sentence, the
- * window it is judged over, the date it is checked, and the commitment.
+ * The Claim screen. One desk call opened out of the Ledger: the sentence, how
+ * the desk settled it, the window it was judged over, the window a commitment
+ * would open, and the commitment.
  *
- * WHAT THIS SCREEN DOES NOT DRAW, and why that is absence rather than a stub.
- * The design puts three more blocks here and NO COLUMN EXISTS behind any of
- * them: the two "what the desk sees" paragraphs, the "WHAT WOULD SETTLE IT"
- * well, and the "Measured against" row. THE REASON IS NO COLUMN, NOT NO TIME.
- * `src/lib/claim-data.ts` names the schema and the writer that prove it. They
- * are omitted entirely rather than drawn empty: an empty well is a promise the
- * data cannot keep, and a derived benchmark pair would be this screen
- * PREDICTING what the grader picks on grading day, out of a fourth copy of a
- * map already duplicated three times.
+ * IT USED TO SHOW LESS THAN THE ROW THAT OPENED IT, which is the complaint this
+ * screen was rebuilt against. A mobile Calls row draws an outcome word, a dot
+ * and an attribution sentence naming the entity's move against its benchmark.
+ * Tapping through to the full-screen expansion of that same call gave back a
+ * headline, two dates and 432px of nothing. A detail screen that subtracts is
+ * not a detail screen.
  *
- * The counter the design draws beside the back control ("2 / 5") goes with
- * them. It is a position in the brief, and the ordering it would count against
- * is a confidence sort the reader is never shown, so the numeral would be a
- * rank asserted out of a hidden ordering rather than a fact off the row.
+ * THE TWO WINDOWS ARE THE OTHER HALF, and they are why the screen read as a
+ * contradiction. "The desk graded this Challenged" and "Track this call" are
+ * both true and they concern DIFFERENT WINDOWS: the desk's has closed, and the
+ * reader's opens today. Nothing on the screen said so, and the reader's window
+ * appeared only after the tap, inside the commit sheet, which is the wrong side
+ * of the decision. Both are stated now, both are labelled, and the sentence
+ * under the second says plainly that the dates above it are not the reader's.
+ * `src/lib/commit-legality.ts` carries the read paths that make the commitment
+ * legal; nothing on this screen gates on the outcome.
  *
- * ANATOMY. The eyebrow and the claim come from `ClaimAnatomy` at the `screen`
- * scale, the same four slots the Ledger card and the entry row use. With the
- * reading gone, nothing sits between the claim and the settlement rows except
- * the design's own hairline. The design's SECOND hairline went with the blocks
- * it separated: two rules with nothing between them is not the design's
- * spacing, it is the residue of deleting what they framed.
+ * WHAT THIS SCREEN STILL DOES NOT DRAW, and why that is absence rather than a
+ * stub. The design puts two more blocks here and NO COLUMN EXISTS behind
+ * either: the two "what the desk sees" paragraphs and the "WHAT WOULD SETTLE
+ * IT" well. THE REASON IS NO COLUMN, NOT NO TIME, and `src/lib/claim-data.ts`
+ * names the schema and the writer that prove it. An empty well is a promise the
+ * data cannot keep.
+ *
+ * "MEASURED AGAINST" HAS COME BACK, and only after grading. It was cut because
+ * deriving a benchmark before the grader runs would be this screen predicting
+ * what the grader picks, out of a fourth copy of a map already duplicated three
+ * times. The block below derives nothing: it prints the symbols
+ * `metadata.benchmarks` records the grader as having used, so it exists on a
+ * settled call and is absent on every other one.
+ *
+ * The counter the design draws beside the back control ("2 / 5") is still gone.
+ * It is a position in the brief, and the ordering it would count against is a
+ * confidence sort the reader is never shown, so the numeral would be a rank
+ * asserted out of a hidden ordering rather than a fact off the row.
+ *
+ * ANATOMY. The outcome lead, the claim and the reading come from `ClaimAnatomy`
+ * at the `screen` scale, the same four slots the Ledger card and the entry row
+ * use. The `lead` slot now carries `OutcomeLead`, the dot and word the mobile
+ * row draws, with the eyebrow moved onto its trailing instrument edge. That is
+ * the shape the design already carried; what changed is that the slot holds a
+ * state rather than a bare span.
  *
  * Every measurement is taken off the rendered prototype with getComputedStyle.
  */
 
 const PAD = "var(--v3-pad)";
 
-/* THE SCREEN ENDS WHERE ITS CONTENT ENDS, and this is a correction that came
-   out of a measurement.
+/* THE SCREEN ENDS WHERE ITS CONTENT ENDS, and what that achieved is smaller
+   than the comment here used to claim.
  *
  * The first build pinned the action bar to the foot of a column stretched to
  * the full viewport, which is what the prototype draws, because the prototype
  * is a fixed 844px phone whose claim block fills it. Here the same layout
- * turned every block correctly omitted for having no column into ONE
- * CONTIGUOUS EMPTY REGION between the last line of the claim and the bar:
- * measured at 390x844, 415px on an open call, 49.1% of the viewport, and 595px
- * where the row carries no resolve_on. Half an empty phone under four short
- * lines does not read as restraint, it reads as content that failed to arrive.
- * Deleting a block and then reserving its space is deleting nothing.
+ * turned every block omitted for having no column into ONE CONTIGUOUS EMPTY
+ * REGION between the last line of the claim and the bar: measured at 390x844,
+ * 415px on an open call, 49.1% of the viewport. Not flexing the body moved the
+ * bar up under the content, and this comment then concluded that what was left
+ * below it was "page background, which is what the foot of any short screen
+ * looks like".
  *
- * So the body no longer flexes and the bar sits directly under it. What is
- * left below is page background, which is what the foot of any short screen
- * looks like, rather than a gap framed by a rule.
+ * THAT CONCLUSION WAS WRONG AND THE MEASUREMENT SAYS SO. Re-measured on the
+ * same viewport it was 432.5px, 55.1% of this screen's own root and 51.2% of
+ * the viewport. The void did not shrink. It MOVED, from between the claim and
+ * the bar to below the bar, and it grew, because the bar rising took nothing
+ * with it. PR 710's ceiling on an empty region is 15%. Nothing about where a
+ * void sits makes it smaller.
  *
- * `minHeight: 100%` STILL PAINTS THE WHOLE BOX, and that part is load bearing:
+ * The repair is not a layout one and is not in this constant. It is the four
+ * blocks below: the outcome, the reading, the benchmark evidence, and the
+ * reader's own window. This constant stays as it is because it is still right
+ * about the seam, and a screen whose content now fills it has no space left for
+ * the bar to be pushed away from.
+ *
+ * `minHeight: 100%` PAINTS THE WHOLE BOX, and that part is load bearing:
  * `main#main-content` fills with `bg-parchment` and this screen fills with
  * `--c-bg`, and those two are not the same value in EITHER theme, so a screen
  * that shrink-wrapped its content would draw a visible two-tone seam across the
@@ -103,7 +135,16 @@ export function ClaimScreen({
   const showsSettlement =
     showsClaim &&
     settlement != null &&
-    (settlement.window !== null || settlement.checked !== null);
+    (settlement.window !== null ||
+      settlement.checked !== null ||
+      settlement.published !== null ||
+      settlement.type !== null ||
+      settlement.direction !== null);
+  /* "unread" is the read that did not answer, and it is never an ungraded call.
+     Narrowed once here so no block below can treat the literal as an outcome. */
+  const outcome = showsClaim && data.outcome !== "unread" ? data.outcome : null;
+  const measure = outcome?.measure ?? null;
+  const readerWindow = showsClaim ? data.readerWindow : null;
 
   return (
     <div
@@ -158,32 +199,110 @@ export function ClaimScreen({
           <>
             <ClaimAnatomy
               scale="screen"
-              lead={
-                <span style={{ font: "600 11px/1 var(--font-inter), sans-serif", color: "var(--c-secondary)" }}>
-                  {data.eyebrow}
-                </span>
-              }
+              /* THE SLOT THE ROW USES, WITH WHAT THE ROW PUTS IN IT. The
+                 eyebrow moves onto `OutcomeLead`'s trailing instrument edge,
+                 which is where the mobile Calls row already draws the ticker,
+                 so the state word gains a place without the eyebrow losing
+                 one. */
+              lead={<ClaimLead outcome={data.outcome} eyebrow={data.eyebrow} />}
               claim={data.claim}
+              /* The reading. On a settled call it is the grader's attribution
+                 sentence; on an open one it is what the call is watching for.
+                 The loader picks between them with the row's own fallback
+                 chain, so this slot never has to know which it got. */
+              prose={outcome?.reading ?? undefined}
             />
+
+            {/* A FAILED READ IS NOT AN OPEN CALL, and this is the one thing on
+                the screen that has to say so out loud. Everything else here is
+                real; only the grade is missing, and a reader shown a stateless
+                claim would reasonably read it as one nobody has settled. */}
+            {showsClaim && data.outcome === "unread" ? <OutcomeUnread /> : null}
 
             {showsSettlement ? (
               <>
                 <Hairline marginTop="20px" />
-                <div style={{ marginTop: "14px", display: "flex", flexDirection: "column", gap: "10px" }}>
-                  {/* "Desk window", not the design's bare "Window". The span is
-                      the DESK CALL's, brief_date to resolve_on, and a reader
-                      who commits gets a DIFFERENT one: the adopt route opens
-                      theirs today and runs it to their own horizon. Their
-                      window belongs on /entry, which is the screen that has it.
-                      The fixture this replaced said "90 days, fixed at entry",
-                      which was untrue twice in six words. */}
+                {/* EVERY LABEL IN THIS BLOCK SAYS "DESK", and that is the whole
+                    repair. The span is the DESK CALL's, brief_date to
+                    resolve_on, and a reader who commits gets a DIFFERENT one:
+                    the adopt route opens theirs today and runs it to their own
+                    horizon. That second window is stated below rather than left
+                    to the sheet, so "Desk checks on" cannot be read as the date
+                    the Track control resolves against. */}
+                <Section label="The desk's call">
+                  {settlement.type ? <SettlementRow label="Type" value={settlement.type} /> : null}
+                  {settlement.direction ? (
+                    <SettlementRow label="Direction" value={settlement.direction} />
+                  ) : null}
                   {settlement.window ? (
                     <SettlementRow label="Desk window" value={settlement.window} />
                   ) : null}
                   {settlement.checked ? (
-                    <SettlementRow label="Checked" value={settlement.checked} />
+                    <SettlementRow label="Desk checks on" value={settlement.checked} />
                   ) : null}
-                </div>
+                  {/* Provenance as a LINE and never as a link. The brief id is
+                      on the row, but no route renders an arbitrary brief for a
+                      reader, so a link would have nowhere to go. */}
+                  {settlement.published ? (
+                    <SettlementRow label="Published" value={settlement.published} />
+                  ) : null}
+                </Section>
+              </>
+            ) : null}
+
+            {/* THE EVIDENCE, AND ONLY AFTER GRADING. Every figure here is a
+                number the grader wrote down, not one this screen worked out:
+                the entity it measured, the benchmarks it actually chose, and
+                the bar the move had to clear. See the header for why naming a
+                benchmark BEFORE grading would have been a prediction. */}
+            {measure ? (
+              <>
+                <Hairline marginTop="18px" />
+                <Section label="Measured against">
+                  {measure.entity ? (
+                    <SettlementRow label={measure.entity.symbol} value={measure.entity.move} />
+                  ) : null}
+                  {measure.benchmarks.map((b) => (
+                    <SettlementRow key={b.symbol} label={b.symbol} value={b.move} />
+                  ))}
+                  {measure.bar ? <SettlementRow label="Bar to clear" value={measure.bar} /> : null}
+                  {outcome?.gradedOn ? (
+                    <SettlementRow label="Checked by the desk on" value={outcome.gradedOn} />
+                  ) : null}
+                </Section>
+              </>
+            ) : null}
+
+            {/* THE READER'S WINDOW, BEFORE THE PRESS RATHER THAN AFTER IT. The
+                span is `commitWindow`'s, which is the same
+                `adoptWindowForCall(sessionIso, resolveOn)` the commit sheet
+                calls, so this is the window a press actually writes and not a
+                second arithmetic of the same idea. Absent on a call with no
+                commitment on offer, and on one already committed to: see
+                `ClaimData.readerWindow`. */}
+            {readerWindow ? (
+              <>
+                <Hairline marginTop="18px" />
+                <Section label="If you track this">
+                  <SettlementRow label="Your window" value={readerWindow.span} />
+                  <SettlementRow label="Closes on" value={readerWindow.closes} />
+                  <p
+                    style={{
+                      margin: "4px 0 0",
+                      font: "400 12.5px/1.55 var(--font-inter), sans-serif",
+                      color: "var(--c-secondary)",
+                      /* The measure every explanatory paragraph on this screen
+                         is set to. Without it the sentence sets one line
+                         shorter on a 430 phone than on a 390 one, which is the
+                         width where a long line is least readable, not most. */
+                      maxWidth: "34ch",
+                    }}
+                  >
+                    Tracking this opens your own window today. The dates above are the
+                    desk&rsquo;s; yours is graded on yours, even where the desk has
+                    already settled its own.
+                  </p>
+                </Section>
               </>
             ) : null}
           </>
@@ -223,6 +342,125 @@ export function ClaimScreen({
 
 function Hairline({ marginTop }: { marginTop: string }) {
   return <div style={{ marginTop, height: "1px", backgroundColor: "var(--c-border)" }} />;
+}
+
+/**
+ * A named group of settlement rows.
+ *
+ * THE LABEL IS THE POINT. Three blocks of label/value rows with no headings
+ * would put the desk's dates, the grader's figures and the reader's window in
+ * one undifferentiated column, and mistaking one for another is the exact
+ * defect this screen was rebuilt to fix. Sentence case, not caps: the design
+ * lint bans `uppercase` outright and the four-word outcome vocabulary is the
+ * only shouted thing on a mobile surface.
+ */
+function Section({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div style={{ marginTop: "14px", display: "flex", flexDirection: "column", gap: "10px" }}>
+      <span style={{ font: "600 11px/1 var(--font-inter), sans-serif", color: "var(--c-secondary)" }}>
+        {label}
+      </span>
+      {children}
+    </div>
+  );
+}
+
+/**
+ * The lead slot, in the THREE renderings the mobile Calls row already carries.
+ *
+ *   a state       `OutcomeLead`, one of four words and a filled dot in its
+ *                 semantic hue, with the eyebrow on the trailing edge.
+ *   no state      a HOLLOW RING and a marker that is not an outcome word at
+ *                 all. 46 of the graded rows in the live pool resolve to no
+ *                 word, so a screen that drew `OutcomeLead` unconditionally
+ *                 would crash or draw a blank on a quarter of them.
+ *   unread        the bare eyebrow, exactly as this screen shipped. The read
+ *                 did not answer, so neither a word nor a "not graded" marker
+ *                 would be true, and `OutcomeUnread` says which it is.
+ *
+ * `OUTCOME_STATES` IS CLOSED AT FOUR AND IS NOT TOUCHED. The hollow-ring
+ * marker sits OUTSIDE that set, in this wrapper, which is where
+ * `calls-screen.tsx` puts its own. It takes no filled dot for the reason that
+ * file states: the four states each own one in a semantic hue and a fifth fill
+ * would read as a fifth state.
+ *
+ * IT IS THE ROW'S MARKUP AND NOT A SHARED COMPONENT, which is a cost recorded
+ * rather than hidden. The ring lives inside `Row` in
+ * `src/components/radar-mobile/calls-screen.tsx` and is not exported; lifting
+ * it would edit a file another unit is working in on this branch. The values
+ * are the row's exactly, so extracting it later is a move rather than a
+ * reconciliation.
+ */
+function ClaimLead({ outcome, eyebrow }: { outcome: ClaimOutcomeRead; eyebrow: string }) {
+  if (outcome === "unread" || outcome.state === null) {
+    const marker =
+      outcome === "unread" ? null : outcome.pending ? "Not graded yet" : "Not graded";
+    return (
+      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+        {marker !== null ? (
+          <>
+            <span
+              aria-hidden="true"
+              style={{
+                flex: "none",
+                display: "inline-block",
+                width: "7px",
+                height: "7px",
+                borderRadius: "50%",
+                border: "1px solid var(--c-edge)",
+              }}
+            />
+            <span style={{ font: "600 11px/1 var(--font-inter), sans-serif", color: "var(--c-muted)" }}>
+              {marker}
+            </span>
+          </>
+        ) : null}
+        <span
+          style={{
+            marginLeft: marker !== null ? "auto" : undefined,
+            font: marker !== null
+              ? "400 10px/1 var(--font-jetbrains-mono), monospace"
+              : "600 11px/1 var(--font-inter), sans-serif",
+            letterSpacing: marker !== null ? "0.07em" : undefined,
+            color: marker !== null ? "var(--c-muted)" : "var(--c-secondary)",
+          }}
+        >
+          {eyebrow}
+        </span>
+      </div>
+    );
+  }
+  return <OutcomeLead state={outcome.state} instrument={eyebrow} />;
+}
+
+/**
+ * The grade read did not answer.
+ *
+ * The wording is the Calls section's, near enough to be recognisable as the
+ * same fact: "Could not read the grades for these", said about one call. The
+ * second sentence is the load-bearing one, and it is the sentence the list
+ * gives its own notice: what is missing is HOW THIS SETTLED, not whether it
+ * did, and nothing else on the screen is affected.
+ */
+function OutcomeUnread() {
+  return (
+    <div role="status" style={{ marginTop: "12px" }}>
+      <p style={{ margin: 0, font: "600 12.5px/1.45 var(--font-inter), sans-serif", color: "var(--c-ink)" }}>
+        Could not read the desk&rsquo;s grade for this call.
+      </p>
+      <p
+        style={{
+          margin: "6px 0 0",
+          font: "400 12.5px/1.55 var(--font-inter), sans-serif",
+          color: "var(--c-secondary)",
+          maxWidth: "34ch",
+        }}
+      >
+        The call above is real and the desk published it. What is missing is how it
+        settled, so it is drawn with no state rather than as an open call.
+      </p>
+    </div>
+  );
 }
 
 function SettlementRow({ label, value }: { label: string; value: string }) {
@@ -280,11 +518,21 @@ function SettlementRow({ label, value }: { label: string; value: string }) {
  *
  * WHY THE BAR ALWAYS SAYS SOMETHING. A reader who saw Track on one call and
  * nothing on the next could not tell a settled call from a broken screen, and
- * that INCONSISTENCY is the defect: the missing verdict is not. So the reason
- * is stated, in the register `COMMIT_BLOCK_REASON` sets, and it states no
- * outcome. There is still no verdict on this screen: the design has no slot for
- * one, and the desk's verdict answers a different question from the reader's
- * own, which `src/lib/claim-outcome.ts` enforces by construction.
+ * that INCONSISTENCY is the defect. So the reason is stated, in the register
+ * `COMMIT_BLOCK_REASON` sets, and it states no outcome.
+ *
+ * THE SCREEN NOW CARRIES THE DESK'S OUTCOME AND THIS BAR STILL DOES NOT READ
+ * IT, which was the sentence here that had to change without the behaviour
+ * changing with it. This comment used to say "there is still no verdict on this
+ * screen", and there is one: the lead slot draws the word and the dot the
+ * mobile row draws, and the block above states the benchmark evidence behind
+ * it. What has not changed by a line is what decides this bar. `variant`,
+ * `commitReason` and `onTrack` come out of `commitLegality(call, today)`, which
+ * has NO PARAMETER an outcome could arrive through, and
+ * `tests/unit/claim-outcome-render-only.test.ts` drives the loader over a
+ * matrix of outcome rows on one call and asserts all three are identical every
+ * time. The desk's verdict and the reader's answer different questions, which
+ * `src/lib/claim-outcome.ts` enforces by construction.
  *
  * The commitment is withheld for exactly one kind of reason, and it is a fact
  * about the CALL: no instrument to measure against, no direction to measure,
@@ -431,15 +679,19 @@ function ClaimSkeleton() {
        the role a screen reader arriving here announces nothing at all: no
        label, no content, just silence where the claim will be.
 
-       The blocks are the ones that draw: eyebrow, claim, hairline, the two
-       settlement rows. The three the design draws and the schema cannot fill
-       are not skeletoned either, because a skeleton is a promise that content
-       is coming. */
+       The blocks are the ones that ALWAYS draw: the lead, the claim, the
+       reading, the hairline and the desk's own rows. The blocks that depend on
+       what the read finds are not skeletoned, because a skeleton is a promise
+       that content is coming and neither the benchmark evidence nor the
+       reader's window is owed on every call. Nor are the two the design draws
+       and the schema cannot fill. */
     <div role="status" aria-busy="true" aria-label="Loading this claim">
       <div className={styles.sk} style={{ height: "11px", width: "38%" }} />
       <div className={styles.sk} style={{ height: "56px", marginTop: "13px" }} />
+      <div className={styles.sk} style={{ height: "42px", marginTop: "9px" }} />
       <div className={styles.sk} style={{ height: "1px", marginTop: "20px" }} />
-      <div className={styles.sk} style={{ height: "44px", marginTop: "14px" }} />
+      <div className={styles.sk} style={{ height: "11px", marginTop: "14px", width: "30%" }} />
+      <div className={styles.sk} style={{ height: "108px", marginTop: "10px" }} />
     </div>
   );
 }
