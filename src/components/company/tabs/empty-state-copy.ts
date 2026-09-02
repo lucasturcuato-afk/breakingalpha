@@ -162,9 +162,10 @@ export function primerKeyFiguresEmptyCopy(hasCik: boolean, hasFiledPeriod: boole
  * how many the window it reads holds, and why those differ.
  *
  * AND THE HONEST CASE STAYS HONEST. Coverage existing while none of it is a
- * company development is the COMMON case, not a defect, which is why deleting
- * this empty state would have been wrong. The two branches are worded so a
- * reader can tell that case from the full-pool case without reading the code.
+ * company development is the COMMON case and not a defect, so deleting the
+ * whole empty well would have thrown away a true answer to be rid of a false
+ * one. The two branches are worded so a reader can tell that case from the
+ * full-pool case without reading the code.
  */
 export interface PrimerDevelopmentsEmptyCopy {
   headline: string;

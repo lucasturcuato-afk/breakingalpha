@@ -284,6 +284,7 @@ test("no empty-state branch states a rate or an outcome word", () => {
   for (const text of [copy.headline, copy.note]) {
     assert.equal(/%|\bper cent\b|\brate\b|\baccuracy\b/i.test(text), false);
     assert.equal(/\b(right|wrong|correct|win|won|loss|lost)\b/i.test(text), false);
-    assert.equal(text.includes("—"), false);
+    // The literal is built rather than typed: design-lint bans the character.
+    assert.equal(text.includes(String.fromCharCode(0x2014)), false);
   }
 });
