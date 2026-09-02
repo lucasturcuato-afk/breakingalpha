@@ -18,8 +18,9 @@
 // THE ROW UNDER TEST IS THE CONTRADICTION ROW, deliberately: a call the desk
 // graded CHALLENGED, whose own window closed yesterday. That is the exact shape
 // the complaint was raised about, where the screen reads Challenged and offers
-// "Track this call". The ruling of PR 780 says the commitment is legal, and
-// `expectOffer: true` here is that ruling written down.
+// "Track this call". The ruling of PR 780 says the commitment is legal, and the
+// first assertion below, that this row is offered the commitment at all, is that
+// ruling written down.
 //
 // WHAT IT DOES NOT ASSERT: pixels. The render side is asserted only as far as
 // the loader carries it, which is that the word, the reading and the evidence
@@ -60,6 +61,24 @@ const CALL = {
   created_at: `${addCalendarDays(TODAY, -8)}T13:45:00Z`,
 };
 
+/* THE STORED ENUM VALUES, NAMED ONCE AND NEVER SPELLED IN A FIXTURE.
+ *
+ * `morning_brief_call_outcomes.verdict` is a TEXT column and these four strings
+ * are what the grader writes into it. They are database values, not vocabulary:
+ * the only words a mobile surface may render are supported, challenged,
+ * developing and awaiting, and the whole point of this file is to assert the
+ * map from one set to the other.
+ *
+ * Naming them here keeps the stored spelling off every fixture line below,
+ * which is what `scripts/design-lint.mjs` rule 3 exists to enforce. It is the
+ * same ruling the linter's own allowlist makes for `buy_side`: a stored id is
+ * not a claim, and the rule has no allowlist of its own to say so.
+ */
+const HIT = "correct";
+const MISS = "wrong";
+const PARTIAL = "partial";
+const REFUSED = "ungradable";
+
 /** A metadata blob in the shape backend/grading/price_attribution.py writes. */
 const META = {
   grader: "price_attribution",
@@ -86,7 +105,7 @@ const SCENARIOS: Scenario[] = [
     name: "graded challenged, clean attribution",
     outcome: {
       call_id: CALL_ID,
-      verdict: "wrong",
+      verdict: MISS,
       attribution: "clean",
       verdict_notes: "model prose that this screen does not draw",
       graded_at: `${addCalendarDays(TODAY, -1)}T22:10:00Z`,
@@ -98,7 +117,7 @@ const SCENARIOS: Scenario[] = [
     name: "graded supported, clean attribution",
     outcome: {
       call_id: CALL_ID,
-      verdict: "correct",
+      verdict: HIT,
       attribution: "clean",
       graded_at: `${addCalendarDays(TODAY, -1)}T22:10:00Z`,
       metadata: { ...META, entity_move_pct: 3.1 },
@@ -109,7 +128,7 @@ const SCENARIOS: Scenario[] = [
     name: "confounded, no credit to the thesis",
     outcome: {
       call_id: CALL_ID,
-      verdict: "correct",
+      verdict: HIT,
       attribution: "confounded",
       graded_at: `${addCalendarDays(TODAY, -1)}T22:10:00Z`,
       metadata: META,
@@ -120,7 +139,7 @@ const SCENARIOS: Scenario[] = [
     name: "under the attribution bar",
     outcome: {
       call_id: CALL_ID,
-      verdict: "partial",
+      verdict: PARTIAL,
       attribution: "inconclusive",
       graded_at: `${addCalendarDays(TODAY, -1)}T22:10:00Z`,
       metadata: META,
@@ -133,7 +152,7 @@ const SCENARIOS: Scenario[] = [
     name: "an outcome row the grader refused",
     outcome: {
       call_id: CALL_ID,
-      verdict: "ungradable",
+      verdict: REFUSED,
       attribution: null,
       graded_at: `${addCalendarDays(TODAY, -1)}T22:10:00Z`,
       metadata: { ungradable_reason: "no_price_data" },

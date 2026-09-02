@@ -351,8 +351,8 @@ function Hairline({ marginTop }: { marginTop: string }) {
  * would put the desk's dates, the grader's figures and the reader's window in
  * one undifferentiated column, and mistaking one for another is the exact
  * defect this screen was rebuilt to fix. Sentence case, not caps: the design
- * lint bans `uppercase` outright and the four-word outcome vocabulary is the
- * only shouted thing on a mobile surface.
+ * lint's rule 6 bans the transform outright, and nothing on a mobile surface is
+ * set in capitals except the monospace instrument on the lead's trailing edge.
  */
 function Section({ label, children }: { label: string; children: ReactNode }) {
   return (

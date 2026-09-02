@@ -76,6 +76,15 @@ const BANNED_ALLOW = [
   // string halves at the read site, which is a workaround for a linter rule
   // rather than code anyone would write.
   { pattern: /\bstockholders_equity\b/, why: 'stored column name, never rendered' },
+  // A jsonb key on `morning_brief_call_outcomes.metadata`, written by
+  // backend/grading/price_attribution.py and read by every frontend outcome
+  // mapper. Granted on exactly the reasoning above: it is a stored identifier,
+  // it is never rendered, and renaming it is a migration plus a backfill of
+  // every graded row for no compliance gain. The bare word below does not cover
+  // it, because there is no word boundary between the `s` and the `_`, so
+  // reading the key on any NEW line failed a rule that every existing reader of
+  // the same key predates.
+  { pattern: /\bthresholds_pct\b/, why: 'stored metadata key, never rendered' },
   // Ordinary words that contain a banned substring and carry no claim.
   { pattern: /\bthreshold(s)?\b/i, why: 'contains hold, no claim about a position' },
   { pattern: /\bhousehold(s)?\b/i, why: 'contains hold' },
