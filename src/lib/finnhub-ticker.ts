@@ -19,6 +19,7 @@
  */
 
 import { canonicalize } from "@/lib/company-intel";
+import { namesAgree } from "@/lib/name-agreement";
 
 // Patch J (b): 'NY Reg Shrs' admits ASML and similar NY-registered
 // foreign issuers that Finnhub returns under that type rather than ADR.
@@ -238,7 +239,10 @@ async function doFinnhubCall(
   }
 }
 
-function pickUsPrimary(result: FinnhubResultItem[]): string | null {
+function pickUsPrimary(
+  result: FinnhubResultItem[],
+  ourName?: string,
+): string | null {
   const candidates = result.filter(
     (c) => typeof c.type === "string" && ACCEPTED_TYPES.has(c.type),
   );
@@ -252,6 +256,16 @@ function pickUsPrimary(result: FinnhubResultItem[]): string | null {
     return CLASS_SHARE_RE.test(ds);
   });
   if (primary.length === 0) return null;
+
+  // NAME AGREEMENT: a VETO on the candidate we were going to take, never a
+  // re-rank. /search is fuzzy and always ranks something first, so taking
+  // rank 1 unconditionally is what wrote KO onto "Ola" and ORLY onto
+  // "Motive". Scanning for the first agreeing candidate instead would only
+  // trade one wrong answer for a subtler one. Mirrors
+  // backend/finnhub_helper._pick_us_primary.
+  if (ourName && !namesAgree(ourName, primary[0].description).agrees) {
+    return null;
+  }
 
   const sym = primary[0].symbol;
   if (typeof sym !== "string") return null;
@@ -298,7 +312,7 @@ export async function fetchTickerFromFinnhub(
   // Try the (canonicalized) name as-is first.
   const primary = await doFinnhubCall(base, key);
   if (primary !== null) {
-    const sym = pickUsPrimary(primary);
+    const sym = pickUsPrimary(primary, base);
     if (sym) return sym;
   }
 
@@ -319,7 +333,7 @@ export async function fetchTickerFromFinnhub(
     seen.add(candidate);
     const retry = await doFinnhubCall(candidate, key);
     if (retry === null) continue;
-    const sym = pickUsPrimary(retry);
+    const sym = pickUsPrimary(retry, base);
     if (sym) return sym;
   }
 
