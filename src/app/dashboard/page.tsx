@@ -429,6 +429,16 @@ function DashboardPageInner() {
                 sentimentReason: a.sentiment_reason || undefined,
                 relevanceReason: a.relevance_reason || undefined,
                 sourceTicker: parseSourceTicker(a.source),
+                // Same-event duplicates collapsed out of the rendered list by
+                // collapseSameEventGroups, surfaced under the story instead of
+                // being dropped. Already hydrated in the same round trip.
+                relatedArticles: (a.relatedArticles ?? []).map((r) => ({
+                  id: r.id,
+                  title: r.title,
+                  source: r.source,
+                  url: r.url,
+                  published_at: r.published_at,
+                })),
               };
             }),
           );

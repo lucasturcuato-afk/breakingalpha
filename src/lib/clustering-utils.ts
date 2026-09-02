@@ -55,9 +55,24 @@ function publishedWithin48h(a: Article, b: Article): boolean {
   }
 }
 
+/**
+ * Title-token Jaccard above which two articles published within 48h are treated
+ * as the same story.
+ *
+ * SINGLE SOURCE OF TRUTH. `src/lib/top-stories.ts` imports this rather than
+ * declaring its own number, so the company page and Top Stories cannot drift to
+ * two different definitions of "same event". Measured basis for 0.35: over 16
+ * replayed Top Stories candidate pools (7 days, both daily ingest batches) it
+ * forms 12 groups and every one is a single real event; 0.30 adds two groups
+ * that pair genuinely distinct stories, and 0.40 misses the GoPro/Starman,
+ * Eli Lilly/Merida, Semtech Q2 and Aon/USI events. See
+ * docs/recon/2026-09-02-clustered-top-stories-and-fact-layer-scope.md.
+ */
+export const SAME_STORY_TITLE_SIMILARITY = 0.35;
+
 function isSameStory(a: Article, b: Article): boolean {
   if (!publishedWithin48h(a, b)) return false;
-  if (jaccardSimilarity(a.title, b.title) <= 0.35) return false;
+  if (jaccardSimilarity(a.title, b.title) <= SAME_STORY_TITLE_SIMILARITY) return false;
   const entitiesA = extractCapitalizedEntities(a.title);
   const entitiesB = extractCapitalizedEntities(b.title);
   for (const e of entitiesA) {
