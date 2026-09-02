@@ -13,6 +13,8 @@ import {
 import { SentimentPill, sentimentToTone } from "@/components/ui/sentiment-pill";
 import { BookmarkButton } from "@/components/ui/bookmark";
 import { Sparkles, Plus, MessageSquare, ExternalLink } from "lucide-react";
+import { MoreSourcesDisclosure, type MoreSourcesItem } from "@/components/shared/more-sources-disclosure";
+import { timeAgo } from "@/lib/trend-signals";
 import { MemoModal } from "@/components/memo/MemoModalLazy";
 import { HeroPeers } from "@/components/dashboard/hero-peers";
 import { HeroThread } from "@/components/dashboard/hero-thread";
@@ -53,6 +55,13 @@ export interface StoryData {
   relevanceReason?: string;
   /** Ticker parsed from a Google-News source label, for the hero peer bars. */
   sourceTicker?: string | null;
+  /**
+   * Other articles covering the SAME event, collapsed out of the rendered list
+   * by collapseSameEventGroups (src/lib/top-stories.ts) and shown under the
+   * story via MoreSourcesDisclosure. Empty/absent for a story with no
+   * duplicates, which is the common case.
+   */
+  relatedArticles?: MoreSourcesItem[];
 }
 
 
@@ -253,6 +262,17 @@ export function LeadStoryCard({
             <ExternalLink size={11} />
           </a>
         )}
+
+        {/* Same-event coverage first: these are the rows collapseSameEventGroups
+            removed from the rendered list, so they are EXACT duplicates of this
+            event rather than approximate neighbours. Renders nothing when the
+            story had no duplicates. */}
+        <MoreSourcesDisclosure
+          items={story.relatedArticles ?? []}
+          formatTime={timeAgo}
+          variant="dark"
+          className="mt-3"
+        />
 
         {/* In this thread — stored-embedding nearest neighbors; hides itself
             when the RPC returns nothing. */}

@@ -15,6 +15,7 @@ import { buildArticleOrFilter } from "@/lib/watchlist-utils";
 import { filterImpreciseTitleMatches } from "@/lib/watchlist-title-precision";
 import { isBriefFresh } from "@/lib/watchlist-brief-ttl";
 import { clusterArticles, type ArticleCluster } from "@/lib/clustering-utils";
+import { MoreSourcesDisclosure } from "@/components/shared/more-sources-disclosure";
 import { useLiveMood } from "@/hooks/useLiveMood";
 
 function getSupabase() {
@@ -165,7 +166,6 @@ export default function WatchlistIdentifierPage({
   const [noteUnauthenticated, setNoteUnauthenticated] = useState(false);
   const [selectedArticleIndex, setSelectedArticleIndex] = useState<number | null>(null);
   const notesFocusTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [expandedClusters, setExpandedClusters] = useState<Map<string, boolean>>(new Map());
   const [user, setUser] = useState<{ id: string } | null | undefined>(undefined); // undefined = loading
   const [showSignIn, setShowSignIn] = useState(false);
   const [signInHeadline, setSignInHeadline] = useState("Sign in to continue");
@@ -1095,7 +1095,6 @@ Constraints:
                     {visible.map((cluster, idx) => {
                       const a = cluster.leadArticle;
                       const isSelected = selectedArticleIndex === idx;
-                      const isExpanded = expandedClusters.get(cluster.id) ?? false;
                       return (
                         <div key={cluster.id} data-cluster-idx={idx}>
                           {/* Lead article card */}
@@ -1161,66 +1160,15 @@ Constraints:
                             )}
                           </div>
 
-                          {/* Cluster expand row */}
+                          {/* Cluster expand row. Markup lives in
+                              MoreSourcesDisclosure, shared with the dashboard
+                              hero so the two cannot drift. */}
                           {cluster.isCluster && (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  setExpandedClusters((prev) => {
-                                    const next = new Map(prev);
-                                    next.set(cluster.id, !isExpanded);
-                                    return next;
-                                  })
-                                }
-                                className="flex items-center gap-1.5 mt-1 ml-2 font-sans text-[10px] cursor-pointer transition-colors"
-                                style={{ color: '#d97706', background: 'none', border: 'none', padding: '2px 4px' }}
-                              >
-                                <ChevronDown
-                                  size={12}
-                                  style={{ transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.18s ease' }}
-                                />
-                                {isExpanded ? 'Collapse' : `${cluster.relatedArticles.length} more source${cluster.relatedArticles.length === 1 ? '' : 's'}`}
-                              </button>
-
-                              {isExpanded && (
-                                <div className="space-y-1 mt-1 ml-3">
-                                  {cluster.relatedArticles.map((ra) => (
-                                    <div
-                                      key={ra.id}
-                                      className="bg-white border border-border-base rounded-xl p-2.5"
-                                      style={{ borderLeft: '2px solid #d97706' }}
-                                    >
-                                      <div className="flex flex-wrap items-center gap-1.5 mb-1">
-                                        {ra.source && (
-                                          <span className="font-sans text-[9px] text-text-muted">{ra.source}</span>
-                                        )}
-                                        {ra.published_at && timeAgo(ra.published_at) && (
-                                          <span className="font-sans text-[9px] text-text-faint ml-auto">
-                                            {timeAgo(ra.published_at)}
-                                          </span>
-                                        )}
-                                      </div>
-                                      <div className="flex items-start gap-2">
-                                        <h4 className="font-display text-[12px] font-bold text-espresso leading-snug flex-1">
-                                          {ra.title}
-                                        </h4>
-                                        {ra.url && (
-                                          <a
-                                            href={ra.url}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="text-gold hover:text-gold-dark flex-shrink-0 mt-0.5"
-                                          >
-                                            <ExternalLink size={10} />
-                                          </a>
-                                        )}
-                                      </div>
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-                            </>
+                            <MoreSourcesDisclosure
+                              items={cluster.relatedArticles}
+                              formatTime={timeAgo}
+                              variant="light"
+                            />
                           )}
                         </div>
                       );
