@@ -259,6 +259,49 @@ cause, so treat any count that lands at or near 1000 as suspect until proven.
   address a fraction of the case it named.
 
 
+### A test whose fingerprint is incidental to what it claims to prove
+Three of these in one week, each a test carrying a copy of something it should
+have been reading, or reading a symptom of the thing its name promises.
+
+- `src/lib/call-horizons.test.ts` (#713) held a hand-written copy of the adopt
+  route's gradeability predicate, under a comment claiming to be "the exact
+  predicate the route applies". The route's compare moved from `>` to `>=` and
+  the copy stayed `>`. It stayed green because every case exercised `week`,
+  where the two compares agree. Probing `session` split them.
+- `tests/unit/company-directory-search-target.test.ts` (#754) restated the
+  directory's zero-match gate in a local `navigatesTo()` helper and asserted
+  against the restatement. Four of its five tests passed against `main`, where
+  the gate was a different regex in a file the test never loaded.
+- `backend/tests/test_long_horizon_panel.py::TestGradingIsPurePriceMath::test_the_grading_loop_makes_no_llm_call_by_default`
+  proves "no model call" with `assert "correct" in notes and "clean" in notes`.
+  Its own comment names the real mechanism: no API key, no reachable network,
+  so a call would take the exception path. The assertion does not test that. It
+  reads two words that the deterministic fallback happens to interpolate from
+  `outcome.verdict` and `outcome.attribution`, so a copy edit to the grader's
+  vocabulary breaks a proof about network behaviour. `1 failed, 1582 passed`.
+
+- **Recognising it.** The name or docstring promises a MECHANISM (which
+  function ran, whether a call was made, which branch was taken) and the
+  assertion reads a SYMPTOM (a substring, a rendered date, a count). Ask two
+  questions: what else could make this pass, and what unrelated edit could make
+  it fail. Any answer to either means the fingerprint is incidental.
+- **Why it survives review.** It is green, and the proxy is usually true on the
+  day it is written. Nothing goes red until someone edits the thing the proxy
+  was standing in for, and then it goes red for a reason that has nothing to do
+  with the defect it was guarding, and the next reader edits the test.
+- **Assert the seam, not the symptom.** Import the rule rather than restating
+  it, and if it is not exported, export it. Assert the branch (`notes` equals
+  the deterministic fallback, the injected fetcher was the only IO) rather than
+  words the branch happens to emit. `company-directory-search-target.test.ts`
+  says it best: a test that cannot go red on the tree it is describing is
+  documentation with an exit code.
+- **Not this trap, though it was read as it twice.** Two PRODUCTION constants
+  mirroring one rule is a different shape with a different fix. The four
+  divergent `TICKER_RE` regexes (issue #738, not a PR) and the three 7-day tone
+  windows (#721) are real, filed, and self-documented, but no test carried
+  those copies. Do not fold them into this entry.
+
+
 ## Output style
 - Blunt, founder-grade. No filler.
 - Zero em-dashes in anything you write: code comments, docs, memos, commit messages.
