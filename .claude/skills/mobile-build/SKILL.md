@@ -214,6 +214,15 @@ follow it.
 Never merge, push to main, apply a migration, run the pipeline, write to the
 DB, call Gemini, or create or delete a Vercel project.
 
+This repo is PUBLIC and everything you write to it is world-readable. Never put
+live product data in a PR body, a PR comment, an issue or a commit message: no
+row counts or volumes, no ingest cadence or freshness, no statement that a
+pipeline is behind, no last-run timestamps, no query latencies, and no verbatim
+product output such as a claim, a thesis, a ticker rationale or a graded
+verdict sentence. Make the argument in relative terms; it survives without the
+figures. Company names and headline fragments already in the public source are
+fine. When in doubt leave it out, and say what you left out.
+
 ## Verification, per screen
 
 Put `data-parity="<flag>"` on your screen's root element so parity can scope to
