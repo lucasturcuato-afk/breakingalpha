@@ -160,7 +160,7 @@ describe("the landing page is wired for the arriving id", () => {
     assert.ok(page.includes("setAdoptNote((prev) => ({ ...prev, [c.id]: next }))"));
   });
 
-  test("the note reaches the route, trimmed, and no gate withholds the press", () => {
+  test("the note reaches the route, trimmed, and no gate blocks the press", () => {
     assert.ok(page.includes("commit_note: note.trim()"));
     // The reversed rule, absent by name. A page that reintroduced a length
     // check would have to say so here.

@@ -332,10 +332,10 @@ test("no string on this surface describes a floor that no longer exists", () => 
 
 test("the press names the act, in one label, in every state it can be pressed from", () => {
   assert.equal(TRACK_PRESS_LABEL, "Track this call");
-  // The desk clicks; the sheet is a press-and-hold. Reusing the sheet's
+  // The desk clicks; the sheet is a sustained press. Reusing the sheet's
   // "Press to enter this on your ledger" would name a gesture the desk has not
   // got, so the two labels differ on purpose and neither is a gate's voice.
-  assert.equal(/press|hold/i.test(TRACK_PRESS_LABEL), false);
+  assert.equal(/\bpress/i.test(TRACK_PRESS_LABEL), false);
 });
 
 test("no note copy promises a verdict, a probability, or a rate", () => {

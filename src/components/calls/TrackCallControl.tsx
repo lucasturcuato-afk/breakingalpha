@@ -54,7 +54,7 @@ import {
    would drag createPortal and next/navigation into the brief, the wrap and
    /radar/calls bundles to read two integers. commit-target imports nothing. */
 import { COMMIT_NOTE_MAX } from "@/components/commit/commit-target";
-/* The ruling itself, from the module PR #761 put it in, for the same reason
+/* The ruling itself, from the module PR 761 put it in, for the same reason
    the line above names the direct module: `@/components/commit` re-exports the
    sheet. `commit-gate` imports one integer and nothing else. */
 import {
@@ -168,7 +168,7 @@ export function noteLandedOnRow(res: {
  * `commit-gate` instead. They were byte-identical twins of the sheet's, and
  * one of the pair described a floor that no longer exists: "A sentence is
  * enough." is a statement about a minimum, and there is no minimum on this
- * path any more. PR #761 already argued and replaced that string on the sheet;
+ * path any more. PR 761 already argued and replaced that string on the sheet;
  * re-deriving a desk answer would be the second implementation of a decision
  * that has one.
  *
@@ -200,7 +200,7 @@ export const TRACK_NOTE_PROMPT =
  * `commit-gate.ts`'s ADOPT_PRESS_LABEL, for the same reason.
  *
  * The sheet's own label is NOT reused: it reads "Press to enter this on your
- * ledger" because that control is a press-and-hold, and the desk's is a click.
+ * ledger" because that control is a sustained press, and the desk's is a click.
  * A label naming a gesture the desk does not use would be false.
  */
 export const TRACK_PRESS_LABEL = "Track this call";
@@ -236,7 +236,7 @@ export interface CallCommitNoteProps {
    * possible bug in this product." Kept above, a 500 leaves the sentence on
    * screen and the retry costs a click.
    *
-   * It matters MORE now, not less. Nothing withholds the button, so a reader
+   * It matters MORE now, not less. Nothing blocks the button, so a reader
    * can write a considered sentence and press in one motion, and losing it on
    * a failed write would be losing the only unreconstructable thing on the
    * card at the exact moment the reader is least willing to retype it.
@@ -520,7 +520,7 @@ function UntrackedFooter({
      so this file names which side of the ruling it is on at the one place the
      decision is used rather than in a comment that can drift from the code.
      Copied deliberately from `commit-sheet.tsx:145`, which is the shape PR
-     #761 left behind. */
+     761 left behind. */
   const ready = trackPressReady(note, busy);
 
   return (

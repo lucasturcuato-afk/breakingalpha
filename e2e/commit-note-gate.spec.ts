@@ -5,7 +5,7 @@
  * `decisions/commit-note-optional-when-adopting.md` reverses the half of
  * DECISIONS.md ruling 11 that put a note inside what adopting a call means:
  * required when authoring through Compose, optional when adopting a call the
- * desk already reasoned about. PR #761 shipped it on the phone commit sheet;
+ * desk already reasoned about. PR 761 shipped it on the phone commit sheet;
  * the desk followed on 2026-09-02.
  *
  * The field STAYS on every surface and asks. Nothing is withheld behind it.
@@ -117,7 +117,7 @@ async function waitForUntracked(page: Page, path: string) {
 }
 
 /* ────────────────────────────────────────────────────────────────────────
-   SPEC 1. The field is offered, and it withholds nothing.
+   SPEC 1. The field is offered, and it blocks nothing.
 
    All three surfaces run the same control
    (src/components/calls/TrackCallControl.tsx) and all three ADOPT: they post
@@ -160,7 +160,7 @@ for (const surface of ADOPT_SURFACES) {
       expect(fieldBox!.height).toBeGreaterThanOrEqual(72);
     });
 
-    test(`${surface.name}: an empty note does not withhold the commit`, async ({ page }) => {
+    test(`${surface.name}: an empty note does not block the commit`, async ({ page }) => {
       await waitForUntracked(page, surface.path);
       const { button } = firstUntracked(page);
 
