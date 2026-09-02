@@ -204,6 +204,42 @@ export const OUTCOME_TOKENS: Record<OutcomeState, { dot: string; text: string }>
 };
 
 /**
+ * THE NEUTRAL EDGE. What a card with no grade paints its 2px marker.
+ *
+ * It is NOT a fifth member of `OUTCOME_TOKENS`, and that is the whole reason it
+ * sits outside the table: a fifth entry there would be a fifth hue a reader
+ * could learn as a fifth state, and the set above is closed at four on purpose.
+ * `--c-edge` is the same neutral the hollow ring on an ungraded lead already
+ * draws, so a card with nothing to fill in and a lead with nothing to fill in
+ * agree by construction.
+ */
+export const OUTCOME_EDGE_NEUTRAL = "var(--c-edge)";
+
+/**
+ * The token a state-marked EDGE paints, and the one contract a caller of
+ * `LedgerDisclosureRow` has no other way to check.
+ *
+ * IT IS A FILL, SO IT TAKES THE BASE TOKEN AND NEVER THE INK ONE. Swapping
+ * those two is the single most common defect the design recorded, and the table
+ * above separates them precisely so this function can pick the fill half once
+ * instead of at every draw site. Reading `.text` here would paint a 2px band in
+ * a type colour: legal CSS, a passing build, and a hue no design surface uses
+ * as a fill.
+ *
+ * IT IS A FUNCTION RATHER THAN AN INLINE TERNARY so the mapping is reachable
+ * from a test without a DOM. `LedgerDisclosureRow` took a required
+ * `state: OutcomeState | null` prop with this mapping written inline, which
+ * meant the contract could only be checked by looking at a rendered card in a
+ * browser. `tests/unit/outcome-edge-token.test.ts` is what makes it mechanical.
+ *
+ * `null` IS AN ANSWER, NOT AN ABSENCE. A row with no grade takes the neutral;
+ * the prop stays required so a caller that forgets it cannot silently draw one.
+ */
+export function outcomeEdgeToken(state: OutcomeState | null): string {
+  return state === null ? OUTCOME_EDGE_NEUTRAL : OUTCOME_TOKENS[state].dot;
+}
+
+/**
  * The rendered form of each state. Exported so a screen drawing the state at a
  * size this file does not carry still gets its word from here. There is exactly
  * one word table, for the same reason there is exactly one state set: a second

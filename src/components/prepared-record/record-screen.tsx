@@ -24,6 +24,7 @@ import {
 } from "./record-data";
 import styles from "./record.module.css";
 import { FONT_DISPLAY, FONT_MONO, FONT_SANS } from "@/components/mobile/fonts";
+import { TabBarClearance } from "@/components/mobile/tab-bar-clearance";
 
 /**
  * The Prepared record. The artifact: complete, uncurated, exportable, every
@@ -179,15 +180,17 @@ export function RecordScreen({
       {/* The tab bar's height, reserved a second time, because the shell's
           reservation does not reach this content.
 
-          The shell pads its scroller by exactly this, but the record overflows
-          an intermediate `h-full` box, and a scroller's end padding is not
-          added to the scrollable overflow of a descendant that overflows it.
-          Measured at 390x844 with 41 entries: scrollHeight 7346 against a root
-          of 7346, so the padding contributed nothing, the root's last pixel
-          landed at 844 behind the tab bar, and the sticky bar at its resting
-          bottom of 785 covered the final result line, which ended at 727.
-          With this the bar rests flush on the last row instead. */}
-      <div style={{ height: "calc(var(--mobile-tabbar-height) + env(safe-area-inset-bottom))" }} />
+          THIS SCREEN'S OWN MEASUREMENT, kept because it is the sharpest one in
+          the repo: at 390x844 with 41 entries, scrollHeight 7346 against a root
+          of 7346, so the shell's padding contributed nothing, the root's last
+          pixel landed at 844 behind the tab bar, and the sticky bar at its
+          resting bottom of 785 covered the final result line, which ended at
+          727. With this the bar rests flush on the last row instead.
+
+          The declaration itself now has one owner. This was one of four
+          hand-rolled copies of it; see `@/components/mobile/tab-bar-clearance`
+          for the mechanism and for what the other three cost. */}
+      <TabBarClearance />
     </div>
   );
 }

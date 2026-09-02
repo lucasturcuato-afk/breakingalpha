@@ -18,6 +18,7 @@ import {
   type RawEvidenceRow,
 } from "@/lib/claim-evidence";
 import { FONT_DISPLAY, FONT_MONO, FONT_SANS } from "@/components/mobile/fonts";
+import { TabBarClearance } from "@/components/mobile/tab-bar-clearance";
 
 /**
  * Radar / Calls, on a phone. The third of Radar's four sections.
@@ -723,28 +724,5 @@ function EvidenceCounts({
       <span style={{ color: "var(--c-redink)" }}>{summary.challenging} challenging</span>{" "}
       <span>{`${where} ${EVIDENCE_COPY.since}.`}</span>
     </p>
-  );
-}
-
-/**
- * Clearance for the tab bar, as an element rather than as padding on the
- * shell's scroll container.
- *
- * `app-shell.tsx` already puts a bottom padding on `#main-content`, and on
- * these full-bleed routes that padding is not honoured at the end of the
- * scroll. Measured on `/watch` at 390 with `scripts/screen-geometry.mjs`:
- * without this element the last line bottomed out at 820px against a bar top of
- * 785px, so 35px of it sat behind the bar. Same element and same expression
- * `/watch` and `/desk-record` carry, for the same reason.
- */
-function TabBarClearance() {
-  return (
-    <div
-      aria-hidden="true"
-      style={{
-        flex: "none",
-        height: "calc(var(--mobile-tabbar-height) + env(safe-area-inset-bottom))",
-      }}
-    />
   );
 }

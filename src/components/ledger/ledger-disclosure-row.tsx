@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import {
   CLAIM_TYPE_SCALE,
   ClaimAnatomy,
-  OUTCOME_TOKENS,
+  outcomeEdgeToken,
   type OutcomeState,
 } from "./claim-anatomy";
 import { Chevron } from "./chevron";
@@ -138,7 +138,7 @@ export interface LedgerDisclosureRowProps {
    * this component cannot derive a state from it. The edge is a fill and needs
    * a base token, so the state arrives here as the closed union rather than as
    * a colour string: a caller cannot reach for a hex, an ink token, or a fifth
-   * hue, because the mapping lives in `OUTCOME_TOKENS` and is applied below.
+   * hue, because the mapping lives in `outcomeEdgeToken` and is applied below.
    *
    * REQUIRED, and null is the answer for a row with no grade rather than the
    * absence of one. A card that silently dropped its state marker because a
@@ -205,13 +205,19 @@ export function LedgerDisclosureRow({
   /* A base token, never an ink one, and never a fifth fill. A row with no
      grade takes the neutral edge for the same reason its lead draws a hollow
      ring rather than a filled dot: there is nothing to fill in, and a fifth
-     hue here would read as a fifth state. */
+     hue here would read as a fifth state.
+
+     THE MAPPING IS NOT WRITTEN HERE ANY MORE. It was one inline ternary, which
+     left the whole contract of a required prop on a shared component checkable
+     only by looking at a rendered card in a browser. `outcomeEdgeToken` in
+     `claim-anatomy.tsx` owns it beside the table it reads, and
+     `tests/unit/outcome-edge-token.test.ts` pins every arm. */
   const edge = (
     <div
       aria-hidden="true"
       style={{
         height: "2px",
-        backgroundColor: state === null ? "var(--c-edge)" : OUTCOME_TOKENS[state].dot,
+        backgroundColor: outcomeEdgeToken(state),
       }}
     />
   );

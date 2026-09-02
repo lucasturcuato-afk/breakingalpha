@@ -24,6 +24,7 @@ import type {
 import { WATCH_OMISSIONS } from "./omissions";
 import styles from "./watch.module.css";
 import { FONT_DISPLAY, FONT_MONO, FONT_SANS } from "@/components/mobile/fonts";
+import { TabBarClearance } from "@/components/mobile/tab-bar-clearance";
 
 /**
  * Radar's two ungraded sections: the reader's watchlist, and what they follow.
@@ -685,35 +686,6 @@ export function WatchScreen({
  */
 function Slack({ grow }: { grow: number }) {
   return <div aria-hidden="true" style={{ flex: `${grow} 0 0`, minHeight: 0 }} />;
-}
-
-/**
- * Clearance for the tab bar, as an element rather than as padding on the
- * shell's scroll container.
- *
- * `app-shell.tsx` already puts
- * `pb-[calc(var(--mobile-tabbar-height)+env(safe-area-inset-bottom))]` on
- * #main-content, and on this route that padding is not honoured at the end of
- * the scroll. Measured on the running page at 390 with
- * `scripts/screen-geometry.mjs`: without this element the last line bottomed
- * out at 820px against a bar top of 785px, so 35px of it sat behind the bar.
- * A synthetic reproduction of the container does honour the padding, which is
- * what makes this worth measuring on the real page rather than reasoning about.
- *
- * It is the LAST child of the screen ROOT rather than of the body, so the
- * sparse state's centring cannot push content under the bar: the centred
- * region is the space between the masthead and this block.
- */
-function TabBarClearance() {
-  return (
-    <div
-      aria-hidden="true"
-      style={{
-        flex: "none",
-        height: "calc(var(--mobile-tabbar-height) + env(safe-area-inset-bottom))",
-      }}
-    />
-  );
 }
 
 /** "3 with coverage · 2 quiet · 1 muted". Muted only when there are muted. */

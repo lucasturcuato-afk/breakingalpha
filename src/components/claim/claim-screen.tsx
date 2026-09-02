@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { ClaimAnatomy, Chevron, OutcomeLead } from "@/components/ledger";
 import { useCommitSheet } from "@/components/commit/commit-sheet-provider";
+import { TabBarClearance } from "@/components/mobile/tab-bar-clearance";
 import type { ClaimData, ClaimOutcomeRead, ClaimStage } from "@/lib/claim-data";
 import styles from "./claim.module.css";
 
@@ -336,6 +337,23 @@ export function ClaimScreen({
           }
         />
       ) : null}
+
+      {/* THE BAR IS THE LAST THING THIS SCREEN DRAWS, SO IT NEEDS THE
+          CLEARANCE, and this screen shipped without one.
+
+          Measured at 320x844 on a graded call, both themes, before this line:
+          the action bar ran 770 to 824 against a tab bar whose top edge is 785,
+          and `#main-content` could not scroll at all, `scrollHeight ===
+          clientHeight === 844`. So about 15px of a 54px control was live,
+          `document.elementFromPoint` at its centre answered with the tab bar's
+          Radar pole, and no scroll reached the rest. 375, 390 and 430 cleared by
+          about 10px, which is why every earlier measurement passed.
+
+          It is the SHARED clearance and not a third hand-rolled copy of it; the
+          module carries the mechanism and the history. It sits OUTSIDE the
+          `showsClaim` gate on purpose: loading, error and missing each draw
+          their own last block and each need the same room under it. */}
+      <TabBarClearance />
     </div>
   );
 }
