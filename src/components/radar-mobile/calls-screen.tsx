@@ -333,9 +333,6 @@ export function CallsScreen({
                 onToggle={() => toggle(row.id)}
               />
             ))}
-            {/* Every row draws its own top hairline, so the last one needs a
-                bottom edge to sit against. */}
-            {data.yours.length > 0 ? <ListFoot /> : null}
             {data.yours.length === 0 ? (
               <WatchNotice
                 body="No calls tracked yet. Calls are made in your own words on the desk, or adopted there from one of the desk's own."
@@ -416,7 +413,6 @@ export function CallsScreen({
                 ))}
               </div>
             ))}
-            {briefRows > 0 ? <ListFoot /> : null}
             {briefRows === 0 ? (
               <WatchNotice
                 body={`No calls in the desk's briefs over the last ${data.briefDays} days. That is a quiet fortnight, not a failed read.`}
@@ -506,11 +502,6 @@ function Standfirst({ children }: { children: ReactNode }) {
   );
 }
 
-/** The bottom edge of a list of ruled rows. Each row draws only its own top. */
-function ListFoot() {
-  return <div aria-hidden="true" style={{ height: "1px", backgroundColor: "var(--c-hair)" }} />;
-}
-
 /**
  * One call.
  *
@@ -519,6 +510,19 @@ function ListFoot() {
  * it wraps: `LedgerDisclosureRow` rather than `LedgerEntryRow`, because the row
  * now opens where it stands and the entry row's container is a NAVIGATION
  * control that cannot carry `aria-expanded`.
+ *
+ * THE ROW IS NOW A BOXED CARD, and no fourth wrapper was written to make it
+ * one. `LedgerDisclosureRow` owns the container and every consumer of that
+ * component gets the box, so this file gained one prop and lost a component.
+ * `state` is passed for the 2px top edge alone: the lead is still built here,
+ * because a row with no grade draws a hollow ring and a marker that is not an
+ * outcome word, and null is what that row passes for its edge.
+ *
+ * ELEVEN OF THE FIFTEEN ROWS ON THIS SCREEN ARE `developing` OR `awaiting`,
+ * which share a base token by design and can never be told apart by a fill. So
+ * the edge is not what separates this list: the box is. Four sides and an 8px
+ * gap land on every row whatever it carries, and the edge is the extra that
+ * makes the four rows which are NOT that pair findable without reading.
  *
  * Two leads, one anatomy. A graded or open row gets `OutcomeLead` and one of
  * the four words. A row with no grade gets a hollow ring and a marker that is
@@ -596,6 +600,7 @@ function Row({
   return (
     <LedgerDisclosureRow
       lead={lead}
+      state={row.state}
       claim={row.claim}
       reading={reading}
       first={first}

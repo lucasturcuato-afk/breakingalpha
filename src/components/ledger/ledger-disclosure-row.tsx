@@ -1,5 +1,10 @@
 import type { ReactNode } from "react";
-import { CLAIM_TYPE_SCALE, ClaimAnatomy } from "./claim-anatomy";
+import {
+  CLAIM_TYPE_SCALE,
+  ClaimAnatomy,
+  OUTCOME_TOKENS,
+  type OutcomeState,
+} from "./claim-anatomy";
 import { Chevron } from "./chevron";
 import styles from "./ledger.module.css";
 
@@ -51,6 +56,58 @@ import styles from "./ledger.module.css";
  * CONTROLLED, WITH NO STATE OF ITS OWN. The screens hold one open-set between
  * them, which is what lets a screen close every row when its filter changes
  * without this component knowing a filter exists.
+ *
+ * ---------------------------------------------------------------------------
+ * IT IS A BOXED CARD, AND THAT IS THE ANSWER TO "EVERY ROW IS THE SAME WEIGHT".
+ *
+ * This shipped drawing `LedgerEntryRow`'s frame: a 1px top hairline and nothing
+ * else. On a phone that gives a list where every row weighs exactly what its
+ * neighbour weighs and the eye has nothing to grab, which is the complaint the
+ * desk made against both screens that consume this. The desk's own list draws
+ * raised cards with real boundaries; the phone drew a stack of rules.
+ *
+ * So the container is now a card: 1px `--c-border`, 12px radius, `--c-card`
+ * fill, and an 8px GAP where the hairline used to be. Four sides and air, on
+ * every row, whatever state it carries. That last clause is the point. Any
+ * scheme that separates rows BY COLOUR cannot separate `developing` from
+ * `awaiting`, which share a base token by design and are the majority of the
+ * list; the box separates them because a boundary is not a hue.
+ *
+ * THE STATE MARKER IS A 2px TOP EDGE, which is prescribed rather than merely
+ * permitted: the design README bans coloured LEFT borders and names a 2px top
+ * edge plus a dot and the state word as the sanctioned replacement. It is the
+ * first child of a bordered, 12px-radius, `overflow:hidden` card, which is the
+ * shape every top edge in the prototype and in `trend-signal-card.tsx` takes.
+ * The dot and the word stay, so no state is ever carried by colour alone.
+ *
+ * THE PADDING IS 9px 14px, NOT THE CARD'S OWN 18px, and the number was chosen
+ * against the fold rather than against the design system. The collapse redesign
+ * took Calls from three rows above the fold to six and the record from two to
+ * five, and that gain is not negotiable. A card's chrome costs 4px the hairline
+ * row did not spend (two borders plus the edge, against one hairline) and the
+ * gap costs 8 more, so the vertical padding is the only place the 12 can come
+ * back from. It comes back honestly: the head is already a 44px control with
+ * its content vertically centred, so 9px of padding still leaves about 11px of
+ * clear air between the ink and the border. Measured pitch is 74, one pixel
+ * UNDER the hairline row it replaces, and no screen loses a fold row.
+ *
+ * THE CONTAINER IS STILL NOT FOCUSABLE. It is a plain div with a button head
+ * and a sibling body, which is exactly the shape the README requires of a
+ * container that already holds a focusable control. Boxing it changed the skin
+ * and nothing about what is tappable: the whole card is NOT a control.
+ *
+ * `LedgerEntryRow` IS NOT TOUCHED and stays a ruled row. The Ledger screen
+ * draws today's claims as cards above past entries as rules, and that contrast
+ * carries meaning because both shapes are on one screen. Neither screen that
+ * consumes THIS component draws the other shape, so there is nothing for a
+ * ruled row to contrast with there. `claim-anatomy.tsx` calls a card and a
+ * ruled row "different objects rather than one object in two skins"; this file
+ * has argued at length that it is a different object from the entry row, and it
+ * now owns the container that follows from that rather than borrowing one.
+ *
+ * That also removes a copy. The five frame numbers were duplicated between
+ * `ledger-entry-row.tsx` and this file; they are now one frame each, and a
+ * fourth wrapper carrying a third copy was never written.
  */
 
 export interface LedgerDisclosureRowProps {
@@ -73,6 +130,21 @@ export interface LedgerDisclosureRowProps {
   onToggle: () => void;
   /** True for the first row under a rule, which carries the top margin. */
   first?: boolean;
+  /**
+   * Colours the 2px top edge, and nothing else.
+   *
+   * PASSED SEPARATELY FROM `lead` ON PURPOSE. The lead stays an opaque node
+   * because one of the two screens draws a row with no outcome word at all, so
+   * this component cannot derive a state from it. The edge is a fill and needs
+   * a base token, so the state arrives here as the closed union rather than as
+   * a colour string: a caller cannot reach for a hex, an ink token, or a fifth
+   * hue, because the mapping lives in `OUTCOME_TOKENS` and is applied below.
+   *
+   * REQUIRED, and null is the answer for a row with no grade rather than the
+   * absence of one. A card that silently dropped its state marker because a
+   * caller forgot the prop is the defect an optional would have allowed.
+   */
+  state: OutcomeState | null;
 }
 
 export function LedgerDisclosureRow({
@@ -83,17 +155,26 @@ export function LedgerDisclosureRow({
   open,
   onToggle,
   first = false,
+  state,
 }: LedgerDisclosureRowProps) {
   const disclosable = Boolean(reading) || Boolean(detail);
   const s = CLAIM_TYPE_SCALE.row;
 
-  /* `LedgerEntryRow`'s measured frame, unchanged: padding 15px 0, a 1px
-     hairline on top, and a 7px column gap. The two row shapes sit in one list
-     on both screens, so they cannot be two different frames. */
+  /* The card. `overflow:hidden` is what lets the 2px edge above sit flush with
+     the top of a 12px radius instead of squaring off its corners. */
   const frame: React.CSSProperties = {
-    padding: "15px 0",
-    borderTop: "1px solid var(--c-hair)",
-    marginTop: first ? "10px" : 0,
+    border: "1px solid var(--c-border)",
+    borderRadius: "12px",
+    backgroundColor: "var(--c-card)",
+    overflow: "hidden",
+    /* The first card in a list sits a little further off its heading. Every
+       other card carries the 8px that used to be a hairline. */
+    marginTop: first ? "10px" : "8px",
+  };
+
+  /* Inside the edge, so the edge is full bleed and the content is not. */
+  const inner: React.CSSProperties = {
+    padding: "9px 14px",
     display: "flex",
     flexDirection: "column",
     gap: "7px",
@@ -121,48 +202,70 @@ export function LedgerDisclosureRow({
     />
   );
 
+  /* A base token, never an ink one, and never a fifth fill. A row with no
+     grade takes the neutral edge for the same reason its lead draws a hollow
+     ring rather than a filled dot: there is nothing to fill in, and a fifth
+     hue here would read as a fifth state. */
+  const edge = (
+    <div
+      aria-hidden="true"
+      style={{
+        height: "2px",
+        backgroundColor: state === null ? "var(--c-edge)" : OUTCOME_TOKENS[state].dot,
+      }}
+    />
+  );
+
   if (!disclosable) {
-    return <div data-row style={frame}>{head}</div>;
+    return (
+      <div data-row style={frame}>
+        {edge}
+        <div style={inner}>{head}</div>
+      </div>
+    );
   }
 
   return (
     <div data-row style={frame}>
-      <button
-        type="button"
-        aria-expanded={open}
-        onClick={onToggle}
-        className={`${styles.bare} ${styles.focusable}`}
-        style={{
-          /* The drawn control is 44px whatever the claim wraps to. `.bare`
-             zeroes padding and border, so there is no box to grow past the
-             min-height and no `content-box` correction to make. */
-          minHeight: "44px",
-          width: "100%",
-          display: "flex",
-          flexDirection: "column",
-          justifyContent: "center",
-          gap: "7px",
-          textAlign: "left",
-        }}
-      >
-        {head}
-      </button>
-      {open ? (
-        /* The Ledger's own 240ms entrance, which already rests in its drawn
-           state and already carries the reduced-motion guard. */
-        <div
-          className={styles.enter}
-          style={{ display: "flex", flexDirection: "column", gap: "9px" }}
+      {edge}
+      <div style={inner}>
+        <button
+          type="button"
+          aria-expanded={open}
+          onClick={onToggle}
+          className={`${styles.bare} ${styles.focusable}`}
+          style={{
+            /* The drawn control is 44px whatever the claim wraps to. `.bare`
+               zeroes padding and border, so there is no box to grow past the
+               min-height and no `content-box` correction to make. */
+            minHeight: "44px",
+            width: "100%",
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "center",
+            gap: "7px",
+            textAlign: "left",
+          }}
         >
-          {reading ? (
-            /* Drawn from the exported scale rather than from a literal, so the
-               opened reading is the same type as an entry row's reading and
-               cannot drift from it. */
-            <p style={{ margin: 0, font: s.prose, color: "var(--c-body)" }}>{reading}</p>
-          ) : null}
-          {detail}
-        </div>
-      ) : null}
+          {head}
+        </button>
+        {open ? (
+          /* The Ledger's own 240ms entrance, which already rests in its drawn
+             state and already carries the reduced-motion guard. */
+          <div
+            className={styles.enter}
+            style={{ display: "flex", flexDirection: "column", gap: "9px" }}
+          >
+            {reading ? (
+              /* Drawn from the exported scale rather than from a literal, so the
+                 opened reading is the same type as an entry row's reading and
+                 cannot drift from it. */
+              <p style={{ margin: 0, font: s.prose, color: "var(--c-body)" }}>{reading}</p>
+            ) : null}
+            {detail}
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }

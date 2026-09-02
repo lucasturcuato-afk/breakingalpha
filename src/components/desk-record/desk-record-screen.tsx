@@ -338,14 +338,10 @@ export function DeskRecordScreen({
             />
           ))}
 
-          {/* The list closes on a rule. Every row draws its own top hairline,
-              so the last one needs a bottom edge to sit against. Gated on
-              there being a list: with a loader wired, counts can be non-zero
-              while the list page is empty, and a lone hairline under the
-              heading reads as a rendering failure. */}
-          {visible.length > 0 ? (
-            <div aria-hidden="true" style={{ height: "1px", backgroundColor: "var(--c-hair)" }} />
-          ) : null}
+          {/* NO CLOSING RULE. It existed only to give the last of a stack of
+              top-hairline rows a bottom edge to sit against. Every row is a
+              boxed card now and draws four sides of its own, so the rule
+              became a stray hairline floating under the last card. */}
 
           <HowThisIsCounted since={data.since} />
         </>
@@ -723,6 +719,14 @@ function CountStrip({
  * The link sits INSIDE the opened body and never on the collapsed row. A link
  * inside a button is nested interactive content, and a row carrying two taps
  * at once is a row where neither is predictable.
+ *
+ * THE ROW IS NOW A BOXED CARD, drawn by `LedgerDisclosureRow` itself rather
+ * than by a fourth wrapper here. `state` is passed twice on purpose and to two
+ * different ends: once into `OutcomeLead`, which renders the dot and the word,
+ * and once as the row's own `state`, which colours the 2px top edge. The edge
+ * earns more here than it does on Calls, because `awaiting` never appears on
+ * the record: what is left is three distinct hues, so a reader can see where
+ * the challenged calls fall in a five-row window without reading a word.
  */
 function DeskRow({
   entry,
@@ -738,6 +742,7 @@ function DeskRow({
   return (
     <LedgerDisclosureRow
       lead={<OutcomeLead state={entry.state} instrument={entry.instrument} />}
+      state={entry.state}
       claim={entry.claim}
       reading={entry.result}
       first={first}
