@@ -214,6 +214,37 @@ very entry, so the trunk kept saying eight traps while the branch said ten.
   does not descend into shadow roots (#737), so it can report a clear frame
   with an overlay sitting in it.
 
+### A response of exactly 1000 rows is not an answer, it is a ceiling
+PostgREST caps every response at `db-max-rows`, which is **1000** here, and it
+does not error when it truncates. A query that should return 50,386 rows returns
+1000 and looks exactly like a complete answer. `.limit(5000)` does not raise, it
+truncates. This has now produced four wrong numbers in this codebase from one
+cause, so treat any count that lands at or near 1000 as suspect until proven.
+
+- **`.limit(n)` above 1000 is a lie you will believe.** `tools/`'s merge map
+  asked for every pair, got 1000 of 1363, and planned 10,566 article repairs
+  instead of 13,979. It would have exited 0 and left ~3,400 articles unrepaired
+  with nothing in the ledger recording the miss.
+- **`count="exact"` returns the TRUE total while the body is still truncated.**
+  That is the cheapest possible check and the basis of the fix: fetch with
+  `.order().range()` in a loop, then assert `len(rows) == count`. A read that
+  cannot reach its reported count should exit, not return a short list.
+- **A count(*) that times out is not a reason to skip the assertion, it is a
+  reason to use keyset.** `articles` cannot be counted (57014), so paginate on
+  `.gt("id", last)`: a capped page is indistinguishable from a full one and the
+  walk simply continues, which is why keyset is the one safe unbounded read.
+- **The damage is worst where nobody looks at the number.** The three found by
+  sweeping were all silent: ingest's 24h title-dedup preload saw 1000 of 1602 so
+  duplicate titles could be stored; its 30-day URL preload saw 1000 of 50,386,
+  which is 2% of the dedup set and a wrong duplicate count in the structured
+  log; and 22 of 43 users' watchlist xlsx exports silently dropped rows.
+- **Grep for the shape, not the symptom.** `\.limit\(\s*[0-9]{4,}` finds the
+  explicit ones. The rest are reads with no `.limit`, no `.range`, no
+  `.single()` and no narrowing `.eq`/`.in_` on a table that can exceed 1000.
+  Filter out writes (`.insert`/`.upsert`) or the sweep is mostly false hits.
+- **Under 1000 today is not a fix.** `companies WHERE ticker IS NOT NULL` sits
+  at 961. It crosses on its own, with no code change and no signal.
+
 ### Claims to distrust in your own writing
 - "Byte-identical" and "exactly N properties move" are the two claims most
   often falsified under audit. Both were wrong this week: `text-align` moves
