@@ -28,6 +28,8 @@ import { resolveAlias } from "@/lib/data-access/aliasResolver";
 import { getArticleFallback } from "@/lib/data-access/getArticleFallback";
 import { fetchCompanyFilings } from "@/lib/sec-filings";
 import { fetchCompanyFinancials } from "@/lib/financial-facts";
+import { fetchRegistryProfile } from "@/lib/adviser-registry";
+import { fetchWikidataDescriptor } from "@/lib/wikidata-descriptor";
 import {
   CANONICAL,
   COMPANY_IDENTITY,
@@ -292,6 +294,8 @@ export default async function CompanyDetailPage({
     filingsResult,
     insiderResult,
     financialsResult,
+    registryProfile,
+    wikidataDescriptor,
   ] = await Promise.all([
     getArticleFallback(
       supabase,
@@ -348,6 +352,20 @@ export default async function CompanyDetailPage({
     // reads after it. It now carries AbortSignal.timeout; see
     // SEC_SUBMISSIONS_TIMEOUT_MS in financial-facts.ts.
     fetchCompanyFinancials(supabase, { name: companyName }),
+    // SEC adviser registry (read-only): Form ADV Part 1 RAUM and Form 13F-HR
+    // filer status, keyed on companies.id. This is the NUMBERS pillar for names
+    // that never file XBRL, which is why it joins this array rather than
+    // hanging off the financials read: 103 of the 306 single-pillar names in
+    // the universe cross the two-pillar bar on these two rows alone, and every
+    // one of them renders an empty PrimerFinancialSnapshot. Both reads are
+    // reject-safe inside the helper; see the reject-safety note above.
+    fetchRegistryProfile(supabase, companyDetail.companyId),
+    // Wikidata short description, a LABELLED THIN TIER and deliberately not an
+    // identity source. Median length across the names that have one is 30
+    // characters against a 74-character identity floor, so it renders under its
+    // own provenance heading and counts toward nothing. See
+    // src/lib/wikidata-descriptor.ts.
+    fetchWikidataDescriptor(supabase, canonical),
   ]);
 
   const articlesForTab =
@@ -392,6 +410,8 @@ export default async function CompanyDetailPage({
         industry={identity?.industry ?? null}
         description={identity?.brief ?? null}
         financials={financialsResult}
+        registry={registryProfile}
+        wikidata={wikidataDescriptor}
         briefSlot={
           // Mutually exclusive, never stacked. No article coverage -> ONLY the
           // web-memo card; BriefTab is not mounted, so its "Generate Brief" CTA
