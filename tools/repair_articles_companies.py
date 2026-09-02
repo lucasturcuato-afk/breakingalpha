@@ -117,6 +117,72 @@ def require_merge_drained() -> None:
         )
 
 
+# ---------------------------------------------------------------------------
+# Paged reads.
+#
+# PostgREST caps EVERY response at db-max-rows (1000 here) and does NOT error
+# when it truncates: a query that should return 1363 rows returns 1000 and looks
+# like a complete answer. That silence has now produced three separate wrong
+# results in this codebase, including in this very tool, where a truncated
+# loser -> survivor map planned 10,566 articles instead of 13,972 and would have
+# reported success while leaving ~3,400 unrepaired with no record.
+#
+# So every set-returning read goes through one of these two helpers, and both
+# ASSERT the row count against a server-side count(*) taken in the same breath.
+# A truncated read fails loudly instead of quietly doing less work.
+# ---------------------------------------------------------------------------
+def _fetch_all_rpc(fn: str, order_col: str, params: dict | None = None) -> list:
+    """Every row a set-returning RPC produces, with a count assertion.
+
+    `.rpc(...)` alone is capped. `.order().range()` paginates, and
+    `count="exact"` returns the true total, so the two together are both a fix
+    and a check.
+    """
+    params = params or {}
+    try:
+        head = sb.rpc(fn, params, count="exact").limit(1).execute()
+    except Exception as ex:
+        sys.exit(f"could not read {fn}(): {ex}")
+    expected = head.count
+    if expected is None:
+        sys.exit(f"{fn}() returned no exact count; refusing to read it unverified.")
+
+    rows, page = [], 0
+    while len(rows) < expected:
+        r = sb.rpc(fn, params).order(order_col).range(page * PAGE, page * PAGE + PAGE - 1).execute()
+        if not r.data:
+            break
+        rows += r.data
+        page += 1
+    if len(rows) != expected:
+        sys.exit(f"TRUNCATED READ: {fn}() reports {expected} rows, fetched {len(rows)}. "
+                 "Refusing to continue on a partial result.")
+    return rows
+
+
+def _fetch_all_table(table: str, cols: str, order_col: str = "id") -> list:
+    """Every row of a table, with the same count assertion."""
+    try:
+        head = sb.table(table).select(cols, count="exact").limit(1).execute()
+    except Exception as ex:
+        sys.exit(f"could not read {table}: {ex}")
+    expected = head.count
+    if expected is None:
+        sys.exit(f"{table} returned no exact count; refusing to read it unverified.")
+
+    rows, page = [], 0
+    while len(rows) < expected:
+        r = sb.table(table).select(cols).order(order_col).range(page * PAGE, page * PAGE + PAGE - 1).execute()
+        if not r.data:
+            break
+        rows += r.data
+        page += 1
+    if len(rows) != expected:
+        sys.exit(f"TRUNCATED READ: {table} reports {expected} rows, fetched {len(rows)}. "
+                 "Refusing to continue on a partial result.")
+    return rows
+
+
 def load_map() -> dict:
     """loser name -> survivor name, for clusters that actually merged.
 
@@ -125,13 +191,12 @@ def load_map() -> dict:
     wrong survivor. Fails loudly on an empty map rather than repairing nothing
     and reporting success.
     """
-    try:
-        res = sb.rpc(MAP_RPC, {}).execute()
-    except Exception as ex:
-        sys.exit(f"could not read {MAP_RPC}(): {ex}\n"
-                 "Apply sql/0035 section 2 first.")
-    rows = res.data or []
+    rows = _fetch_all_rpc(MAP_RPC, "loser_name")
     m = {r["loser_name"]: r["survivor_name"] for r in rows}
+    if len(m) != len(rows):
+        sys.exit(f"{MAP_RPC}() returned {len(rows)} rows but only {len(m)} distinct "
+                 "loser names. A loser cannot map to two survivors; the plan is "
+                 "inconsistent. Refusing to run.")
     if not m:
         sys.exit(f"{MAP_RPC}() returned no pairs. Either no cluster has merged, "
                  "or the plan was archived. Refusing to run: an empty map would "
@@ -140,18 +205,20 @@ def load_map() -> dict:
 
 
 def live_company_names() -> set:
-    out, p = set(), 0
-    while True:
-        r = sb.table("companies").select("name").order("id").range(p * PAGE, p * PAGE + PAGE - 1).execute()
-        out |= {x["name"] for x in r.data}
-        if len(r.data) < PAGE:
-            return out
-        p += 1
+    return {x["name"] for x in _fetch_all_table("companies", "name")}
 
 
 def scan_articles(cache: str = "", limit: int = 0) -> list:
     """Keyset scan on id. NEVER OFFSET: articles is ~198k rows and count(*) on
-    it already times out, so an OFFSET walk degrades quadratically."""
+    it already times out, so an OFFSET walk degrades quadratically.
+
+    EXEMPT from the count assertion the other reads carry, and deliberately: the
+    exact count that assertion needs is the very query that times out on this
+    table. Keyset is safe without it for a different reason. Each page asks for
+    PAGE rows and continues from the last id seen, so a capped response is
+    indistinguishable from a full one and the walk simply continues; truncation
+    cannot silently end it. It stops only on an empty page or a short page, both
+    of which mean the table is exhausted."""
     if cache and os.path.exists(cache):
         rows = json.load(open(cache))
         print(f"  scan: {len(rows)} rows from cache {cache}")
@@ -184,13 +251,8 @@ def scan_articles(cache: str = "", limit: int = 0) -> list:
 
 def already_done() -> set:
     """(article_id, loser_name) pairs already in the ledger, for --resume."""
-    out, p = set(), 0
-    while True:
-        r = sb.table(LEDGER).select("article_id,loser_name").order("id").range(p * PAGE, p * PAGE + PAGE - 1).execute()
-        out |= {(x["article_id"], x["loser_name"]) for x in r.data}
-        if len(r.data) < PAGE:
-            return out
-        p += 1
+    rows = _fetch_all_table(LEDGER, "article_id,loser_name")
+    return {(x["article_id"], x["loser_name"]) for x in rows}
 
 
 # ---------------------------------------------------------------------------

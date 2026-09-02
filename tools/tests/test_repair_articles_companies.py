@@ -210,3 +210,143 @@ def test_ledger_write_precedes_the_apply():
     src = open(_SRC).read()
     body = src[src.index("def apply_changes("):src.index("def main(")]
     assert body.index("table(LEDGER)") < body.index("_apply_with_split(chunk)")
+
+
+# ---------------------------------------------------------------------------
+# 6. THE POSTGREST ROW CAP
+#
+# PostgREST caps every response at db-max-rows and does NOT error when it
+# truncates. A read that should return 1363 rows returns 1000 and looks
+# complete. That silence produced three separate wrong results in this
+# codebase, one of them in this tool: a truncated merge map planned 10,566
+# articles instead of 13,979 and would have reported success while leaving
+# ~3,400 unrepaired with no record they were missed.
+#
+# Every set-returning read must therefore paginate AND assert against a
+# server-side count. These tests pin that, because the failure mode is silence
+# and nothing else would notice it coming back.
+# ---------------------------------------------------------------------------
+class _FakeResp:
+    def __init__(self, data, count=None):
+        self.data = data
+        self.count = count
+
+
+class _FakeQuery:
+    """Mimics PostgREST: never returns more than `cap` rows per response."""
+    def __init__(self, rows, cap, count=None):
+        self._rows, self._cap, self._count = rows, cap, count
+        self._lo, self._hi, self._limit = 0, None, None
+
+    def order(self, *a, **k):
+        return self
+
+    def limit(self, n):
+        self._limit = n
+        return self
+
+    def range(self, lo, hi):
+        self._lo, self._hi = lo, hi
+        return self
+
+    def execute(self):
+        hi = self._hi if self._hi is not None else self._lo + (self._limit or self._cap) - 1
+        page = self._rows[self._lo:hi + 1][:self._cap]
+        return _FakeResp(page, self._count)
+
+
+class _FakeSB:
+    def __init__(self, rows, cap=1000, count=None, honour_range=True):
+        self.rows, self.cap = rows, cap
+        self.count = len(rows) if count is None else count
+        self.honour_range = honour_range
+
+    def rpc(self, fn, params, count=None):
+        if not self.honour_range:
+            return _FakeQuery(self.rows[:self.cap], self.cap,
+                              self.count if count else None)
+        return _FakeQuery(self.rows, self.cap, self.count if count else None)
+
+    def table(self, name):
+        return self
+
+    def select(self, cols, count=None):
+        return _FakeQuery(self.rows, self.cap, self.count if count else None)
+
+
+def test_fetch_all_rpc_pages_past_the_cap():
+    """1363 rows behind a 1000-row cap must come back as 1363."""
+    rows = [{"loser_name": f"L{i}", "survivor_name": f"S{i}"} for i in range(1363)]
+    MOD.sb = _FakeSB(rows, cap=1000)
+    try:
+        got = MOD._fetch_all_rpc("norm_v2_merge_map", "loser_name")
+    finally:
+        MOD.sb = None
+    assert len(got) == 1363
+
+
+def test_fetch_all_rpc_refuses_a_truncated_read():
+    """If pagination cannot reach the reported count, exit rather than return
+    a short list that reads as complete."""
+    rows = [{"loser_name": f"L{i}", "survivor_name": f"S{i}"} for i in range(1363)]
+    MOD.sb = _FakeSB(rows, cap=1000, honour_range=False)
+    try:
+        with pytest.raises(SystemExit) as e:
+            MOD._fetch_all_rpc("norm_v2_merge_map", "loser_name")
+    finally:
+        MOD.sb = None
+    assert "TRUNCATED READ" in str(e.value)
+
+
+def test_fetch_all_table_pages_past_the_cap():
+    rows = [{"name": f"C{i}"} for i in range(4254)]
+    MOD.sb = _FakeSB(rows, cap=1000)
+    try:
+        got = MOD._fetch_all_table("companies", "name")
+    finally:
+        MOD.sb = None
+    assert len(got) == 4254
+
+
+def test_no_set_returning_read_bypasses_the_helpers():
+    """A bare .rpc(...).execute() or .table(...).select(...).execute() is
+    capped. Only the single-row progress check and the single-object apply RPC
+    may call rpc directly; everything else goes through a checked helper."""
+    src = open(_SRC).read()
+    body = src[src.index("def require_merge_drained"):]
+    # `sb.rpc(` rather than `.rpc(`: prose in docstrings names the method while
+    # explaining why it is capped, and that is documentation, not a call site.
+    bare = [ln.strip() for ln in body.splitlines()
+            if "sb.rpc(" in ln and "def " not in ln]
+    # PROGRESS_RPC returns exactly one row; APPLY_RPC returns one jsonb object.
+    allowed = ("PROGRESS_RPC", "APPLY_RPC", "sb.rpc(fn, params")
+    for ln in bare:
+        assert any(a in ln for a in allowed), f"uncapped set-returning read: {ln}"
+
+
+def test_load_map_uses_the_checked_helper():
+    src = open(_SRC).read()
+    body = src[src.index("def load_map"):src.index("def live_company_names")]
+    assert "_fetch_all_rpc(MAP_RPC" in body
+    assert ".execute()" not in body, "load_map must not issue a raw query"
+
+
+def test_load_map_rejects_a_loser_mapping_to_two_survivors():
+    rows = [{"loser_name": "X", "survivor_name": "A"},
+            {"loser_name": "X", "survivor_name": "B"}]
+    MOD.sb = _FakeSB(rows, cap=1000)
+    try:
+        with pytest.raises(SystemExit) as e:
+            MOD.load_map()
+    finally:
+        MOD.sb = None
+    assert "distinct loser names" in str(e.value)
+
+
+def test_article_scan_is_documented_as_exempt():
+    """The scan cannot carry a count assertion because count(*) on articles is
+    the query that times out. Its exemption must stay justified in the source."""
+    src = open(_SRC).read()
+    body = src[src.index("def scan_articles"):src.index("def already_done")]
+    assert "EXEMPT" in body
+    assert "times out" in body
