@@ -65,6 +65,31 @@ export interface CompanyDetail {
   tone: ToneSummary;
   attention: AttentionSummary;
   articles: CompanyDetailArticle[];
+  /**
+   * TRUE when the article read came back at ARTICLE_LIMIT.
+   *
+   * `articles.length` is the result of a `.limit()`, so AT the limit it is a
+   * FLOOR and not a total, and a surface printing it as a total states a
+   * population nothing counted. The two states are otherwise
+   * indistinguishable: a company whose true window count is 50 and one whose
+   * true count is several times that both hand back exactly 50 rows.
+   *
+   * Measured on the mobile Company Intel memo control, which prints this
+   * number: apple and meta both draw 50, goldman-sachs draws 47. Only the
+   * third of those three is a total.
+   */
+  articlesTruncated: boolean;
+  /**
+   * The `published_at` window, in days, that produced `articles`.
+   *
+   * NOT A CONSTANT, which is why it is carried rather than assumed. The read
+   * escalates: ARTICLE_DAYS_FAST first, then ARTICLE_DAYS_WIDE once when the
+   * fast rung comes back under ARTICLE_MIN_ROWS. A surface that hardcodes 14
+   * beside this count mislabels every escalated company, and the escalated
+   * companies are the thin ones, which is exactly where a reader is most
+   * likely to be counting.
+   */
+  articleWindowDays: number;
   themes: string[];
   memo: null;
   isPrivate: boolean;
@@ -221,11 +246,18 @@ export async function getCompanyDetail(
   // an error at the fast rung there is no row count to trust, so we leave the
   // result alone rather than paper over a failed read with a wider one.
   let articleRows = fastRows;
+  let articleWindowDays = ARTICLE_DAYS_FAST;
   const wideDays = articlesRes.error ? null : escalateArticleWindow(fastRows.length);
   if (wideDays !== null) {
     const wideRes = await articlesWithin(wideDays);
     if (!wideRes.error) {
-      articleRows = preferWiderRows(fastRows, (wideRes.data ?? []) as ArticleRow[]);
+      const adopted = preferWiderRows(fastRows, (wideRes.data ?? []) as ArticleRow[]);
+      /* The window follows the ROWS, not the attempt. `preferWiderRows` takes
+         the wide rung only when it is strictly additive, so an escalation that
+         came back no larger leaves the fast rows in place, and reporting the
+         wide window over them would name a window that produced nothing here. */
+      if (adopted !== fastRows) articleWindowDays = wideDays;
+      articleRows = adopted;
     }
   }
 
@@ -288,6 +320,12 @@ export async function getCompanyDetail(
     tone,
     attention,
     articles,
+    /* AT the limit, not over it. `.limit(ARTICLE_LIMIT)` can never hand back
+       more than ARTICLE_LIMIT, so equality is the only signal there is that
+       rows were left behind. `>=` rather than `===` so a future raise to the
+       limit cannot silently turn this into a permanent false. */
+    articlesTruncated: articleRows.length >= ARTICLE_LIMIT,
+    articleWindowDays,
     themes: (head.key_themes ?? []) as string[],
     memo: null,
     isPrivate,

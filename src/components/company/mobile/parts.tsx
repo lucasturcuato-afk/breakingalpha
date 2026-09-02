@@ -34,14 +34,24 @@ export function RuledRow({
   last,
   children,
   style,
+  marker,
 }: {
   first?: boolean;
   last?: boolean;
   children: ReactNode;
   style?: CSSProperties;
+  /**
+   * A `data-` attribute name to stamp on the row, empty-valued.
+   *
+   * A named prop rather than a `...rest` spread. A spread here would let any
+   * caller push arbitrary DOM attributes, including a second `style`, through
+   * a component whose whole job is that its rows cannot drift apart.
+   */
+  marker?: string;
 }) {
   return (
     <div
+      {...(marker ? { [marker]: "" } : {})}
       style={{
         marginTop: first ? "8px" : undefined,
         padding: "13px 0",
@@ -73,12 +83,29 @@ export function Chip({
   active,
   disabled,
   shape = "square",
+  grow,
   onClick,
 }: {
   label: string;
   active: boolean;
   disabled?: boolean;
   shape?: ChipShape;
+  /**
+   * Take an equal share of the row's leftover width instead of sizing to the
+   * label. OPT IN, and only the section row opts in.
+   *
+   * WHY IT EXISTS. Five section chips need 418.21px on one line and the widest
+   * phone offers 390 of content, so the row wraps at every width and the
+   * orphan MOVES: three-plus-two at 320 and 375, four-plus-one at 390 and 430.
+   * A row whose shape depends on the handset is an artifact. The section row
+   * now declares its own break and grows each chip to fill the line, so both
+   * rows are flush and the shape is the same on every phone.
+   *
+   * The filing filter row does NOT opt in. Its chip count varies with the
+   * filings on file, so growing them would restate a different width per
+   * company for the same control.
+   */
+  grow?: boolean;
   onClick: () => void;
 }) {
   const size = shape === "pill" ? "11.5px" : "12px";
@@ -90,10 +117,14 @@ export function Chip({
       aria-pressed={active}
       className={styles.bare}
       style={{
-        flex: "none",
+        /* `1 1 auto` and never `1`: the basis stays the label's own width, so
+           the leftover is shared on top of content rather than replacing it,
+           and a long label can never be compressed below itself. */
+        flex: grow ? "1 1 auto" : "none",
         minHeight: "44px",
         display: "flex",
         alignItems: "center",
+        justifyContent: grow ? "center" : undefined,
         padding: "0 12px",
         borderRadius: shape === "pill" ? "4px" : "6px",
         whiteSpace: "nowrap",

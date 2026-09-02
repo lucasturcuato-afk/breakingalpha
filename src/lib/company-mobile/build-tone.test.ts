@@ -98,6 +98,8 @@ function detailWith(tone: ToneSummary, articles: CompanyDetailArticle[]): Compan
       baselineRate: null,
     },
     articles,
+    articlesTruncated: false,
+    articleWindowDays: 14,
     themes: [],
     memo: null,
     isPrivate: false,
@@ -174,14 +176,14 @@ describe("buildTone: the evidence sentence", () => {
   it("is the count sentence and names no source count", () => {
     const tone = computeTone([...labels(3, "bullish"), "neutral"], []);
     const built = buildTone(detailWith(tone, []));
-    assert.equal(built.evidence, "3 of 4 articles positive");
+    assert.equal(built.evidence, "3 of 4 mentions positive");
     assert.doesNotMatch(built.evidence, /source/i);
     assert.doesNotMatch(built.evidence, /%/, "a count, never a rate");
   });
 
   it("counts the same window the level was computed over", () => {
     const tone = computeTone(labels(3, "bullish"), []);
-    assert.equal(buildTone(detailWith(tone, [])).evidence, "3 of 3 articles positive");
+    assert.equal(buildTone(detailWith(tone, [])).evidence, "3 of 3 mentions positive");
   });
 });
 

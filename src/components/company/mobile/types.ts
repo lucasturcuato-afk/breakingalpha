@@ -210,8 +210,32 @@ export interface CompanyIntelData {
   ticker: string;
   sector: string;
   name: string;
-  /** Article count on the memo control. A count, never a rate. */
+  /**
+   * Article count on the memo control. A count, never a rate.
+   *
+   * CARRIES ITS OWN CEILING. It is built from a `.limit()` result, so at the
+   * cap it reads "50+ ARTICLES" and below it "47 ARTICLES". Without the plus
+   * the two states were drawn identically and only one of them was a total.
+   */
   memoCorpus: string;
+  /**
+   * The canonical company name, and the key `/api/memo-cache` is keyed on.
+   *
+   * NOT `name`, even though the two hold the same string today. `name` is
+   * `detail.display`, which exists to be shown and is free to diverge from the
+   * identity a cache is keyed on; a cache lookup silently keyed on a display
+   * string misses the day the display string changes, and a memo-cache miss
+   * spends a model call. `BriefTab` keys on the same `canonical`.
+   */
+  memoCompany: string;
+  /**
+   * The line under the memo control that reconciles it with the KPI grid.
+   *
+   * The control's count and the grid's mention count are different objects
+   * from different tables over different windows, and one of them is capped.
+   * Neither number means anything beside the other without this sentence.
+   */
+  corpusNote: string;
   kpis: CompanyKpiCell[];
   primer: {
     lede: string;
@@ -249,6 +273,22 @@ export interface CompanyIntelData {
      */
     hasFiledPeriod: boolean;
     developments: string[];
+    /**
+     * What the section says when `developments` is empty, and WHY.
+     *
+     * A BARE HEADLINE WAS NOT ENOUGH, and that is the whole reason this is on
+     * the shape rather than written inline. The section printed "No indexed
+     * coverage in the window this primer reads from." over companies with
+     * abundant indexed coverage, because the ten-slot pool fills from a 14-day
+     * sub-window before it reaches back into the 30-day set the loader
+     * queried. The section was reporting a full pool as an empty window.
+     *
+     * A count cannot be hidden to fix that, so the copy carries the pool's own
+     * arithmetic: how many were selected, how many the wider window holds, and
+     * why those differ. Built by `primerDevelopmentsEmptyCopy`, the shared pure
+     * module the desktop empty states already come from.
+     */
+    developmentsEmpty: { headline: string; note: string };
     footnote: string;
   };
   tone: {

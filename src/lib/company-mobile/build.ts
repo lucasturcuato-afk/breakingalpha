@@ -110,6 +110,7 @@ import {
   groupByCategory,
   sortNewestFirst,
 } from "@/lib/insider-transactions";
+import { primerDevelopmentsEmptyCopy } from "@/components/company/tabs/empty-state-copy";
 import { formatMoney } from "@/lib/reporting-currency";
 import { formatPTDateShort } from "@/lib/format-pt";
 
@@ -154,12 +155,28 @@ export interface CompanyMobileReads {
   identity: CompanyIdentity | null;
   /** `filterAndClassifyArticles(...).filter(a => a._isDevelopment)`. */
   developments: CompanyArticle[];
+  /**
+   * What the pool selection did, so the empty developments state can say why
+   * it is empty instead of only that it is.
+   *
+   * `selected` is not `developments.length`: the pool carries context articles
+   * too. `candidateDevelopments` is the same classifier run over the WIDER
+   * window the selector chose from, which is the number the old copy hid.
+   */
+  pool: {
+    size: number;
+    selected: number;
+    candidates: number;
+    candidateDevelopments: number;
+    windowDays: number | null;
+    fillerWindowDays: number | null;
+  };
 }
 
 /** The masthead's four scalars. Split out so `buildMasthead` names its block. */
 export type CompanyMastheadBlock = Pick<
   CompanyIntelData,
-  "ticker" | "sector" | "name" | "memoCorpus"
+  "ticker" | "sector" | "name" | "memoCorpus" | "memoCompany"
 >;
 
 /* ── mappers ────────────────────────────────────────────────────────── */
@@ -197,17 +214,56 @@ export type CompanyMastheadBlock = Pick<
  */
 export function buildMasthead(detail: CompanyDetail): CompanyMastheadBlock {
   /* A COUNT of indexed articles, and the unit word is spelled out so it cannot
-     be mistaken for a score or a rate. `detail.articles` is the 14-day window
-     `getCompanyDetail` reads, capped at 50 rows by ARTICLE_LIMIT, so this is a
-     count of what the memo control would actually have in hand. */
+     be mistaken for a score or a rate. `detail.articles` is the window
+     `getCompanyDetail` read, capped at ARTICLE_LIMIT rows, so this is a count
+     of what the memo control actually has in hand.
+
+     THE CAP GETS A PLUS, and that single character is the whole fix. The count
+     is a `.limit()` result: at the cap it is a FLOOR, and the two states were
+     drawn identically. Measured on this screen, apple and meta both printed
+     "50 ARTICLES" where 50 is the ceiling, while goldman-sachs printed
+     "47 ARTICLES" where 47 is a total. Nothing on the drawn control told those
+     three apart. `detail.articlesTruncated` is the flag that does.
+
+     NOT AN ESTIMATE OF THE TRUE POPULATION. "About 100" would be an invented
+     number; "50+" is the same measured 50 with its own ceiling declared. */
   const corpus = detail.articles.length;
+  const unit = corpus === 1 ? "ARTICLE" : "ARTICLES";
 
   return {
     ticker: detail.ticker ?? "",
     sector: detail.sector ?? "",
     name: detail.display,
-    memoCorpus: `${corpus} ${corpus === 1 ? "ARTICLE" : "ARTICLES"}`,
+    memoCorpus: `${corpus}${detail.articlesTruncated ? "+" : ""} ${unit}`,
+    memoCompany: detail.canonical,
   };
+}
+
+/**
+ * The line under the memo control that reconciles it with the KPI grid.
+ *
+ * WHY A SENTENCE IS OWED HERE. The control's count and the grid's mention count
+ * sit within one eyeful of each other and are neither the same object nor the
+ * same window nor the same table, and one of the two is capped. Measured on
+ * apple: "50+ ARTICLES" on the control against "MENTIONS · 7D 55" in the grid,
+ * so the smaller number is the capped one and the larger is uncapped, which
+ * reads backwards unless both denominators and both windows are stated.
+ *
+ * WHAT IT MAY NOT SAY. No rate, no share, no ratio between the two counts. They
+ * are counts over different objects; dividing them would produce a figure with
+ * no referent.
+ */
+export function buildCorpusNote(detail: CompanyDetail): string {
+  const corpus = detail.articles.length;
+  const days = detail.articleWindowDays;
+  const ceiling = detail.articlesTruncated
+    ? ` That is the read's ceiling, so the true count is at least ${corpus}.`
+    : "";
+  return (
+    `The brief reads ${corpus} ${corpus === 1 ? "article" : "articles"} published in the last ` +
+    `${days} days.${ceiling} The mention count beside it is a different object: ` +
+    `mention rows over 7 days, uncapped, dated by the ingest run rather than by publication.`
+  );
 }
 
 /**
@@ -298,6 +354,18 @@ export function buildKpis(detail: CompanyDetail): CompanyKpiCell[] {
   cells.push({
     label: "MENTIONS · 7D",
     value: String(detail.attention.currentCount),
+    /* THE WINDOW IS RIGHT AND THE CLOCK IS NOT, and the meta line is where that
+       gets said. `attention.currentCount` counts `company_mentions` rows whose
+       `created_at` falls in the trailing 7x24h, and `created_at` is the INGEST
+       RUN timestamp, not the publication time. So the cell means "rows the
+       pipeline wrote in the last seven days", which is a different set from
+       "published in the last seven days" and always will be: a piece published
+       three weeks ago and indexed yesterday counts here.
+       Relabelling the cell was tried and does not fit: "MENTIONS · INGESTED 7D"
+       at the 10px mono scale overruns the cell's own box at 320. The meta line
+       is the slot that already exists for a second fact, and ARTICLE TONE
+       beside it already uses one. */
+    meta: "By ingest date, not publication",
   });
 
   /* ARTICLE TONE. Omitted entirely when the window did not carry enough scored
@@ -496,6 +564,7 @@ export function buildPrimer(
   identity: CompanyIdentity | null,
   developments: CompanyArticle[],
   financials: CompanyFinancialsResult,
+  pool: CompanyMobileReads["pool"],
 ): CompanyIntelData["primer"] {
   const identityRows: CompanyPrimerRow[] = [];
   if (detail.sector) identityRows.push({ label: "Sector", value: detail.sector });
@@ -538,6 +607,20 @@ export function buildPrimer(
         return summary && summary.length > 0 ? summary : article.title.trim();
       })
       .filter((line) => line.length > 0),
+    /* THE EMPTY STATE IS BUILT EVEN WHEN THE LIST IS NOT EMPTY, and that is
+       deliberate. Computing it here keeps the arithmetic on the server beside
+       the reads it describes, and the section renders it only on the branch
+       that has nothing to draw. It is a few string concatenations; a section
+       that had to ask the pool a question at render time would be the worse
+       shape. */
+    developmentsEmpty: primerDevelopmentsEmptyCopy({
+      selected: pool.selected,
+      poolSize: pool.size,
+      candidates: pool.candidates,
+      candidateDevelopments: pool.candidateDevelopments,
+      windowDays: pool.windowDays,
+      fillerWindowDays: pool.fillerWindowDays,
+    }),
     footnote: PRIMER_FOOTNOTE,
   };
 }
@@ -718,7 +801,7 @@ export function buildTone(detail: CompanyDetail): CompanyIntelData["tone"] {
 
   // INSUFFICIENT IS ITS OWN BRANCH, not a level of zero. No level word, no
   // direction phrase, and NO EVIDENCE SENTENCE: `formatEvidence` over an empty
-  // window reads "0 of 0 articles positive", which is a claim about a window
+  // window reads "0 of 0 mentions positive", which is a claim about a window
   // that carried nothing. `ToneSection` already draws "Not enough recent
   // coverage", which is the reason, so the line under it stays absent.
   if (!tone.sufficient || !tone.level) {
@@ -741,7 +824,7 @@ export function buildTone(detail: CompanyDetail): CompanyIntelData["tone"] {
     // "was X last week" clause, so a bare adjective cannot come out of here.
     direction: formatDirection(tone) ?? "",
     levelTone: LEVEL_INK[levelPolarity(tone.level)],
-    // A COUNT, "14 of 17 articles positive". Never converted to a rate.
+    // A COUNT, "14 of 17 mentions positive". Never converted to a rate.
     // `ToneEvidence` carries no source count, so no sentence here names one.
     evidence: formatEvidence(tone.evidence),
     disclaimer: TONE_DISCLAIMER,
@@ -1234,7 +1317,14 @@ export function buildCompanyIntelData(reads: CompanyMobileReads | null): Company
   return {
     ...buildMasthead(reads.detail),
     kpis: buildKpis(reads.detail),
-    primer: buildPrimer(reads.detail, reads.identity, reads.developments, reads.financials),
+    corpusNote: buildCorpusNote(reads.detail),
+    primer: buildPrimer(
+      reads.detail,
+      reads.identity,
+      reads.developments,
+      reads.financials,
+      reads.pool,
+    ),
     tone: buildTone(reads.detail),
     filings: buildFilings(reads.filings),
     financials: buildFinancials(reads.financials),

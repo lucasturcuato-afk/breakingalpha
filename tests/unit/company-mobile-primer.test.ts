@@ -92,12 +92,31 @@ function detail(over: Partial<CompanyDetail> = {}): CompanyDetail {
     tone: computeTone([], []),
     attention: computeAttention(0, 0),
     articles: [],
+    articlesTruncated: false,
+    articleWindowDays: 14,
     themes: [],
     memo: null,
     isPrivate: false,
     ...over,
   };
 }
+
+/**
+ * The pool accounting `buildPrimer` now takes.
+ *
+ * A NAMED CONSTANT here rather than a default parameter on `buildPrimer`. A
+ * default there would let a production caller omit the accounting and still get
+ * a plausible-looking empty state built out of zeroes, which is the invented
+ * number this module exists to prevent. Callers state it.
+ */
+const NO_POOL: Parameters<typeof buildPrimer>[4] = {
+  size: 10,
+  selected: 0,
+  candidates: 0,
+  candidateDevelopments: 0,
+  windowDays: 30,
+  fillerWindowDays: 14,
+};
 
 function labels(sentiments: SentimentLabel[]): SentimentLabel[] {
   return sentiments;
@@ -154,7 +173,11 @@ test("sparse company: masthead states the name and nothing else", () => {
 test("sparse company: exactly one KPI cell, and no cell carries an empty value", () => {
   const cells = buildKpis(SPARSE);
   assert.equal(cells.length, 1);
-  assert.deepEqual(cells[0], { label: "MENTIONS · 7D", value: "0" });
+  assert.deepEqual(cells[0], {
+    label: "MENTIONS · 7D",
+    value: "0",
+    meta: "By ingest date, not publication",
+  });
   assert.equal(cells.some((c) => c.label === "SOURCES"), false);
   assert.equal(cells.some((c) => c.label === "ARTICLE TONE"), false);
   for (const c of cells) {
@@ -166,7 +189,7 @@ test("sparse company: exactly one KPI cell, and no cell carries an empty value",
 });
 
 test("sparse company: no identity row, no key figure, no development, no overview", () => {
-  const p = buildPrimer(SPARSE, null, [], EMPTY_FINANCIALS);
+  const p = buildPrimer(SPARSE, null, [], EMPTY_FINANCIALS, NO_POOL);
   assert.deepEqual(p.identity, []);
   assert.deepEqual(p.keyFigures, []);
   assert.deepEqual(p.developments, []);
@@ -229,7 +252,12 @@ test("mentions reads attention.currentCount over a 7-day label", () => {
   // Not the all-time sum (4211) and not the sum of the eight daily slots (36).
   assert.notEqual(mentions.value, String(FULL.mentions));
   assert.notEqual(mentions.value, String(FULL.mentions7d.reduce((a, b) => a + b, 0)));
-  assert.equal(mentions.meta, undefined);
+  // The window is right and the CLOCK is not, and the meta line is where that
+  // gets said. `attention.currentCount` counts company_mentions rows by
+  // `created_at`, which is the ingest-run timestamp, so the cell means "rows
+  // the pipeline wrote in the last seven days" and not "published in the last
+  // seven days". Those are different sets and always will be.
+  assert.equal(mentions.meta, "By ingest date, not publication");
 });
 
 test("sources counts distinct non-empty publishers and carries no meta line", () => {
@@ -358,7 +386,7 @@ const IDENTITY: CompanyIdentity = {
 };
 
 test("identity rows are sector and industry only, and industry is the curated one", () => {
-  const p = buildPrimer(FULL, IDENTITY, [], EMPTY_FINANCIALS);
+  const p = buildPrimer(FULL, IDENTITY, [], EMPTY_FINANCIALS, NO_POOL);
   assert.deepEqual(p.identity, [
     { label: "Sector", value: "Semiconductors" },
     { label: "Industry", value: "Semiconductors" },
@@ -370,13 +398,13 @@ test("identity rows are sector and industry only, and industry is the curated on
 });
 
 test("no curated entry means no industry row and no overview", () => {
-  const p = buildPrimer(FULL, null, [], EMPTY_FINANCIALS);
+  const p = buildPrimer(FULL, null, [], EMPTY_FINANCIALS, NO_POOL);
   assert.deepEqual(p.identity, [{ label: "Sector", value: "Semiconductors" }]);
   assert.equal(p.overview, "");
 });
 
 test("overview is the curated brief verbatim", () => {
-  const p = buildPrimer(FULL, IDENTITY, [], EMPTY_FINANCIALS);
+  const p = buildPrimer(FULL, IDENTITY, [], EMPTY_FINANCIALS, NO_POOL);
   assert.equal(p.overview, IDENTITY.brief);
 });
 
@@ -391,6 +419,7 @@ test("developments are the classified rows, summary first and title as the fallb
       development({ id: "4", title: "   " }),
     ],
     EMPTY_FINANCIALS,
+    NO_POOL,
   );
   assert.deepEqual(p.developments, ["Summary one.", "Title two", "Title three"]);
 });
@@ -427,6 +456,7 @@ test("key figures come off the newest annual period and name it", () => {
     readFailed: false,
       annual: view("FY-2025", "FY2025", { revenue: 51_574_000_000, net_income: 5_895_000_000 }),
     }),
+    NO_POOL,
   );
   assert.deepEqual(p.keyFigures, [
     { label: "REVENUE · FY2025", value: "$51.57B", scale: "figure" },
@@ -445,6 +475,7 @@ test("a filer with only a quarterly basis still draws its own period", () => {
     readFailed: false,
       quarterly: view("Q2-2026", "Q2 FY2026", { revenue: 7_742_000_000 }),
     }),
+    NO_POOL,
   );
   // One figure, not two padded with a dash under a fact that was not filed.
   assert.equal(p.keyFigures.length, 1);
@@ -471,6 +502,7 @@ test("the grid fills its row from whichever facts the filer reported", () => {
         gross_profit: 40_000_000_000,
       }),
     }),
+    NO_POOL,
   );
   assert.deepEqual(p.keyFigures.map((f) => f.label), [
     "REVENUE · FY2025",
@@ -494,12 +526,13 @@ test("the grid never draws more than the two the contract names", () => {
         gross_profit: 4,
       }),
     }),
+    NO_POOL,
   );
   assert.equal(p.keyFigures.length, 2);
 });
 
 test("a company with no filed period draws no figure at all", () => {
-  const p = buildPrimer(FULL, IDENTITY, [], EMPTY_FINANCIALS);
+  const p = buildPrimer(FULL, IDENTITY, [], EMPTY_FINANCIALS, NO_POOL);
   assert.deepEqual(p.keyFigures, []);
 });
 
@@ -514,6 +547,7 @@ test("the design's four figures are not producible and none of them appears", ()
     readFailed: false,
       annual: view("FY-2025", "FY2025", { revenue: 51_574_000_000, net_income: 5_895_000_000 }),
     }),
+    NO_POOL,
   );
   const serialized = JSON.stringify(p).toUpperCase();
   for (const banned of ["EBITDA", "P / E", "52-WEEK", "CAPACITY", "HEADQUARTER"]) {
@@ -545,7 +579,8 @@ test("no mapper makes a network call", async () => {
     readFailed: false,
         annual: view("FY-2025", "FY2025", { revenue: 1, net_income: 2 }),
       }),
-    );
+    NO_POOL,
+  );
   } finally {
     globalThis.fetch = realFetch;
   }
@@ -574,7 +609,8 @@ test("no string a mapper AUTHORS carries an em dash", () => {
     readFailed: false,
         annual: view("FY-2025", "FY2025", { revenue: 1_000_000, net_income: 2_000_000 }),
       }),
-    );
+    NO_POOL,
+  );
     authored.push(p.lede, p.footnote);
     for (const r of p.identity) authored.push(r.label);
     for (const f of p.keyFigures) authored.push(f.label, f.value);
@@ -585,7 +621,7 @@ test("no string a mapper AUTHORS carries an em dash", () => {
 /* ── the key-figures empty state, which needs a third answer ─────────── */
 
 test("hasFiledPeriod is false for a company with no filed period at all", () => {
-  const p = buildPrimer(SPARSE, null, [], EMPTY_FINANCIALS);
+  const p = buildPrimer(SPARSE, null, [], EMPTY_FINANCIALS, NO_POOL);
   assert.deepEqual(p.keyFigures, []);
   assert.equal(p.hasFiledPeriod, false);
 });
@@ -607,6 +643,7 @@ test("hasFiledPeriod is TRUE with an empty key-figures list: the GRAB case", () 
     readFailed: false,
       annual: view("FY-2022", "FY2022", { cost_of_revenue: 68_000_000 }),
     }),
+    NO_POOL,
   );
   assert.deepEqual(p.keyFigures, []);
   assert.equal(p.hasFiledPeriod, true);
@@ -623,6 +660,7 @@ test("hasFiledPeriod reads the period, not the key list, when both are there", (
     readFailed: false,
       annual: view("FY-2025", "FY2025", { revenue: 51_574_000_000 }),
     }),
+    NO_POOL,
   );
   assert.equal(p.keyFigures.length, 1);
   assert.equal(p.hasFiledPeriod, true);

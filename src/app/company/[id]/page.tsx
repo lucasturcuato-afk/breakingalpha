@@ -288,7 +288,7 @@ export default async function CompanyDetailPage({
   // companyDetail.articles in every prod path today. See getArticleFallback.ts.
   const [
     fallbackArticles,
-    { articles: rawArticles },
+    { articles: rawArticles, candidates: poolCandidates, pool: poolAccounting },
     filingsResult,
     insiderResult,
     financialsResult,
@@ -358,6 +358,17 @@ export default async function CompanyDetailPage({
   const classified = filterAndClassifyArticles(rawArticles, canonical);
   const developmentArticles = classified.filter((a) => a._isDevelopment);
   const contextArticles = classified.filter((a) => !a._isDevelopment);
+
+  // The SAME classifier over the WIDER window the pool selected from, so the
+  // mobile primer's empty developments state can name the count the pool did
+  // not reach instead of asserting the window was empty. Pure and synchronous
+  // over at most CANDIDATE_LIMIT rows already in memory: no query, no round
+  // trip, and no second copy of the development rules that could disagree with
+  // the list above.
+  const candidateDevelopments = filterAndClassifyArticles(
+    poolCandidates,
+    canonical,
+  ).filter((a) => a._isDevelopment).length;
   const memoContent = buildMemoContent(canonical, developmentArticles, contextArticles);
   const systemPrompt = buildMemoSystemPrompt(canonical);
 
@@ -514,6 +525,14 @@ export default async function CompanyDetailPage({
             financials: financialsResult,
             identity,
             developments: developmentArticles,
+            pool: {
+              size: poolAccounting.size,
+              selected: poolAccounting.selected,
+              candidates: poolAccounting.candidates,
+              candidateDevelopments,
+              windowDays: poolAccounting.windowDays,
+              fillerWindowDays: poolAccounting.fillerWindowDays,
+            },
           })}
           hasCik={filingsResult.cik != null}
         />
