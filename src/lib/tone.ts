@@ -182,9 +182,30 @@ export function levelPolarity(level: ToneLevel): TonePolarity {
   return "negative";
 }
 
-/** Single source for the evidence string, e.g. "14 of 17 positive". */
+/**
+ * Single source for the evidence string, e.g. "14 of 17 mentions positive".
+ *
+ * THE NOUN IS "MENTIONS" AND IT USED TO BE "ARTICLES", WHICH WAS WRONG.
+ * `ToneEvidence` is tallied by `tallyEvidence` over the label list handed to
+ * `computeTone`, and the only production caller of `computeTone` is
+ * `getCompanyDetail`, which builds both windows out of `company_mentions` rows.
+ * `ToneSummary.sufficient` above already documents its own threshold in scored
+ * MENTIONS. So `total` has always been a count of mention rows.
+ *
+ * The mislabel was not cosmetic. The mobile Company Intel screen prints this
+ * sentence a few pixels from a separate count of `articles` rows, under the
+ * word ARTICLES, and the two numbers come from different tables over different
+ * windows. Measured on apple: the memo control read "50 ARTICLES" while this
+ * sentence read "10 of 55 articles positive", so the screen printed a
+ * denominator larger than the corpus it claimed to be describing, using the
+ * same noun for both. Naming the object each count is over is what makes the
+ * pair legible; there is nothing here to reconcile once they are named.
+ *
+ * Renamed at the source rather than on one surface. Four callers render this,
+ * three of them desktop, and all four were saying "articles" about mentions.
+ */
 export function formatEvidence(e: ToneEvidence): string {
-  const unit = e.total === 1 ? "article" : "articles";
+  const unit = e.total === 1 ? "mention" : "mentions";
   return `${e.positive} of ${e.total} ${unit} positive`;
 }
 

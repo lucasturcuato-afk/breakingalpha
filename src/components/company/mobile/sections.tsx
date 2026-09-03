@@ -278,7 +278,15 @@ export function PrimerSection({
           /* Keyed on POSITION. The list is static within a render and two
              developments can repeat a sentence; a duplicate key silently reuses
              the wrong row. Same rule on every list on this screen. */
-          <RuledRow key={`${i}-${text}`} first={i === 0} last={i === primer.developments.length - 1}>
+          <RuledRow
+            key={`${i}-${text}`}
+            first={i === 0}
+            last={i === primer.developments.length - 1}
+            /* Named so the harness can count what rendered against what the
+               pool selected. The empty state's whole claim is a count, and a
+               count nothing can measure is a claim nothing can check. */
+            marker="data-development-row"
+          >
             <p
               style={{
                 margin: 0,
@@ -292,7 +300,16 @@ export function PrimerSection({
           </RuledRow>
         ))
       ) : (
-        <EmptyWell headline="No indexed coverage in the window this primer reads from." />
+        /* THE COPY IS BUILT ON THE SERVER, off the pool's own accounting, and
+           this branch only draws it. The sentence it replaces asserted an
+           empty window over screens whose window was full; see the header on
+           `primerDevelopmentsEmptyCopy`. `fill` stays OFF: this well sits
+           mid-section with the footnote under it, and a growing well here
+           shoves the footnote down the screen. */
+        <EmptyWell
+          headline={primer.developmentsEmpty.headline}
+          note={primer.developmentsEmpty.note}
+        />
       )}
 
       <SectionNote marginTop={14}>{primer.footnote}</SectionNote>
@@ -372,7 +389,7 @@ export function ToneSection({ data }: { data: CompanyIntelData }) {
       )}
 
       {/* "" on the insufficient branch, and deliberately: `formatEvidence` over
-          an empty window reads "0 of 0 articles positive", which is a claim
+          an empty window reads "0 of 0 mentions positive", which is a claim
           about a window that carried nothing, so `buildTone` emits nothing and
           this draws nothing rather than an empty paragraph. */}
       {tone.evidence ? (

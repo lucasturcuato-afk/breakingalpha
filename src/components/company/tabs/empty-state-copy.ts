@@ -134,3 +134,105 @@ export function primerKeyFiguresEmptyCopy(hasCik: boolean, hasFiledPeriod: boole
   }
   return financialsEmptyCopy(hasCik);
 }
+
+/**
+ * The Primer's recent-developments empty state.
+ *
+ * WHAT IT REPLACES, and why the old line was FALSE. The section printed
+ * "No indexed coverage in the window this primer reads from." on screens with
+ * abundant indexed coverage. Measured on apple and meta at every phone width in
+ * both themes: development-classified rows exist INSIDE the 30-day window the
+ * loader queries, several on each, and zero of them render.
+ *
+ * THE MECHANISM, because the copy has to name it. `selectFacetProtectedPool`
+ * fills ten slots in three steps: up to four facet-protected picks out of the
+ * 30-day candidate window, then filler out of a 14-day sub-window, then, ONLY
+ * if slots are still open, a reach back into the 30-day set. On a well-covered
+ * company the 14-day sub-window fills every remaining slot, so step three never
+ * runs and the wider window is never read from. The section is not reporting an
+ * empty window. It is reporting a full pool.
+ *
+ * THE CONTROL CASE that proves it: a thinner company renders exactly the
+ * developments that fall inside 14 days, because there the filler runs out and
+ * step three does execute.
+ *
+ * THE STANDARD THIS IS HELD TO is PR 790's: a reader gets the bucket's own
+ * arithmetic and the reason for the gap in one breath, and hiding a count is
+ * not an acceptable fix. So every branch names how many the primer selected,
+ * how many the window it reads holds, and why those differ.
+ *
+ * AND THE HONEST CASE STAYS HONEST. Coverage existing while none of it is a
+ * company development is the COMMON case and not a defect, so deleting the
+ * whole empty well would have thrown away a true answer to be rid of a false
+ * one. The two branches are worded so a reader can tell that case from the
+ * full-pool case without reading the code.
+ */
+export interface PrimerDevelopmentsEmptyCopy {
+  headline: string;
+  note: string;
+}
+
+/**
+ * @param selected           rows the pool selection handed back
+ * @param poolSize           the ceiling it fills to
+ * @param candidates         rows in the window it chose from
+ * @param candidateDevelopments how many of those classify as a development
+ * @param windowDays         the candidate window, or null when the path applies none
+ * @param fillerWindowDays   the sub-window filled first, or null likewise
+ */
+export function primerDevelopmentsEmptyCopy(args: {
+  selected: number;
+  poolSize: number;
+  candidates: number;
+  candidateDevelopments: number;
+  windowDays: number | null;
+  fillerWindowDays: number | null;
+}): PrimerDevelopmentsEmptyCopy {
+  const { selected, poolSize, candidates, candidateDevelopments } = args;
+  const { windowDays, fillerWindowDays } = args;
+
+  /* NO COVERAGE AT ALL. The only branch where the original sentence was true,
+     kept close to it, with the count that makes it checkable. */
+  if (candidates === 0) {
+    return {
+      headline: "No indexed coverage in the window this primer reads from.",
+      note: windowDays === null
+        ? "Nothing is indexed against this company on the path that answered."
+        : `Zero articles are indexed against this company in the last ${windowDays} days.`,
+    };
+  }
+
+  /* THE FULL POOL. Developments exist in the window and none reached the pool,
+     which is a fact about the selection and not about the company. */
+  if (candidateDevelopments > 0) {
+    const where =
+      windowDays === null
+        ? "in the window behind it"
+        : `in the last ${windowDays} days`;
+    const why =
+      fillerWindowDays === null
+        ? "The pool filled before the primer reached them."
+        : `The pool fills from the last ${fillerWindowDays} days first, and that filled it.`;
+    return {
+      headline: "The pool filled before these could reach it.",
+      note:
+        `${candidateDevelopments} company ${candidateDevelopments === 1 ? "development sits" : "developments sit"} ${where}. ` +
+        `The primer reads a pool of ${poolSize} and took ${selected}, none of them a development. ` +
+        why,
+    };
+  }
+
+  /* THE HONEST CASE. Coverage read, none of it a company development. This is
+     the common one, and it is the one the reader must be able to tell apart
+     from the branch above. */
+  const scope =
+    windowDays === null
+      ? `all ${candidates} indexed ${candidates === 1 ? "article" : "articles"} on the path that answered`
+      : `all ${candidates} ${candidates === 1 ? "article" : "articles"} indexed in the last ${windowDays} days`;
+  return {
+    headline: "Coverage, but no company development in it.",
+    note:
+      `The primer read ${scope} and none is a development: no earnings report, ` +
+      `deal, funding round or listing. Read the coverage itself under Price and tone.`,
+  };
+}

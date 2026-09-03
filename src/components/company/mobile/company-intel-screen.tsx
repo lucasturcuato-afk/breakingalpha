@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { useCompanyTabState, type CompanyTabId } from "@/hooks/useCompanyTabState";
@@ -103,6 +103,49 @@ const SECTIONS: { id: CompanyTabId; label: string }[] = [
 ];
 
 const SECTION_IDS = new Set(SECTIONS.map((s) => s.id));
+
+/**
+ * The section row is TWO ROWS, three then two, declared rather than discovered.
+ *
+ * THE ROW CANNOT FIT ON ONE LINE AT ANY PHONE WIDTH, and that is measured
+ * rather than assumed. The five chips need 418.21px including the four 12px
+ * gaps (63, 95.41, 63.02, 83.64, 65.14). At 390 the content column is 350; at
+ * 430, the widest phone drawn for, it is 390, so the row is still 28px short.
+ * There is no handset where one line is available.
+ *
+ * SO THE ONLY QUESTION IS WHICH TWO-LINE SHAPE, and left to `flex-wrap` the
+ * answer changed with the handset: three-plus-two at 320 and 375, four-plus-one
+ * at 390 and 430. The reader who compares two phones sees a different control.
+ * Declaring the break makes it the same shape everywhere, including 320.
+ *
+ * WHAT WAS REJECTED, all measured on the same rendering:
+ *
+ *   Horizontal scroll, the `/ask` pattern. Saves 56px, 100 down to 44, and it
+ *   is the only option that saves any height at all. Rejected because the
+ *   affordance does not transfer: at 390 the fifth chip begins 3.07px past the
+ *   right edge, so a reader sees a cleanly terminated row with nothing peeking
+ *   and no reason to swipe. `/ask` gets its half-visible chip from the luck of
+ *   its own payload width. The affordance would have to be engineered, and the
+ *   fifth section would still cost a gesture to find on a control that is this
+ *   screen's whole navigation.
+ *
+ *   Shorter labels. The best plausible set is still 17px over at 390 and much
+ *   worse at 320, and works only combined with reduced padding and gap, and
+ *   even then fails 320. It also costs meaning: the price tab is the only price
+ *   surface on this screen.
+ *
+ *   Smaller type. Would need 8.6px at 390 and 5.1px at 320. The floor is 10px.
+ *
+ * WHAT THIS COSTS. No height. The row is 100px before and after. The change is
+ * that the break is deliberate and stable instead of an artifact that moves.
+ *
+ * AND `/watch` IS NOT A PRECEDENT, though it looks like one. Its lens row is a
+ * `LENSES.map` of a chip byte-identical to this one, with the same gap. It does
+ * not wrap because its payload is about 288px against 350, and it DOES wrap at
+ * 320. There is no `RadarSegments` component; "do what /watch does" is a no-op
+ * here and the only transferable fact is its payload budget.
+ */
+const SECTION_ROWS: (typeof SECTIONS)[] = [SECTIONS.slice(0, 3), SECTIONS.slice(3)];
 
 export function CompanyIntelScreen({
   /**
@@ -265,23 +308,38 @@ export function CompanyIntelScreen({
                 See the header on `./types`. */}
 
             <div
+              data-section-chips=""
               style={{
                 marginTop: "22px",
+                /* A COLUMN OF ROWS, not one wrapping row. `flex-wrap` puts the
+                   break wherever the width happens to land it; see
+                   SECTION_ROWS. The 12px gap is the same gap the wrap used, so
+                   the row is the same 100px tall as before. */
                 display: "flex",
-                flexWrap: "wrap",
+                flexDirection: "column",
                 gap: "12px",
               }}
             >
-              {/* The same square chip the filing filters use. Drawn through
-                  parts.tsx rather than restated inline, so the two rows cannot
-                  drift out of step. */}
-              {SECTIONS.map((section) => (
-                <Chip
-                  key={section.id}
-                  label={section.label}
-                  active={active === section.id}
-                  onClick={() => setActiveTab(section.id)}
-                />
+              {SECTION_ROWS.map((row) => (
+                <div
+                  key={row.map((s) => s.id).join("-")}
+                  style={{ display: "flex", gap: "12px" }}
+                >
+                  {/* The same square chip the filing filters use. Drawn through
+                      parts.tsx rather than restated inline, so the two rows
+                      cannot drift out of step. `grow` is what makes each line
+                      flush: without it a declared break is just a ragged wrap
+                      with the break in a fixed place. */}
+                  {row.map((section) => (
+                    <Chip
+                      key={section.id}
+                      label={section.label}
+                      active={active === section.id}
+                      grow
+                      onClick={() => setActiveTab(section.id)}
+                    />
+                  ))}
+                </div>
               ))}
             </div>
 
@@ -362,7 +420,7 @@ function Masthead({ data }: { data: CompanyIntelData }) {
           loading, error and staleness states. A quote drawn from a server shape
           with no quote behind it can only be stale or invented, so the line is
           absent rather than approximated. */}
-      <MemoControl corpus={data.memoCorpus} />
+      <MemoControl corpus={data.memoCorpus} company={data.memoCompany} note={data.corpusNote} />
     </>
   );
 }
@@ -370,35 +428,98 @@ function Masthead({ data }: { data: CompanyIntelData }) {
 /**
  * The control that opens the company brief.
  *
- * NO-OP, DELIBERATELY. Screen unit 16, the Memo surface, is blocked on a ruling
- * and is not being built: the design's defining interaction is an inline `[n]`
- * citation opening a source sheet, and there is no data behind it. The live
- * memo surface is src/components/memo/MemoModal.tsx, which has no inline
- * anchors at all, and POST /api/memo gives back a markdown string with no
- * structured source list. Both of those files are propose-only under CLAUDE.md
- * and neither is touched here.
+ * LIVE NOW, and it opens the SAME overlay the desktop tree opens. Recorded in
+ * `decisions/memo-is-an-overlay-on-mobile.md`: a memo has no URL today, nothing
+ * consumes its id, and `MemoModal` already opens as an overlay on a phone at 12
+ * of its 21 mount sites. A route would not have taught 21 sites a destination,
+ * it would have undone the 12 that already work.
  *
- * INERT, AND IT SAYS SO. An earlier draft was a live-looking button with an
- * empty handler, which README's own accessibility rule calls a defect: a
- * control that looks tappable and does nothing is worse than one that states
- * its condition. It is `disabled` with `aria-disabled`, it carries the reason
- * in a line under itself rather than in a tooltip nobody on a phone can open,
- * and it keeps the design's drawn treatment above that line.
+ * NO PROPOSE-ONLY FILE IS TOUCHED. The bridge is
+ * `src/components/company/CompanyMemoModalListener.tsx`, already mounted
+ * OUTSIDE both the mobile and desktop trees, so it is live at 390 today and
+ * listens for `memo:generate`. `memoContent` and `systemPrompt` are already
+ * built server-side. This control dispatches the event and nothing else.
  *
- * TODO(unit 16, Memo): wire this once overlay-versus-route and the source
- * contract are ruled on, and drop the `disabled` plus the line below it. The
- * existing bridge pattern is
- * src/components/company/CompanyMemoModalListener.tsx, which consumes MemoModal
- * through a `memo:generate` window event without modifying it.
+ * AND IT PAYS FOR ITSELF FIRST. This is the load-bearing half.
+ *
+ *   `MemoModal` NEVER CHECKS THE MEMO CACHE. Only `BriefTab` does. Wired
+ *   naively, every press of the most prominent control on the screen is one
+ *   Gemini call.
+ *
+ *   THE RATE LIMIT IS NOT A LIMIT. `checkRateLimit` lives in an in-memory Map
+ *   whose own docstring says state resets on server restart. On serverless that
+ *   is per-instance and resets on every cold start, so it bounds nothing across
+ *   the fleet.
+ *
+ * So the press checks `/api/memo-cache` FIRST, on our own database, and hands
+ * the hit to `MemoModal` through its existing `preloadedMemo` prop, which
+ * short-circuits generation. Same prop, same modal, no edit to either.
+ *
+ * THE CHECK RUNS ON PRESS AND NOT ON MOUNT, deliberately. On mount it would be
+ * a round trip on every phone load of this route whether or not a reader ever
+ * presses, which is the exact cost `DesktopTreeGate` was built to remove.
+ *
+ * WHAT IS NOT BUILT HERE, and is scoped separately: a purpose-built mobile
+ * sheet, back-gesture dismissal, a URL for the memo, and the inline citation to
+ * source interaction. The last of those is genuinely unbuilt rather than
+ * deferred: `/api/memo` gives back one markdown string with no structured
+ * source list, so there is nothing for a citation to open.
  */
-function MemoControl({ corpus }: { corpus: string }) {
+function MemoControl({
+  corpus,
+  company,
+  note,
+}: {
+  corpus: string;
+  company: string;
+  note: string;
+}) {
+  /* Three states and no fourth. "checking" is the cache read, which is a real
+     wait a reader has to be told about; a control that looks idle for a round
+     trip invites a second press, and a second press is a second chance to
+     spend a model call. */
+  const [checking, setChecking] = useState(false);
+
+  const open = useCallback(async () => {
+    if (checking) return;
+    setChecking(true);
+    let preloadedMemo: string | undefined;
+    try {
+      const res = await fetch(
+        `/api/memo-cache?company_id=${encodeURIComponent(company)}`,
+        { cache: "no-store" },
+      );
+      if (res.ok) {
+        const data: unknown = await res.json();
+        /* Narrowed rather than cast. A malformed body must fall through to
+           generation, not paint an empty memo: a failed read may never render
+           as an empty one. */
+        if (
+          data !== null &&
+          typeof data === "object" &&
+          (data as { cached?: unknown }).cached === true &&
+          typeof (data as { markdown?: unknown }).markdown === "string" &&
+          (data as { markdown: string }).markdown.length > 0
+        ) {
+          preloadedMemo = (data as { markdown: string }).markdown;
+        }
+      }
+    } catch {
+      /* A cache read that failed is not a cached memo. Fall through to the
+         modal's own path, which is what a press did before this check
+         existed. */
+    }
+    setChecking(false);
+    window.dispatchEvent(new CustomEvent("memo:generate", { detail: { preloadedMemo } }));
+  }, [checking, company]);
+
   return (
     <>
       <button
         type="button"
-        disabled
-        aria-disabled="true"
-        aria-describedby="memo-pending-note"
+        onClick={open}
+        aria-busy={checking}
+        aria-describedby="memo-corpus-note"
         className={styles.bare}
         style={{
           width: "100%",
@@ -410,14 +531,15 @@ function MemoControl({ corpus }: { corpus: string }) {
           padding: `0 16px`,
           backgroundColor: "var(--c-inverse)",
           borderRadius: "9px",
-          cursor: "not-allowed",
+          cursor: checking ? "progress" : "pointer",
         }}
       >
         <span style={{ font: `600 14px/1 ${FONT_SANS}`, color: "var(--c-oninv)" }}>
-          Generate a company brief
+          {checking ? "Opening the brief" : "Generate a company brief"}
         </span>
         <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
           <span
+            data-memo-meta=""
             style={{
               font: `400 10px/1 ${FONT_MONO}`,
               letterSpacing: "0.07em",
@@ -441,8 +563,15 @@ function MemoControl({ corpus }: { corpus: string }) {
           </svg>
         </span>
       </button>
+      {/* THE NOTE IS NOT THE OLD NOTE. It used to say the memo surface was not
+          built; the surface is wired now, so that sentence is gone. What
+          replaces it is the reconciliation the two counts on this screen owe
+          each other: the control's corpus and the grid's mention count are
+          different objects, from different tables, over different windows, and
+          one of the two is capped. Built server-side by `buildCorpusNote`. */}
       <p
-        id="memo-pending-note"
+        id="memo-corpus-note"
+        data-corpus-note=""
         style={{
           margin: "8px 0 0",
           font: `400 11px/1.5 ${FONT_SANS}`,
@@ -450,7 +579,7 @@ function MemoControl({ corpus }: { corpus: string }) {
           textWrap: "pretty",
         }}
       >
-        The memo surface is not built yet, so this does nothing on this screen.
+        {note}
       </p>
     </>
   );

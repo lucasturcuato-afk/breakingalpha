@@ -15,10 +15,62 @@ export const dynamic = "force-dynamic";
 
 export type ArticleSource = "cache" | "fallback" | "empty";
 
+/**
+ * What the pool selection actually did, in numbers a surface can print.
+ *
+ * WHY THIS EXISTS. `articles` alone cannot tell a reader the difference between
+ * "the window this reads from is empty" and "the pool filled before the window
+ * was exhausted". Those are different facts, and the mobile primer was printing
+ * the first over screens where the second was true: development-classified rows
+ * DO exist inside the 30-day candidate window, and zero of them render, because
+ * step 2 of selectFacetProtectedPool fills all ten slots out of the 14-day
+ * filler sub-window before step 3 can reach back into the wider set. An empty
+ * section that names only its own emptiness hides that count instead of
+ * explaining it.
+ *
+ * NUMBERS ONLY, deliberately. This block is serialized by the GET handler
+ * below, so carrying the candidate ROWS here would put up to CANDIDATE_LIMIT
+ * full article records into a response that today carries at most POOL_SIZE.
+ *
+ * `windowDays` IS NULLABLE, and the null is the cache path. Path 1 hops
+ * `watchlist_articles` and applies no published_at gate at all, so it reads an
+ * unbounded window and no number of days describes it. A surface that prints
+ * "in the last 30 days" over a cache-path answer states a window nothing
+ * enforced.
+ */
+export interface ArticlePoolAccounting {
+  /** Which of the three read paths answered. */
+  path: ArticleSource;
+  /** POOL_SIZE: the ceiling the selector fills to. */
+  size: number;
+  /** Rows the selector actually handed back. */
+  selected: number;
+  /** Rows in the candidate window before selection ran. */
+  candidates: number;
+  /** The candidate window in days, or null when the path applies none. */
+  windowDays: number | null;
+  /** The sub-window step 2 fills from first, or null when the path applies none. */
+  fillerWindowDays: number | null;
+  /** True when the candidate read came back at CANDIDATE_LIMIT, so `candidates` is a floor. */
+  candidatesTruncated: boolean;
+}
+
 export interface CompanyArticlesResult {
   articles: RawArticleRow[];
   source: ArticleSource;
   error?: string;
+  /**
+   * The candidate window the selector chose FROM, unselected.
+   *
+   * SERVER ONLY. The GET handler does not serialize it, because it is up to
+   * CANDIDATE_LIMIT full rows and the response contract is POOL_SIZE. It is
+   * here so `/company/[id]` can classify the wider window with the classifier
+   * it already calls, rather than this route growing a second copy of the
+   * development rules that could drift from the one the page renders.
+   */
+  candidates: RawArticleRow[];
+  /** See ArticlePoolAccounting. Always present, including on an empty answer. */
+  pool: ArticlePoolAccounting;
 }
 
 // Selected columns for full classifiable article shape (matches RawArticleRow).
@@ -77,6 +129,22 @@ const FACET_WINDOW_DAYS = 30;
 const FILLER_WINDOW_DAYS = 14;
 const CANDIDATE_LIMIT = 200; // enough to give the in-memory selector room
 const MIN_RELEVANCE = 6;
+
+/** `articles.id` is a uuid column. See the cache path in fetchCompanyArticles. */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Every failure path answers with the same accounting shape, all zeroes. */
+function emptyPool(path: ArticleSource): ArticlePoolAccounting {
+  return {
+    path,
+    size: POOL_SIZE,
+    selected: 0,
+    candidates: 0,
+    windowDays: null,
+    fillerWindowDays: null,
+    candidatesTruncated: false,
+  };
+}
 
 // Facet type, predicates, and matchesFacet now live in @/lib/facet-predicates
 // so WD141's facet-aware slicing in buildMemoContent runs the identical checks.
@@ -170,9 +238,19 @@ export async function fetchCompanyArticles(
     if (cacheErr) {
       console.error("[api/companies/articles] cache read failed:", cacheErr.message);
     } else if (cacheRows && cacheRows.length > 0) {
+      /* SHAPE-GATED, and this is a live defect and not a hypothetical.
+         `watchlist_articles.article_id` carries provider-prefixed ids as well
+         as uuids, and `articles.id` is a uuid column. Handing Postgres a
+         provider-prefixed string in an `IN` against a uuid column is a type
+         error (22P02) on the whole statement, so the join below raised on
+         every render for those companies. It failed SAFE, because the error
+         branch falls through to Path 2, so the cost was a wasted round trip
+         rather than wrong data; but a query that can only ever raise should
+         not be issued. Rows that are not uuid-shaped could never have matched
+         the column, so dropping them changes no result. */
       const ids = cacheRows
         .map((r) => r.article_id as unknown)
-        .filter((v): v is string => typeof v === "string" && v.length > 0);
+        .filter((v): v is string => typeof v === "string" && UUID_RE.test(v));
       if (ids.length > 0) {
         const { data: articles, error: artErr } = await supabase
           .from("articles")
@@ -182,7 +260,25 @@ export async function fetchCompanyArticles(
         if (artErr) {
           console.error("[api/companies/articles] cache→articles join failed:", artErr.message);
         } else if (articles && articles.length > 0) {
-          return { articles: articles as RawArticleRow[], source: "cache" };
+          const rows = articles as RawArticleRow[];
+          /* NO WINDOW ON THIS PATH. There is no published_at gate anywhere
+             above, so the days are null rather than 30, and every surface that
+             prints this accounting has to survive the null instead of
+             assuming a window that nothing enforced. */
+          return {
+            articles: rows,
+            source: "cache",
+            candidates: rows,
+            pool: {
+              path: "cache",
+              size: POOL_SIZE,
+              selected: rows.length,
+              candidates: rows.length,
+              windowDays: null,
+              fillerWindowDays: null,
+              candidatesTruncated: false,
+            },
+          };
         }
       }
     }
@@ -212,7 +308,13 @@ export async function fetchCompanyArticles(
       .limit(CANDIDATE_LIMIT);
     if (facetErr) {
       console.error("[api/companies/articles] facet window error:", facetErr.message);
-      return { articles: [], source: "empty", error: facetErr.message };
+      return {
+        articles: [],
+        source: "empty",
+        error: facetErr.message,
+        candidates: [],
+        pool: emptyPool("empty"),
+      };
     }
 
     const facetWindow = (facetRows ?? []) as RawArticleRow[];
@@ -227,6 +329,21 @@ export async function fetchCompanyArticles(
 
     const selected = selectFacetProtectedPool(facetWindow, fillerWindow, POOL_SIZE);
 
+    /* The accounting for the selection that just ran. `candidates` is the
+       30-day window the selector chose FROM, so a surface can say how many
+       rows existed against how many reached the pool. `candidatesTruncated`
+       matters because CANDIDATE_LIMIT is a `.limit()`: at 200 the number is a
+       floor and not a total, exactly like ARTICLE_LIMIT on the other read. */
+    const pool: ArticlePoolAccounting = {
+      path: "fallback",
+      size: POOL_SIZE,
+      selected: selected.length,
+      candidates: facetWindow.length,
+      windowDays: FACET_WINDOW_DAYS,
+      fillerWindowDays: FILLER_WINDOW_DAYS,
+      candidatesTruncated: facetWindow.length >= CANDIDATE_LIMIT,
+    };
+
     // Final safety: if the facet path returned nothing (brand new company,
     // no published_at coverage in 30d), fall back to the legacy recency
     // query so the page never returns 0 articles.
@@ -240,19 +357,46 @@ export async function fetchCompanyArticles(
         .limit(POOL_SIZE);
       if (legacyErr) {
         console.error("[api/companies/articles] legacy fallback error:", legacyErr.message);
-        return { articles: [], source: "empty", error: legacyErr.message };
+        return {
+          articles: [],
+          source: "empty",
+          error: legacyErr.message,
+          candidates: [],
+          pool: emptyPool("empty"),
+        };
       }
       const rows = (legacy ?? []) as RawArticleRow[];
-      return { articles: rows, source: rows.length > 0 ? "fallback" : "empty" };
+      const path: ArticleSource = rows.length > 0 ? "fallback" : "empty";
+      /* THE LEGACY RUNG HAS NO WINDOW EITHER. It is ordered by ingested_at
+         with no published_at gate, so its days are null for the same reason
+         the cache path's are. It reaches here only when the 30-day window
+         selected nothing, so `candidates` is genuinely 0 and saying so is the
+         honest answer rather than a hidden one. */
+      return {
+        articles: rows,
+        source: path,
+        candidates: rows,
+        pool: {
+          path,
+          size: POOL_SIZE,
+          selected: rows.length,
+          candidates: rows.length,
+          windowDays: null,
+          fillerWindowDays: null,
+          candidatesTruncated: false,
+        },
+      };
     }
 
-    return { articles: selected, source: "fallback" };
+    return { articles: selected, source: "fallback", candidates: facetWindow, pool };
   } catch (e) {
     console.error("[api/companies/articles] fallback threw:", e);
     return {
       articles: [],
       source: "empty",
       error: e instanceof Error ? e.message : "unknown error",
+      candidates: [],
+      pool: emptyPool("empty"),
     };
   }
 }
@@ -266,5 +410,15 @@ export async function GET(
   const canonical = canonicalize(decoded);
   const { supabase } = await getSupabaseWithUser();
   const result = await fetchCompanyArticles(supabase, canonical);
-  return NextResponse.json(result);
+  /* `candidates` is NOT serialized. It is up to CANDIDATE_LIMIT full article
+     rows and this response has always carried at most POOL_SIZE; it exists for
+     the server-side caller in `/company/[id]`, not for the wire. Listed field
+     by field rather than rest-spread away, so a field added to the result in
+     future has to be considered here rather than leaking by default. */
+  return NextResponse.json({
+    articles: result.articles,
+    source: result.source,
+    ...(result.error !== undefined ? { error: result.error } : {}),
+    pool: result.pool,
+  });
 }
