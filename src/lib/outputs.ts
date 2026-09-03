@@ -4,22 +4,42 @@
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-export type OutputType =
-  | 'memo'
-  | 'brief'
-  | 'brief_section'
-  | 'brief_cluster'
-  | 'chat_answer'
-  | 'thesis'
-  | 'thesis_grade'
-  | 'contrarian_signal'
-  | 'deal_extraction'
-  | 'user_addendum'
-  | 'mention_alert'
-  | 'cross_reference'
-  | 'company_overview'
-  | 'radar_clusters'
-  | 'radar_cluster_label';
+/**
+ * Every value this codebase is allowed to write to `outputs.output_type`.
+ *
+ * THIS LIST IS A CLAIM ABOUT THE DATABASE, NOT A LOCAL PREFERENCE. The column
+ * is `public.output_type_enum`. Postgres rejects any value that is not a member
+ * with SQLSTATE 22P02, and supabase-js reports that in the result object rather
+ * than throwing, so an unbacked entry here fails silently at runtime forever.
+ *
+ * That is exactly what happened to 'company_overview': it was added here with
+ * no matching enum member, so every Coverage Primer cache write 22P02'd and
+ * every page view re-billed a Gemini call.
+ *
+ * Adding an entry here REQUIRES a migration that adds the same value to
+ * output_type_enum. `src/lib/outputs.enum.test.ts` enforces that against a
+ * snapshot of the live enum captured from the database, so this list cannot
+ * drift ahead of the schema again unnoticed.
+ */
+export const OUTPUT_TYPES = [
+  'memo',
+  'brief',
+  'brief_section',
+  'brief_cluster',
+  'chat_answer',
+  'thesis',
+  'thesis_grade',
+  'contrarian_signal',
+  'deal_extraction',
+  'user_addendum',
+  'mention_alert',
+  'cross_reference',
+  'company_overview',
+  'radar_clusters',
+  'radar_cluster_label',
+] as const;
+
+export type OutputType = (typeof OUTPUT_TYPES)[number];
 
 interface RecordOutputParams {
   output_type: OutputType;
@@ -32,7 +52,16 @@ interface RecordOutputParams {
 
 /**
  * Record a generated output. Returns output id (UUID) on success, null on failure.
- * Failures are logged but never thrown — recording must not block generation.
+ *
+ * Failures are logged but never thrown - recording must not block generation.
+ * That contract is deliberate and is kept: several callers record on a path
+ * where a throw would break the user-facing response.
+ *
+ * The cost of that contract is that `null` is the ONLY failure signal a caller
+ * gets. Callers that depend on the write landing (a cache, for example) must
+ * check the return value; ignoring it is how a permanently failing write stays
+ * invisible. The log line now carries the SQLSTATE code so 22P02-class schema
+ * mismatches are identifiable from a log body instead of just "failed".
  */
 export async function recordOutput(
   supabase: SupabaseClient,
@@ -55,7 +84,10 @@ export async function recordOutput(
       .single();
 
     if (error) {
-      console.error(`[outputs] Failed to record ${params.output_type}:`, error.message);
+      console.error(
+        `[outputs] Failed to record ${params.output_type}:`,
+        JSON.stringify({ code: error.code, message: error.message, details: error.details })
+      );
       return null;
     }
     return data?.id ?? null;

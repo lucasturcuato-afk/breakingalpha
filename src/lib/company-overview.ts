@@ -114,3 +114,79 @@ export function sanitizeOverview(raw: string | null | undefined): string {
   if (stop > 120) return slice.slice(0, stop + 1);
   return slice.replace(/\s+\S*$/, "") + "...";
 }
+
+// ---------------------------------------------------------------------------
+// Cache contract. ONE definition of the fact "which output_type row is a
+// Coverage Primer overview", shared by the read filter and the write payload.
+// ---------------------------------------------------------------------------
+
+/**
+ * The `outputs.output_type` value for a cached Primer overview.
+ *
+ * TWO PATHS, ONE FACT. Before this constant existed the route carried the
+ * string "company_overview" twice: once in the cache-read filter and once in
+ * the cache-write payload. Nothing tied them to each other or to the database
+ * enum, so all three could disagree, and they did: the enum had no such member
+ * at all, which 22P02'd BOTH the read filter and the write.
+ *
+ * The read filter and the write value now come from here. The third path, the
+ * `public.output_type_enum` member itself, lives in the database and is pinned
+ * by src/lib/outputs.enum.test.ts against a snapshot captured from it.
+ */
+export const COMPANY_OVERVIEW_OUTPUT_TYPE = "company_overview" as const;
+
+/**
+ * The jsonb payload stored in `outputs.content` for a Primer overview.
+ *
+ * A `type` alias, not an `interface`, on purpose: recordOutput takes
+ * `Record<string, unknown>` and TypeScript grants an implicit index signature to
+ * type aliases but not to interfaces, so an interface here fails to assign.
+ */
+export type OverviewCacheContent = {
+  target_company: string;
+  overview: string;
+  source_hash: string;
+};
+
+/**
+ * Decide whether a cached row may be served for the current inputs.
+ *
+ * A hit requires a non-empty overview AND a source_hash equal to the current
+ * inputs' hash. A stale hash is a miss, not a soft hit: the whole point of the
+ * hash is that changed grounding inputs force exactly one regeneration.
+ */
+export function isOverviewCacheHit(
+  cached: Partial<OverviewCacheContent> | null | undefined,
+  currentHash: string
+): boolean {
+  if (!cached) return false;
+  const overview = (cached.overview ?? "").trim();
+  if (!overview) return false;
+  return cached.source_hash === currentHash;
+}
+
+/**
+ * Build the exact `recordOutput` payload for a Primer overview.
+ *
+ * Deliberately returns NO `source_id`. `outputs.source_id` is a uuid column and
+ * this cache is keyed by company NAME, so passing the name there raised a
+ * second, independent 22P02 ("invalid input syntax for type uuid") on the very
+ * same insert. Adding the enum member alone would NOT have fixed the write.
+ * The cache key lives in content.target_company, which is what the read filters
+ * on, so source_id was never load-bearing here.
+ */
+export function buildOverviewCacheRow(
+  name: string,
+  overview: string,
+  sourceHash: string
+): {
+  output_type: typeof COMPANY_OVERVIEW_OUTPUT_TYPE;
+  content: OverviewCacheContent;
+  source_table: string;
+} {
+  return {
+    output_type: COMPANY_OVERVIEW_OUTPUT_TYPE,
+    content: { target_company: name, overview, source_hash: sourceHash },
+    source_table: "companies",
+  };
+}

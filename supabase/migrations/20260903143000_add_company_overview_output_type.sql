@@ -1,0 +1,72 @@
+-- Add 'company_overview' to public.output_type_enum.
+--
+-- MANUAL-APPLY ONLY. Committed but NOT applied automatically. Noah applies.
+--
+-- WHY
+-- ---
+-- src/lib/outputs.ts has listed 'company_overview' as a legal OutputType since
+-- the Coverage Primer shipped, but the enum has never had that member. Postgres
+-- rejects the insert with SQLSTATE 22P02 ("invalid input value for enum
+-- output_type_enum"), supabase-js returns that in the result object instead of
+-- throwing, and recordOutput logs it to console.error inside a Vercel function
+-- where nothing alerts. Net effect: the Primer overview cache never wrote a
+-- single row, so every company page view re-billed a gemini-2.5-flash call.
+--
+-- Verified read-only against production before this file was written, via
+-- PostgREST schema introspection and filter-cast probes:
+--   * output_type_enum members: memo, brief, brief_cluster, chat_answer,
+--     thesis, thesis_grade, contrarian_signal, deal_extraction, user_addendum,
+--     mention_alert, cross_reference, brief_section, sec_filing,
+--     insider_transaction, radar_clusters, radar_cluster_label.
+--     'company_overview' is absent.
+--   * GET /rest/v1/outputs?output_type=eq.company_overview
+--       -> 400 {"code":"22P02","message":"invalid input value for enum
+--          output_type_enum: \"company_overview\""}
+--     The read filter fails for the same reason the write does.
+--   * Summing the per-type counts accounts for every row in the table, so no
+--     company_overview row has ever been written and no unlisted type exists.
+--
+-- The enum type itself is NOT defined anywhere in this repository. It was
+-- created directly against the database (the only committed outputs-adjacent
+-- migration, 20260507073312_output_log_v0_stub.sql, creates a DIFFERENT table,
+-- output_log_v0_stub, whose output_type is plain text). The member list above
+-- therefore comes from the live database, not from version control.
+--
+-- TRANSACTION CONSTRAINT, READ THIS BEFORE APPLYING
+-- -------------------------------------------------
+-- ALTER TYPE ... ADD VALUE has a transaction restriction that differs by
+-- server version, and the running major version could not be determined over a
+-- SELECT-only connection, so treat the stricter rule as binding:
+--   * Postgres 11 and earlier: the statement ERRORS OUT if it runs inside a
+--     transaction block ("ALTER TYPE ... ADD cannot run inside a transaction
+--     block").
+--   * Postgres 12 and later: it is allowed inside a transaction, but the new
+--     value CANNOT BE USED until that transaction commits. Any statement in the
+--     same transaction that references 'company_overview' still fails 22P02.
+--
+-- Migration runners that wrap each file in BEGIN/COMMIT (supabase db push does)
+-- therefore hit one of those two failure modes. Apply this file ALONE, as a
+-- single statement, with autocommit on, in the Supabase SQL Editor:
+--
+--   ALTER TYPE public.output_type_enum ADD VALUE IF NOT EXISTS 'company_overview';
+--
+-- Do not add any statement to this file that USES the new value.
+--
+-- Idempotent via IF NOT EXISTS: safe to re-run, and safe if someone has already
+-- added the member by hand.
+--
+-- ORDERING WITH THE APPLICATION
+-- -----------------------------
+-- Apply this BEFORE deploying the branch that depends on it. The code is
+-- already failing closed today (cache miss, raw-summary fallback, no user-
+-- visible breakage), so the reverse order is not dangerous, only ineffective:
+-- until this lands, cache_write_ok stays false and the Gemini call keeps firing.
+--
+-- ROLLBACK
+-- --------
+-- There is none. Postgres cannot DROP a value from an enum. Reverting means
+-- recreating the type and rewriting every dependent column, which is not worth
+-- it for an additive member. This is a one-way door; it is additive and no
+-- existing row or query changes meaning.
+
+ALTER TYPE public.output_type_enum ADD VALUE IF NOT EXISTS 'company_overview';

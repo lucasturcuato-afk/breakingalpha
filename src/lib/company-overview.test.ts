@@ -12,9 +12,12 @@ import assert from "node:assert/strict";
 
 import {
   buildOverviewPrompt,
+  buildOverviewCacheRow,
+  isOverviewCacheHit,
   overviewSourceHash,
   sanitizeOverview,
   isThinSource,
+  COMPANY_OVERVIEW_OUTPUT_TYPE,
   OVERVIEW_MAX_CHARS,
   type OverviewInputs,
 } from "./company-overview";
@@ -129,4 +132,70 @@ test("sanitize hard-caps overly long output", () => {
   const long = "A".repeat(OVERVIEW_MAX_CHARS + 100);
   const out = sanitizeOverview(long);
   assert.ok(out.length <= OVERVIEW_MAX_CHARS + 3, `len ${out.length}`);
+});
+
+// ---------------------------------------------------------------------------
+// Cache contract
+//
+// These pin the two defects that made the Primer cache a 100% miss and re-bill
+// a gemini-2.5-flash call on every company page view:
+//   1. output_type "company_overview" was not a member of output_type_enum.
+//   2. source_id (a uuid column) was being handed a company NAME.
+// Both raised 22P02 on the same insert, so fixing only the enum would have left
+// the write still failing.
+// ---------------------------------------------------------------------------
+
+test("cache row carries no source_id: outputs.source_id is uuid, the cache key is a name", () => {
+  const row = buildOverviewCacheRow("Apple Inc.", "Apple designs consumer hardware.", "abc123");
+  assert.equal(
+    Object.prototype.hasOwnProperty.call(row, "source_id"),
+    false,
+    "source_id must be absent; passing a company name into a uuid column raises 22P02"
+  );
+});
+
+test("cache row identifies the company through content.target_company, which is what the read filters on", () => {
+  const row = buildOverviewCacheRow("Apple Inc.", "Apple designs consumer hardware.", "abc123");
+  assert.equal(row.content.target_company, "Apple Inc.");
+  assert.equal(row.content.overview, "Apple designs consumer hardware.");
+  assert.equal(row.content.source_hash, "abc123");
+  assert.equal(row.source_table, "companies");
+});
+
+test("cache row output_type comes from the shared constant, not a fresh literal", () => {
+  const row = buildOverviewCacheRow("Apple Inc.", "Apple designs consumer hardware.", "abc123");
+  assert.equal(row.output_type, COMPANY_OVERVIEW_OUTPUT_TYPE);
+});
+
+test("cache hit requires a matching source_hash", () => {
+  const hash = overviewSourceHash(RICH);
+  assert.equal(
+    isOverviewCacheHit({ target_company: "NVIDIA", overview: "NVIDIA designs GPUs.", source_hash: hash }, hash),
+    true
+  );
+  assert.equal(
+    isOverviewCacheHit(
+      { target_company: "NVIDIA", overview: "NVIDIA designs GPUs.", source_hash: "stale" },
+      hash
+    ),
+    false,
+    "a stale hash must be a miss so changed inputs force exactly one regeneration"
+  );
+});
+
+test("cache miss on absent, empty or whitespace-only overview", () => {
+  const hash = overviewSourceHash(RICH);
+  assert.equal(isOverviewCacheHit(null, hash), false);
+  assert.equal(isOverviewCacheHit(undefined, hash), false);
+  assert.equal(isOverviewCacheHit({ source_hash: hash }, hash), false);
+  assert.equal(isOverviewCacheHit({ overview: "", source_hash: hash }, hash), false);
+  assert.equal(isOverviewCacheHit({ overview: "   ", source_hash: hash }, hash), false);
+});
+
+test("a row written by buildOverviewCacheRow reads back as a hit for the same inputs", () => {
+  // The round trip that never happened in production: write payload -> stored
+  // content -> read decision. Same hash on both sides, no normalization skew.
+  const hash = overviewSourceHash(RICH);
+  const row = buildOverviewCacheRow(RICH.name, "NVIDIA designs GPUs for data centers.", hash);
+  assert.equal(isOverviewCacheHit(row.content, hash), true);
 });
