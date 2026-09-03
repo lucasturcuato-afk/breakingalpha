@@ -177,7 +177,12 @@ export default async function CompanyDetailPage({
   // streaming boundaries land. Today the page is a server component that
   // fully resolves before render. The resolve below stays a standalone await:
   // every read after it needs either its result or its null short-circuit.
-  const companyDetail = await getCompanyDetail(supabase, canonicalize(companyName));
+  /* `id` is forwarded so the registry fallback in resolveAlias can see the
+     slug the reader actually typed. canonicalize() strips a structural tail
+     before this call ("booking-holdings" becomes "Booking"), which is fine for
+     the companies lookup and blinds the union. Read only on the branch that
+     was already returning null. */
+  const companyDetail = await getCompanyDetail(supabase, canonicalize(companyName), id);
 
   /* Null branch: no companies-row match (un-indexed via web-fallback path).
      Renders the PR-E1 empty state inside LiveMoodShell so the sidebar and

@@ -97,6 +97,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { canonicalize } from "@/lib/company-intel";
 import { preferCik } from "@/lib/company-cik-preference";
+import { resolveRegistry, type RegistryMatch } from "@/lib/registry-union/resolve";
 
 // EDGAR filing-index URL builder. Defined in a leaf module so it stays
 // importable under node:test (this module's "@/" import is not resolvable
@@ -208,14 +209,56 @@ async function matchCompaniesByAlias(
 }
 
 /**
+ * Turn a registry-union answer into a CikResolution, attaching the `companies`
+ * row that already carries that CIK when one exists so `companyId` stays
+ * populated for the callers that fall back to it.
+ *
+ * READ-ONLY. It looks a row up by CIK; it never creates or stamps one.
+ */
+async function registryResolution(
+  supabase: SupabaseClient,
+  reg: RegistryMatch,
+): Promise<CikResolution> {
+  const { data } = await supabase
+    .from("companies")
+    .select(COMPANY_COLS)
+    .eq("sec_cik", reg.cik)
+    .limit(5);
+  const row = pickPreferCik((data ?? []) as CompanyRow[]);
+  if (row) return toResolution(row);
+  // No row carries this CIK. The pillar tables are keyed by CIK, so filings,
+  // Form 4 rows and validated XBRL are still reachable; the name shown is the
+  // REGISTRANT's own, never the typed string. That is the whole defense
+  // against the /company/vanguard shape.
+  return { cik: reg.cik, companyId: null, name: reg.name, ticker: reg.ticker };
+}
+
+/**
  * Resolve a Company Intel company (id, name, slug, or ticker) to its SEC CIK,
  * always preferring the row that HAS a sec_cik over a null-CIK name duplicate.
  *
- * Order: exact id -> exact ticker -> exact name (raw + canonicalized) -> alias
- * match -> fall back to the best non-CIK match (so name/companyId are still set
- * and the caller renders an honest no-data state). `cik` is null when the
- * company genuinely has no mapped CIK (private / pre-IPO / on-demand mint, or a
- * duplicate the alias table does not yet link to its filer row). Never throws.
+ * Order: exact id -> exact ticker -> REGISTRY UNION -> exact name (raw +
+ * canonicalized) -> alias match -> fall back to the best non-CIK match (so
+ * name/companyId are still set and the caller renders an honest no-data
+ * state). `cik` is null when the company genuinely has no mapped CIK (private
+ * / pre-IPO / on-demand mint, or a duplicate the alias table does not yet link
+ * to its filer row). Never throws.
+ *
+ * THE UNION SITS AHEAD OF EVERY NAME STEP AND BEHIND EVERY KEYED ONE.
+ * `ref.id` and `ref.ticker` are identity a caller already holds, so they keep
+ * their place at the front. Steps 3 and 4 are name GUESSES against a table
+ * that stores 4,260 rows of which 774 carry a CIK, and that is where the union
+ * belongs: src/lib/registry-union/resolve.ts is an exact, gated match against
+ * 7,685 exchange-listed SEC registrants.
+ *
+ * Measured on the 2,869-name recruiting universe against prod on 2026-09-02:
+ * the union answers 654 names, agrees with the companies table wherever the
+ * companies table already has a CIK for the same name (202 of 202), supplies a
+ * CIK for 74 names whose row has none, newly resolves 377 names that resolve
+ * to no row at all, and moves an existing CIK exactly ONCE. That one move is a
+ * correction: 'American International Group' resolves today to a row named
+ * 'American' carrying cik 4962, which is American Express. The union names
+ * AMERICAN INTERNATIONAL GROUP, INC., cik 5272.
  */
 export async function resolveCompanyCik(
   supabase: SupabaseClient,
@@ -232,6 +275,9 @@ export async function resolveCompanyCik(
     const raw = (ref.name ?? ref.slug ?? "").replace(/-/g, " ").trim();
     const canon = raw ? canonicalize(raw) : "";
     const ticker = ref.ticker?.trim() ?? "";
+    // Synchronous and free: a map lookup over a checked-in index. Computed once
+    // here so the two name steps below can defer to it without recomputing.
+    const reg = raw ? resolveRegistry(raw) ?? (canon !== raw ? resolveRegistry(canon) : null) : null;
 
     // 2. Exact ticker: the CIK lives on the ticker'd row, so this is the most
     //    reliable key when the caller has it.
@@ -244,15 +290,27 @@ export async function resolveCompanyCik(
     if (!raw) return ticker ? EMPTY_RESOLUTION : EMPTY_RESOLUTION;
 
     // 3. Exact name (raw AND canonicalized), preferring a CIK-bearing match so a
-    //    null-CIK duplicate never shadows the filer row.
+    //    null-CIK duplicate never shadows the filer row. When the union also has
+    //    a gated answer and the two disagree on the CIK, the union decides.
     const nameRows = await matchCompaniesByName(supabase, [raw, canon]);
     const directCik = pickPreferCik(nameRows);
-    if (directCik?.sec_cik != null) return toResolution(directCik);
+    if (directCik?.sec_cik != null) {
+      if (reg && reg.cik !== directCik.sec_cik) return await registryResolution(supabase, reg);
+      return toResolution(directCik);
+    }
 
     // 4. Alias table: bridge a full legal name to the CIK-bearing company.
     const aliasRows = await matchCompaniesByAlias(supabase, [aliasKey(raw), aliasKey(canon)]);
     const aliasCik = pickPreferCik(aliasRows);
-    if (aliasCik?.sec_cik != null) return toResolution(aliasCik);
+    if (aliasCik?.sec_cik != null) {
+      if (reg && reg.cik !== aliasCik.sec_cik) return await registryResolution(supabase, reg);
+      return toResolution(aliasCik);
+    }
+
+    // 4b. The companies table has no CIK for this name. The union does. This is
+    //     the rung that changes the denominator: 377 of the 2,869 typed names
+    //     resolve to no companies row at all today and reach a registrant here.
+    if (reg) return await registryResolution(supabase, reg);
 
     // 5. No CIK anywhere: return the best available match so name/companyId are
     //    populated and the caller renders an honest no-data (Tier C) state.
