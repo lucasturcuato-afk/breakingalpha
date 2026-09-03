@@ -1,0 +1,116 @@
+{
+  "_doc": [
+    "Human rulings on company -> SEC-registry links, in the same spirit as",
+    "HARD_TICKER_OVERRIDES: this file is the source of truth for names the",
+    "matcher gets wrong, and the matcher never writes to it.",
+    "",
+    "A name matcher on financial firms produces three kinds of hit, and only a",
+    "human can tell them apart:",
+    "  RIGHT      the registry entity is the company, or its principal adviser.",
+    "  AFFILIATE  a real entity in the right corporate family whose figure is a",
+    "             fraction of the company's. Not blocked here: the tier is",
+    "             stored on the row and the read path shows the filed entity",
+    "             name beside the figure, so the reader sees what they are",
+    "             looking at. Blocking these would throw away correct data.",
+    "  WRONG      a different company that happens to share a first word. Every",
+    "             entry below is one of these.",
+    "",
+    "Each blocked entry was adjudicated by reading the registry entity's own",
+    "filed name and business against the company the page is about. `matched`",
+    "records what the matcher had proposed, so a future change can be tested",
+    "against the same evidence rather than rediscovering it.",
+    "",
+    "Keys are matched on the normalized company name (backend/registry/match.py",
+    "normalize), so casing and punctuation do not matter."
+  ],
+  "links": [
+    {
+      "company": "Mercor",
+      "blocked": true,
+      "crd": null,
+      "cik": null,
+      "matched": "MERCOR INVESTMENT GROUP (CRD 310936, RAUM $41.6M)",
+      "reason": "Mercor is an AI talent-marketplace startup. Mercor Investment Group is an unrelated registered adviser. Shared first word only."
+    },
+    {
+      "company": "Mercury",
+      "blocked": true,
+      "crd": null,
+      "cik": null,
+      "matched": "MERCURY ADVISORY, LLC (CRD 308960, RAUM $17.9B); MERCURY REAL ESTATE ADVISORS LLC (CIK 1264188, last 13F 2009)",
+      "reason": "Mercury is a startup-banking fintech. Neither registered entity is related to it; the 13F filer stopped filing in 2009."
+    },
+    {
+      "company": "Ripple",
+      "blocked": true,
+      "crd": null,
+      "cik": null,
+      "matched": "RIPPLE EFFECT ASSET MANAGEMENT LP (CRD 331250 / CIK 2031590, RAUM $218.4M)",
+      "reason": "Ripple is the XRP payments company. Ripple Effect Asset Management is an unrelated adviser."
+    },
+    {
+      "company": "Cresta",
+      "blocked": true,
+      "crd": null,
+      "cik": null,
+      "matched": "CRESTA ADVISORS (CRD 169641 / CIK 1947670, RAUM $786.0M)",
+      "reason": "Cresta is an AI contact-centre software startup. Cresta Advisors is an unrelated adviser."
+    },
+    {
+      "company": "Harvey",
+      "blocked": true,
+      "crd": null,
+      "cik": null,
+      "matched": "Harvey Partners, LLC (CIK 1406484)",
+      "reason": "Harvey is a legal-AI startup. Harvey Partners is an unrelated hedge fund."
+    },
+    {
+      "company": "Aurelius",
+      "blocked": true,
+      "crd": null,
+      "cik": null,
+      "matched": "AURELIUS FAMILY OFFICE, LLC (CRD 323016 / CIK 2053738, RAUM $315.3M)",
+      "reason": "The universe row is Aurelius Group, the German turnaround investor (AURELIUS Equity Opportunities); the companies row is named 'Aurelius'. Aurelius Family Office is an unrelated US family office."
+    },
+    {
+      "company": "B Capital",
+      "blocked": true,
+      "crd": null,
+      "cik": null,
+      "matched": "B CAPITAL ADVISORS, LP (CIK 1315705, last 13F 2006-05-15)",
+      "reason": "B Capital Group is the Saverin/Bhattacharya growth fund, founded 2015. This filer predates it by nine years and stopped filing in 2006. Also excluded by the 13F staleness guard; blocked here so it stays excluded if that guard is ever relaxed."
+    },
+    {
+      "company": "DST Global",
+      "blocked": true,
+      "crd": null,
+      "cik": null,
+      "matched": "DST USA Ltd (CIK 1549931, last 13F 2014-11-12)",
+      "reason": "DST Global is Yuri Milner's fund. This filer stopped in 2014 and its identity is unconfirmed. Also excluded by the staleness guard."
+    },
+    {
+      "company": "TD Securities",
+      "blocked": true,
+      "crd": null,
+      "cik": null,
+      "matched": "TD Securities (USA) LLC (CIK 1335977, last 13F 2017-03-24)",
+      "reason": "Correct entity, but it stopped filing 13F in 2017, so the existence flag describes 2017 and not today. Also excluded by the staleness guard."
+    },
+    {
+      "company": "Needham",
+      "blocked": true,
+      "crd": null,
+      "cik": null,
+      "matched": "NEEDHAM FUNDS INC (CIK 1002537); NEEDHAM & COMPANY, LLC (CRD 16360, RAUM $0.00)",
+      "reason": "The universe row is the investment bank. Needham Funds is the affiliated mutual-fund family, a different legal person whose 13F is about the funds' holdings. The bank's own ADV reports RAUM 0.00 and supplies no figure either."
+    },
+    {
+      "company": "Eldridge",
+      "blocked": true,
+      "crd": null,
+      "cik": null,
+      "matched": "Eldridge Investment Advisors, Inc. (CIK 1727993, state NH)",
+      "reason": "The universe row is Eldridge Industries, the Boehly holding company in Greenwich CT. This filer is a New Hampshire registered adviser with an unrelated name collision."
+    }
+  ]
+}

@@ -28,10 +28,19 @@ import type { ReactNode } from "react";
 
 import type { CompanyFinancialsResult } from "@/lib/financial-facts";
 import type { QuoteSummaryLive } from "@/lib/yahoo/quoteSummary";
+import {
+  EMPTY_REGISTRY_PROFILE,
+  has13FEvidence,
+  hasRaumFigure,
+  type RegistryProfile,
+} from "@/lib/adviser-registry";
+import { worthDisplaying, type WikidataDescriptor } from "@/lib/wikidata-descriptor";
 import { PrimerSnapshot } from "./primer/PrimerSnapshot";
 import { PrimerBusinessOverview } from "./primer/PrimerBusinessOverview";
+import { PrimerThinDescriptor } from "./primer/PrimerThinDescriptor";
 import { PrimerKeyStats } from "./primer/PrimerKeyStats";
 import { PrimerFinancialSnapshot } from "./primer/PrimerFinancialSnapshot";
+import { PrimerRegulatoryFilings } from "./primer/PrimerRegulatoryFilings";
 
 interface PrimerTabProps {
   companyName: string;
@@ -42,6 +51,18 @@ interface PrimerTabProps {
   /** Curated description from COMPANY_IDENTITY.brief, or null. Fallback for live. */
   description: string | null;
   financials: CompanyFinancialsResult;
+  /**
+   * SEC adviser registry (Form ADV Part 1 RAUM, Form 13F-HR filer status).
+   * Optional so existing call sites and fixtures keep compiling; absent means
+   * the same thing an empty profile means, which is that this company is in
+   * neither registry.
+   */
+  registry?: RegistryProfile;
+  /**
+   * Wikidata short description, a labelled thin tier. Never an identity source;
+   * see src/lib/wikidata-descriptor.ts.
+   */
+  wikidata?: WikidataDescriptor | null;
   /** The existing BriefTab element, embedded as Recent developments unchanged. */
   briefSlot: ReactNode;
 }
@@ -64,6 +85,8 @@ export function PrimerTab({
   industry,
   description,
   financials,
+  registry = EMPTY_REGISTRY_PROFILE,
+  wikidata = null,
   briefSlot,
 }: PrimerTabProps) {
   const [quote, setQuote] = useState<QuoteSummaryLive | null>(null);
@@ -147,6 +170,14 @@ export function PrimerTab({
     : description ?? null;
   const resolvedDescription = normalized ?? fallbackDescription;
 
+  // Registry usability, evaluated once. `new Date()` rather than a memo: this
+  // is a staleness comparison against a date months old, so a re-render
+  // crossing a millisecond boundary cannot change the answer.
+  const now = new Date();
+  const raumUsable = hasRaumFigure(registry.adviser);
+  const managerUsable = has13FEvidence(registry.manager, now);
+  const showRegistry = raumUsable || managerUsable;
+
   return (
     <div data-testid="primer-tab" className="space-y-4">
       <PrimerSnapshot
@@ -159,7 +190,30 @@ export function PrimerTab({
       {/* Business overview: hidden entirely when neither live nor curated text. */}
       {resolvedDescription ? <PrimerBusinessOverview description={resolvedDescription} /> : null}
 
+      {/* Wikidata short description: a LABELLED THIN TIER, shown only when there
+          is no real overview above it. Never merged into that section and never
+          counted as identity, because a 30-character category label is not a
+          business overview. */}
+      {!resolvedDescription && worthDisplaying(wikidata) && wikidata ? (
+        <PrimerThinDescriptor descriptor={wikidata} />
+      ) : null}
+
       <PrimerKeyStats quote={quote} loading={loading} />
+
+      {/* SEC registrations: for a private adviser or fund manager this is the
+          only numeric section on the page, since PrimerFinancialSnapshot below
+          is empty for every name that does not file XBRL. Mounted only when a
+          usable artifact exists (a positive, dated RAUM or a current 13F-HR),
+          so it has no empty branch to render. `showRegistry` applies the SAME
+          predicate the backend credited the numbers pillar with, so the page
+          and the score cannot disagree about what this company has. */}
+      {showRegistry ? (
+        <PrimerRegulatoryFilings
+          adviser={raumUsable ? registry.adviser : null}
+          manager={managerUsable ? registry.manager : null}
+        />
+      ) : null}
+
       <PrimerFinancialSnapshot financials={financials} />
 
       {/* Recent developments: the existing brief, embedded unchanged. */}
