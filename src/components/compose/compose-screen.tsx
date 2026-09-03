@@ -9,13 +9,16 @@ import type { AdoptWindow } from "@/lib/call-horizons";
    render and not the download. Everything below is content-free, and the seed
    arrives as a required prop, built on the server by
    `src/app/compose/page.tsx` behind `COMPOSE_FIXTURE_ENABLED`. */
+/* The direct module, never the `@/components/commit` barrel: that re-exports
+   CommitSheet and would drag createPortal into the Compose bundle to read one
+   predicate. `commit-gate` imports a single integer and nothing else. */
+import { noteSatisfiesGate } from "@/components/commit/commit-gate";
 import { COMPOSE_FIXTURE_ENABLED } from "./fixture-gate";
 import {
   DRAFT_MIN_CHARS,
   EMPTY_SEED,
   MAX_CLAIM_CHARS,
   MAX_NOTE_CHARS,
-  NOTE_MIN_CHARS,
   composeWindowChoices,
   composeWindowEnd,
   composeWindowFor,
@@ -261,7 +264,16 @@ export function ComposeScreen({
   const analyzing = phase === "analyzing";
   const saveFailed = phase === "save-error";
   const draftOk = draft.trim().length >= DRAFT_MIN_CHARS;
-  const noteOk = note.trim().length >= NOTE_MIN_CHARS;
+  /* THE AUTHORED SIDE OF THE RULING, read from the module that owns it.
+     `decisions/commit-note-optional-when-adopting.md` drops the note gate on
+     the adopt path and keeps it here: authoring a claim is the reader making
+     one, and the note is that claim's reasoning. This screen posts to
+     `/api/radar/claims`, so its origin is `authored` and the floor stands.
+
+     It used to be this same expression written out against `NOTE_MIN_CHARS`,
+     which was a second implementation of one half of a rule that now has a
+     module. Same number, same trim, same answer; one place to read it. */
+  const noteOk = noteSatisfiesGate(note, "authored");
   const gradeable = proposal?.gradeable === true;
 
   const error =

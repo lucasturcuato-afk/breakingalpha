@@ -54,10 +54,12 @@ export interface CommitTarget {
  * still owns the literal, so the surfaces that DO gate cannot drift to two
  * different numbers, which is the half of ruling 11 that still stands.
  *
- * Desktop /radar/calls (`src/components/calls/TrackCallControl.tsx`) still
- * gates and is out of this change's scope. It adopts, so the ruling reaches
- * it; nothing here is what stops it, and the recon records it as the one
- * surface left to follow.
+ * COMPOSE IS NOW THE ONLY READER OF THIS FLOOR. The three desk surfaces the
+ * shared call control serves (`src/components/calls/TrackCallControl.tsx`: the
+ * morning brief, the evening wrap and /radar/calls) all adopt, and all three
+ * follow the ruling as of 2026-09-02. None of them imports this constant any
+ * more, which is the shape to keep: a surface that reaches for the number
+ * instead of for `./commit-gate` is re-deriving a decision that has a module.
  *
  * Trimming is the load-bearing half. `sql/proposals/0033` writes the same
  * semantic into the column as `length(btrim(commit_note)) > 0`, and the adopt
