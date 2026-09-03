@@ -101,6 +101,7 @@ function detailWith(tone: ToneSummary, articles: CompanyDetailArticle[]): Compan
     themes: [],
     memo: null,
     isPrivate: false,
+    descriptionRow: null,
   };
 }
 

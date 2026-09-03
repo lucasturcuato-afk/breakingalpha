@@ -110,6 +110,7 @@ import {
   groupByCategory,
   sortNewestFirst,
 } from "@/lib/insider-transactions";
+import { wikipediaArtifact } from "@/lib/company-identity";
 import { formatMoney } from "@/lib/reporting-currency";
 import { formatPTDateShort } from "@/lib/format-pt";
 
@@ -455,9 +456,19 @@ function latestFiledPeriod(
  *   cache miss. A model call on a server render path is a hard stop, not a
  *   fallback, and this mapper does not have one.
  *
- *   NEVER `companies.description` either. Measured on the live table: 0 non-null
- *   rows out of 5,599. It is a dead column, so reading it would add a query that
- *   can only ever answer null.
+ *   `companies.description` IS now read, and only through
+ *   `wikipediaArtifact()`. It was a dead column (0 non-null of 4,276) until the
+ *   Wikipedia identity backfill; the column already travels on the resolver
+ *   select, so this adds no query.
+ *
+ *   VERBATIM, and the type system enforces it. The paragraph is reproduced
+ *   under CC BY-SA 4.0 section 2(a)(1)(A); trimming it would make it Adapted
+ *   Material under section 1(a) and fire ShareAlike on Signalera's own prose.
+ *   `wikipediaArtifact()` returns `VerbatimText`, which no truncating string
+ *   method returns, so a cap here would not compile. It is also why the block
+ *   below sets `overviewAttribution` in the same expression that sets
+ *   `overview`: a licensed paragraph rendered with no source link does not
+ *   satisfy section 3(a)(1).
  *
  * KEY FIGURES are validated XBRL and nothing else: the first two facts the
  * filer reported off its newest filed period, with the period named in the
@@ -519,10 +530,18 @@ export function buildPrimer(
     }
   }
 
+  // Precedence on this surface is curated brief, then the stored Wikipedia
+  // paragraph. There is no Yahoo rung here at all: the live profile arrives
+  // from a CLIENT fetch to /api/company-kpis that this server-render mapper
+  // does not make, which is stated in the header above.
+  const wiki = wikipediaArtifact(detail.descriptionRow);
+  const curated = identity?.brief?.trim() ?? "";
+
   return {
     lede: PRIMER_LEDE,
     identity: identityRows,
-    overview: identity?.brief ?? "",
+    overview: curated || (wiki ? wiki.text : ""),
+    overviewAttribution: curated || !wiki ? null : wiki.attribution,
     keyFigures,
     /* THE THIRD STATE, and it is `filed` and not `keyFigures.length`. A filer
        can have a periodic report on file and still contribute nothing to the

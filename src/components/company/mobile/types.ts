@@ -233,6 +233,21 @@ export interface CompanyIntelData {
      * with a different set of failure states.
      */
     overview: string;
+    /**
+     * Attribution for `overview` when it came from Wikipedia, else null.
+     *
+     * IT IS NOT OPTIONAL DECORATION. A CC BY-SA 4.0 excerpt rendered without a
+     * link to the source article and to the licence does not satisfy section
+     * 3(a)(1), and this surface renders the same paragraph the desktop Primer
+     * does. `buildPrimer` only ever sets `overview` from a Wikipedia paragraph
+     * together with this object, so the two cannot drift apart.
+     */
+    overviewAttribution: {
+      articleUrl: string;
+      articleTitle: string;
+      licenseName: string;
+      licenseUrl: string;
+    } | null;
     keyFigures: CompanyKeyFigure[];
     /**
      * Whether the filer has a periodic report on file at all, on either basis.
