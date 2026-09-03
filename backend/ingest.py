@@ -379,6 +379,31 @@ RSS_FEEDS = {
     "CNBC Business":    "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=10001147",  # 30 / 87% / 136ch / 0.25s
     "The Globe and Mail": "https://www.theglobeandmail.com/arc/outboundfeeds/rss/category/business/",           # 100 / 58% / 106ch / 0.28s
     "Business Insider": "https://markets.businessinsider.com/rss/news",                       # 10 / 90% / 294ch / 1.07s
+
+    # ── Round 2, added 2026-09-03 (same method: ranked by volume x median
+    # relevance from the gnews publisher table, then fetched before shipping;
+    # the ranked table is regenerable with backend/tools/rss_feed_targets.py).
+    #
+    # Probed 2026-09-03: entries / prose rate / median description chars.
+    # Rejected THIS round, with evidence, so they are not re-litigated:
+    #   TradingView (tradingview.com/feed parses fine at 100% prose, but the
+    #     channel is "TradingView Ideas" -- user-generated chart chatter, not
+    #     the news section the gnews rows come from),
+    #   Ad-hoc-news.de (feed works, 85% prose, but German-language content;
+    #     the positive-English language gate would drop nearly all of it),
+    #   Eastern Progress (feed 404; a Kentucky college paper carrying
+    #     median-relevance-7 finance content is a scraper site, not a source),
+    #   Barron's (now FOUR dead URL shapes across two rounds),
+    #   MarketScreener (three shapes: 404, 404, parses-but-zero-entries),
+    #   Reuters (four shapes across two rounds, all dead; W2-D backlog stays
+    #     open), Stock Titan (re-probed: 100 entries, 0% prose, again),
+    #   Pluang (no feed at any cheap shape).
+    "TIKR":             "https://tikr.com/rss",                                               # 50 / 76% / 127ch
+    "WSJ World":        "https://feeds.content.dowjones.io/public/rss/RSSWorldNews",          # 73 / 86% / 120ch
+    "WSJ Tech":         "https://feeds.content.dowjones.io/public/rss/RSSWSJD",               # 40 / 82% / 123ch
+    "CNBC Earnings":    "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=15839135",  # 30 / 67% / 121ch
+    "CNBC Technology":  "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=19854910",  # 30 / 80% / 120ch
+    "Fortune":          "https://fortune.com/feed/",                                          # 10 / 60% / 141ch
 }
 
 #: NO LONGER DRIVES content_type. It used to, and that was the bug: it labelled
@@ -427,6 +452,15 @@ ENTRY_CAP_OVERRIDES: dict[str, int] = {
     "The Globe and Mail":       40,   # 99
     "CNBC Business":            40,   # 22  (supply-limited)
     "Business Insider":         40,   # 10  (supply-limited)
+    # Round 2 (2026-09-03). Caps set from measured fresh supply per fetch: a
+    # cap above supply is inert, so supply-limited feeds get 40 as a ceiling
+    # and Fortune gets 16 because the default of 8 WOULD truncate its 10.
+    "TIKR":             40,   # 50 fresh available
+    "WSJ World":        40,   # 60
+    "WSJ Tech":         40,   # 34
+    "CNBC Earnings":    40,   # ~13 (supply-limited; the feed lists 30 but half are >7d old)
+    "CNBC Technology":  40,   # 30 (supply-limited)
+    "Fortune":          16,   # 10 (supply-limited; default 8 would bind)
 }
 
 # Google News per-ticker RSS
