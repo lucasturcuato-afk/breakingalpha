@@ -34,8 +34,10 @@ import {
   canonicalize,
   buildMemoContent,
   buildMemoSystemPrompt,
+  classifyBriefPool,
   filterAndClassifyArticles,
   noCoverageBriefLine,
+  thinCoverageBriefLine,
 } from "@/lib/company-intel";
 import { fetchCompanyArticles } from "@/app/api/companies/[id]/articles/route";
 import { CompanyIntelScreen } from "@/components/company/mobile";
@@ -373,6 +375,14 @@ export default async function CompanyDetailPage({
   const memoContent = buildMemoContent(canonical, developmentArticles, contextArticles);
   const systemPrompt = buildMemoSystemPrompt(canonical);
 
+  // THE SAME CALL buildMemoContent MAKES, off the same two arrays, so the shape
+  // the reader is shown and the MEMO_MODE the prompt branches on cannot
+  // disagree. The briefSlot ternary below used to carry its own hand-inlined
+  // copy of the empty-pool test, byte-equal to the one inside buildMemoContent;
+  // there is now one predicate and two consumers, and a unit test fails if a
+  // second copy of that comparison reappears in this file.
+  const poolShape = classifyBriefPool(developmentArticles.length, contextArticles.length);
+
   // Curated identity (Snapshot industry + Business overview), keyed on the same
   // canonical name the memo inputs use. Null for uncurated companies, which the
   // Primer sections render as neutral factual empty states.
@@ -413,11 +423,17 @@ export default async function CompanyDetailPage({
         description={identity?.brief ?? null}
         financials={financialsResult}
         briefSlot={
-          // Mutually exclusive, never stacked. No article coverage -> ONLY the
-          // web-memo card; BriefTab is not mounted, so its "Generate Brief" CTA
-          // cannot fire a corpus brief against zero articles. Coverage exists ->
-          // ONLY the corpus BriefTab, unchanged.
-          developmentArticles.length === 0 && contextArticles.length === 0 ? (
+          // Mutually exclusive, never stacked, and now THREE branches rather
+          // than two. No article coverage -> ONLY the web-memo card; BriefTab is
+          // not mounted, so its "Generate Brief" CTA cannot fire a corpus brief
+          // against zero articles. Thin coverage -> one line, same reason: the
+          // CTA must not be able to fire five sections at two headlines.
+          // Anything richer -> ONLY the corpus BriefTab, unchanged.
+          //
+          // `poolShape` is classifyBriefPool's answer, the same call
+          // buildMemoContent makes, so this ternary and the MEMO_MODE in the
+          // prompt are one decision rather than two that have to agree.
+          poolShape === "no-coverage" ? (
             // No coverage: web-memo card ONLY when the flag is on; otherwise
             // render nothing here (BriefTab stays unmounted so its Generate
             // Brief CTA cannot fire a corpus brief against zero articles).
@@ -438,6 +454,30 @@ export default async function CompanyDetailPage({
                 {noCoverageBriefLine(companyDetail.display)}
               </p>
             )
+          ) : poolShape === "thin" ? (
+            /* THE WEB-MEMO CARD DOES NOT REACH HERE, deliberately. It is the
+               fallback for a company this corpus has nothing on, and a thin pool
+               is not that: there ARE articles, the Articles tab lists them, and
+               swapping a web-sourced brief in front of an own-corpus one would
+               be a different claim about where the page's evidence came from.
+               The flag is off in production either way.
+
+               `companyDetail.display` matches the sibling line above rather than
+               the `canonical` the prompt side uses. Both are `head.name`, set on
+               the same object literal by getCompanyDetail (canonical: head.name,
+               display: head.name), so one writer produces both and they cannot
+               drift without that function changing.
+
+               The count is `contextArticles.length`, the same expression
+               classifyBriefPool was asked about and the same one buildMemoContent
+               passes into its THIN BRIEF LINE, so the number the reader sees is
+               the number that chose this branch. */
+            <p
+              data-testid="brief-thin-coverage"
+              className="rounded-md border border-border-subtle bg-cream-hi p-4 text-sm text-text-muted"
+            >
+              {thinCoverageBriefLine(companyDetail.display, contextArticles.length)}
+            </p>
           ) : (
             <BriefTab company={canonical} content={memoContent} systemPrompt={systemPrompt} />
           )
@@ -586,7 +626,26 @@ export default async function CompanyDetailPage({
         query={companyName}
         companyId={companyDetail.companyId}
         outcome={
-          developmentArticles.length === 0 && contextArticles.length === 0
+          /* THE THIRD READER OF THE SAME FACT, and it was the third hand-inlined
+             copy of the same comparison. It now asks classifyBriefPool like the
+             brief slot and buildMemoContent do.
+
+             THE VALUE IS DELIBERATELY UNCHANGED FOR EVERY COMPANY. Two different
+             things are called "thin" in this file after this change and they are
+             not the same set. CompanyPageOutcome's `thin` means "a row resolved
+             and has zero classified articles" (see company-events.ts), which is
+             exactly classifyBriefPool's `no-coverage`. The brief's new `thin`
+             mode means "no development and at most THIN_CONTEXT_MAX context
+             articles", which this event has always recorded as `content` and
+             still does. Mapping the new mode onto the event's `thin` would
+             silently redefine an existing series mid-flight, so it does not.
+
+             What that leaves undone: the analytics cannot yet distinguish a page
+             that rendered five sections from one that rendered the thin line.
+             That wants a fourth value on CompanyPageOutcome, which is a change
+             to a shared union with its own consumers and is not this change. */
+          classifyBriefPool(developmentArticles.length, contextArticles.length) ===
+          "no-coverage"
             ? "thin"
             : "content"
         }

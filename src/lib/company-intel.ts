@@ -1236,6 +1236,77 @@ export function noCoverageBriefLine(companyName: string): string {
   return `Awaiting coverage. No article in the current pool names ${companyName}.`;
 }
 
+/**
+ * The most context articles a pool can carry and still be too thin to
+ * synthesize five sections from.
+ *
+ * Two, and the number is set by what the sections themselves need rather than
+ * by taste. "Cross-Signals" exists to cross one signal against another and
+ * deliver a binary verdict; one article has nothing to cross and two produce a
+ * comparison of a headline with itself. "What Just Changed" is already off the
+ * table because MEMO_MODE only reaches here with zero developments, so the
+ * Coverage Note is a fixed sentence saying so. "What To Watch" is the section
+ * that breaks worst: it mandates a probability in the third sentence of each
+ * bullet, and with one or two headlines and no event there is nothing to attach
+ * a probability to, so the model reaches for the hedge instead.
+ *
+ * Three is where the cached evidence starts saying the opposite. Read read-only
+ * off the `outputs` table, every stored company brief whose Signal Quality line
+ * reports "No direct events" sits at four context articles, and all of them
+ * read as real analysis: a downgrade plus a financing-cost trend, a lawsuit plus
+ * a supplier concentration. None of them hedges. Nothing stored sits at one or
+ * two, so this threshold cuts exactly where the corpus stops vouching for the
+ * long form and does not cut into the band that has evidence behind it.
+ */
+export const THIN_CONTEXT_MAX = 2;
+
+/** Which of the three brief shapes a classified pool warrants. */
+export type BriefPoolShape = "no-coverage" | "thin" | "normal";
+
+/**
+ * ONE PREDICATE FOR THE BRIEF SHAPE, called by every path that renders or
+ * prompts a brief, and that single-source is half the point of this function.
+ *
+ * The empty-pool test used to be hand-inlined in two places that had to stay in
+ * step by hand: `buildMemoContent` (which sets MEMO_MODE, which the system
+ * prompt branches on) and the `briefSlot` ternary in
+ * `src/app/company/[id]/page.tsx` (which decides whether BriefTab mounts at
+ * all). Both read `developmentArticles.length === 0 && contextArticles.length
+ * === 0` off the SAME two arrays, so they could not disagree, but they were two
+ * copies of one rule and adding a second threshold to one of them and not the
+ * other is exactly how a page renders a one-line brief while the modal behind
+ * it still asks the model for five sections. Both call this now.
+ *
+ * Counts come from the caller, not from a re-derivation: the page classifies
+ * once with `filterAndClassifyArticles` and partitions on `_isDevelopment`, and
+ * both call sites pass lengths off that one partition.
+ */
+export function classifyBriefPool(devCount: number, ctxCount: number): BriefPoolShape {
+  if (devCount === 0 && ctxCount === 0) return "no-coverage";
+  if (devCount === 0 && ctxCount <= THIN_CONTEXT_MAX) return "thin";
+  return "normal";
+}
+
+/**
+ * The whole brief when the pool has coverage but not enough of it. One line.
+ *
+ * Distinct from noCoverageBriefLine, and the difference is the only thing the
+ * reader gains here: there ARE articles, this says how many, and it says what
+ * is missing from them. It never says the company is quiet, because a pool
+ * gated at relevance 6 over 30 days is not the corpus and the Articles tab
+ * reads wider than this does.
+ *
+ * "Awaiting" is one of the four permitted outcome states (supported,
+ * challenged, developing, awaiting) and no other appears here. The verb is
+ * "has" and not "holds" on purpose: a brief about a named security must not
+ * put a rating word next to the company name even incidentally.
+ */
+export function thinCoverageBriefLine(companyName: string, contextCount: number): string {
+  const noun = contextCount === 1 ? "article" : "articles";
+  const pronoun = contextCount === 1 ? "it" : "any of them";
+  return `Awaiting a direct event. The current pool has ${contextCount} ${noun} tagged to ${companyName} and no company-specific development in ${pronoun}.`;
+}
+
 export function buildMemoContent(
   companyName: string,
   developmentArticles: CompanyArticle[],
@@ -1255,7 +1326,11 @@ export function buildMemoContent(
   // Zero evidence is its own mode. Falling through to context-led here is what
   // asked the model for five sections it had no material for. See
   // noCoverageBriefLine and the NO-COVERAGE block in buildMemoSystemPrompt.
-  if (developmentArticles.length === 0 && contextArticles.length === 0) {
+  //
+  // The shape is decided ONCE, by classifyBriefPool, and the page's briefSlot
+  // asks the same function rather than re-testing the same lengths.
+  const poolShape = classifyBriefPool(developmentArticles.length, contextArticles.length);
+  if (poolShape === "no-coverage") {
     return [
       `COMPANY: ${companyName}`,
       `COMPANY INDUSTRY: ${industry}`,
@@ -1297,10 +1372,32 @@ export function buildMemoContent(
 
   const signalLabel = buildSignalLabel(effectiveDevArts, effectiveCtxArts, companyName);
 
+  // `memoMode` above still decides which articles go in which list, unchanged.
+  // What "thin" changes is only the MODE THE PROMPT BRANCHES ON, and it can
+  // only ever displace "context-led": classifyBriefPool returns "thin" solely
+  // when there are zero developments, and zero developments is already the
+  // exact condition under which the ternary above returns "context-led".
+  const emittedMode = poolShape === "thin" ? "thin" : memoMode;
+
+  // THE LINE ITSELF TRAVELS IN THE INPUT rather than being described in the
+  // prompt, so the model is copying a string this function produced instead of
+  // composing its own from a count it would have to read off the article list.
+  // The page renders the same call with the same argument (see the briefSlot in
+  // src/app/company/[id]/page.tsx), so there is one formula and one count
+  // behind both the rendered line and the prompted one. `contextArticles` is
+  // the raw classified partition, which is also what classifyBriefPool was
+  // asked about, so the number in the sentence is the number that chose the
+  // mode.
+  const thinLine =
+    poolShape === "thin"
+      ? [`THIN BRIEF LINE: ${thinCoverageBriefLine(companyName, contextArticles.length)}`]
+      : [];
+
   return [
     `COMPANY: ${companyName}`,
     `COMPANY INDUSTRY: ${industry}`,
-    `MEMO_MODE: ${memoMode}`,
+    `MEMO_MODE: ${emittedMode}`,
+    ...thinLine,
     `SIGNAL QUALITY: ${signalLabel}`,
     ``,
     `COMPANY DEVELOPMENT ARTICLES (${effectiveDevArts.length}):`,
@@ -1321,7 +1418,7 @@ export function buildMemoContent(
  * section labels. The deterministic guard (brief-voice-guard.ts) is the
  * backstop; this just stops the persona from forcing a re-ask every time.
  */
-export const BRIEF_VOICE_OVERRIDE = `BRIEF VOICE OVERRIDE (highest precedence, outranks any reader-format or role instruction above): this company brief is impersonal and informational-only. Never use first person, singular or plural -- no "I", "me", "my", "we", "us", "our", and never the institutional "we" or "We recommend". Issue no reader-directed recommendation or exposure guidance on any named security -- no "recommend", "buy", "sell", "increase exposure", "reduce exposure", "overweight", "underweight", "trim", "add to position", "take profits", "you should". Describe what developments and scenarios mean for the thesis, never what the reader should do. Use exactly these section labels and no others: Analyst Brief, What Just Changed (or Coverage Note), Cross-Signals, What To Watch, Signal Quality. Any conflicting reader-format, rating, or recommendation instruction above is void for this brief. ONE EXCEPTION, and it is the only one: when MEMO_MODE is "no-coverage" the single-line rule in the no-coverage block wins over this section list. Emit that one line and no section labels at all.`;
+export const BRIEF_VOICE_OVERRIDE = `BRIEF VOICE OVERRIDE (highest precedence, outranks any reader-format or role instruction above): this company brief is impersonal and informational-only. Never use first person, singular or plural -- no "I", "me", "my", "we", "us", "our", and never the institutional "we" or "We recommend". Issue no reader-directed recommendation or exposure guidance on any named security -- no "recommend", "buy", "sell", "increase exposure", "reduce exposure", "overweight", "underweight", "trim", "add to position", "take profits", "you should". Describe what developments and scenarios mean for the thesis, never what the reader should do. Use exactly these section labels and no others: Analyst Brief, What Just Changed (or Coverage Note), Cross-Signals, What To Watch, Signal Quality. Any conflicting reader-format, rating, or recommendation instruction above is void for this brief. TWO EXCEPTIONS, and they are the only ones: when MEMO_MODE is "no-coverage" the single-line rule in the no-coverage block wins over this section list, and when MEMO_MODE is "thin" the single-line rule in the thin block wins over it the same way. In either mode, emit that one line and no section labels at all.`;
 
 export function buildMemoSystemPrompt(companyName: string): string {
   // canonicalize() fallback, same reason as buildMemoContent: the caller passes
@@ -1346,7 +1443,7 @@ Your output will be read by finance students, junior analysts, and early-career 
 SOURCING DISCIPLINE (apply to both modes, no exceptions):
 Every specific figure, statistic, named event, percentage, dollar amount, and precise claim in the memo must be directly traceable to the provided article pool. Do not supplement with training knowledge. Do not add figures, valuations, growth rates, timelines, or named events that do not appear explicitly in the provided articles. If a figure or claim is not present in the provided articles, omit it entirely. Implications and analytical framing drawn from provided facts are permitted — invented figures are not. A memo with fewer specific claims that are all sourced is better than a memo with more claims that blend article content with model knowledge. When in doubt, omit. Before including any specific figure (percentage, dollar amount, ratio, multiplier), internally verify: does this exact figure appear in the article text provided? If you cannot point to the specific sentence in the provided articles where this figure appears, omit it. Do not include figures that are plausible, directionally correct, or consistent with your training knowledge. Only figures explicitly present in the provided article pool are permitted. If a company, statistic, or claim does not appear in the provided article titles or summaries, it does not exist for the purposes of this memo. Do not include any company, startup, competitor, or named entity that is not explicitly mentioned in the provided articles. This applies even if the entity is directionally relevant or commonly associated with the topic. A Korean startup, an unnamed competitor, or any entity not present in the article pool by name must be omitted entirely.
 
-INPUTS: MEMO_MODE | SIGNAL QUALITY | COMPANY DEVELOPMENT ARTICLES | SECTOR CONTEXT ARTICLES
+INPUTS: MEMO_MODE | THIN BRIEF LINE (thin mode only) | SIGNAL QUALITY | COMPANY DEVELOPMENT ARTICLES | SECTOR CONTEXT ARTICLES
 
 ─── MEMO_MODE = "no-coverage" -- CHECK THIS FIRST, IT OUTRANKS EVERY OTHER INSTRUCTION IN THIS PROMPT ───
 
@@ -1355,6 +1452,12 @@ If MEMO_MODE is "no-coverage" the article pool is empty and there is nothing to 
 ${noCoverageBriefLine(companyName)}
 
 No section label. No bold. No Analyst Brief, no Coverage Note, no Cross-Signals, no What To Watch, no Signal Quality. No bullets. No probability statement, and specifically never a sentence saying a probability is unassessable, unknowable, or cannot be assessed without further information. No preamble and no closing sentence. Every rule below this block, including the mandatory section list, the opening rules, the verdict format and the two-bullet What To Watch structure, is void in this mode. A brief that hedges at length over an empty pool is worse than one line that says the pool is empty, so if you are tempted to add a second sentence, do not.
+
+─── MEMO_MODE = "thin" -- CHECK THIS SECOND, IT OUTRANKS EVERY RULE BELOW IT ───
+
+If MEMO_MODE is "thin" the pool carries at most ${THIN_CONTEXT_MAX} context articles and not one company-specific development, which is not enough to fill five sections. The input carries a line labelled THIN BRIEF LINE. Reproduce that line EXACTLY, character for character, and output nothing else.
+
+Do not recompute the count in it, do not restate it in your own words, and do not append to it. No section label. No bold. No Analyst Brief, no Coverage Note, no Cross-Signals, no What To Watch, no Signal Quality. No bullets. No probability statement, and specifically never a sentence saying a probability is unassessable, unknowable, indeterminate, or cannot be assessed without further information. No preamble and no closing sentence. Every rule below this block, including the mandatory section list, the opening rules, the verdict format and the two-bullet What To Watch structure, is void in this mode. Two headlines cannot support a scenario with a probability attached to it, and inventing the hedge that says so is the failure this mode exists to prevent.
 
 ${backgroundBlock}─── UNIVERSAL OPENING RULES -- APPLY TO ALL SECTIONS, BOTH MODES, NO EXCEPTIONS ───
 
@@ -1429,7 +1532,7 @@ No direct company development articles are in the current feed window. This brie
 Draw exclusively from SECTOR CONTEXT ARTICLES. This is the primary analytical section: expand to 4-5 sentences. Draw implications, name competitive dynamics, and connect sector moves to this company's specific situation. Name the specific peer, competitor, or macro force most relevant right now. State whether sector momentum supports or threatens the company's current trajectory. The final sentence of Cross-Signals must state a binary directional verdict using the format: "Sector momentum [supports / does not support / is net negative for / is net positive for] ${companyName}'s [specific named aspect of its business] in the [specific timeframe]." A verdict that contains the word "mixed", "presents", "both", or "while" is not a verdict -- it is a hedge. Rewrite until one direction is stated without qualification.
 
 **What To Watch**
-Two bullets. This section is scenario analysis stated impersonally: it describes what each outcome would mean for the THESIS, never what the reader should do. Each bullet uses this structure: "If [specific trigger]: [what it confirms or breaks in the thesis]. If [opposite condition]: [why the thesis weakens]." Do not direct the reader to take any action and do not reference exposure, positioning, or sizing. Banned in this section without exception: "recommend", "buy", "sell", "increase exposure", "reduce exposure", "overweight", "underweight", "trim", "add to position", "take profits", "you should", and all first person ("we", "us", "our", "I", "my"). At least one bullet must name the specific catalyst or event that would change the signal quality from context-led to developments-led. Each bullet must commit to a position on whether that catalyst is likely, and why. Each bullet must be under 75 words. State the trigger and the thesis implication in the first two sentences. State probability in the third sentence. Stop. Do not add qualifications or softening language after the probability statement. If the probability statement in the adverse outcome bullet references a rising risk, it must name the specific signal or event that would move that probability above 50%. Do not state that risk is "rising" without naming the trigger for that rise.
+Two bullets. This section is scenario analysis stated impersonally: it describes what each outcome would mean for the THESIS, never what the reader should do. Each bullet uses this structure: "If [specific trigger]: [what it confirms or breaks in the thesis]. If [opposite condition]: [why the thesis weakens]." Do not direct the reader to take any action and do not reference exposure, positioning, or sizing. Banned in this section without exception: "recommend", "buy", "sell", "increase exposure", "reduce exposure", "overweight", "underweight", "trim", "add to position", "take profits", "you should", and all first person ("we", "us", "our", "I", "my"). At least one bullet must name the specific catalyst or event that would change the signal quality from context-led to developments-led. Each bullet must commit to a position on whether that catalyst is likely, and why. Each bullet must be under 75 words. State the trigger and the thesis implication in the first two sentences. State probability in the third sentence. Stop. Do not add qualifications or softening language after the probability statement. If the probability statement in the adverse outcome bullet references a rising risk, it must name the specific signal or event that would move that probability above 50%. Do not state that risk is "rising" without naming the trigger for that rise. THE PROBABILITY SENTENCE IS NOT AN INVITATION TO SAY THE PROBABILITY CANNOT BE GIVEN. Never write that a probability is unassessable, unknowable, indeterminate, unknown, not assessable, or cannot be assessed without further information. Where this pool does not support a probability, name the specific filing, print, or announcement that would establish one and when it is due, and let that be the third sentence instead.
 
 **Signal Quality**
 Reproduce the SIGNAL QUALITY value verbatim. No added prose.
