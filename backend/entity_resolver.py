@@ -68,6 +68,55 @@ except ImportError:
 _MAX_RACE_RETRIES = 3
 
 
+# LANE C CONTRACT. Machine-readable description of how wide this codebase's
+# company-resolution surface is. Read by backend/wikidata_cache_rebuild.py,
+# which refuses to rewrite the Wikidata cache while this reports version 1.
+#
+# Why the rebuild cares. Rebuilding the cache recovers names the entity gate is
+# currently dropping. Every recovered name goes straight through resolve_entity.
+# If the resolver has not been widened and its indexes merged first, roughly 60%
+# of those recoveries land as DUPLICATE companies rows rather than resolving to
+# an existing canonical, and the rebuild silently converts one data-quality
+# problem into a worse one that is far harder to unwind.
+#
+# DERIVED, NOT DECLARED, for the same reason as wikidata.fetch_contract(): the
+# first cut of this was a hand-written dict plus a comment instructing lane C to
+# update it, and lane C does not touch this file at all. Its widening lives in
+# backend/company_match.py, so a dict here asserting "widened: False" would have
+# gone on saying that after the widening shipped, and the gate would refuse
+# forever. resolver_contract() probes for the capability instead.
+#
+# WHAT THE PROBE PROVES, AND WHAT IT DOES NOT. It proves the token-fold surface
+# is importable, which is what turns a recovered surface form into a match
+# against an already-indexed company instead of a fresh insert:
+#   widened      <- company_match.token_fold_candidates
+#   index_merged <- company_match.index_tokens
+# It does not prove ingest wires them, and it is not a substitute for reading
+# the diff. It is a floor, not a certificate.
+def resolver_contract() -> dict:
+    """Probe the company-resolution surface and report how wide it is."""
+    fold = None
+    try:
+        import company_match as _cm  # cron context: cwd=backend/
+    except ImportError:
+        try:
+            from backend import company_match as _cm  # test/dev context: cwd=repo-root
+        except ImportError:
+            _cm = None
+    if _cm is not None:
+        fold = _cm
+    widened = bool(fold is not None and callable(getattr(fold, "token_fold_candidates", None)))
+    index_merged = bool(fold is not None and callable(getattr(fold, "index_tokens", None)))
+    return {
+        "version": 2 if (widened and index_merged) else 1,
+        "widened": widened,
+        "index_merged": index_merged,
+    }
+
+
+RESOLVER_CONTRACT = resolver_contract()
+
+
 def resolve_entity(
     surface_form: str,
     supabase,
