@@ -62,6 +62,22 @@ function useFixturePreview(stage: DashStage | null): FixturePreview | null {
   const [preview, setPreview] = useState<FixturePreview | null>(null);
 
   useEffect(() => {
+    /* THE LITERAL IS HERE, NOT BEHIND THE CONSTANT, AND THAT IS THE FIX.
+       `DASH_FIXTURES_ALLOWED` is an imported boolean. Turbopack inlines
+       `process.env.NODE_ENV`, but only inside the module that reads it, and it
+       does not propagate an imported constant back to this call site. So the
+       guard below used to be a RUNTIME read, the `import()` stayed reachable,
+       and the bundler emitted the fixture as its own async chunk under
+       `.next/static/chunks/` on every production build. A dynamic import moves
+       prose out of the entry chunk; it does not move it out of the public
+       bundle. Written as a literal, this folds to `if (true) return;` at build
+       time and the `import()` below becomes unreachable code, so no chunk is
+       emitted for it at all. Measured by grepping the built output, not by
+       reading this file. */
+    if (process.env.NODE_ENV === "production") {
+      setPreview(null);
+      return;
+    }
     if (!stage || !DASH_FIXTURES_ALLOWED) {
       setPreview(null);
       return;

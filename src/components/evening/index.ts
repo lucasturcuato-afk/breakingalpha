@@ -6,7 +6,11 @@
 export { CLOSE_VISIBLE_PARAGRAPHS, EveningWrapScreen } from "./evening-wrap-screen";
 export type { WrapStage } from "./evening-wrap-screen";
 export { EveningWrapMobile } from "./evening-wrap-mobile";
-export { EVENING_FIXTURE } from "./fixture";
+/* The sample wrap is NOT re-exported here. Nothing outside `./fixture` ever
+   consumed it, and a barrel that hands out prose beside a client component is
+   how the prose ends up in `.next/static`: `evening-wrap/page.tsx` is a client
+   page, so every value this barrel offers is a candidate for its chunk.
+   `EveningWrapMobile` reaches the sample through a dev-only dynamic import. */
 export type {
   EveningWrapData,
   EveningStat,
