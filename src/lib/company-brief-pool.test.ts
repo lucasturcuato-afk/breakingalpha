@@ -120,6 +120,36 @@ test("the fix does not admit a wrong company", () => {
   }
 });
 
+test("the prefix branches still compare against the RAW target", () => {
+  // This is the one judgement call in matchesCanonical, so pin it rather than
+  // leave it to a comment. Canonicalizing the target in the prefix branches too
+  // would repair the same set, and on the corpus as it stands it admits no
+  // wrong article either. What it adds is LATENT exposure: 52 cross-entity name
+  // pairs versus none, of which the nine below already have both sides present
+  // as article tags, and roughly a fifth of articles carry more than one
+  // company tag. Each pair goes live the first time one article is tagged with
+  // both names. If a future edit shortens the target in those branches, these
+  // go red and the tradeoff gets re-argued on purpose rather than by accident.
+  const differentCompanies: Array<[string, string]> = [
+    ["Penske Automotive Group", "Penske Corporation"],
+    ["Marriott Vacations", "Marriott International"],
+    ["Fidelity National Financial Inc.", "Fidelity International"],
+    ["Fidelity National Information Services", "Fidelity International"],
+    ["Aspen Aerogels", "Aspen Group"],
+    ["Philip Morris USA", "Philip Morris International Inc."],
+    ["Anthropic AI", "Anthropic PBC"],
+    ["Hut 8 Mining Corp", "Hut 8 Corp."],
+    ["Bayerische Motoren Werke Aktiengesellschaft", "Bayer AG"],
+  ];
+  for (const [raw, target] of differentCompanies) {
+    assert.equal(
+      matchesCanonical(raw, target),
+      false,
+      `${raw} and ${target} are different companies`,
+    );
+  }
+});
+
 // ---------------------------------------------------------------------------
 // 3. The pool: the real function over the real tag shapes.
 // ---------------------------------------------------------------------------

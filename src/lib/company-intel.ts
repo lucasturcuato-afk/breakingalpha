@@ -664,14 +664,23 @@ export function timeAgo(dateStr: string): string {
  *
  * THE FIX IS AN EQUALITY BRANCH, NOT A LOWER FLOOR. Lowering the 5-character
  * floor to 4 would admit "SoFi" as a prefix of "Sofinnova Investments", a real
- * companies row. The floor stays exactly where it is and the two prefix
- * branches keep comparing against the RAW target: shortening the target there
- * would let "Fidelity National Financial" prefix-match "Fidelity
- * International" and "Bayerische Motoren Werke" prefix-match "Bayer AG"
- * (52 such cross-entity pairs, enumerated over the live companies table).
- * Canonicalizing both sides for EQUALITY ONLY joins two names only when
- * CANONICAL already declares them the same entity, which is the one relation
- * that cannot introduce a wrong company.
+ * companies row. The floor stays exactly where it is.
+ *
+ * AND THE TWO PREFIX BRANCHES KEEP COMPARING AGAINST THE RAW TARGET, which is
+ * the one judgement call in this function, so here is the measurement rather
+ * than an assertion. Canonicalizing the target in the prefix branches too
+ * repairs exactly the same set this does, and on the current corpus it admits
+ * ZERO wrong articles: both variants are clean today. The difference is latent
+ * exposure. Enumerated over every resolved head name, canonicalizing the target
+ * everywhere newly joins 52 cross-entity NAME pairs and this version joins 0.
+ * Nine of those 52 already have both sides present as article tags, and 19.3%
+ * of articles carry more than one company tag, so a pair goes live the first
+ * time one article is tagged with both: "Penske Automotive Group" into "Penske
+ * Corporation", "Marriott Vacations" into "Marriott International", "Fidelity
+ * National Financial" into "Fidelity International". Same repair, same clean
+ * result today, 52 versus 0 ways to stop being clean. Equality after
+ * canonicalize() joins two names only where CANONICAL already declares them one
+ * entity, which is the only relation here that cannot invent a company.
  */
 export function matchesCanonical(rawName: string, canonicalName: string): boolean {
   const rawCanon = canonicalize(rawName).toLowerCase();
