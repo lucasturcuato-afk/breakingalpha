@@ -73,7 +73,7 @@ export interface CompanyFinancialsResult {
    * TRUE when the read itself failed, which is NOT the same fact as "this
    * company has nothing on file" and must never be collapsed into it.
    *
-   * WHY IT EXISTS. `financial_facts_latest` intermittently times out with
+   * WHY IT EXISTS. `financial_facts_latest` intermittently timed out with
    * Postgres `57014`, and both failure paths below used to return the same
    * empty views a company with no facts gets. Every consumer then rendered
    * `financialsEmptyCopy(true)`, "Financials appear after the first periodic
@@ -87,6 +87,16 @@ export interface CompanyFinancialsResult {
    * and only a failed read sets it. A caller that ignores it is back to the
    * old behaviour, which is why every consumer of an empty view on this
    * surface reads it.
+   *
+   * THE TIMEOUT ITSELF IS FIXED, and this flag still matters. The 57014 was
+   * not intermittent-by-nature: the read materialised a company's entire
+   * filing history to draw thirteen columns, so its cost scaled with that
+   * company's row count and the biggest filers ran into the statement timeout
+   * whenever their pages were not already cached. FACT_LOOKBACK_YEARS bounds
+   * the read on `period_end` and removes that scaling. What remains is every
+   * other way a query can fail -- a dropped connection, a pooler restart, a
+   * genuinely slow instant -- so the flag stays, and so does the rule that no
+   * consumer may collapse it into an empty view.
    */
   readFailed: boolean;
 }
@@ -95,6 +105,53 @@ const EMPTY_VIEW: FinancialView = { periods: [], grid: {} };
 
 export const ANNUAL_PERIODS = 5;
 export const QUARTERLY_PERIODS = 8;
+
+/**
+ * How far back the first read reaches, in years.
+ *
+ * WHY A BOUND EXISTS AT ALL. `financial_facts_latest` is
+ * `SELECT DISTINCT ON (cik, metric_key, period_type, period_start, period_end,
+ * unit) * FROM financial_facts WHERE validation_status = 'validated'`. Postgres
+ * pushes a qual into a DISTINCT ON subquery only when the qual's column is in
+ * the DISTINCT ON key (check_output_expressions in optimizer/path/allpaths.c
+ * marks every other output column unsafe). So of this query's three quals:
+ *   cik           IS in the key -> pushed down, becomes the index scan
+ *   period_end    IS in the key -> pushed down
+ *   fiscal_period is NOT in the key -> applied only AFTER the dedup
+ * and `LIMIT` likewise cannot apply until after the dedup. Without a bound on a
+ * key column, the query therefore materialises EVERY validated row the company
+ * has ever filed in order to draw 5 annual and 8 quarterly columns.
+ *
+ * That is why the failures correlated with size. Cost here is proportional to a
+ * company's stored fact rows, and the longest-filing issuers carry more than an
+ * order of magnitude more of them than a recent listing. Nothing capped that
+ * ratio, so the heaviest filers were the ones whose read reached the statement
+ * timeout and came back as Postgres 57014 whenever their pages were not already
+ * resident. The driver is row volume, NOT market capitalisation: filers of
+ * ordinary size but long history failed the same way, measured.
+ *
+ * WHY EIGHT. The bound must never cost a column. Measured read-only against the
+ * highest-volume companies available, an eight-year window still returns more
+ * distinct fiscal years than ANNUAL_PERIODS and several times more distinct
+ * quarter-ends than QUARTERLY_PERIODS, so the window is nowhere near binding on
+ * either dimension while roughly halving the rows the view has to build.
+ *
+ * Eight years of slack is NOT a correctness argument on its own, because a
+ * filer with gaps can need more. The guard in fetchCompanyFinancials is what
+ * makes the bound safe; this constant only makes the common case cheap.
+ */
+export const FACT_LOOKBACK_YEARS = 8;
+
+/**
+ * The `period_end` floor for the bounded read, as an ISO date.
+ * Exported so a test can pin the bound the query is actually built with rather
+ * than recompute it, which would be two paths for one fact.
+ */
+export function factLookbackCutoff(now: Date = new Date()): string {
+  const d = new Date(now);
+  d.setUTCFullYear(d.getUTCFullYear() - FACT_LOOKBACK_YEARS);
+  return d.toISOString().slice(0, 10);
+}
 
 // Unit pinning now lives in reporting-currency.ts, where the accepted unit is
 // derived from the company's own reporting currency instead of a USD constant.
@@ -315,6 +372,36 @@ function upgradeFilingUrls(view: FinancialView, docByAccession: Record<string, s
 }
 
 /**
+ * Currency-pin the raw rows and point every source link at the filing index.
+ * Single place so the bounded read and the widened re-read cannot diverge in
+ * how they turn rows into the input `buildView` sees.
+ */
+function prepareRows(rows: FactRow[], currency: string | null, cik: number): FactRow[] {
+  return filterToCurrency(rows, currency).map((r) => ({
+    ...r,
+    filing_url: edgarFilingIndexUrl(cik, r.accession_number) ?? r.filing_url,
+  }));
+}
+
+/**
+ * How many distinct fiscal years the annual view could draw from these rows.
+ *
+ * Counted on the currency-pinned rows and BEFORE any slice(), which is the
+ * whole point: `buildView(...).periods.length` is already clamped to
+ * ANNUAL_PERIODS by its own `keep` argument, so comparing it against
+ * ANNUAL_PERIODS would be comparing that constant with itself normalised. The
+ * two sides of the guard below have to be independent, and this is the side
+ * the database wrote.
+ */
+function distinctAnnualPeriods(rows: FactRow[]): number {
+  const years = new Set<number>();
+  for (const r of rows) {
+    if (r.fiscal_period === "FY" && r.fiscal_year != null) years.add(r.fiscal_year);
+  }
+  return years.size;
+}
+
+/**
  * Read-only financials for a company, resolved via resolveCompanyCik.
  *
  * NEVER THROWS. A company with no CIK, or with a CIK and no validated rows,
@@ -344,29 +431,41 @@ export async function fetchCompanyFinancials(
       readFailed: false,
     };
   }
-  try {
-    // Newest-first with an explicit cap: PostgREST returns at most 1000 rows
-    // anyway, and the tab only renders the most recent 5 FY / 8 Q columns.
-    const { data, error } = await supabase
+  /* `readFailed`, not a bare empty view. The 57014 statement timeout lands
+     here, and the caller that cannot tell it from an empty table renders a
+     sentence about the issuer. ONE place builds this result, so the bounded
+     read and the widened re-read cannot disagree about what a failure is. */
+  const failed = (where: string, message: string): CompanyFinancialsResult => {
+    console.error(`[financial-facts] ${where} failed:`, message);
+    return {
+      cik: res.cik,
+      annual: EMPTY_VIEW,
+      quarterly: EMPTY_VIEW,
+      reportingCurrency: null,
+      readFailed: true,
+    };
+  };
+
+  // Newest-first with an explicit cap: PostgREST returns at most 1000 rows
+  // anyway, and the tab only renders the most recent 5 FY / 8 Q columns.
+  // `cutoff` bounds period_end, the one filter on this query besides cik that
+  // Postgres can push INTO the view's DISTINCT ON (see FACT_LOOKBACK_YEARS);
+  // null asks for the company's whole history.
+  const readFacts = (cutoff: string | null) => {
+    const q = supabase
       .from("financial_facts_latest")
       .select(FACT_COLS)
       .eq("cik", res.cik)
-      .in("fiscal_period", ["FY", "Q1", "Q2", "Q3", "Q4"])
+      .in("fiscal_period", ["FY", "Q1", "Q2", "Q3", "Q4"]);
+    return (cutoff ? q.gte("period_end", cutoff) : q)
       .order("period_end", { ascending: false })
       .limit(1000);
-    if (error) {
-      console.error("[financial-facts] fetch failed:", error.message);
-      /* `readFailed`, not a bare empty view. The 57014 statement timeout lands
-         here, and the caller that cannot tell it from an empty table renders a
-         sentence about the issuer. */
-      return {
-        cik: res.cik,
-        annual: EMPTY_VIEW,
-        quarterly: EMPTY_VIEW,
-        reportingCurrency: null,
-        readFailed: true,
-      };
-    }
+  };
+
+  try {
+    const bounded = await readFacts(factLookbackCutoff());
+    if (bounded.error) return failed("bounded fetch", bounded.error.message);
+
     // Currency is READ, not assumed. The old check was
     // `UNIT_BY_METRIC[r.metric_key] === r.unit`, which hardcoded USD and
     // therefore silently dropped every fact from a foreign private issuer:
@@ -375,14 +474,38 @@ export async function fetchCompanyFinancials(
     // selectReportingCurrency picks ONE currency for the company and
     // filterToCurrency keeps only rows consistent with it, so a metric series
     // can never mix denominations. Nothing is converted.
-    const allRows = (data ?? []) as unknown as FactRow[];
-    const reportingCurrency = selectReportingCurrency(allRows);
-    const rows = filterToCurrency(allRows, reportingCurrency)
-      // Source links open the filing index page, not the raw directory.
-      .map((r) => ({
-        ...r,
-        filing_url: edgarFilingIndexUrl(res.cik as number, r.accession_number) ?? r.filing_url,
-      }));
+    let allRows = (bounded.data ?? []) as unknown as FactRow[];
+    let reportingCurrency = selectReportingCurrency(allRows);
+    let rows = prepareRows(allRows, reportingCurrency, res.cik);
+
+    /* THE GUARD. Without it the lookback window would be a silent truncation of
+       a company's history, which is the exact class of bug `readFailed` exists
+       to prevent: a filer with a gap in its filings, or one that stopped filing
+       nine years ago, would draw fewer annual columns than it has and say
+       nothing about why. Two independent sides: the count of fiscal years the
+       DATABASE returned inside the window, and ANNUAL_PERIODS, the quota this
+       module renders. Short of quota means the window may have cut real
+       history, so re-read without a bound and let the full history win.
+
+       Cost is paid only by companies that cannot fill five annual columns from
+       eight years, and those are short-history or dormant filers, which are
+       precisely the low-row-count companies whose unbounded read is the
+       cheapest in the table anyway. A recent listing therefore pays a second
+       read on every load, and measured, that pair still lands far below what
+       one unbounded read cost the heaviest filers.
+
+       A failed widening returns readFailed rather than the bounded rows: this
+       branch is only reached when the bounded result is SUSPECTED incomplete,
+       and drawing a possibly-truncated table as though it were whole is the
+       assertion-about-the-issuer this file exists to refuse. */
+    if (distinctAnnualPeriods(rows) < ANNUAL_PERIODS) {
+      const full = await readFacts(null);
+      if (full.error) return failed("unbounded re-read", full.error.message);
+      allRows = (full.data ?? []) as unknown as FactRow[];
+      reportingCurrency = selectReportingCurrency(allRows);
+      rows = prepareRows(allRows, reportingCurrency, res.cik);
+    }
+
     const annualRows = rows.filter((r) => r.fiscal_period === "FY");
     // Quarterly takes every INSTANT row (balance sheets, including FY-labeled
     // year-ends) but only DISCRETE-QUARTER durations; FY durations stay out.
