@@ -1061,12 +1061,36 @@ $$;
 --                  WHERE f.company_id IS NOT NULL
 --                    AND NOT EXISTS (SELECT 1 FROM public.companies c
 --                                     WHERE c.id = f.company_id))    AS no_orphan_facts,
---     -- candidate_canonical_ids is JSONB, not uuid[]: unnest() does not apply.
---     NOT EXISTS (SELECT 1 FROM public.resolution_log l,
---                      jsonb_array_elements_text(l.candidate_canonical_ids) e(v)
---                  WHERE jsonb_typeof(l.candidate_canonical_ids) = 'array'
---                    AND NOT EXISTS (SELECT 1 FROM public.companies c
---                                     WHERE c.id::text = e.v))       AS no_dangling_candidates,
+--     -- SCOPED TO THIS MIGRATION'S DELETIONS. The previous version of this
+--     -- check tested the WHOLE table for dangling candidate ids, and the whole
+--     -- table was ALREADY dirty: 946 dangling (row, element) pairs across 884
+--     -- rows, 16 distinct missing company ids, all from 2026-05-05 to
+--     -- 2026-06-24 and none of them in snapshot_companies. So it read false
+--     -- before the merge and would have read false after it, whether the merge
+--     -- was correct or not. An invariant that cannot change is not an
+--     -- invariant. See docs/recon/resolution-log-dangling-candidates.md.
+--     --
+--     -- This version fails only if a cluster that WAS merged still has a loser
+--     -- id in a candidate array, which is exactly what change 5 repoints.
+--     NOT EXISTS (
+--       SELECT 1
+--         FROM public.resolution_log l
+--         CROSS JOIN LATERAL jsonb_array_elements_text(l.candidate_canonical_ids) AS e(v)
+--         JOIN norm_v2.plan_member  pm ON pm.company_id::text = e.v
+--         JOIN norm_v2.plan_cluster pc ON pc.new_key = pm.new_key
+--        WHERE jsonb_typeof(l.candidate_canonical_ids) = 'array'
+--          AND NOT pm.is_survivor
+--          AND pc.merged_at IS NOT NULL)              AS no_merged_loser_in_candidates,
+--     -- The scalar column, same scoping. It is clean today (0 dangling
+--     -- table-wide), so unlike the array this one could have used a global
+--     -- check, but scoping both keeps them comparable.
+--     NOT EXISTS (
+--       SELECT 1
+--         FROM public.resolution_log l
+--         JOIN norm_v2.plan_member  pm ON pm.company_id = l.resolved_canonical_id
+--         JOIN norm_v2.plan_cluster pc ON pc.new_key = pm.new_key
+--        WHERE NOT pm.is_survivor
+--          AND pc.merged_at IS NOT NULL)              AS no_merged_loser_in_resolved,
 --     (SELECT sum(mention_count) FROM public.companies)
 --       = (SELECT sum(mention_count) FROM norm_v2.snapshot_companies) AS mentions_conserved;
 --
