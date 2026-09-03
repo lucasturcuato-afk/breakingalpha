@@ -6,7 +6,10 @@
  * The Coverage Primer replaces the per-company brief tab in place: a scannable
  * interview-prep sheet assembled from existing data. Sections, top to bottom:
  *   1. Snapshot            -- company, ticker, sector, industry (factual)
- *   2. Business overview   -- live provider profile summary or curated descriptor
+ *   2. Business overview   -- live provider profile summary, else the curated
+ *                             descriptor, else the stored Wikipedia lead
+ *                             paragraph rendered VERBATIM with its CC BY-SA 4.0
+ *                             attribution line (see lib/company-identity.ts)
  *   3. Key stats           -- valuation digest from the on-view quote feed
  *   4. Financial snapshot  -- latest annual XBRL digest + computed margins
  *   5. Recent developments -- the existing BriefTab, embedded UNCHANGED, which
@@ -28,6 +31,8 @@ import type { ReactNode } from "react";
 
 import type { CompanyFinancialsResult } from "@/lib/financial-facts";
 import type { QuoteSummaryLive } from "@/lib/yahoo/quoteSummary";
+import type { CompanyDescriptionRow, IdentityArtifact } from "@/lib/company-identity";
+import { resolveIdentityArtifact } from "@/lib/company-identity";
 import { PrimerSnapshot } from "./primer/PrimerSnapshot";
 import { PrimerBusinessOverview } from "./primer/PrimerBusinessOverview";
 import { PrimerKeyStats } from "./primer/PrimerKeyStats";
@@ -41,12 +46,28 @@ interface PrimerTabProps {
   industry: string | null;
   /** Curated description from COMPANY_IDENTITY.brief, or null. Fallback for live. */
   description: string | null;
+  /**
+   * The `companies` row's own description columns. Carries the stored Wikipedia
+   * lead paragraph and its attribution when one exists. Last in precedence:
+   * it fills the block only where identity would otherwise be empty.
+   */
+  descriptionRow: CompanyDescriptionRow | null;
   financials: CompanyFinancialsResult;
   /** The existing BriefTab element, embedded as Recent developments unchanged. */
   briefSlot: ReactNode;
 }
 
-/** Trim a long provider summary to a clean one-to-two-sentence overview. */
+/**
+ * Trim a long PROVIDER summary to a clean one-to-two-sentence overview.
+ *
+ * THIS MUST NEVER SEE WIKIPEDIA TEXT. It slices at 280 characters and appends
+ * an ellipsis, which turns a verbatim CC BY-SA 4.0 excerpt into Adapted
+ * Material under section 1(a) and fires the ShareAlike condition in 3(b) on
+ * Signalera's own prose. It is unreachable from the wikipedia branch by
+ * construction: `IdentityArtifact` carries `normalizable: false` there, and the
+ * wikipedia variant's `text` is `VerbatimText`, which `.slice()` does not
+ * return. Passing one here is a compile error, not a review catch.
+ */
 function trimSummary(text: string): string {
   const clean = text.trim();
   if (clean.length <= 280) return clean;
@@ -63,6 +84,7 @@ export function PrimerTab({
   sector,
   industry,
   description,
+  descriptionRow,
   financials,
   briefSlot,
 }: PrimerTabProps) {
@@ -105,11 +127,22 @@ export function PrimerTab({
   // Live profile overlays the curated fallback; null only when neither exists.
   const resolvedIndustry = quote?.industry ?? industry ?? null;
 
-  // Normalize the overview once we have a source (live provider summary, else
-  // curated description). The route reads its write-through cache, generates on
-  // miss, and returns a clean grounded overview. Falls back silently; the raw
-  // text still shows until (and if) the normalized version arrives.
-  const sourceSummary = quote?.businessSummary ?? description ?? null;
+  // PRECEDENCE lives in src/lib/company-identity.ts, resolved by SOURCE rather
+  // than by lookup so the render layer never has to re-derive it. Yahoo when it
+  // ACTUALLY RESOLVED (a live quote with an empty profile is not identity: 7 of
+  // 597 tickers are that shape), then the curated brief, then the stored
+  // Wikipedia paragraph.
+  const artifact: IdentityArtifact | null = resolveIdentityArtifact({
+    yahooSummary: quote?.businessSummary ?? null,
+    curatedBrief: description,
+    row: descriptionRow,
+  });
+
+  // Only a normalizable artifact may be sent to /api/company-overview. That
+  // route POSTs to gemini-2.5-flash, which is a model rewrite, which is exactly
+  // what produces Adapted Material under CC BY-SA 4.0 section 1(a). The
+  // wikipedia branch is `normalizable: false` and is never sent.
+  const sourceSummary = artifact?.normalizable ? artifact.text : null;
   useEffect(() => {
     setNormalized(null);
     if (!sourceSummary) return;
@@ -140,12 +173,24 @@ export function PrimerTab({
     return () => ctrl.abort();
   }, [companyName, ticker, sector, resolvedIndustry, sourceSummary]);
 
-  // Resolution order: normalized (grounded, cached) -> trimmed raw provider
-  // summary -> curated description -> hide the section entirely.
-  const fallbackDescription = quote?.businessSummary
-    ? trimSummary(quote.businessSummary)
-    : description ?? null;
-  const resolvedDescription = normalized ?? fallbackDescription;
+  // What actually renders. The wikipedia branch is handed through untouched;
+  // only a normalizable artifact is eligible for the normalized overview or for
+  // `trimSummary`.
+  //
+  // `normalized` is the Gemini-cleaned overview, so it can only ever replace a
+  // normalizable artifact. The guard is written as an explicit source check
+  // rather than a truthiness check on `normalized` so that a stale value left
+  // over from a previous company cannot land on a wikipedia paragraph during
+  // the render between the effect resetting it and the fetch returning.
+  const rendered: IdentityArtifact | null =
+    artifact === null
+      ? null
+      : artifact.normalizable
+        ? {
+            ...artifact,
+            text: normalized ?? (artifact.source === "yahoo" ? trimSummary(artifact.text) : artifact.text),
+          }
+        : artifact;
 
   return (
     <div data-testid="primer-tab" className="space-y-4">
@@ -156,8 +201,8 @@ export function PrimerTab({
         industry={resolvedIndustry}
       />
 
-      {/* Business overview: hidden entirely when neither live nor curated text. */}
-      {resolvedDescription ? <PrimerBusinessOverview description={resolvedDescription} /> : null}
+      {/* Business overview: hidden entirely when no source supplies text. */}
+      {rendered ? <PrimerBusinessOverview identity={rendered} /> : null}
 
       <PrimerKeyStats quote={quote} loading={loading} />
       <PrimerFinancialSnapshot financials={financials} />

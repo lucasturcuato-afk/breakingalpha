@@ -193,6 +193,40 @@ export function PrimerSection({
           >
             {primer.overview}
           </p>
+          {/* CC BY-SA 4.0 section 3(a)(1): a licensed excerpt renders with a
+              link to the source article and to the licence, or it does not
+              render. `buildPrimer` sets this in the same expression that sets
+              `overview`, so the two cannot come apart. */}
+          {primer.overviewAttribution ? (
+            <p
+              style={{
+                margin: "6px 0 0",
+                font: `400 10.5px/1.5 ${FONT_SANS}`,
+                color: "var(--c-secondary)",
+              }}
+            >
+              {"Company description from "}
+              <a
+                href={primer.overviewAttribution.articleUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                title={primer.overviewAttribution.articleTitle}
+                style={{ color: "inherit", textDecoration: "underline" }}
+              >
+                Wikipedia
+              </a>
+              {", licensed "}
+              <a
+                href={primer.overviewAttribution.licenseUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: "inherit", textDecoration: "underline" }}
+              >
+                {primer.overviewAttribution.licenseName}
+              </a>
+              .
+            </p>
+          ) : null}
         </>
       ) : null}
 

@@ -400,6 +400,7 @@ export default async function CompanyDetailPage({
         sector={companyDetail.sector}
         industry={identity?.industry ?? null}
         description={identity?.brief ?? null}
+        descriptionRow={companyDetail.descriptionRow}
         financials={financialsResult}
         briefSlot={
           // Mutually exclusive, never stacked. No article coverage -> ONLY the

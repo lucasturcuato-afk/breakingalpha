@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { CompanyDescriptionRow } from "@/lib/company-identity";
 import { resolveAlias } from "@/lib/data-access/aliasResolver";
 import { buildCompanyContainsOr, getCompanyVariants } from "@/lib/company-intel";
 import type { Completeness } from "@/lib/article-signal";
@@ -68,6 +69,15 @@ export interface CompanyDetail {
   themes: string[];
   memo: null;
   isPrivate: boolean;
+  /**
+   * The canonical row's own identity prose and its provenance, carried straight
+   * through rather than flattened to a string. The Business overview needs the
+   * source to decide precedence and needs the attribution fields to render a
+   * CC BY-SA 4.0 excerpt compliantly, and a `string | null` cannot express
+   * either. Null for a row that carries no description, which was every row
+   * before the Wikipedia backfill.
+   */
+  descriptionRow: CompanyDescriptionRow | null;
 }
 
 const DAYS = 8;
@@ -291,5 +301,19 @@ export async function getCompanyDetail(
     themes: (head.key_themes ?? []) as string[],
     memo: null,
     isPrivate,
+    // Read off the RANKED CLUSTER HEAD, the same row every other field on this
+    // object comes from. A ticker can collapse several `companies` rows into
+    // one page, and taking the description from any row other than the head
+    // would render one company's identity under another's name.
+    descriptionRow: head.description
+      ? {
+          description: head.description,
+          description_source: head.description_source,
+          description_source_url: head.description_source_url,
+          description_source_title: head.description_source_title,
+          description_license: head.description_license,
+          description_license_url: head.description_license_url,
+        }
+      : null,
   };
 }

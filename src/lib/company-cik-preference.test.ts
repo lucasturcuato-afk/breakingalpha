@@ -30,6 +30,12 @@ function row(
     first_seen: extra.first_seen ?? null,
     last_updated: extra.last_updated ?? null,
     sec_cik,
+    description: extra.description ?? null,
+    description_source: extra.description_source ?? null,
+    description_source_url: extra.description_source_url ?? null,
+    description_source_title: extra.description_source_title ?? null,
+    description_license: extra.description_license ?? null,
+    description_license_url: extra.description_license_url ?? null,
   };
 }
 

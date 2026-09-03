@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { DescriptionSource } from "@/lib/company-identity";
 import { CANONICAL, canonicalize } from "@/lib/company-intel";
 import { compareCikFirst } from "@/lib/company-cik-preference";
 
@@ -33,6 +34,16 @@ export type ResolverRow = {
   /** Needed to rank: without it this resolver cannot see which row is the
    * filer, which is how it drifted from resolveCompanyCik in the first place. */
   sec_cik: number | null;
+  /** Identity prose and its provenance. `description` was NULL on all 4,276
+   * rows before the Wikipedia backfill; the source columns exist so the render
+   * layer picks by precedence rather than by lookup, and so a licensed
+   * paragraph can never render without its attribution link. */
+  description: string | null;
+  description_source: DescriptionSource | null;
+  description_source_url: string | null;
+  description_source_title: string | null;
+  description_license: string | null;
+  description_license_url: string | null;
 };
 
 export type ResolverAliasMention = { name: string; n: number };
@@ -44,7 +55,9 @@ export type ResolveAliasResult = {
 };
 
 const RESOLVER_COLS =
-  "id, name, ticker, sector, mention_count, key_themes, first_seen, last_updated, sec_cik";
+  "id, name, ticker, sector, mention_count, key_themes, first_seen, last_updated, sec_cik, " +
+  "description, description_source, description_source_url, description_source_title, " +
+  "description_license, description_license_url";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /**
  * The ticker branch's own gate, exported so a caller can decide in advance
@@ -162,7 +175,10 @@ export async function resolveAlias(
       .from("companies")
       .select(RESOLVER_COLS)
       .eq("ticker", ticker);
-    if (rows && rows.length > 0) cluster = rows as ResolverRow[];
+    // PostgREST types a multi-row select as `T[] | GenericStringError[]`; the
+    // widened ResolverRow no longer structurally overlaps the error arm, so the
+    // cast goes through `unknown` like the other select sites in this file.
+    if (rows && rows.length > 0) cluster = rows as unknown as ResolverRow[];
   }
 
   const ranked = rankCluster(cluster);

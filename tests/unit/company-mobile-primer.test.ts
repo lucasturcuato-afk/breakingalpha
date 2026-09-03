@@ -95,6 +95,7 @@ function detail(over: Partial<CompanyDetail> = {}): CompanyDetail {
     themes: [],
     memo: null,
     isPrivate: false,
+    descriptionRow: null,
     ...over,
   };
 }
