@@ -10,10 +10,13 @@ import { parseCohortFromParams } from '@/lib/cohort'
 
 // Coarse per-IP throttle on the OAuth callback (the one server-side auth entry
 // point). Caps code-exchange attempts to slow credential-stuffing / replay
-// floods. In-memory + per serverless instance (see rate-limit.ts); this is a
-// speed bump, not a durable guarantee. Password sign-in and signup run entirely
-// in the browser against Supabase Auth, so they cannot be throttled here and
-// rely on Supabase's own auth rate limits plus (recommended) Vercel WAF rules.
+// floods. Durable across serverless instances when the Upstash env vars are set
+// (see rate-limit.ts); falls back to in-memory only when they are absent and
+// fails open if the store is unreachable. Password sign-in and signup run
+// entirely in the browser against Supabase Auth, so they cannot be throttled
+// here and rely on Supabase's own auth rate limits plus (recommended) Vercel WAF
+// rules; their only server touchpoint is /api/waitlist/register, which is
+// throttled by the same durable limiter.
 const CALLBACK_RATE_LIMIT = 10
 const CALLBACK_RATE_WINDOW_MS = 60_000
 
@@ -22,7 +25,7 @@ export async function GET(request: NextRequest) {
   const code = searchParams.get('code')
   const error = searchParams.get('error')
 
-  const rl = checkFixedWindow(
+  const rl = await checkFixedWindow(
     `auth-callback:${clientKeyFromHeaders(request.headers)}`,
     CALLBACK_RATE_LIMIT,
     CALLBACK_RATE_WINDOW_MS,

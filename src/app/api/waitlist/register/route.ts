@@ -34,7 +34,7 @@ const REGISTER_RATE_WINDOW_MS = 60_000;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export async function POST(request: NextRequest) {
-  const rl = checkFixedWindow(
+  const rl = await checkFixedWindow(
     `waitlist-register:${clientKeyFromHeaders(request.headers)}`,
     REGISTER_RATE_LIMIT,
     REGISTER_RATE_WINDOW_MS,
