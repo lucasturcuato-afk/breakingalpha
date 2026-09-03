@@ -138,6 +138,15 @@ export interface CompanyFiling {
 export interface CompanyFilingsResult {
   cik: number | null;
   companyId: string | null;
+  /**
+   * `companies.ticker` on the row `cik` was read from, so a caller can tell the
+   * header the same thing the tabs were told. `/company/[id]` reconciles the
+   * PRIVATE badge against this: an anchored row with a null ticker column that
+   * nonetheless resolves to a filer here is public, and printing "Private" over
+   * that filer's own SEC financials is the defect this field closes. Null
+   * whenever `cik` is null.
+   */
+  ticker: string | null;
   filings: CompanyFiling[];
 }
 
@@ -222,11 +231,22 @@ export async function resolveCompanyCik(
   ref: CompanyRef,
 ): Promise<CikResolution> {
   try {
-    // 1. Exact id (unique key; unchanged behavior).
+    // 1. Exact id (unique key). TERMINAL ONLY WHEN THE ROW CARRIES A CIK, which
+    //    is the same test steps 2, 3 and 4 below already apply to their own
+    //    matches. It used to return on ANY row, which made the id the one key
+    //    that could ANSWER WITH LESS than the name it was resolved from: the
+    //    `companies` table stores the CIK on a short filer row ("Exxon", XOM,
+    //    cik 34088) and the long or brand-form duplicate beside it
+    //    ("ExxonMobil", 355 mentions) carries null in both columns, so passing
+    //    the duplicate's id short-circuited past the alias bridge in step 4
+    //    that reaches the filer. A null-CIK id row is still the FIRST fallback
+    //    in step 5, so `companyId` / `name` come back exactly as before when
+    //    nothing better is found.
+    let idRow: CompanyRow | null = null;
     if (ref.id) {
       const { data } = await supabase.from("companies").select(COMPANY_COLS).eq("id", ref.id).limit(1);
-      const row = (data?.[0] as CompanyRow) ?? null;
-      if (row) return toResolution(row);
+      idRow = (data?.[0] as CompanyRow) ?? null;
+      if (idRow?.sec_cik != null) return toResolution(idRow);
     }
 
     const raw = (ref.name ?? ref.slug ?? "").replace(/-/g, " ").trim();
@@ -241,7 +261,7 @@ export async function resolveCompanyCik(
       if (row?.sec_cik != null) return toResolution(row);
     }
 
-    if (!raw) return ticker ? EMPTY_RESOLUTION : EMPTY_RESOLUTION;
+    if (!raw) return idRow ? toResolution(idRow) : EMPTY_RESOLUTION;
 
     // 3. Exact name (raw AND canonicalized), preferring a CIK-bearing match so a
     //    null-CIK duplicate never shadows the filer row.
@@ -256,7 +276,9 @@ export async function resolveCompanyCik(
 
     // 5. No CIK anywhere: return the best available match so name/companyId are
     //    populated and the caller renders an honest no-data (Tier C) state.
-    const fallback = directCik ?? aliasCik ?? nameRows[0] ?? aliasRows[0] ?? null;
+    //    `idRow` leads, so a caller that passed an id still gets that row's
+    //    identity back exactly as it did when step 1 was terminal.
+    const fallback = idRow ?? directCik ?? aliasCik ?? nameRows[0] ?? aliasRows[0] ?? null;
     if (fallback) return toResolution(fallback);
     return { ...EMPTY_RESOLUTION, name: canon || raw || null };
   } catch (e) {
@@ -294,7 +316,7 @@ export async function fetchCompanyFilings(
 ): Promise<CompanyFilingsResult> {
   const res = await resolveCompanyCik(supabase, ref);
   if (res.cik == null && res.companyId == null) {
-    return { cik: null, companyId: null, filings: [] };
+    return { cik: null, companyId: null, ticker: null, filings: [] };
   }
   try {
     let query = supabase.from("sec_filings").select(FILING_COLS);
@@ -311,7 +333,7 @@ export async function fetchCompanyFilings(
       .limit(limit);
     if (error) {
       console.error("[sec-filings] fetchCompanyFilings failed:", error.message);
-      return { cik: res.cik, companyId: res.companyId, filings: [] };
+      return { cik: res.cik, companyId: res.companyId, ticker: res.ticker, filings: [] };
     }
     const filings: CompanyFiling[] = (data ?? []).map((r: Record<string, unknown>) => ({
       accessionNumber: r.accession_number as string,
@@ -321,9 +343,9 @@ export async function fetchCompanyFilings(
       summary: (r.summary as string) ?? null,
       outputId: (r.output_id as string) ?? null,
     }));
-    return { cik: res.cik, companyId: res.companyId, filings };
+    return { cik: res.cik, companyId: res.companyId, ticker: res.ticker, filings };
   } catch (e) {
     console.error("[sec-filings] fetchCompanyFilings exception:", e);
-    return { cik: res.cik, companyId: res.companyId, filings: [] };
+    return { cik: res.cik, companyId: res.companyId, ticker: res.ticker, filings: [] };
   }
 }
