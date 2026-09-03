@@ -1,0 +1,6 @@
+{
+  "_comment": "Normalized keys the union must never answer, because two real firms own the string and EDGAR only knows one of them. Hand-adjudicated one row at a time; every entry names the collision. A denylist is the honest instrument here: there is no offline signal that separates these from the ~250 one-word names the union gets right (Apple, Oracle, Shell, Visa, Blackstone). Expect it to grow, and require a named collision for every addition.",
+  "dana": "DANA is an Indonesian fintech unicorn on the Wikipedia unicorn list. 'DANA Inc' (NYSE: DAN) is a US auto-parts supplier.",
+  "eqt": "EQT AB is the Swedish private-equity firm a recruiting user means. 'EQT Corp' (NYSE: EQT) is a US natural-gas producer. Both are real; EDGAR only lists the second.",
+  "strategy": "'Strategy&' is PwC's consulting arm. 'Strategy Inc' (Nasdaq: MSTR) is the 2025 rename of MicroStrategy."
+}

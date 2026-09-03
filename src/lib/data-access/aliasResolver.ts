@@ -1,6 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { CANONICAL, canonicalize } from "@/lib/company-intel";
 import { compareCikFirst } from "@/lib/company-cik-preference";
+import { resolveRegistry } from "@/lib/registry-union/resolve";
+import { rowMatchesRegistrant } from "@/lib/registry-union/row-agreement";
 
 /**
  * Query-time alias canonical-rollup synthesizer (PR-B0, resolves Critical Finding C4).
@@ -109,6 +111,18 @@ export function rankCluster(rows: ResolverRow[]): ResolverRow[] {
 export async function resolveAlias(
   supabase: SupabaseClient,
   idOrTickerOrSlug: string,
+  /**
+   * The route's ORIGINAL slug, when the caller has it. Used by the registry
+   * fallback below and by nothing else, because `canonicalize` strips the
+   * structural tail before this function ever runs: /company/booking-holdings
+   * arrives here as "Booking", and "booking" is a one-word key the union will
+   * not answer. With the slug in hand the union sees "Booking Holdings" and
+   * reaches Booking Holdings Inc. Measured worth 8 more names on the universe
+   * (Baxter International, Booking Holdings, Cboe Global Markets, CoStar
+   * Group, Lincoln International, StoneX Group, The Carlyle Group, TransDigm
+   * Group). Optional, and absent it the function behaves exactly as before.
+   */
+  rawSlug?: string,
 ): Promise<ResolveAliasResult | null> {
   const input = idOrTickerOrSlug.trim();
   if (!input) return null;
@@ -149,6 +163,46 @@ export async function resolveAlias(
       .order("id", { ascending: true })
       .limit(1);
     anchor = ((data as ResolverRow[] | null)?.[0] as ResolverRow | undefined) ?? null;
+
+    /* REGISTRY UNION, and it runs ONLY here, on the branch that was about to
+       return null. That placement is the whole no-regression argument: a slug
+       that resolves today takes one of the branches above and never reaches
+       this code, so nothing that renders can stop rendering or start rendering
+       something else.
+
+       What it buys. 2,251 of the 2,869 names in the recruiting universe
+       resolve to no row at all, and a large share of those are a real company
+       typed under a name the `companies` row does not carry: "Advanced Micro
+       Devices" against a row called "AMD", "Cisco Systems" against "Cisco",
+       "United Parcel Service" against "UPS". The union maps the typed name to
+       an exchange-listed SEC registrant and this looks that registrant's CIK
+       up in `companies`. Measured against prod on 2026-09-02: 90 names that
+       render an empty state today reach a real row, and 85 of the 90 carry two
+       or more of the three pillars.
+
+       No writes, no minting, no synthetic rows. If no row carries the CIK, the
+       branch declines and the empty state is unchanged.
+
+       rowMatchesRegistrant is not decoration. `companies` row b757f7fb is
+       named "Envu" and carries Kenvue's ticker and CIK, so a bare CIK lookup
+       would have put Kenvue's filings under the heading "Envu". See
+       src/lib/registry-union/row-agreement.ts. */
+    if (!anchor) {
+      const fromSlug = rawSlug ? slugToCompanyName(rawSlug) : null;
+      const reg =
+        (fromSlug ? resolveRegistry(fromSlug) : null) ??
+        resolveRegistry(canonicalName) ??
+        resolveRegistry(input);
+      if (reg) {
+        const { data: regRows } = await supabase
+          .from("companies")
+          .select(RESOLVER_COLS)
+          .eq("sec_cik", reg.cik)
+          .limit(5);
+        const candidate = rankCluster((regRows as ResolverRow[] | null) ?? [])[0];
+        if (candidate && rowMatchesRegistrant(candidate.name, reg.name)) anchor = candidate;
+      }
+    }
   }
   if (!anchor) return null;
 

@@ -114,8 +114,11 @@ function modeOf(values: Array<string | null>): string | null {
 export async function getCompanyDetail(
   supabase: SupabaseClient,
   slug: string,
+  /** The route's original slug, forwarded to resolveAlias's registry fallback.
+   *  Read only on the branch that would otherwise return null. */
+  rawSlug?: string,
 ): Promise<CompanyDetail | null> {
-  const resolved = await resolveAlias(supabase, slug);
+  const resolved = await resolveAlias(supabase, slug, rawSlug);
   if (!resolved) return null;
 
   const { canonical: head, siblings, aliasMentions } = resolved;
