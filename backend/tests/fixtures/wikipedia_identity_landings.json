@@ -711,5 +711,184 @@
     "Q43229"
    ]
   }
+ },
+ "s4": {
+  "OpenAI": {
+   "page": {
+    "requested_title": "OpenAI",
+    "resolved_title": "OpenAI",
+    "pageid": 48795986,
+    "revid": 1372927903,
+    "qid": "Q21708200",
+    "short_description": "American artificial intelligence research organization",
+    "is_disambig_pageprop": false,
+    "extract": "OpenAI is an American artificial intelligence (AI) public benefit corporation headquartered in San Francisco. It develops proprietary generative AI models, particularly its GPT series of large language models (LLMs). Its release of ChatGPT in November 2022 has been credited with catalyzing the AI boom; as of 2026 ChatGPT is the fifth-most-visited website globally. OpenAI also releases Codex, an AI coding agent, and the GPT Image models. In March 2026, OpenAI closed a funding round with a post-money valuation of $852 billion. OpenAI is one of the most valuable AI pure play companies in the world, rivalled by Anthropic.\nOpenAI was founded in 2015 in Delaware as a nonprofit, with Elon Musk and Sam Altman as co-chairs; Musk resigned in 2018. A for-profit subsidiary was created in 2019, and a 2025 restructuring converted the subsidiary into OpenAI Group PBC, that is 26% owned by the nonprofit OpenAI Foundation. Microsoft has invested over US$13 billion into OpenAI. OpenAI partners with semiconductor firms including Nvidia, AMD, and Broadcom, and cloud computing services from Microsoft, Amazon, Cerebras Systems and Google.  In June 2026 it filed for an initial public offering.\nIn 2023 and 2024, OpenAI faced multiple lawsuits for alleged copyright infringement against authors and media companies whose work was used to train some of OpenAI's products. In November 2023, OpenAI's board removed Sam Altman as CEO, citing a lack of confidence in him, but following a reconstruction of the board, it reinstated him five days later. Throughout 2024, roughly half of then-employed AI safety researchers left OpenAI, citing the company's deprioritization of safety goals. In July 2026, around 700 OpenAI agents undergoing cybersecurity testing conducted an autonomous cyberattack. Former OpenAI personnel have founded competing AI companies Anthropic, SpaceXAI, Safe Superintelligence Inc., and Thinking Machines Lab.",
+    "missing": false,
+    "redirected_from": null
+   },
+   "p31": [
+    "Q6881511"
+   ]
+  },
+  "National Australia Bank": {
+   "page": {
+    "requested_title": "National Australia Bank",
+    "resolved_title": "National Australia Bank",
+    "pageid": 550790,
+    "revid": 1368494193,
+    "qid": "Q1430985",
+    "short_description": "financial institution in Australia",
+    "is_disambig_pageprop": false,
+    "extract": "National Australia Bank Limited (abbreviated NAB, branded and stylised as nab) is one of the four largest financial institutions in Australia (colloquially referred to as \"The Big Four\") in terms of market capitalisation, earnings and customers. NAB was ranked the world's 21st-largest bank measured by market capitalisation and 52nd-largest bank in the world as measured by total assets in 2019.\nAs of January 2019, NAB operated 3,500 Bank@Post locations—including 7,000+ ATMs across Australia, New Zealand, and Asia—and served 9 million customers.\nNAB has an \"AA−\" long-term issuer rating by Standard & Poor's.",
+    "missing": false,
+    "redirected_from": null
+   },
+   "p31": [
+    "Q6579042",
+    "Q891723",
+    "Q22687"
+   ]
+  },
+  "Bugatti": {
+   "page": {
+    "requested_title": "Bugatti",
+    "resolved_title": "Bugatti",
+    "pageid": 4497,
+    "revid": 1372779108,
+    "qid": "Q27401",
+    "short_description": "former German and French automaker",
+    "is_disambig_pageprop": false,
+    "extract": "Automobiles Ettore Bugatti was a French manufacturer of high-performance automobiles. The company was founded in 1909 in the then-German city of Molsheim, Alsace, by the Italian-born industrial designer Ettore Bugatti. The cars were known for their design beauty and numerous race victories. Famous Bugatti automobiles include the Type 35 Grand Prix cars, the Type 41 \"Royale\", the Type 57 \"Atlantic\" and the Type 55 sports car.  \nThe death of Ettore Bugatti in 1947 proved to be a severe blow to the marque, and the death of his son Jean in 1939 meant that there was no successor to lead the factory. With no more than about 8,000 cars made, the company struggled financially, and it released one last model in the 1950s before eventually being purchased for its airplane parts business in 1963.\nIn 1987, an Italian entrepreneur bought the brand name and revived it as Bugatti Automobili S.p.A. The name is owned by Bugatti Rimac since 2021. \nA film about the founding of Bugatti is being produced by Andrea Iervolino.",
+    "missing": false,
+    "redirected_from": null
+   },
+   "p31": [
+    "Q786820"
+   ]
+  },
+  "Fiduciary Trust Company": {
+   "page": {
+    "requested_title": "Fiduciary Trust Company",
+    "resolved_title": "Fiduciary Trust Company",
+    "pageid": 57800547,
+    "revid": 1356495705,
+    "qid": "Q56274187",
+    "short_description": "",
+    "is_disambig_pageprop": false,
+    "extract": "Fiduciary Trust Company is a private wealth management firm headquartered in Boston, Mass United States. It serves high-net-worth families, individuals and nonprofits, as well as professional financial advisors and family offices. The firm provides customized wealth management, investment management, and trust and estate settlement services, as well as family office, tax, and custody services. \nAs of 1 June  2017, Fiduciary Trust had approximately $12.2 billion in assets under supervision  The firm is ranked fifth on the Boston Business Journal’s 2017 list of the largest independent investment advisors in Massachusetts. Fiduciary Trust Company is not affiliated with  the similarly named Fiduciary Trust Company International, which is a wholly owned subsidiary of Franklin Templeton Investments.",
+    "missing": false,
+    "redirected_from": null
+   },
+   "p31": [
+    "Q4830453"
+   ]
+  },
+  "Expedia": {
+   "page": {
+    "requested_title": "Expedia",
+    "resolved_title": "Expedia",
+    "pageid": 417606,
+    "revid": 1369698173,
+    "qid": "Q1418432",
+    "short_description": "travel website",
+    "is_disambig_pageprop": false,
+    "extract": "Expedia Inc. is an American online travel agency owned by Expedia Group, which is headquartered in Seattle, Washington. When Microsoft Corporation launched Expedia on the Microsoft Network in October 1996, it was the first online travel service to be offered by a major technology company, allowing consumers to make air, car, and hotel reservations online and to browse a library of multimedia travel guides. Expedia was founded on October 22, 1996, inside Microsoft in Redmond, Washington, led by Richard (Rich) Barton and a small team who saw an opportunity to bring transparent airfare, hotel, and car booking directly to consumers without travel agents.\nThrough its website and mobile app, customers can book airline tickets, hotel reservations, car rentals, cruise ships, activities, and vacation rentals. Once operating solely as Expedia.com, the group gradually acquired a wide range of travel brands, including Vrbo, Hotels.com, and Trivago, becoming the second-largest online travel agency worldwide, just behind Booking Holdings. Expedia is the lead travel app in the US market, with 19.3% market share, and operates over 200 travel websites.\n\n",
+    "missing": false,
+    "redirected_from": null
+   },
+   "p31": [
+    "Q57590076",
+    "Q620615",
+    "Q1276157",
+    "Q217107"
+   ]
+  },
+  "Oncolytics Biotech": {
+   "page": {
+    "requested_title": "Oncolytics Biotech",
+    "resolved_title": "Oncolytics Biotech",
+    "pageid": 28902690,
+    "revid": 1365382260,
+    "qid": "Q13529450",
+    "short_description": "",
+    "is_disambig_pageprop": false,
+    "extract": "Oncolytics Biotech Inc. is a biotech company headquartered in San Diego, California, that is developing an intravenously delivered immuno-oncolytic virus called pelareorep for the treatment of solid tumors and hematological malignancies. Pelareorep is a non-pathogenic, proprietary isolate of the unmodified reovirus that induces selective tumor lysis and promotes an inflamed tumor phenotype through innate and adaptive immune responses.",
+    "missing": false,
+    "redirected_from": null
+   },
+   "p31": [
+    "Q4830453",
+    "Q891723"
+   ]
+  },
+  "KBRA": {
+   "page": {
+    "requested_title": "KBRA",
+    "resolved_title": "KBRA",
+    "pageid": 23751019,
+    "revid": 1340168817,
+    "qid": "Q6326155",
+    "short_description": "radio station in Freer, Texas",
+    "is_disambig_pageprop": false,
+    "extract": "KBRA (95.9 FM) is a radio station licensed to Freer, Texas, United States. The station is currently owned by Cobra Broadcasting, LLC - KBRA.",
+    "missing": false,
+    "redirected_from": null
+   },
+   "p31": [
+    "Q14350"
+   ]
+  },
+  "Federal Open Market Committee": {
+   "page": {
+    "requested_title": "Federal Open Market Committee",
+    "resolved_title": "Federal Open Market Committee",
+    "pageid": 593155,
+    "revid": 1371022694,
+    "qid": "Q2289022",
+    "short_description": "committee of the United States Federal Reserve",
+    "is_disambig_pageprop": false,
+    "extract": "The Federal Open Market Committee (FOMC) is a committee within the Federal Reserve System (colloquially \"the Fed\") that is charged under United States law with overseeing the nation's open market operations (e.g., the Fed's buying and selling of United States Treasury securities). This Federal Reserve committee makes key decisions about interest rates and the growth of the United States money supply. Under the terms of the original Federal Reserve Act, each of the Federal Reserve banks was authorized to buy and sell in the open market bonds and short term obligations of the United States government, bank acceptances, cable transfers, and bills of exchange. Hence, the reserve banks were at times bidding against each other in the open market. In 1922, an informal committee was established to execute purchases and sales. The Banking Act of 1933 formed an official FOMC.\nThe FOMC is the principal organ of United States national monetary policy. The committee sets monetary policy by specifying the short-term objective for the Fed's open market operations, which is usually a target level for the federal funds rate (the rate that commercial banks charge between themselves for overnight loans).\nThe FOMC also directs operations undertaken by the Federal Reserve System in foreign exchange markets, although any intervention in foreign exchange markets is coordinated with the U.S. Treasury, which has responsibility for formulating U.S. policies regarding the exchange value of the dollar.",
+    "missing": false,
+    "redirected_from": null
+   },
+   "p31": [
+    "Q2659904"
+   ]
+  },
+  "Major League Baseball": {
+   "page": {
+    "requested_title": "Major League Baseball",
+    "resolved_title": "Major League Baseball",
+    "pageid": 38776,
+    "revid": 1372862745,
+    "qid": "Q1163715",
+    "short_description": "North American professional baseball league",
+    "is_disambig_pageprop": false,
+    "extract": "Major League Baseball (MLB) is a professional baseball league in North America composed of 30 teams, divided equally between the National League (NL) and the American League (AL), with 29 in the United States and 1 in Canada. MLB is one of the major professional sports leagues in the United States and Canada and is considered the premier baseball league in the world. Each team plays 162 games per season, with Opening Day held during the last week of March or the first week of April. Six teams in each league then advance to a four-round postseason tournament in October, culminating in the World Series, a best-of-seven championship series between the two league champions first played in 1903. MLB is headquartered in New York City.\nFormed in 1876 and 1901, respectively, the NL and AL came into direct conflict in 1901 when the AL declared itself a competitor to the NL, with neither honoring the other's contracts and players often jumping from one league to the other. These practices were ended by the National Agreement of 1903, in which the AL and NL agreed to respect each other's player contracts, including the contentious reserve clause which bound players to their teams. The two leagues remained legally separate entities until 2000, when they merged into a single organization led by the commissioner of baseball.\nThe period from about 1900 to 1920 was the dead-ball era, when home runs were rarely hit. Professional baseball was rocked by the Black Sox Scandal, a conspiracy to fix the 1919 World Series. Baseball survived the scandal, albeit with major changes in its governance, as the relatively weak National Commission was replaced with a powerful commissioner of baseball with near-unlimited authority over the sport. MLB rose in popularity in the decade following the Black Sox Scandal, and unlike major leagues in other sports, it endured the Great Depression and World War II without any of its teams folding. Shortly after the war, Jackie Robinson broke baseball's color barrier.\nSome teams moved to different cities in the 1950s and 1960s. The AL and NL added eight clubs in the 1960s, which started the expansion era: two in 1961, two in 1962, and four in 1969. Player discontent with established labor practices, especially the reserve clause, led to the organization of the Major League Baseball Players Association to collectively bargain with the owners, which in turn led to the introduction of free agency in baseball. Modern stadiums with artificial turf surfaces began to change the game in the 1970s and 1980s. Home runs began to dominate the game during the 1990s. In the mid-2000s, media reports disclosed the use of anabolic steroids among MLB players; a 2006–07 investigation produced the Mitchell Report, which found that many players had used steroids and other performance-enhancing substances, including at least one player from each team.\nMLB is the third-wealthiest professional sports league in the world by revenue after the National Football League (NFL) and the National Basketball Association (NBA). Baseball games are broadcast on television, radio, and the internet throughout North America and in several other countries. MLB has the highest total season attendance of any sports league in the world; in 2025, it drew 71.4 million spectators. MLB also oversees Minor League Baseball, which comprises lower-tier teams affiliated with the major league clubs, the MLB Draft League, a hybrid amateur-professional showcase league, and the Arizona Fall League, an off-season showcase league for minor league players. MLB and the World Baseball Softball Confederation jointly manage the international World Baseball Classic tournament. The New York Yankees have the most championships with 27. The reigning champions are the Los Angeles Dodgers, who defeated the Toronto Blue Jays in the 2025 World Series.",
+    "missing": false,
+    "redirected_from": null
+   },
+   "p31": [
+    "Q6631808",
+    "Q15991290"
+   ]
+  },
+  "Hyundai": {
+   "page": {
+    "requested_title": "Hyundai",
+    "resolved_title": "Hyundai",
+    "pageid": 1374000,
+    "revid": 1356889194,
+    "qid": "Q29311",
+    "short_description": "multinational conglomerate headquartered in Seoul",
+    "is_disambig_pageprop": false,
+    "extract": "Hyundai is a former South Korean industrial conglomerate (\"chaebol\"), which was restructured into the following groups:\n\nHyundai Group, parts of the former conglomerate which have not been divested\nHyundai Asan, a real estate construction and civil engineering company\nHyundai Motor Group, the automotive part of the former conglomerate\nHyundai Motor Company, an automobile manufacturer\nHyundai Mobis, a car parts company\nHyundai Motorsport, a racing team\nHyundai Rotem, a manufacturer of railway vehicles, defense systems, and factory equipment\nHyundai Engineering and Construction, a construction company\nHD Hyundai Group, the heavy industry part of the former conglomerate\nHD Hyundai Heavy Industries, the primary company representing the group\nHD Hyundai Mipo, a shipbuilding company\nHD Hyundai Samho, a shipbuilding company\nHD Hyundai Oilbank, a petroleum refinery company\nHD Hyundai Electric, a smart energy sensations specialist company\nHyundai Department Store Group, the retail division of the former conglomerate\nHyundai Department Store, a department store chain\nHDC Holdings, a conglomerate with emphasis on real estate development and financial services\nHyundai Development Company, a construction and civil engineering company\nHDC Hyundai EP, a manufacturer of petrochemicals and plastics\nHyundai Fomex, a professional lighting manufacturer\nHyundai Marine & Fire Insurance, an insurance company\nHyundai Corporation, a trading and industrial investment company\nHyundai Power Products, a power equipment company owned and produced by Hyundai Corporation, and its importer and Distributor for UK and Ireland by Genpower\nHyundai Appliances Africa, a TV and home appliances brand owned and produced by Hyundai Corporation, and is designed for the African appliance and TV market\nHyundai Home Appliances, a TV and home appliance brand owned and produced by Hyundai Corporation, but the market is mostly in South Korea and the Philippines with other markets as a division\nHyundai Electronics BD, an appliances company owned and produced by Hyundai Corporation, the appliances are designed for the market in Bangladesh\nHyundai Electronics India, an appliance and TV company that is owned and produced by Hyundai Corporation, targeted toward the Indian market\nHyundai Electronics Nepal, an electronics and home appliances company owned and produced by Hyundai Corporation, marketing targeted for Nepal, and it is also its own distributor\nHyundai Technology USA, a tech brand that is owned and produced by Hyundai Corporation, the market is targeted for the US\nHyundai Electronics, a chip manufacturer, spun off as Hynix in 2001 and renamed SK Hynix in 2012",
+    "missing": false,
+    "redirected_from": null
+   },
+   "p31": [
+    "Q778575"
+   ]
+  }
  }
 }

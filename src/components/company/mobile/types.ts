@@ -72,6 +72,9 @@
  * tone as an improving one the moment this reads a real level. The word always
  * carries the meaning; the colour only agrees with it.
  */
+// A type-only import, so this file still contributes nothing to any bundle.
+import type { IdentityArtifact } from "@/lib/company-identity";
+
 export type ToneDirection = "up" | "down" | "flat";
 
 /**
@@ -221,33 +224,31 @@ export interface CompanyIntelData {
      */
     identity: CompanyPrimerRow[];
     /**
-     * Curated business overview, or "" for absent.
+     * The resolved business overview, or null for absent.
      *
-     * `COMPANY_IDENTITY[canonical].brief` ONLY, and coverage is 34 of 5,599
-     * companies, so this is empty for almost every reader. Empty must stay
-     * empty: `PrimerSection` omits the whole block rather than drawing a
-     * heading over nothing.
+     * IT IS THE TAGGED ARTIFACT AND NOT A BARE `string`, AND THAT IS THE WHOLE
+     * POINT OF THE FIELD'S TYPE. It used to be `overview: string` beside a
+     * separate `overviewAttribution` object. `buildPrimer` assigned
+     * `wikipediaArtifact(row).text` into it, and a `VerbatimText` assigned into
+     * a `string` slot IS a `string` from the next line on: the brand was gone
+     * before the mapper returned, and every truncation downstream compiled
+     * clean. Measured with `tsc --noEmit`: `{ overview: wiki.text }` then
+     * `overview.slice(0, 80) + "..."`, zero errors.
+     *
+     * Carrying `IdentityArtifact` keeps the wikipedia branch branded all the
+     * way to `VerbatimParagraph`, and keeps the attribution welded to the text
+     * it attributes rather than sitting in a sibling field that a future edit
+     * can drop. A CC BY-SA 4.0 excerpt rendered without a link to the source
+     * article and to the licence does not satisfy section 3(a)(1).
+     *
+     * Absent must stay absent: `PrimerSection` omits the whole block rather
+     * than drawing a heading over nothing.
      *
      * NEVER `/api/company-overview`. That route POSTs to gemini-2.5-flash on a
      * cache miss, and a model call on a page render path is a different sprint
      * with a different set of failure states.
      */
-    overview: string;
-    /**
-     * Attribution for `overview` when it came from Wikipedia, else null.
-     *
-     * IT IS NOT OPTIONAL DECORATION. A CC BY-SA 4.0 excerpt rendered without a
-     * link to the source article and to the licence does not satisfy section
-     * 3(a)(1), and this surface renders the same paragraph the desktop Primer
-     * does. `buildPrimer` only ever sets `overview` from a Wikipedia paragraph
-     * together with this object, so the two cannot drift apart.
-     */
-    overviewAttribution: {
-      articleUrl: string;
-      articleTitle: string;
-      licenseName: string;
-      licenseUrl: string;
-    } | null;
+    overview: IdentityArtifact | null;
     keyFigures: CompanyKeyFigure[];
     /**
      * Whether the filer has a periodic report on file at all, on either basis.

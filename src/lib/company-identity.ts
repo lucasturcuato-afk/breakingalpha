@@ -33,19 +33,42 @@
  * publish its own generated identity prose under CC BY-SA 4.0 for competitors
  * to take.
  *
- * THAT IS ENFORCED HERE BY THE TYPE SYSTEM, NOT BY A COMMENT. Wikipedia text is
- * carried as `VerbatimText`, an opaque branded string that only `asVerbatim()`
- * can mint. `String.prototype.slice`, `substring`, `trim`, `replace` and
- * template interpolation all return plain `string`, which does not satisfy
- * `VerbatimText`, so a truncation anywhere between this module and the rendered
- * element is a compile error rather than a licence breach. `PrimerBusinessOverview`
- * requires the branded type on the wikipedia branch.
+ * THAT IS ENFORCED HERE BY THE TYPE SYSTEM, NOT BY A COMMENT, AND IT TAKES FOUR
+ * MECHANISMS RATHER THAN ONE. A brand alone covers exactly one direction and
+ * the first version of this module shipped believing it covered all four.
+ * Every gap below was found by running `tsc --noEmit` against a probe file, and
+ * three of the four needed no cast to walk through.
+ *
+ *   1. RE-ENTRY, which the brand does cover. `slice`, `substring`, `trim`,
+ *      `replace`, `toUpperCase` and template interpolation all return plain
+ *      `string`, which does not satisfy `VerbatimText`, so assigning a
+ *      shortened value back into a verbatim slot is TS2322.
+ *   2. CONSUMPTION, which it does not. `VerbatimText` is `string` intersected
+ *      with a brand, so it is a SUBTYPE of `string` and every
+ *      `(text: string) => string` helper accepts one silently. `PlainText`
+ *      below is the fix: a type a branded string cannot satisfy. Anything that
+ *      may shorten text takes `PlainText`, and passing a paragraph is TS2345.
+ *   3. RE-MINTING. `asVerbatim` is module-private. An exported constructor that
+ *      brands any string is a laundry, whatever its internal checks are.
+ *      `wikipediaArtifact()` is the only public way in, and it mints only from
+ *      a row that also carries the provenance the licence requires.
+ *   4. RENDERING. A JSX child is `ReactNode`, which accepts plain `string`, so
+ *      `{artifact.text.slice(0, 200)}` type-checks. Both render sites hand the
+ *      paragraph to `VerbatimParagraph`, whose prop is `VerbatimText`, so the
+ *      last inch is a typed slot rather than an untyped one.
+ *
+ * The mapper boundary is the same problem as 2 seen from the other side:
+ * assigning a `VerbatimText` into a `string`-typed field drops the brand
+ * silently, so `CompanyIntelData["primer"].overview` carries `IdentityArtifact`
+ * rather than `string`.
  *
  * The `normalizable` discriminant is the second half of the lock. The Coverage
  * Primer POSTs its overview to /api/company-overview, which calls
  * gemini-2.5-flash. That path is a model rewrite, which is exactly what
  * produces Adapted Material. `normalizable` is false for wikipedia and the
- * caller must not send it.
+ * caller must not send it. `resolveIdentityArtifact` will not fall back to an
+ * unbranded `stored` artifact for a row whose source says wikipedia, which is
+ * how that discriminant was being bypassed.
  *
  * A CSS line-clamp on the rendered element is fine and is what the design uses:
  * the full text is still shipped to the client and still copyable. A JS
@@ -63,6 +86,26 @@ declare const VERBATIM_BRAND: unique symbol;
  * required. That is the point.
  */
 export type VerbatimText = string & { readonly [VERBATIM_BRAND]: "cc-by-sa-verbatim" };
+
+/**
+ * A string that is PROVABLY NOT licensed verbatim text, and the other half of
+ * the lock.
+ *
+ * A brand alone only stops a `VerbatimText` from being REBUILT out of a
+ * shortened string. It does nothing to stop one being CONSUMED by something
+ * that shortens, because `VerbatimText` is a subtype of `string` and every
+ * `(text: string) => string` helper in the codebase accepts it silently.
+ * `trimSummary(text: string)` in PrimerTab sat under a comment claiming a
+ * wikipedia paragraph could not reach it; measured with `tsc --noEmit`, it
+ * compiled clean.
+ *
+ * The optional-never brand member is what fixes that. A plain `string`, a
+ * literal and a template literal all satisfy it. A `VerbatimText` does not:
+ * `"cc-by-sa-verbatim"` is not assignable to `undefined`, so passing one to a
+ * `PlainText` parameter is TS2345 and assigning one to a `PlainText` slot is
+ * TS2322. Every function that may shorten text takes `PlainText`.
+ */
+export type PlainText = string & { readonly [VERBATIM_BRAND]?: undefined };
 
 /** Licence identity, rendered on every page that shows a Wikipedia paragraph. */
 export const CC_BY_SA_4_0 = "CC BY-SA 4.0";
@@ -101,9 +144,9 @@ export interface WikipediaAttribution {
  * to /api/company-overview. `normalizable: false` means it may not be touched.
  */
 export type IdentityArtifact =
-  | { source: "yahoo"; normalizable: true; text: string }
-  | { source: "curated"; normalizable: true; text: string }
-  | { source: "stored"; normalizable: true; text: string }
+  | { source: "yahoo"; normalizable: true; text: PlainText }
+  | { source: "curated"; normalizable: true; text: PlainText }
+  | { source: "stored"; normalizable: true; text: PlainText }
   | {
       source: "wikipedia";
       normalizable: false;
@@ -111,8 +154,22 @@ export type IdentityArtifact =
       attribution: WikipediaAttribution;
     };
 
+/** The three branches that may be trimmed, sent to a model, or interpolated. */
+export type NormalizableArtifact = Extract<IdentityArtifact, { normalizable: true }>;
+
 /**
- * Mint a `VerbatimText`. THE ONLY CONSTRUCTOR.
+ * Mint a `VerbatimText`. THE ONLY CONSTRUCTOR, AND IT IS MODULE-PRIVATE.
+ *
+ * IT USED TO BE EXPORTED, AND THAT WAS THE HOLE. A constructor that accepts any
+ * `string` and hands back the brand is a laundry: `asVerbatim(summary.slice(0,
+ * 280))` compiled clean and produced a value the render layer would then treat
+ * as untouched licensed prose. The checks below catch an ellipsis and edge
+ * whitespace, which is most of what a careless trim leaves behind, and none of
+ * what a careful one does.
+ *
+ * The only public way in is now `wikipediaArtifact()`, which mints from a
+ * `companies` row that also carries the provenance the licence requires. There
+ * is no path from an arbitrary in-memory string to the brand.
  *
  * Returns null rather than throwing when the input already shows evidence of
  * having been modified, so a bad row degrades to an empty block instead of a
@@ -121,7 +178,7 @@ export type IdentityArtifact =
  * backfill already stores a stripped paragraph, so a row arriving with padding
  * did not come from the backfill.
  */
-export function asVerbatim(text: string | null | undefined): VerbatimText | null {
+function asVerbatim(text: string | null | undefined): VerbatimText | null {
   if (typeof text !== "string") return null;
   if (text.length === 0) return null;
   if (text !== text.trim()) return null;
@@ -132,6 +189,20 @@ export function asVerbatim(text: string | null | undefined): VerbatimText | null
 /** True when a Yahoo profile summary actually carries prose. */
 export function yahooSummaryResolved(summary: string | null | undefined): boolean {
   return typeof summary === "string" && summary.trim().length > 0;
+}
+
+/**
+ * The `description_source` values that carry a CC BY-SA 4.0 obligation.
+ *
+ * ONE LIST, READ BY BOTH THE MINTER AND THE FALLTHROUGH GUARD. Two copies of
+ * this predicate is how a row ends up licensed for one of them and unlicensed
+ * for the other, which is the shape of the laundering path in
+ * `resolveIdentityArtifact` below.
+ */
+export function isLicensedSource(
+  source: DescriptionSource | null | undefined,
+): source is "wikipedia" | "wikipedia_repaired" {
+  return source === "wikipedia" || source === "wikipedia_repaired";
 }
 
 /**
@@ -146,8 +217,7 @@ export function wikipediaArtifact(
   row: CompanyDescriptionRow | null | undefined,
 ): Extract<IdentityArtifact, { source: "wikipedia" }> | null {
   if (!row) return null;
-  const source = row.description_source;
-  if (source !== "wikipedia" && source !== "wikipedia_repaired") return null;
+  if (!isLicensedSource(row.description_source)) return null;
 
   const text = asVerbatim(row.description);
   const articleUrl = row.description_source_url?.trim();
@@ -193,6 +263,21 @@ export function resolveIdentityArtifact(input: {
   }
   const wiki = wikipediaArtifact(input.row);
   if (wiki) return wiki;
+
+  // THE LAUNDERING PATH, CLOSED. A row whose `description_source` names a
+  // Wikipedia source but which `wikipediaArtifact()` refused is a LICENSED row
+  // with broken provenance, not an unlicensed one. It used to fall through to
+  // the `stored` branch below, where the same text came back `normalizable:
+  // true` and stripped of its attribution: trimmed for layout, POSTed to
+  // gemini-2.5-flash by `PrimerTab`, and rendered with no link to the article
+  // or the licence. That is a model rewrite of CC BY-SA 4.0 material published
+  // unattributed, which is the exact hazard the branded type exists to stop,
+  // reached by walking around it rather than through it.
+  //
+  // Licence provenance is one-way. Once a row says the text came from
+  // Wikipedia, no later failure can make it not have come from Wikipedia. So
+  // the block is hidden and the row is held for repair.
+  if (isLicensedSource(input.row?.description_source)) return null;
 
   // A stored description from a non-Wikipedia source carries no licence
   // obligation and no verbatim constraint.

@@ -19,12 +19,19 @@
  * trim, ellipsis or model rewrite converts a one-line attribution obligation
  * into an obligation to publish Signalera's own identity prose under CC BY-SA.
  *
- * So the wikipedia branch carries `VerbatimText`, a branded string only
- * `asVerbatim()` can mint. `.slice()`, `.substring()`, `.trim()`, `.replace()`
- * and template interpolation all return plain `string` and stop type-checking
- * on that branch. There is no `maxLength` prop, no truncation and no ellipsis
- * on this path. The paragraph renders at whatever length it is and the layout
- * absorbs it: normal flow, `text-wrap: pretty`, no clamp, no fixed height.
+ * So the wikipedia branch carries `VerbatimText`, a branded string only this
+ * repo's module-private minter can produce, and it is RENDERED THROUGH
+ * `VerbatimParagraph` rather than interpolated here. That second part is not
+ * decoration. A JSX child is typed `ReactNode` and `ReactNode` accepts plain
+ * `string`, so writing `{identity.text}` inline would have compiled just as
+ * happily with a `.slice()` in it: measured with `tsc --noEmit`,
+ * `{identity.text.slice(0, 200) + "…"}` produced zero errors. The brand
+ * covers assignment, not rendering. `VerbatimParagraph` turns the last inch
+ * into a typed slot.
+ *
+ * There is no `maxLength` prop, no truncation and no ellipsis on this path. The
+ * paragraph renders at whatever length it is and the layout absorbs it: normal
+ * flow, `text-wrap: pretty`, no clamp, no fixed height.
  *
  * The other branches are Signalera's own or the provider's and carry no such
  * constraint, so the caller may hand them pre-trimmed text.
@@ -32,6 +39,10 @@
 
 import type { IdentityArtifact } from "@/lib/company-identity";
 import { CC_BY_SA_4_0_URL, attributionParts } from "@/lib/company-identity";
+import { VerbatimParagraph } from "@/components/company/VerbatimParagraph";
+
+const TEXT_CLASS =
+  "font-sans text-[13px] text-text-secondary leading-relaxed text-pretty";
 
 interface PrimerBusinessOverviewProps {
   /** Resolved artifact. Always present; the parent hides the section otherwise. */
@@ -48,12 +59,25 @@ export function PrimerBusinessOverview({ identity }: PrimerBusinessOverviewProps
       <h3 className="font-sans text-[9.5px] font-bold text-text-faint">
         Business overview
       </h3>
-      <p
-        data-testid="primer-business-overview-text"
-        className="font-sans text-[13px] text-text-secondary leading-relaxed text-pretty"
-      >
-        {identity.text}
-      </p>
+      {/*
+        THE WIKIPEDIA BRANCH GOES THROUGH `VerbatimParagraph` AND THE OTHERS DO
+        NOT, and the split is not decoration. A JSX child is typed `ReactNode`,
+        which accepts plain `string`, so writing `{identity.text}` here would
+        have compiled just as happily with a `.slice()` in it: the brand cannot
+        see a render. `VerbatimParagraph` takes `VerbatimText`, so any shortening
+        on this branch is a compile error at the call site.
+      */}
+      {identity.source === "wikipedia" ? (
+        <VerbatimParagraph
+          data-testid="primer-business-overview-text"
+          className={TEXT_CLASS}
+          text={identity.text}
+        />
+      ) : (
+        <p data-testid="primer-business-overview-text" className={TEXT_CLASS}>
+          {identity.text}
+        </p>
+      )}
       {identity.source === "wikipedia" ? <Attribution identity={identity} /> : null}
     </section>
   );

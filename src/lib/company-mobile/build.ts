@@ -110,7 +110,7 @@ import {
   groupByCategory,
   sortNewestFirst,
 } from "@/lib/insider-transactions";
-import { wikipediaArtifact } from "@/lib/company-identity";
+import { resolveIdentityArtifact } from "@/lib/company-identity";
 import { formatMoney } from "@/lib/reporting-currency";
 import { formatPTDateShort } from "@/lib/format-pt";
 
@@ -461,13 +461,17 @@ function latestFiledPeriod(
  *   Wikipedia identity backfill; the column already travels on the resolver
  *   select, so this adds no query.
  *
- *   VERBATIM, and the type system enforces it. The paragraph is reproduced
- *   under CC BY-SA 4.0 section 2(a)(1)(A); trimming it would make it Adapted
- *   Material under section 1(a) and fire ShareAlike on Signalera's own prose.
- *   `wikipediaArtifact()` returns `VerbatimText`, which no truncating string
- *   method returns, so a cap here would not compile. It is also why the block
- *   below sets `overviewAttribution` in the same expression that sets
- *   `overview`: a licensed paragraph rendered with no source link does not
+ *   VERBATIM, and the type system enforces it, BUT NOT THE WAY THIS COMMENT
+ *   USED TO CLAIM. The paragraph is reproduced under CC BY-SA 4.0 section
+ *   2(a)(1)(A); trimming it would make it Adapted Material under section 1(a)
+ *   and fire ShareAlike on Signalera's own prose. The claim here was that
+ *   `wikipediaArtifact()` returns `VerbatimText` so a cap would not compile.
+ *   That was false at this exact line: `overview` was typed `string`, and a
+ *   branded value assigned into a `string` field is a plain `string` from the
+ *   next line on. The mapper was where the brand died. `overview` carries the
+ *   whole `IdentityArtifact` now, so the brand survives to the render, and the
+ *   attribution travels ON the artifact rather than in a sibling field a future
+ *   edit can drop: a licensed paragraph rendered with no source link does not
  *   satisfy section 3(a)(1).
  *
  * KEY FIGURES are validated XBRL and nothing else: the first two facts the
@@ -534,14 +538,31 @@ export function buildPrimer(
   // paragraph. There is no Yahoo rung here at all: the live profile arrives
   // from a CLIENT fetch to /api/company-kpis that this server-render mapper
   // does not make, which is stated in the header above.
-  const wiki = wikipediaArtifact(detail.descriptionRow);
-  const curated = identity?.brief?.trim() ?? "";
+  // `resolveIdentityArtifact` AND NOT A LOCAL PRECEDENCE EXPRESSION. The two
+  // lines that used to sit here read
+  //   overview: curated || (wiki ? wiki.text : "")
+  //   overviewAttribution: curated || !wiki ? null : wiki.attribution
+  // and both defects in them came from the same cause. Assigning `wiki.text`
+  // into a `string`-typed field discarded the `VerbatimText` brand at the
+  // mapper boundary, so nothing downstream could be stopped from trimming it.
+  // And a row whose `description_source` says wikipedia but whose provenance is
+  // broken fell to a bare stored string with no attribution, which is the
+  // laundering path `resolveIdentityArtifact` now closes in one place for both
+  // surfaces instead of two places for one each.
+  //
+  // No Yahoo rung is passed here, and that is stated rather than implied: the
+  // live profile arrives from a CLIENT fetch to /api/company-kpis that this
+  // server-render mapper does not make. Precedence on this surface is therefore
+  // the curated brief, then the stored Wikipedia paragraph.
+  const overview = resolveIdentityArtifact({
+    curatedBrief: identity?.brief ?? null,
+    row: detail.descriptionRow,
+  });
 
   return {
     lede: PRIMER_LEDE,
     identity: identityRows,
-    overview: curated || (wiki ? wiki.text : ""),
-    overviewAttribution: curated || !wiki ? null : wiki.attribution,
+    overview,
     keyFigures,
     /* THE THIRD STATE, and it is `filed` and not `keyFigures.length`. A filer
        can have a periodic report on file and still contribute nothing to the

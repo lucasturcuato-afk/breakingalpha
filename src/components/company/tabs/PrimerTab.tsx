@@ -31,7 +31,11 @@ import type { ReactNode } from "react";
 
 import type { CompanyFinancialsResult } from "@/lib/financial-facts";
 import type { QuoteSummaryLive } from "@/lib/yahoo/quoteSummary";
-import type { CompanyDescriptionRow, IdentityArtifact } from "@/lib/company-identity";
+import type {
+  CompanyDescriptionRow,
+  IdentityArtifact,
+  PlainText,
+} from "@/lib/company-identity";
 import { resolveIdentityArtifact } from "@/lib/company-identity";
 import { PrimerSnapshot } from "./primer/PrimerSnapshot";
 import { PrimerBusinessOverview } from "./primer/PrimerBusinessOverview";
@@ -63,12 +67,18 @@ interface PrimerTabProps {
  * THIS MUST NEVER SEE WIKIPEDIA TEXT. It slices at 280 characters and appends
  * an ellipsis, which turns a verbatim CC BY-SA 4.0 excerpt into Adapted
  * Material under section 1(a) and fires the ShareAlike condition in 3(b) on
- * Signalera's own prose. It is unreachable from the wikipedia branch by
- * construction: `IdentityArtifact` carries `normalizable: false` there, and the
- * wikipedia variant's `text` is `VerbatimText`, which `.slice()` does not
- * return. Passing one here is a compile error, not a review catch.
+ * Signalera's own prose.
+ *
+ * IT TAKES `PlainText` AND NOT `string`, AND THE PREVIOUS COMMENT HERE WAS
+ * WRONG. It read "Passing one here is a compile error, not a review catch"
+ * while the parameter was `string`. `VerbatimText` is `string` intersected with
+ * a brand, so it is a SUBTYPE of `string` and every `(text: string)` helper
+ * accepts one in silence. Measured with `tsc --noEmit` on the shipped tree:
+ * `trimSummary(wikipediaArtifact(row)!.text)` compiled with zero errors, four
+ * lines under the comment denying it could. A brand stops the value being
+ * rebuilt; only a `PlainText` parameter stops it being consumed.
  */
-function trimSummary(text: string): string {
+function trimSummary(text: PlainText): string {
   const clean = text.trim();
   if (clean.length <= 280) return clean;
   // Prefer a sentence boundary within the cap; else hard-cap with an ellipsis.

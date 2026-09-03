@@ -39,6 +39,7 @@ import { computeTone, formatEvidence, type SentimentLabel } from "../../src/lib/
 import type { CompanyDetail, CompanyDetailArticle } from "../../src/lib/data-access/getCompanyDetail.ts";
 import type { CompanyArticle, CompanyIdentity } from "../../src/lib/company-intel.ts";
 import type { CompanyFinancialsResult } from "../../src/lib/financial-facts.ts";
+import type { CompanyDescriptionRow } from "../../src/lib/company-identity.ts";
 
 /**
  * The character itself, written as an escape.
@@ -171,7 +172,7 @@ test("sparse company: no identity row, no key figure, no development, no overvie
   assert.deepEqual(p.identity, []);
   assert.deepEqual(p.keyFigures, []);
   assert.deepEqual(p.developments, []);
-  assert.equal(p.overview, "");
+  assert.equal(p.overview, null);
   // The two strings that are always there are about this file, not about the
   // company and not about the reader.
   assert.ok(p.lede.length > 0);
@@ -373,12 +374,64 @@ test("identity rows are sector and industry only, and industry is the curated on
 test("no curated entry means no industry row and no overview", () => {
   const p = buildPrimer(FULL, null, [], EMPTY_FINANCIALS);
   assert.deepEqual(p.identity, [{ label: "Sector", value: "Semiconductors" }]);
-  assert.equal(p.overview, "");
+  assert.equal(p.overview, null);
 });
 
 test("overview is the curated brief verbatim", () => {
   const p = buildPrimer(FULL, IDENTITY, [], EMPTY_FINANCIALS);
-  assert.equal(p.overview, IDENTITY.brief);
+  assert.equal(p.overview?.source, "curated");
+  assert.equal(p.overview?.text, IDENTITY.brief);
+});
+
+/* the licensed branch, on the surface that used to widen it to a bare string */
+
+const WIKI_PARA =
+  "Cinven Limited is a global private equity firm founded in 1977, with offices " +
+  "in nine international locations.";
+
+function wikiRow(over: Partial<CompanyDescriptionRow> = {}): CompanyDescriptionRow {
+  return {
+    description: WIKI_PARA,
+    description_source: "wikipedia",
+    description_source_url: "https://en.wikipedia.org/wiki/Cinven",
+    description_source_title: "Cinven",
+    description_license: "CC BY-SA 4.0",
+    description_license_url: "https://creativecommons.org/licenses/by-sa/4.0/",
+    ...over,
+  };
+}
+
+test("a stored Wikipedia paragraph reaches the mobile primer whole and attributed", () => {
+  const p = buildPrimer(detail({ descriptionRow: wikiRow() }), null, [], EMPTY_FINANCIALS);
+  assert.equal(p.overview?.source, "wikipedia");
+  assert.equal(p.overview?.text, WIKI_PARA);
+  assert.equal(p.overview?.text.length, WIKI_PARA.length);
+  assert.equal(p.overview?.normalizable, false);
+  assert.equal(
+    p.overview?.source === "wikipedia" ? p.overview.attribution.articleUrl : null,
+    "https://en.wikipedia.org/wiki/Cinven",
+  );
+});
+
+test("the curated brief still outranks the stored paragraph on mobile", () => {
+  const p = buildPrimer(detail({ descriptionRow: wikiRow() }), IDENTITY, [], EMPTY_FINANCIALS);
+  assert.equal(p.overview?.source, "curated");
+  assert.equal(p.overview?.text, IDENTITY.brief);
+});
+
+test("a Wikipedia row with broken provenance hides the block rather than laundering it", () => {
+  // THE LAUNDERING PATH. This used to come back as a bare `overview` string
+  // with `overviewAttribution: null`: the same licensed prose, rendered with no
+  // link to the article or the licence, and marked trimmable.
+  for (const broken of [
+    wikiRow({ description_source_url: null }),
+    wikiRow({ description_source_title: null }),
+    wikiRow({ description: WIKI_PARA.slice(0, 60) + "..." }),
+    wikiRow({ description: "  " + WIKI_PARA }),
+  ]) {
+    const p = buildPrimer(detail({ descriptionRow: broken }), null, [], EMPTY_FINANCIALS);
+    assert.equal(p.overview, null);
+  }
 });
 
 test("developments are the classified rows, summary first and title as the fallback", () => {

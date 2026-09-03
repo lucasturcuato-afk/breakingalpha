@@ -26,13 +26,24 @@ never clobbered by a machine.
 
 THE VERBATIM GATE
 -----------------
-`assert_verbatim()` runs on every row immediately before the payload is built.
-It requires the stored string to be a contiguous, unmodified slice of the
-extract this run fetched, carrying no edge whitespace and no ellipsis. A row
-that cannot prove that is dropped and counted, never written. This is the
-enforcement point for CC BY-SA 4.0: a modified paragraph is Adapted Material
-under section 1(a) and would fire the ShareAlike condition in 3(b) on
-Signalera's own prose.
+`verbatim_gate()` runs on every row immediately before the payload is built,
+and `storage_payload()` re-runs the same check independently. Both require the
+stored string to be a WHOLE PARAGRAPH of the extract this run fetched, byte for
+byte, carrying no edge whitespace and no ellipsis. A row that cannot prove that
+is dropped and counted, never written. This is the enforcement point for CC
+BY-SA 4.0: a modified paragraph is Adapted Material under section 1(a) and
+would fire the ShareAlike condition in 3(b) on Signalera's own prose.
+
+THE GATE WAS UNWIRED UNTIL THIS COMMIT AND THE SUITE WAS GREEN ANYWAY. The call
+was `assert_verbatim(result.paragraph, result.paragraph)`, the same value in
+both arguments. `Adjudication` carried the paragraph and never carried the
+extract, so there was no correct value to pass. The comparison collapsed to
+"is this string contained in itself", which accepted a truncation, a full model
+rewrite, an NFD re-normalisation and an NBSP collapse. Only the tests called it
+with two different values, which is exactly why nothing went red. The fix is
+structural: the extract now travels on the `Adjudication`, and the check moved
+inside `storage_payload()` where both sides are read off one object and no
+caller can supply either.
 
 THE REPAIR PASS IS OFF BY DEFAULT AND THAT IS A MEASUREMENT, NOT A PREFERENCE
 -----------------------------------------------------------------------------
@@ -90,6 +101,26 @@ CLASS_CACHE_PATH = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
     "data", "wikidata_class_verdicts.json",
 )
+
+
+def verbatim_gate(result: Adjudication) -> None:
+    """The runner's own verbatim check, as a named seam a test can call.
+
+    IT COMPARES THE PARAGRAPH AGAINST THE FETCHED EXTRACT, which is the whole
+    correction. The previous line here read
+    `assert_verbatim(result.paragraph, result.paragraph)`: the same value in
+    both arguments, so the containment test was a tautology that accepted a
+    truncation, a full model rewrite, an NFD re-normalisation and an NBSP
+    collapse. It was structural rather than a typo. `Adjudication` carried
+    `paragraph` and never carried the extract, so there was nothing correct to
+    pass, and the field comment `paragraph: str = ""  # VERBATIM. Never
+    trimmed.` asserted a property no code enforced.
+
+    This exists as a function rather than as two lines inside `main()` so the
+    test suite can exercise the gate the runner actually applies instead of a
+    hand-written copy of it. `storage_payload()` re-checks independently.
+    """
+    assert_verbatim(result.paragraph, source_extract=result.source_extract)
 
 
 def load_class_graph() -> ClassGraph:
@@ -179,7 +210,14 @@ def resolve_batch(names: list[str], qids: dict[str, str], budget: RequestBudget,
     return resolve_identity(titles, budget, graph)
 
 
-def main() -> int:
+def build_parser() -> argparse.ArgumentParser:
+    """The runner's real parser, as a seam a test can call.
+
+    IT EXISTS SO THE REPAIR PASS BEING OFF IS AN ASSERTION AND NOT A COMMENT.
+    A test that restates the defaults in its own `ArgumentParser` proves nothing
+    about this file. `test_the_repair_pass_is_off_by_default` parses an empty
+    argv through THIS parser.
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--apply", action="store_true",
                         help="Actually write. Omit for a dry run.")
@@ -198,7 +236,11 @@ def main() -> int:
     parser.add_argument("--qids", default="",
                         help="Optional JSON file mapping name -> Wikidata QID.")
     parser.add_argument("--out", default="", help="Write the per-name verdicts here.")
-    args = parser.parse_args()
+    return parser
+
+
+def main() -> int:
+    args = build_parser().parse_args()
     if args.dry_run and args.apply:
         sys.exit("ERROR: --dry-run and --apply are contradictory. Pick one.")
 
@@ -256,9 +298,9 @@ def main() -> int:
                   "reasons": result.reasons, "p31_class": result.p31_class}
         if result.verdict == "accept":
             # THE VERBATIM GATE. A row that cannot prove it is an unmodified
-            # slice of what was fetched is dropped, not written.
+            # paragraph of what was fetched is dropped, not written.
             try:
-                assert_verbatim(result.paragraph, result.paragraph)
+                verbatim_gate(result)
                 payload = storage_payload(result, now)
             except (VerbatimViolation, ValueError) as exc:
                 counts["verbatim_violation"] += 1

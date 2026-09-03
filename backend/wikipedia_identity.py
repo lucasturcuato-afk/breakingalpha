@@ -60,13 +60,22 @@ the guard costs no extra requests:
       first 200 characters of the first paragraph, after normalisation. This
       is what catches parent substitution: `BofA Securities` landing on
       `Bank of America` fails S3 and is not shipped.
-  S4  COMMERCIAL term in the Wikidata short description. Added after the fresh
+  S4  COMMERCIAL term in the Wikidata short description OR in the DEFINING
+      CLAUSE of the lead (sentence one, capped). Added after the fresh
       adversarial set shipped `Renaissance` the European historical period on
       S1 alone, and tightened from "organisational" to "commercial" after a
       production dry run shipped `Forterra` the Seattle land-conservation
       nonprofit. It is the one signal that does not share S1's dependence on an
-      ontology built for a different question. Calibrated offline against the
-      302-name census: 237 of 238 hand-adjudicated positives pass.
+      ontology built for a different question.
+
+      IT READS THE LEAD AS WELL AS THE DESCRIPTION, AND THE FIRST VERSION DID
+      NOT. That version's cost was reported as 0.4 percent, measured on the
+      302-name census the vocabulary had been fitted to. Measured on 500 FRESH
+      production names it was 4.5 percent, and the pages it blocked were pages
+      whose own first sentence says what they are: `Oncolytics Biotech Inc. is
+      a biotech company` carries no Wikidata description at all. See
+      `description_names_a_commercial_organisation` for why the window is
+      sentence one and not the paragraph.
 
 VERDICTS
   accept  -> all three signals pass. This is the ONLY verdict that writes.
@@ -264,27 +273,65 @@ def first_paragraph(extract: str) -> str:
     return ""
 
 
+def paragraphs(extract: str) -> list[str]:
+    """Every blank-line-delimited paragraph of an extract, stripped, in order.
+
+    `first_paragraph()` returns element 0 of this list. The list itself is what
+    `assert_verbatim()` matches against, because BOUNDARY ALIGNMENT is the
+    property that separates a reproduction from an excerpt of an excerpt.
+    """
+    if not extract:
+        return []
+    return [block.strip() for block in re.split(r"\n\s*\n", extract.strip()) if block.strip()]
+
+
 class VerbatimViolation(RuntimeError):
     """Raised when a paragraph about to be stored is not what was fetched."""
 
 
-def assert_verbatim(stored: str, source_extract: str) -> None:
+def assert_verbatim(stored: str, *, source_extract: str) -> None:
     """THE ENFORCEMENT POINT for the licence rule.
 
-    `stored` must be a contiguous, unmodified paragraph of `source_extract`.
-    A trimmed, ellipsised, re-wrapped or model-rewritten string fails here and
-    the backfill refuses to write it. Called by the runner on every row before
-    the upsert payload is built.
+    `stored` must be a WHOLE paragraph of `source_extract`, byte for byte.
+    A trimmed, ellipsised, re-wrapped, re-normalised or model-rewritten string
+    fails here and the backfill refuses to write it.
+
+    TWO THINGS ABOUT THIS SIGNATURE, BOTH LEARNED FROM DEFECTS IT SHIPPED WITH.
+
+    `source_extract` IS KEYWORD-ONLY. The previous version took it positionally
+    and the runner called `assert_verbatim(result.paragraph, result.paragraph)`,
+    passing the same value twice. Containment of a string in itself is
+    unconditionally true, so the gate accepted a truncation, a full model
+    rewrite, an NFD re-normalisation and an NBSP collapse, and the test suite
+    stayed green because the tests alone called it with two different values.
+    Naming the argument makes that call read as the absurdity it is. The
+    load-bearing fix is structural and lives in `storage_payload()`, which now
+    reads BOTH values off one `Adjudication` so no caller can supply either.
+
+    IT MATCHES A PARAGRAPH AND NOT A SUBSTRING. The previous version asked
+    `stored in source_extract`, which is true of every bare prefix, so a
+    truncation to any length passed. `test_assert_verbatim_rejects_a_slice`
+    claimed to cover that and passed for an unrelated reason: it cut at index
+    80 of a fixture whose character 79 is a space, so the edge-whitespace rule
+    fired and the containment rule was never exercised. Cutting at 79 or 81
+    sailed through. Paragraph equality has no such accident in it.
     """
     if not stored:
         raise VerbatimViolation("empty paragraph")
+    if not source_extract:
+        raise VerbatimViolation("no source extract to compare against")
     if stored != stored.strip():
         raise VerbatimViolation("paragraph carries edge whitespace")
-    if stored not in source_extract:
-        raise VerbatimViolation("paragraph is not a contiguous slice of the fetched extract")
     for marker in ("…", "..."):
         if stored.endswith(marker):
             raise VerbatimViolation(f"paragraph ends in a truncation marker: {marker!r}")
+    blocks = paragraphs(source_extract)
+    if stored not in blocks:
+        detail = "is not a whole paragraph of the fetched extract"
+        if stored in source_extract:
+            detail = ("is a partial slice of a paragraph, not the paragraph "
+                      f"({len(stored)} chars)")
+        raise VerbatimViolation(f"paragraph {detail}")
 
 
 # ---------------------------------------------------------------------------
@@ -580,7 +627,46 @@ def surname_or_disambiguation(*, is_disambig_pageprop: bool, short_description: 
     match = _DISAMBIG_LEAD_RE.search((lead_text or "")[:400])
     if match:
         return True, f"lead_text:{match.group(0).lower()}"
+    reason = list_header_reason(first_paragraph(lead_text or ""))
+    if reason:
+        return True, reason
     return False, ""
+
+
+def list_header_reason(paragraph: str) -> str:
+    """A PARAGRAPH THAT ENDS IN A COLON IS ANNOUNCING A LIST, NOT DESCRIBING A
+    COMPANY. Returns a reason string, or "" when the paragraph is prose.
+
+    THIS IS THE `Hyundai` DEFECT AND IT IS WORTH ITS OWN RULE. Measured live:
+    the `Hyundai` article's lead paragraph is 119 characters, which clears the
+    74-character identity floor. Its P31 is a conglomerate, so S1 passes. It is
+    not flagged as a disambiguation page, so S2 passed. Its own name is in the
+    first sentence, so S3 passes. Its Wikidata description says "multinational
+    conglomerate headquartered in Seoul", so S4 passes. Four signals, zero
+    reasons, verdict `accept`, and what it would have shipped onto
+    /company/hyundai is:
+
+        Hyundai is a former South Korean industrial conglomerate ("chaebol"),
+        which was restructured into the following groups:
+
+    That is a set-index page written as prose. Every content word the page has
+    is in the list that follows the colon, and the paragraph selector stops at
+    the colon by design because the list is not a paragraph. No signal built on
+    what the page IS can see this, because the page is about a real
+    conglomerate. It is the paragraph's SHAPE that is wrong.
+
+    Also caught: the "may refer to" family that MediaWiki renders without the
+    disambiguation pageprop, and any lead whose only sentence promises a list.
+    """
+    para = (paragraph or "").strip()
+    if not para:
+        return ""
+    if para.endswith(":"):
+        return f"lead_paragraph_is_a_list_header:{para[-60:]!r}"
+    if re.search(r"\b(?:the following|listed below|as follows)\b\s*[:.]?\s*$", para,
+                 re.IGNORECASE):
+        return "lead_paragraph_promises_a_list_it_does_not_contain"
+    return ""
 
 
 # ---------------------------------------------------------------------------
@@ -635,19 +721,105 @@ _COMMERCIAL_TERM_RE = re.compile(
 )
 
 
-def description_names_a_commercial_organisation(short_description: str) -> tuple[bool, str]:
+# The defining clause of a lead: "X is a <what it is>". Sentence one and no
+# further, capped. THE CAP AND THE SENTENCE BOUND ARE BOTH LOAD-BEARING AND WERE
+# BOTH MEASURED. Reading the whole paragraph admits `KBRA`, a radio station in
+# Freer, Texas that clears S1, S2 and S3 on a production row meaning Kroll Bond
+# Rating Agency: its first sentence says "radio station", and "Cobra
+# Broadcasting, LLC" appears one sentence later. Sentence one blocks it; the
+# paragraph does not.
+S4_LEAD_CLAUSE_CHARS = 300
+
+# Abbreviations that end in a period and do not end a sentence. Without these,
+# "Expedia Inc. is an American online travel agency" truncates at "Expedia Inc."
+# and the defining clause is never read.
+_SENTENCE_END_RE = re.compile(
+    r"(?<!\b[A-Z])"
+    r"(?<!\bInc)(?<!\bCorp)(?<!\bCo)(?<!\bLtd)(?<!\bPlc)(?<!\bSt)(?<!\bJr)(?<!\bSr)"
+    r"(?<!\bLLC)(?<!\bL\.P)(?<!\bS\.A)(?<!\bN\.V)(?<!\bA\.G)(?<!\bPty)(?<!\bBhd)"
+    r"(?<!\bU\.S)(?<!\bU\.K)(?<!\bNo)(?<!\bvs)(?<!\betc)(?<!\bapprox)"
+    r"\.\s+(?=[A-Z0-9])"
+)
+
+
+# A relative clause describes something OTHER than the subject's category, so
+# it is cut before S4 reads. MEASURED, NOT TASTE: the `Federal Open Market
+# Committee` lead opens "is a committee within the Federal Reserve System" and
+# then says "that is charged under United States law with overseeing the
+# nation's open market operations (e.g., the Fed's buying and selling of United
+# States Treasury securities)". The word "securities" is a thing the committee
+# trades, not a thing it is, and on the full sentence it admitted a Federal
+# Reserve committee as a commercial firm.
+_RELATIVE_CLAUSE_RE = re.compile(r"[;:]|\s(?:that|which|who|whose|where)\s", re.IGNORECASE)
+
+
+def defining_clause(lead_text: str, cap: int = S4_LEAD_CLAUSE_CHARS) -> str:
+    """The COPULA CLAUSE of a lead: sentence one, minus its relative clauses.
+
+    "X is a <category>" and nothing after the point where the sentence stops
+    saying what X is and starts saying what X does or where X lives.
+
+    Comparison copy only. This never touches the stored or rendered paragraph.
+    It builds a short string for S4 to read and throws it away.
+    """
+    para = first_paragraph(lead_text or "")
+    if not para:
+        return ""
+    match = _SENTENCE_END_RE.search(para[:cap + 120])
+    clause = para[: match.start() + 1] if match else para
+    cut = _RELATIVE_CLAUSE_RE.search(clause)
+    if cut:
+        clause = clause[: cut.start()]
+    return clause[:cap]
+
+
+def description_names_a_commercial_organisation(
+    short_description: str, lead_text: str = "",
+) -> tuple[bool, str]:
     """S4. Returns (passes, reason).
 
-    An absent description is NOT a pass. It routes to `review`, because with no
-    description the only organisation evidence left is the P279 walk that
-    `Renaissance` already defeated once. 0 of 238 census positives had one.
+    TWO PLACES ARE READ, AND THE SECOND ONE IS THE FIX. The Wikidata short
+    description first, then the DEFINING CLAUSE of the lead: sentence one of the
+    first paragraph, capped at `S4_LEAD_CLAUSE_CHARS`.
+
+    WHY THE LEAD IS READ AT ALL. S4 shipped reading the short description and
+    nothing else, and the cost of that was reported as 0.4 percent because it
+    was measured on the 302-name census the vocabulary had been fitted to.
+    Measured on 500 FRESH production names, the pages it blocks are pages whose
+    own first sentence says what they are in plain words: `Oncolytics Biotech
+    Inc. is a biotech company` carries no Wikidata description at all, and
+    `Expedia Inc. is an American online travel agency owned by Expedia Group` is
+    described as a "travel website". Blocking a firm because a volunteer wrote
+    a product noun into a one-line field is not a licence or correctness
+    property, it is a data-entry accident.
+
+    WHY SENTENCE ONE AND NOT THE PARAGRAPH. Measured: reading the whole
+    paragraph admits `KBRA`, a Texas radio station that clears S1, S2 and S3 on
+    a row that means Kroll Bond Rating Agency, on the words "Cobra Broadcasting,
+    LLC" in its second sentence. Its first sentence says "radio station". The
+    defining clause is where a lead states its category; everything after it is
+    where a lead mentions other people's categories.
+
+    WHAT DOES NOT CHANGE. The bar is still COMMERCIAL and not merely
+    organisational, which is what holds the Forterra land-conservation nonprofit
+    and, measured fresh, the Federal Open Market Committee, Major League
+    Baseball and the National Football League. An absent short description is no
+    longer an automatic hold, but it is not a pass either: the lead still has to
+    say a commercial word.
     """
     text = (short_description or "").strip()
+    if text:
+        match = _COMMERCIAL_TERM_RE.search(text)
+        if match:
+            return True, ""
+    clause = defining_clause(lead_text)
+    if clause:
+        match = _COMMERCIAL_TERM_RE.search(clause)
+        if match:
+            return True, ""
     if not text:
-        return False, "S4_no_short_description"
-    if _COMMERCIAL_TERM_RE.search(text):
-        return True, ""
-    return False, f"S4_description_not_commercial:{text[:60]}"
+        return False, "S4_no_short_description_and_lead_names_no_commercial_form"
+    return False, f"S4_neither_description_nor_lead_is_commercial:{text[:60]}"
 
 
 # ---------------------------------------------------------------------------
@@ -798,6 +970,12 @@ class Adjudication:
     p31_class: str = "unknown"        # org | reject | unknown
     short_description: str = ""
     paragraph: str = ""               # VERBATIM. Never trimmed.
+    # THE EXTRACT `paragraph` WAS SELECTED FROM, carried so the verbatim gate
+    # has something real to compare against. Its absence is why the runner's
+    # gate degenerated into `assert_verbatim(paragraph, paragraph)`: the
+    # dataclass asserted a property in a field comment that nothing on it could
+    # enforce. A guard needs the other side of the comparison in hand.
+    source_extract: str = ""
     paragraph_chars: int = 0
     clears_floor: bool = False
     name_in_window: bool = False
@@ -830,6 +1008,7 @@ def adjudicate(name: str, page: PageFetch, p31: Sequence[str],
 
     para = first_paragraph(page.extract)
     result.paragraph = para
+    result.source_extract = page.extract
     result.paragraph_chars = len(para)
     result.clears_floor = len(para) >= IDENTITY_FLOOR_CHARS
 
@@ -860,8 +1039,10 @@ def adjudicate(name: str, page: PageFetch, p31: Sequence[str],
     elif not in_window:
         result.reasons.append("S3_name_outside_200char_window")
 
-    # S4.
-    s4_ok, s4_reason = description_names_a_commercial_organisation(page.short_description)
+    # S4. The lead is passed as well as the description; S4 reads only its
+    # defining clause, and only when the description did not already answer.
+    s4_ok, s4_reason = description_names_a_commercial_organisation(
+        page.short_description, para)
     result.description_is_organisational = s4_ok
     if not s4_ok:
         result.reasons.append(s4_reason)
@@ -879,7 +1060,12 @@ def adjudicate(name: str, page: PageFetch, p31: Sequence[str],
     # signals agree it is not a commercial organisation and the reject is safe.
     hard_reasons = ["S2_", "S1_not_organisation", "S3_name_absent", "below_identity_floor"]
     if result.p31_class != "org":
-        hard_reasons.append("S4_description_not_commercial")
+        # PREFIX, NOT THE OLD FULL REASON STRING. S4 emits two failure reasons
+        # now (no description at all, and neither source commercial), and the
+        # previous line matched only one of them by name. A reason list that a
+        # verdict rule matches by exact string is a rule that silently stops
+        # firing the day the string changes.
+        hard_reasons.append("S4_")
     hard = any(r.startswith(tuple(hard_reasons)) for r in result.reasons)
     if hard:
         result.verdict = "reject"
@@ -1043,12 +1229,22 @@ def sitelink_titles(qids: Sequence[str], budget: RequestBudget) -> dict[str, str
 def storage_payload(result: Adjudication, fetched_at_iso: str) -> dict[str, Any]:
     """The exact columns the backfill writes. VERBATIM paragraph, plus provenance.
 
-    Raises VerbatimViolation if the paragraph is not a clean slice of the
-    fetched extract. Callers must not catch it: a row that cannot prove it is
-    verbatim must not be written.
+    THE VERBATIM GATE RUNS HERE, AND THAT LOCATION IS THE POINT. Both sides of
+    the comparison are read off the one `Adjudication`, so a caller cannot pass
+    the paragraph as its own source and cannot pass an extract from a different
+    page. The docstring used to claim this function raised `VerbatimViolation`
+    while nothing in it could; the claim is now true.
+
+    Callers must not catch it around the payload build alone: a row that cannot
+    prove it is verbatim must not be written.
     """
     if result.verdict != "accept":
         raise ValueError(f"refusing to build a payload for verdict={result.verdict}")
+    assert_verbatim(result.paragraph, source_extract=result.source_extract)
+    if result.paragraph != first_paragraph(result.source_extract):
+        raise VerbatimViolation(
+            "paragraph is not the lead paragraph of the extract it claims to come from"
+        )
     return {
         "description": result.paragraph,
         "description_source": "wikipedia",

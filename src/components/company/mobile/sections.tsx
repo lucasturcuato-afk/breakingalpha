@@ -21,7 +21,21 @@ import {
 import type { CompanyIntelData, ToneDirection, ToneRowDirection } from "./types";
 import { Chip, EmptyWell, RuledRow, SECTION_FILL, SectionNote, SectionRule } from "./parts";
 import { FONT_DISPLAY, FONT_MONO, FONT_SANS } from "@/components/mobile/fonts";
+import { VerbatimParagraph } from "@/components/company/VerbatimParagraph";
 import styles from "./company-mobile.module.css";
+
+/**
+ * Shared by both overview branches so the licensed one is not styled apart from
+ * the curated one. NO CLAMP AND NO FIXED HEIGHT: a CSS line-clamp would be
+ * fine, but this surface does not use one, and a JS truncation on the wikipedia
+ * branch is a licence breach rather than a layout choice.
+ */
+const OVERVIEW_TEXT_STYLE = {
+  margin: "10px 0 0",
+  font: `400 14px/1.65 ${FONT_SANS}`,
+  color: "var(--c-body)",
+  textWrap: "pretty",
+} as const;
 
 /**
  * Ink for a tone reading. ink tokens are text, base tokens are fills, and this
@@ -183,21 +197,21 @@ export function PrimerSection({
       {primer.overview ? (
         <>
           <SectionRule marginTop={18}>business overview</SectionRule>
-          <p
-            style={{
-              margin: "10px 0 0",
-              font: `400 14px/1.65 ${FONT_SANS}`,
-              color: "var(--c-body)",
-              textWrap: "pretty",
-            }}
-          >
-            {primer.overview}
-          </p>
+          {/* The wikipedia branch goes through `VerbatimParagraph`, whose `text`
+              prop is `VerbatimText`. Rendering it inline as `{primer.overview}`
+              would type-check with a `.slice()` in it, because a JSX child is
+              `ReactNode` and `ReactNode` accepts plain `string`: the brand
+              cannot see a render, only an assignment. */}
+          {primer.overview.source === "wikipedia" ? (
+            <VerbatimParagraph text={primer.overview.text} style={OVERVIEW_TEXT_STYLE} />
+          ) : (
+            <p style={OVERVIEW_TEXT_STYLE}>{primer.overview.text}</p>
+          )}
           {/* CC BY-SA 4.0 section 3(a)(1): a licensed excerpt renders with a
               link to the source article and to the licence, or it does not
-              render. `buildPrimer` sets this in the same expression that sets
-              `overview`, so the two cannot come apart. */}
-          {primer.overviewAttribution ? (
+              render. The attribution now travels ON the artifact rather than in
+              a sibling field, so the text and its source cannot come apart. */}
+          {primer.overview.source === "wikipedia" ? (
             <p
               style={{
                 margin: "6px 0 0",
@@ -207,22 +221,22 @@ export function PrimerSection({
             >
               {"Company description from "}
               <a
-                href={primer.overviewAttribution.articleUrl}
+                href={primer.overview.attribution.articleUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                title={primer.overviewAttribution.articleTitle}
+                title={primer.overview.attribution.articleTitle}
                 style={{ color: "inherit", textDecoration: "underline" }}
               >
                 Wikipedia
               </a>
               {", licensed "}
               <a
-                href={primer.overviewAttribution.licenseUrl}
+                href={primer.overview.attribution.licenseUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 style={{ color: "inherit", textDecoration: "underline" }}
               >
-                {primer.overviewAttribution.licenseName}
+                {primer.overview.attribution.licenseName}
               </a>
               .
             </p>

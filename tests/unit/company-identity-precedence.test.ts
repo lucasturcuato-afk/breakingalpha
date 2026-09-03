@@ -17,18 +17,36 @@
  *    rendered bare.
  *
  * The third protection, that the paragraph cannot be truncated on the way to
- * the page, is enforced by the type system rather than by a test: `VerbatimText`
- * is an opaque branded string that only `asVerbatim()` mints, and every
- * shortening string method returns plain `string`. `npx tsc --noEmit` is that
- * assertion. The negative cases are listed at the bottom of this file as
- * commented code with the exact error each one produces.
+ * the page, is enforced by the type system rather than by a test, and `npx tsc
+ * --noEmit` is that assertion. The negative cases are listed at the bottom of
+ * this file as commented code with the exact error each one produces.
+ *
+ * WHAT THE BRAND DID NOT COVER UNTIL THIS COMMIT, measured with `tsc --noEmit`
+ * against probe files rather than reasoned about. A brand stops a shortened
+ * string being assigned BACK INTO a verbatim slot. Four things it does not stop
+ * on its own, all of which compiled clean, three of which needed no cast:
+ *
+ *   1. Consumption. `VerbatimText` is a SUBTYPE of `string`, so every
+ *      `(text: string) => string` helper takes one. `trimSummary` in PrimerTab
+ *      accepted a wikipedia paragraph four lines under a comment saying that
+ *      was a compile error. Fixed with `PlainText`, a type a branded string
+ *      cannot satisfy.
+ *   2. Re-minting. `asVerbatim` was exported and would brand any string that
+ *      did not happen to end in an ellipsis. It is module-private now, and
+ *      `wikipediaArtifact()` is the only way in.
+ *   3. Widening at a mapper boundary. `buildPrimer` assigned the paragraph into
+ *      a `string`-typed field on the mobile shape, and the brand was gone from
+ *      the next line on. That field carries `IdentityArtifact` now.
+ *   4. Rendering. A JSX child is `ReactNode`, which accepts plain `string`, so
+ *      `{identity.text.slice(0, 200)}` type-checked at both render sites. Both
+ *      now go through `VerbatimParagraph`, whose prop is `VerbatimText`.
  */
 
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
 
 import {
-  asVerbatim,
+  isLicensedSource,
   resolveIdentityArtifact,
   wikipediaArtifact,
   yahooSummaryResolved,
@@ -149,15 +167,49 @@ test("attribution defaults to CC BY-SA 4.0 rather than rendering an unlabelled e
   assert.equal(artifact?.attribution.licenseUrl, CC_BY_SA_4_0_URL);
 });
 
-test("a row missing attribution falls through rather than rendering bare", () => {
-  const artifact = resolveIdentityArtifact({
-    row: wikiRow({ description_source_url: null }),
-  });
-  // Falls to `stored`, which renders WITHOUT the wikipedia branch's attribution
-  // block, so it must not be reached from a wikipedia source. It is not:
-  // `description_source` is still "wikipedia", so `stored` is only reached when
-  // the artifact could not be built, and that is the row being malformed.
-  assert.notEqual(artifact?.source, "wikipedia");
+test("a row missing attribution renders nothing at all, not an unattributed excerpt", () => {
+  // THE LAUNDERING PATH, AND THE OLD ASSERTION HERE PASSED WHILE IT WAS OPEN.
+  // It checked only that the result was not the `wikipedia` branch. It was not:
+  // it was the `stored` branch, carrying the same licensed prose with
+  // `normalizable: true` and no attribution object, which PrimerTab then POSTs
+  // to gemini-2.5-flash. A model rewrite of CC BY-SA 4.0 text, published
+  // unattributed, is the exact hazard the brand exists to prevent, reached by
+  // walking around the brand rather than through it.
+  //
+  // Licence provenance is one-way: a row that says the text came from Wikipedia
+  // cannot stop having come from Wikipedia because a sibling column is null.
+  for (const broken of [
+    wikiRow({ description_source_url: null }),
+    wikiRow({ description_source_url: "   " }),
+    wikiRow({ description_source_title: null }),
+    wikiRow({ description: WIKI_PARA + "\u2026" }),
+    wikiRow({ description: "  " + WIKI_PARA }),
+    wikiRow({ description_source: "wikipedia_repaired", description_source_url: null }),
+  ]) {
+    assert.equal(resolveIdentityArtifact({ row: broken }), null);
+  }
+});
+
+test("a broken Wikipedia row is still outranked, not resurrected", () => {
+  // Hiding the block is the LAST resort, not the first. A real Yahoo summary or
+  // a curated brief still fills the slot.
+  const broken = wikiRow({ description_source_url: null });
+  assert.equal(
+    resolveIdentityArtifact({ yahooSummary: "Yahoo prose.", row: broken })?.source,
+    "yahoo",
+  );
+  assert.equal(
+    resolveIdentityArtifact({ curatedBrief: "Curated brief.", row: broken })?.source,
+    "curated",
+  );
+});
+
+test("isLicensedSource is the one list both the minter and the guard read", () => {
+  assert.equal(isLicensedSource("wikipedia"), true);
+  assert.equal(isLicensedSource("wikipedia_repaired"), true);
+  for (const source of ["curated", "yahoo", "manual", null, undefined] as const) {
+    assert.equal(isLicensedSource(source), false);
+  }
 });
 
 test("wikipedia_repaired is recognised as a licensed source", () => {
@@ -170,19 +222,28 @@ test("wikipedia_repaired is recognised as a licensed source", () => {
 // The verbatim lock
 // ---------------------------------------------------------------------------
 
-test("asVerbatim passes an untouched paragraph through byte for byte", () => {
-  const minted = asVerbatim(WIKI_PARA);
+test("an untouched paragraph passes through byte for byte", () => {
+  // THROUGH `wikipediaArtifact` AND NOT THROUGH THE MINTER. `asVerbatim` used
+  // to be exported and this file used to call it directly, which is what made
+  // it a public laundry: any string that did not end in an ellipsis came back
+  // branded. The only way to a `VerbatimText` now is a `companies` row that
+  // also carries the provenance the licence requires.
+  const minted = wikipediaArtifact(wikiRow())?.text;
   assert.equal(minted, WIKI_PARA);
   assert.equal(minted?.length, WIKI_PARA.length);
 });
 
-test("asVerbatim refuses text that shows evidence of modification", () => {
-  assert.equal(asVerbatim(WIKI_PARA.slice(0, 120) + "..."), null);
-  assert.equal(asVerbatim(WIKI_PARA.slice(0, 120) + "…"), null);
-  assert.equal(asVerbatim("  " + WIKI_PARA), null);
-  assert.equal(asVerbatim(WIKI_PARA + "\n"), null);
-  assert.equal(asVerbatim(""), null);
-  assert.equal(asVerbatim(null), null);
+test("text that shows evidence of modification is refused", () => {
+  for (const description of [
+    WIKI_PARA.slice(0, 120) + "...",
+    WIKI_PARA.slice(0, 120) + "…",
+    "  " + WIKI_PARA,
+    WIKI_PARA + "\n",
+    "",
+    null,
+  ]) {
+    assert.equal(wikipediaArtifact(wikiRow({ description })), null);
+  }
 });
 
 test("there is no length cap anywhere on the wikipedia path", () => {
@@ -202,12 +263,15 @@ test("the resolved artifact's text is the stored string, identically", () => {
 });
 
 /*
- * COMPILE-TIME NEGATIVES. Each of these is a licence breach and each is a tsc
- * error, not a review catch. Uncomment any one and `npx tsc --noEmit` fails.
+ * COMPILE-TIME NEGATIVES. Each is a licence breach and each is a tsc error, not
+ * a review catch. Uncomment any one and `npx tsc --noEmit` fails with the code
+ * named beside it. Every code below was produced by running tsc against a probe
+ * file, not inferred from the type declarations.
  *
- *   const t = asVerbatim(WIKI_PARA)!;
+ *   const t = wikipediaArtifact(wikiRow())!.text;
  *
- *   // Type 'string' is not assignable to type 'VerbatimText'.
+ *   // RE-ENTRY. TS2322: Type 'string' is not assignable to type 'VerbatimText'.
+ *   // This half always held. It is the other four that did not.
  *   const truncated: VerbatimText = t.slice(0, 280);
  *   const cut: VerbatimText = t.substring(0, 280);
  *   const stripped: VerbatimText = t.trim();
@@ -215,9 +279,35 @@ test("the resolved artifact's text is the stored string, identically", () => {
  *   const interpolated: VerbatimText = `${t.slice(0, 200)}...`;
  *   const upper: VerbatimText = t.toUpperCase();
  *
- *   // Same error through the artifact, which is where a real regression would
- *   // be introduced:
  *   const a = wikipediaArtifact(wikiRow())!;
- *   const bad = { ...a, text: a.text.slice(0, 280) };
- *   <PrimerBusinessOverview identity={bad} />
+ *   const bad = { ...a, text: a.text.slice(0, 280) };   // TS2322
+ *
+ *   // CONSUMPTION. TS2345: Argument of type 'VerbatimText' is not assignable
+ *   // to parameter of type 'PlainText'. Types of property '[VERBATIM_BRAND]'
+ *   // are incompatible. This is the one that compiled clean beside a comment
+ *   // in PrimerTab.tsx claiming it was an error.
+ *   declare function trimSummary(text: PlainText): string;
+ *   trimSummary(a.text);
+ *
+ *   // CONSUMPTION, UN-NARROWED. TS2345: Argument of type
+ *   // 'VerbatimText | PlainText' is not assignable to parameter of type
+ *   // 'PlainText'. Reading `.text` off the union no longer widens to `string`.
+ *   declare const u: IdentityArtifact;
+ *   trimSummary(u.text);
+ *
+ *   // RE-MINTING. TS2459: Module '"@/lib/company-identity"' declares
+ *   // 'asVerbatim' locally, but it is not exported.
+ *   import { asVerbatim } from "@/lib/company-identity";
+ *
+ *   // WIDENING AT A MAPPER BOUNDARY. No error is possible here, which is the
+ *   // point: `{ overview: a.text }` into an `overview: string` field compiled
+ *   // clean and dropped the brand. The fix is the field's type, not a check.
+ *   // `CompanyIntelData["primer"].overview` is `IdentityArtifact | null` now.
+ *
+ *   // RENDERING. TS2322: Type 'string' is not assignable to type
+ *   // 'VerbatimText'. A bare `{a.text.slice(0, 200)}` in JSX has no error to
+ *   // give, because a JSX child is `ReactNode` and `ReactNode` accepts
+ *   // `string`. Routing both render sites through `VerbatimParagraph` is what
+ *   // turns the last inch into a typed slot.
+ *   <VerbatimParagraph text={a.text.slice(0, 200)} />
  */
