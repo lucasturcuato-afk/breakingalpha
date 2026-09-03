@@ -1,12 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { MobileSettingsScreen } from "@/components/settings/mobile-settings-screen";
 import { AlertsView } from "@/components/settings/mobile-alerts-screen";
 import { MobileLearnedScreen } from "@/components/settings/mobile-learned-screen";
 import { MobileSavedScreen, type SavedSortKey } from "@/components/saved/mobile-saved-screen";
 import { MobileShareScreen } from "@/components/share/mobile-share-screen";
-import type { EnrichedDeal } from "@/hooks/useSavedDeals";
 
 /**
  * Fixtures for the preview harness. Not a live surface. See the route comment.
@@ -26,28 +25,6 @@ const SECTORS = [
   "Geopolitics & Macro",
 ];
 
-const DEALS: EnrichedDeal[] = [
-  {
-    id: "fx-1", company: "Hologic", acquirer: "Blackstone & TPG", deal_type: "Take-private",
-    stage: "under_loi", value: "$18.3B", sector: "Medtech",
-    source_url: "https://www.wsj.com", saved_at: "2026-08-04T12:00:00.000Z",
-  },
-  {
-    id: "fx-2", company: "Electronic Arts", acquirer: "PIF consortium", deal_type: "Take-private",
-    stage: "closed", value: "$55.0B", sector: "Software",
-    source_url: "https://www.ft.com", saved_at: "2026-08-06T12:00:00.000Z",
-  },
-  {
-    id: "fx-3", company: "Evoqua", acquirer: "Xylem", deal_type: "All-stock merger",
-    stage: "announced", value: "$9.4B", sector: "Industrials",
-    source_url: "https://www.reuters.com", saved_at: "2026-08-03T12:00:00.000Z",
-  },
-  {
-    id: "fx-4", company: "Smartsheet", acquirer: "Vista Equity", deal_type: "Take-private",
-    stage: "rumored", value: "$4.1B", sector: "Software",
-    source_url: "https://www.bloomberg.com", saved_at: "2026-07-29T12:00:00.000Z",
-  },
-];
 
 const WEIGHTS = [
   { sector: "Energy & Utilities", weight: 1.84 },
@@ -58,6 +35,43 @@ const WEIGHTS = [
   { sector: "Consumer", weight: 0.62 },
 ];
 
+
+/**
+ * The harness's invented data, loaded on demand and only off production.
+ *
+ * WHY THE LITERAL IS WRITTEN OUT RATHER THAN READ FROM A GATE CONSTANT.
+ * Turbopack inlines `process.env.NODE_ENV` inside the module that reads it and
+ * does not propagate an imported boolean back to a call site in another
+ * module. A guard written as `if (!SOME_GATE)` therefore leaves the `import()`
+ * below REACHABLE, and a reachable `import()` is emitted as its own chunk under
+ * `.next/static/chunks/`, which is public and needs no session. Written as the
+ * literal, it folds at build time, the `import()` is unreachable, and no chunk
+ * is emitted for the fixture at all.
+ *
+ * The routing gate in `src/proxy.ts:112` already keeps `/preview/*` to a
+ * development server. That gates the ROUTE, not the BUNDLE: the chunk shipped
+ * regardless, because a bundler ships what a client module imports, not what a
+ * reader is allowed to reach. Null forever on production is the correct
+ * answer, and each caller draws its own empty state for it.
+ */
+type PreviewFixture = typeof import("./preview-settings-fixture");
+
+function usePreviewFixture(): PreviewFixture | null {
+  const [mod, setMod] = useState<PreviewFixture | null>(null);
+
+  useEffect(() => {
+    if (process.env.NODE_ENV === "production") return;
+    let cancelled = false;
+    void import("./preview-settings-fixture").then((m) => {
+      if (!cancelled) setMod(m);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return mod;
+}
 
 export function PreviewSettingsBatch({ screen, state }: { screen: PreviewScreen; state: PreviewState }) {
   if (screen === "settings") return <SettingsPreview state={state} />;
@@ -112,15 +126,22 @@ function AlertsPreview() {
 
 function SavedPreview({ state }: { state: PreviewState }) {
   const [sortKey, setSortKey] = useState<SavedSortKey>("saved_at");
-  const [deals, setDeals] = useState(DEALS);
+  const fx = usePreviewFixture();
+  /* Unsaving is tracked as a set of removed ids rather than by copying the
+     rows into state, because the rows now arrive after the first render. */
+  const [removed, setRemoved] = useState<string[]>([]);
+  const deals = (fx?.PREVIEW_DEALS ?? []).filter((d) => !removed.includes(d.id));
+  /* Loading, not empty, while the sample is still in flight off production.
+     On production `fx` stays null and the screen draws its real empty state. */
+  const pending = process.env.NODE_ENV !== "production" && fx === null;
   return (
     <MobileSavedScreen
       deals={state === "empty" ? [] : deals}
-      isLoading={state === "loading"}
+      isLoading={state === "loading" || (state !== "empty" && pending)}
       error={state === "error" ? "Your saved deals could not be loaded." : null}
       sortKey={sortKey}
       onSort={setSortKey}
-      onUnsave={(id) => setDeals((prev) => prev.filter((d) => d.id !== id))}
+      onUnsave={(id) => setRemoved((prev) => [...prev, id])}
       onExport={() => {}}
       exported={state === "saved"}
       stageOf={(deal) => deal.stage || deal.status || "rumored"}
@@ -148,68 +169,21 @@ function LearnedPreview({ state }: { state: PreviewState }) {
 }
 
 function SharePreview({ state }: { state: PreviewState }) {
-  const empty = state === "empty";
+  const fx = usePreviewFixture();
+  /* Empty when the state asks for empty, and empty on production because the
+     sample never arrives there. Both draw the screen's own nothing-to-show
+     plate, which is the honest rendering for a harness with no fixture. */
+  const brief = state === "empty" ? null : fx?.PREVIEW_BRIEF ?? null;
   return (
     <MobileShareScreen
       kind="Morning Brief"
       dateLine="Thursday, August 6, 2026"
-      headline={empty ? null : "Breadth Thins as Rates Do the Quiet Work"}
-      marketTone={empty ? null : "Patient"}
-      summary={
-        empty
-          ? null
-          : "Breadth thinned for a fourth session while the index kept its level, which is the tape saying it does not believe that level. Nine of eleven sectors finished green on a day the index gained almost nothing."
-      }
-      deals={
-        empty
-          ? []
-          : [
-              {
-                company: "Hologic",
-                value: "$18.3B",
-                deal_type: "Take-private",
-                one_liner:
-                  "Blackstone and TPG go exclusive on a diagnostics platform with a recurring consumables base.",
-              },
-              {
-                company: "Evoqua",
-                value: "$9.4B",
-                deal_type: "Merger",
-                one_liner:
-                  "Xylem acquires the industrial water division all-stock; antitrust review runs into Q1.",
-              },
-            ]
-      }
-      sections={
-        empty
-          ? []
-          : [
-              {
-                key: "macro_and_rates",
-                title: "Macro & Rates",
-                body:
-                  "The ten-year gave back a basis point into the close after two soft payroll prints, and the front end has moved further than the long end in every session this week. The desk reads the term premium as carrying more of the level than the market is pricing.",
-              },
-              {
-                key: "deals_and_ma",
-                title: "Deals & M&A",
-                body:
-                  "Sponsors are moving again in medtech. Hologic going exclusive at $18.3B resets the comp set for three more platforms already in market, and the financing is private credit rather than syndicated.",
-              },
-            ]
-      }
-      sectors={
-        empty
-          ? []
-          : [
-              {
-                key: "Energy & Utilities",
-                title: "Energy & Utilities",
-                body:
-                  "Data centre contracting has pulled roughly a third of the merchant nuclear fleet into fixed-price supply agreements. The PJM capacity auction late this month is the first real test of whether firm capacity is scarce enough to keep that pricing.",
-              },
-            ]
-      }
+      headline={brief?.headline ?? null}
+      marketTone={brief?.marketTone ?? null}
+      summary={brief?.summary ?? null}
+      deals={brief?.deals ?? []}
+      sections={brief?.sections ?? []}
+      sectors={brief?.sectors ?? []}
     />
   );
 }
