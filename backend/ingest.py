@@ -3292,7 +3292,10 @@ def store_article(article, analysis):
 #: the code that writes them. PostgREST rejects the WHOLE insert on one unknown
 #: column, so without this a pending migration costs the entire stats row rather
 #: than one field. Drop a key from here once its migration is applied everywhere.
-_STATS_OPTIONAL_KEYS = ("rescued_by_watchlist",)
+# Keys dropped on the retry insert when the column is not there yet. A key
+# belongs here from the moment its writer ships until its migration is applied,
+# so the two can land in EITHER order without losing the whole stats row.
+_STATS_OPTIONAL_KEYS = ("rescued_by_watchlist", "rss_feed_stats")
 
 
 def _persist_ingest_run_stats(payload):
@@ -3586,6 +3589,16 @@ def run_ingestion():
     # depends on it.
     rss_skipped_stale = sum(v.get("stale", 0) for v in source_fetch_stats.values())
     _persist_ingest_run_stats({
+        # Per-named-feed fetch funnel. Until now this was summed into one
+        # rss_skipped_stale integer and the per-feed detail was thrown away, so
+        # a permanently dead feed was invisible in anything queryable: it printed
+        # one error line among 24 and the run still exited 0. That is how three
+        # Reuters feeds and Pitchbook sat dead in RSS_FEEDS until someone probed
+        # them by hand on 2026-05-08. Shape:
+        #   {"<source>": {"fetched": N, "fresh": N, "stale": N}, ...}
+        # Read it ACROSS runs, never on one: fetched=0 is also what a genuinely
+        # quiet feed looks like inside the freshness window.
+        "rss_feed_stats": source_fetch_stats,
         "run_started_at": run_started_at.isoformat(),
         "duration_s": round(time.time() - t_total, 2),
         "relevance_grade_mode": RELEVANCE_GRADE_MODE,
