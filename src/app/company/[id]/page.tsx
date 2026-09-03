@@ -35,6 +35,7 @@ import {
   buildMemoContent,
   buildMemoSystemPrompt,
   filterAndClassifyArticles,
+  noCoverageBriefLine,
 } from "@/lib/company-intel";
 import { fetchCompanyArticles } from "@/app/api/companies/[id]/articles/route";
 import { CompanyIntelScreen } from "@/components/company/mobile";
@@ -364,7 +365,15 @@ export default async function CompanyDetailPage({
   // Curated identity (Snapshot industry + Business overview), keyed on the same
   // canonical name the memo inputs use. Null for uncurated companies, which the
   // Primer sections render as neutral factual empty states.
-  const identity = COMPANY_IDENTITY[canonical] ?? null;
+  // Same canonicalize() fallback buildMemoContent now uses, for the same
+  // reason: `canonical` is the resolved companies-row NAME, which is often an
+  // alias surface form ("Meta Platforms Inc", "Google", "Visa Inc.") while
+  // every COMPANY_IDENTITY key is a canonical one. Without it the Snapshot
+  // industry and Business overview read as uncurated on 11 resolved head names
+  // that ARE curated. Measured: no existing hit changes, because every key in
+  // the map is already its own canonical form.
+  const identity =
+    COMPANY_IDENTITY[canonical] ?? COMPANY_IDENTITY[canonicalize(canonical)] ?? null;
 
   // Web-memo affordance is OFF by default. It renders only when
   // NEXT_PUBLIC_WEB_FALLBACK_ENABLED is explicitly "true" (same flag the
@@ -403,7 +412,21 @@ export default async function CompanyDetailPage({
             // Brief CTA cannot fire a corpus brief against zero articles).
             webMemoEnabled ? (
               <PrimerWebMemo company={companyDetail.display} ticker={companyDetail.ticker} />
-            ) : null
+            ) : (
+              /* One honest line, rendered by this server component with no model
+                 call. It used to be `null`, which left a reader looking at a
+                 Recent developments slot with nothing in it and no statement of
+                 why, beside an Articles tab and a Sources count that were both
+                 non-zero. The sentence names the POOL, not the corpus, because
+                 the Articles tab reads a wider window with no relevance gate and
+                 can legitimately show rows this slot has none of. */
+              <p
+                data-testid="brief-no-coverage"
+                className="rounded-md border border-border-subtle bg-cream-hi p-4 text-sm text-text-muted"
+              >
+                {noCoverageBriefLine(companyDetail.display)}
+              </p>
+            )
           ) : (
             <BriefTab company={canonical} content={memoContent} systemPrompt={systemPrompt} />
           )

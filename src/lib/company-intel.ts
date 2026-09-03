@@ -643,10 +643,41 @@ export function timeAgo(dateStr: string): string {
 // Article matching utilities
 // ---------------------------------------------------------------------------
 
+/**
+ * Does an `articles.companies` / `articles.primary_company` surface form name
+ * the same entity as `canonicalName`?
+ *
+ * THE ARTICLE SIDE GOES THROUGH canonicalize() AND THE TARGET SIDE MUST TOO,
+ * and it not doing so is what emptied the Company Brief. `canonicalName` is
+ * `companies.name` off the resolved cluster head (see getCompanyDetail), which
+ * is itself frequently an alias surface form rather than the canonical: the
+ * SOFI row is stored as "SoFi Technologies" and CANONICAL maps
+ * "sofi technologies" -> "SoFi". So the article tag collapsed to "sofi" while
+ * the target stayed "sofi technologies", the equality branch could not fire,
+ * and neither prefix branch could rescue it: branch 2 needs the tag to START
+ * WITH the 17-char target, and branch 3 is floored at 5 characters while the
+ * canonical form is 4. The predicate returned false for a tag against ITSELF,
+ * so every row the DB filter had just selected on was discarded in memory and
+ * the brief rendered "No articles found ... in current window" over a page
+ * showing dozens. Measured read-only on prod: 18 resolved company head names
+ * with a real article pool, every one of them at zero.
+ *
+ * THE FIX IS AN EQUALITY BRANCH, NOT A LOWER FLOOR. Lowering the 5-character
+ * floor to 4 would admit "SoFi" as a prefix of "Sofinnova Investments", a real
+ * companies row. The floor stays exactly where it is and the two prefix
+ * branches keep comparing against the RAW target: shortening the target there
+ * would let "Fidelity National Financial" prefix-match "Fidelity
+ * International" and "Bayerische Motoren Werke" prefix-match "Bayer AG"
+ * (52 such cross-entity pairs, enumerated over the live companies table).
+ * Canonicalizing both sides for EQUALITY ONLY joins two names only when
+ * CANONICAL already declares them the same entity, which is the one relation
+ * that cannot introduce a wrong company.
+ */
 export function matchesCanonical(rawName: string, canonicalName: string): boolean {
   const rawCanon = canonicalize(rawName).toLowerCase();
   const targetLower = canonicalName.toLowerCase();
   if (rawCanon === targetLower) return true;
+  if (rawCanon === canonicalize(canonicalName).toLowerCase()) return true;
   if (targetLower.length >= 5 && rawCanon.startsWith(targetLower)) return true;
   if (rawCanon.length >= 5 && targetLower.startsWith(rawCanon)) return true;
   return false;
@@ -675,12 +706,10 @@ export function titleNamesCompany(title: string, cosRaw: string[], name: string)
   if (nameLower.length >= 5 && t.includes(nameLower)) return true;
 
   for (const raw of cosRaw) {
-    const cCanon = canonicalize(raw).toLowerCase();
-    const isOurCompany =
-      cCanon === nameLower ||
-      (nameLower.length >= 5 && cCanon.startsWith(nameLower)) ||
-      (cCanon.length >= 5 && nameLower.startsWith(cCanon));
-    if (!isOurCompany) continue;
+    // One predicate, not a third hand-inlined copy of it. This was byte-equal
+    // to matchesCanonical's body, so it carried the same target-side blind spot
+    // and had to be fixed in the same place twice.
+    if (!matchesCanonical(raw, name)) continue;
 
     const rawNorm = raw.trim().replace(/[.,]$/g, "").toLowerCase();
     if (rawNorm.length >= 5 && t.includes(rawNorm)) return true;
@@ -985,18 +1014,15 @@ export function filterAndClassifyArticles(
   articles: RawArticleRow[],
   companyName: string,
 ): CompanyArticle[] {
-  const nameLower = companyName.toLowerCase();
-
-  const matched = articles.filter((a) => {
-    const cos = parseCompanies(a.companies);
-    return cos.some((c) => {
-      const cCanon = canonicalize(c).toLowerCase();
-      if (cCanon === nameLower) return true;
-      if (nameLower.length >= 5 && cCanon.startsWith(nameLower)) return true;
-      if (cCanon.length >= 5 && nameLower.startsWith(cCanon)) return true;
-      return false;
-    });
-  });
+  // THE SAME PREDICATE THE DB FILTER USED, and it was a hand-inlined copy of
+  // matchesCanonical rather than a call to it. The copy is what made the two
+  // paths disagree: getCompanyDetail and fetchCompanyArticles both select rows
+  // with `companies @> {getCompanyVariants(name)[0]}`, which is the name
+  // itself, and this filter then threw every one of those rows away because
+  // the predicate answered false for a tag against itself. See matchesCanonical.
+  const matched = articles.filter((a) =>
+    parseCompanies(a.companies).some((c) => matchesCanonical(c, companyName)),
+  );
 
   return matched.map((a) => {
     const cosRaw = parseCompanies(a.companies);
@@ -1178,12 +1204,62 @@ function buildSignalLabel(
   return `1 direct company ${plural}${typeStr} - limited direct evidence`;
 }
 
+/**
+ * The whole brief when the article pool is genuinely empty. One line.
+ *
+ * It replaces five section headers over zero evidence. What the model produced
+ * from an empty pool was an Analyst Brief with no facts in it, a Coverage Note
+ * saying there was no coverage, a Cross-Signals section with no signals to
+ * cross, two What To Watch bullets whose mandatory probability sentence had
+ * nothing to attach to (the prompt says "State probability in the third
+ * sentence. Stop.", so with no evidence the model wrote that the probability
+ * "is unassessable without further information"), and a Signal Quality line
+ * that already said the same thing. Five ways of saying nothing is worse than
+ * one way of saying nothing.
+ *
+ * "Awaiting" is one of the four permitted outcome states (supported,
+ * challenged, developing, awaiting). The second sentence names the POOL rather
+ * than the corpus on purpose: the Articles tab reads a wider window with no
+ * relevance gate, so "no articles exist" would be a claim this function is not
+ * in a position to make, and making it is the exact defect this change fixes.
+ */
+export function noCoverageBriefLine(companyName: string): string {
+  return `Awaiting coverage. No article in the current pool names ${companyName}.`;
+}
+
 export function buildMemoContent(
   companyName: string,
   developmentArticles: CompanyArticle[],
   contextArticles: CompanyArticle[],
 ): string {
-  const industry = COMPANY_IDENTITY[companyName]?.industry ?? "Unknown";
+  // Keyed through canonicalize() because `companyName` here is the resolved
+  // companies-row name, which is regularly an alias surface form: the curated
+  // keys are canonical ("Meta", "Alphabet", "Visa"), the row names are not
+  // ("Meta Platforms Inc", "Google", "Visa Inc."). Verified on the live table:
+  // every COMPANY_IDENTITY key is already its own canonical form, so this
+  // cannot move an existing hit, and it turns 11 resolved head names from
+  // "Unknown" into their curated industry.
+  const industry =
+    (COMPANY_IDENTITY[companyName] ?? COMPANY_IDENTITY[canonicalize(companyName)])?.industry ??
+    "Unknown";
+
+  // Zero evidence is its own mode. Falling through to context-led here is what
+  // asked the model for five sections it had no material for. See
+  // noCoverageBriefLine and the NO-COVERAGE block in buildMemoSystemPrompt.
+  if (developmentArticles.length === 0 && contextArticles.length === 0) {
+    return [
+      `COMPANY: ${companyName}`,
+      `COMPANY INDUSTRY: ${industry}`,
+      `MEMO_MODE: no-coverage`,
+      `SIGNAL QUALITY: No articles found for ${companyName} in current window`,
+      ``,
+      `COMPANY DEVELOPMENT ARTICLES (0):`,
+      `None`,
+      ``,
+      `SECTOR CONTEXT ARTICLES (0):`,
+      `None`,
+    ].join("\n");
+  }
 
   // A single M&A development article is insufficient to enter developments-led mode.
   // M&A articles with null primary_company can still contain advisory/intermediary mentions
@@ -1236,10 +1312,12 @@ export function buildMemoContent(
  * section labels. The deterministic guard (brief-voice-guard.ts) is the
  * backstop; this just stops the persona from forcing a re-ask every time.
  */
-export const BRIEF_VOICE_OVERRIDE = `BRIEF VOICE OVERRIDE (highest precedence, outranks any reader-format or role instruction above): this company brief is impersonal and informational-only. Never use first person, singular or plural -- no "I", "me", "my", "we", "us", "our", and never the institutional "we" or "We recommend". Issue no reader-directed recommendation or exposure guidance on any named security -- no "recommend", "buy", "sell", "increase exposure", "reduce exposure", "overweight", "underweight", "trim", "add to position", "take profits", "you should". Describe what developments and scenarios mean for the thesis, never what the reader should do. Use exactly these section labels and no others: Analyst Brief, What Just Changed (or Coverage Note), Cross-Signals, What To Watch, Signal Quality. Any conflicting reader-format, rating, or recommendation instruction above is void for this brief.`;
+export const BRIEF_VOICE_OVERRIDE = `BRIEF VOICE OVERRIDE (highest precedence, outranks any reader-format or role instruction above): this company brief is impersonal and informational-only. Never use first person, singular or plural -- no "I", "me", "my", "we", "us", "our", and never the institutional "we" or "We recommend". Issue no reader-directed recommendation or exposure guidance on any named security -- no "recommend", "buy", "sell", "increase exposure", "reduce exposure", "overweight", "underweight", "trim", "add to position", "take profits", "you should". Describe what developments and scenarios mean for the thesis, never what the reader should do. Use exactly these section labels and no others: Analyst Brief, What Just Changed (or Coverage Note), Cross-Signals, What To Watch, Signal Quality. Any conflicting reader-format, rating, or recommendation instruction above is void for this brief. ONE EXCEPTION, and it is the only one: when MEMO_MODE is "no-coverage" the single-line rule in the no-coverage block wins over this section list. Emit that one line and no section labels at all.`;
 
 export function buildMemoSystemPrompt(companyName: string): string {
-  const identity = COMPANY_IDENTITY[companyName];
+  // canonicalize() fallback, same reason as buildMemoContent: the caller passes
+  // the resolved companies-row name and the curated keys are canonical forms.
+  const identity = COMPANY_IDENTITY[companyName] ?? COMPANY_IDENTITY[canonicalize(companyName)];
   const backgroundBlock = identity
     ? `ANALYST BACKGROUND (use as grounding context only — do not output this block verbatim):
 Industry: ${identity.industry}
@@ -1260,6 +1338,14 @@ SOURCING DISCIPLINE (apply to both modes, no exceptions):
 Every specific figure, statistic, named event, percentage, dollar amount, and precise claim in the memo must be directly traceable to the provided article pool. Do not supplement with training knowledge. Do not add figures, valuations, growth rates, timelines, or named events that do not appear explicitly in the provided articles. If a figure or claim is not present in the provided articles, omit it entirely. Implications and analytical framing drawn from provided facts are permitted — invented figures are not. A memo with fewer specific claims that are all sourced is better than a memo with more claims that blend article content with model knowledge. When in doubt, omit. Before including any specific figure (percentage, dollar amount, ratio, multiplier), internally verify: does this exact figure appear in the article text provided? If you cannot point to the specific sentence in the provided articles where this figure appears, omit it. Do not include figures that are plausible, directionally correct, or consistent with your training knowledge. Only figures explicitly present in the provided article pool are permitted. If a company, statistic, or claim does not appear in the provided article titles or summaries, it does not exist for the purposes of this memo. Do not include any company, startup, competitor, or named entity that is not explicitly mentioned in the provided articles. This applies even if the entity is directionally relevant or commonly associated with the topic. A Korean startup, an unnamed competitor, or any entity not present in the article pool by name must be omitted entirely.
 
 INPUTS: MEMO_MODE | SIGNAL QUALITY | COMPANY DEVELOPMENT ARTICLES | SECTOR CONTEXT ARTICLES
+
+─── MEMO_MODE = "no-coverage" -- CHECK THIS FIRST, IT OUTRANKS EVERY OTHER INSTRUCTION IN THIS PROMPT ───
+
+If MEMO_MODE is "no-coverage" the article pool is empty and there is nothing to synthesize. Output EXACTLY this one line and nothing else:
+
+${noCoverageBriefLine(companyName)}
+
+No section label. No bold. No Analyst Brief, no Coverage Note, no Cross-Signals, no What To Watch, no Signal Quality. No bullets. No probability statement, and specifically never a sentence saying a probability is unassessable, unknowable, or cannot be assessed without further information. No preamble and no closing sentence. Every rule below this block, including the mandatory section list, the opening rules, the verdict format and the two-bullet What To Watch structure, is void in this mode. A brief that hedges at length over an empty pool is worse than one line that says the pool is empty, so if you are tempted to add a second sentence, do not.
 
 ${backgroundBlock}─── UNIVERSAL OPENING RULES -- APPLY TO ALL SECTIONS, BOTH MODES, NO EXCEPTIONS ───
 
