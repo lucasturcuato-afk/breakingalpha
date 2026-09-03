@@ -24,9 +24,22 @@ WHAT CREDITS THE PILLAR, which is narrower than what gets stored:
     ADV  raum_total_usd > 0. A filed 0.00 is a real answer (605 of 16,876
          roster rows, including BofA Securities and Needham & Company) and it
          is stored, but zero is not a number worth putting on a page.
+         AND the legal name must not scope the business name to a TERRITORY:
+         "INVESCO" over a book filed by INVESCO CANADA LTD. is a slice of the
+         group, and the same roster carries INVESCO CAPITAL MANAGEMENT LLC at
+         48x that figure.
     13F  files_13f_hr AND the last filing is within STALE_AFTER_DAYS. A 13F-NT
          carries no holdings and never credits. Neither does a filer whose last
          holdings report was in 2006.
+         AND the link must be attributable: the matcher is fed every FORMER
+         name EDGAR lists, so a link can be won by a name whose current filer
+         is a different firm ("Martin Marietta" -> LOCKHEED MARTIN INVESTMENT
+         MANAGEMENT CO).
+
+BOTH of the added rules live in backend/registry/match.py and are mirrored in
+src/lib/adviser-registry.ts, held together by
+backend/tests/fixtures/filed_name_relations.json. This job's credit counts and
+what a company page draws are the same number by construction.
 
 WHAT IT NEVER DOES. No network calls. Both sources are on disk: the SEC monthly
 IA firm-roster zip and a pre-built EDGAR submissions index. Building the 13F
@@ -54,7 +67,15 @@ from typing import Optional, Sequence
 
 from backend.registry.adv_part1 import AdviserRecord, load_roster_zip
 from backend.registry.form_13f import STALE_AFTER_DAYS, ManagerRecord, load_managers
-from backend.registry.match import Link, link_companies, load_overrides, normalize
+from backend.registry.match import (
+    RELATION_OTHER,
+    Link,
+    is_jurisdiction_scoped,
+    link_companies,
+    load_overrides,
+    name_relation,
+    normalize,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +116,10 @@ def adviser_payload(rec: AdviserRecord, link: Optional[Link], source_file: str) 
         "company_id": link.company_id if link else None,
         "primary_business_name": rec.primary_business_name,
         "legal_name": rec.legal_name,
+        # WHICH of the row's two names won the link. Without it the read path
+        # cannot tell an exact hit on the business name from an exact hit on the
+        # legal name, and the tier below is unattributable.
+        "matched_name": link.registry_name if link else None,
         "raum_total_usd": rec.raum_total_usd,
         "raum_discretionary_usd": rec.raum_discretionary_usd,
         "raum_non_discretionary_usd": rec.raum_non_discretionary_usd,
@@ -112,6 +137,11 @@ def manager_payload(rec: ManagerRecord, link: Optional[Link], source_file: str) 
         "cik": rec.cik,
         "company_id": link.company_id if link else None,
         "filer_name": rec.filer_name,
+        # The matcher is fed every FORMER name EDGAR lists, so the name that won
+        # the link is frequently not filer_name. Storing it is what lets the
+        # read path refuse to render a filer whose current name belongs to a
+        # different firm.
+        "matched_name": link.registry_name if link else None,
         "files_13f_hr": rec.files_13f_hr,
         "notice_only": rec.notice_only,
         "last_filing_date": rec.last_filing_date.isoformat() if rec.last_filing_date else None,
@@ -200,18 +230,63 @@ def run(
     adv_rows = [adviser_payload(a, adv_by_key.get(a.crd), adv_source) for a in advisers]
     mgr_rows = [manager_payload(m, mgr_by_key.get(m.cik), mgr_source) for m in managers]
 
+    # WHAT THE PAGE WILL ACTUALLY DRAW, not what the roster contains.
+    #
+    # These two sets are the job's only report on coverage, and a report that
+    # counts rows the read path refuses to render is a report that misleads the
+    # next person. src/lib/adviser-registry.ts drops two further classes of row
+    # and this applies the same two, from the same rules in registry/match.py:
+    #
+    #   ADV  a legal name that scopes the business name to a TERRITORY. The
+    #        filer is a named slice of the group the page is about and its book
+    #        is a fraction of the group's. INVESCO CANADA LTD. files $19.87B
+    #        while INVESCO CAPITAL MANAGEMENT LLC files $941.02B on this same
+    #        roster, and it is the first of those the "Invesco" page would draw.
+    #   13F  a link won by a FORMER name whose current filer name is a different
+    #        name rather than a respelling. "Martin Marietta" linked to a filer
+    #        now called LOCKHEED MARTIN INVESTMENT MANAGEMENT CO.
+    #
+    # A human-adjudicated link (match_confirmed) overrides both, exactly as it
+    # does on the read side.
+    def _adv_renders(record, link: Link) -> bool:
+        if not record.has_raum_figure:
+            return False
+        if link.confirmed:
+            return True
+        return not is_jurisdiction_scoped(record.primary_business_name, record.legal_name)
+
+    def _mgr_renders(record, link: Link) -> bool:
+        if not (record.supplies_numbers and record.is_current(as_of, stale_after_days)):
+            return False
+        if link.confirmed:
+            return True
+        return name_relation(record.filer_name, link.registry_name) != RELATION_OTHER
+
     creditable_adv = {
         link.company_id
         for a in advisers
-        if a.has_raum_figure and (link := adv_by_key.get(a.crd)) is not None
+        if (link := adv_by_key.get(a.crd)) is not None and _adv_renders(a, link)
     }
     creditable_mgr = {
         link.company_id
         for m in managers
+        if (link := mgr_by_key.get(m.cik)) is not None and _mgr_renders(m, link)
+    }
+    suppressed_adv = sum(
+        1
+        for a in advisers
+        if a.has_raum_figure
+        and (link := adv_by_key.get(a.crd)) is not None
+        and not _adv_renders(a, link)
+    )
+    suppressed_mgr = sum(
+        1
+        for m in managers
         if m.supplies_numbers
         and m.is_current(as_of, stale_after_days)
         and (link := mgr_by_key.get(m.cik)) is not None
-    }
+        and not _mgr_renders(m, link)
+    )
 
     stats = {
         "as_of": as_of.isoformat(),
@@ -227,6 +302,9 @@ def run(
         "companies_credited_adv": len(creditable_adv),
         "companies_credited_13f": len(creditable_mgr),
         "companies_credited_union": len(creditable_adv | creditable_mgr),
+        # rows the roster supplies but the read path refuses to draw
+        "adv_suppressed_territorial_slice": suppressed_adv,
+        "mgr_suppressed_unattributable_name": suppressed_mgr,
         "blocked_by_override": sum(1 for o in overrides.values() if o.blocked),
     }
     stats["adviser_rows_upserted"] = _upsert(

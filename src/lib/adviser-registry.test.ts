@@ -7,6 +7,8 @@
  * network or a database.
  */
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { describe, it } from "node:test";
 
 import {
@@ -16,10 +18,16 @@ import {
   fetchRegistryProfile,
   formatRaum,
   formatReportedAt,
+  has13FEvidence,
   hasRaumFigure,
+  is13FAttributable,
   is13FCurrent,
+  isJurisdictionScoped,
+  isTerritorialSlice,
+  nameRelation,
   suppliesNumbersPillar,
   type AdviserRegistration,
+  type FiledNameRelation,
   type InstitutionalManager,
 } from "./adviser-registry";
 
@@ -28,7 +36,9 @@ const NOW = new Date("2026-09-02T00:00:00Z");
 function adviser(over: Partial<AdviserRegistration> = {}): AdviserRegistration {
   return {
     crd: 157041,
-    filedName: "THOMA BRAVO",
+    businessName: "THOMA BRAVO",
+    legalName: "THOMA BRAVO, L.P.",
+    matchedName: "THOMA BRAVO",
     raumTotalUsd: 182_900_000_000,
     raumDiscretionaryUsd: 182_900_000_000,
     raumNonDiscretionaryUsd: 0,
@@ -44,6 +54,7 @@ function manager(over: Partial<InstitutionalManager> = {}): InstitutionalManager
   return {
     cik: 1103804,
     filerName: "THOMA BRAVO, L.P.",
+    matchedName: "THOMA BRAVO, L.P.",
     lastFilingDate: "2026-08-14",
     matchTier: "core",
     matchConfirmed: false,
@@ -256,7 +267,13 @@ describe("fetchRegistryProfile", () => {
       }),
       "abc",
     );
-    assert.equal(profile.adviser?.filedName, "SOME ADVISER LLC");
+    assert.equal(profile.adviser?.businessName, "SOME ADVISER LLC");
+    assert.equal(
+      profile.adviser?.legalName,
+      null,
+      "a row with one usable name hides nothing, so it must not report a second",
+    );
+    assert.equal(nameRelation(profile.adviser!.businessName, profile.adviser!.legalName), "single");
   });
 
   it("rejects an unknown match_tier rather than passing it through", async () => {
@@ -302,5 +319,244 @@ describe("fetchRegistryProfile", () => {
     assert.equal(profile.readFailed, true);
     assert.equal(profile.adviser, null);
     assert.equal(profile.manager, null);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// RULE 5: the filed-name relation
+// ---------------------------------------------------------------------------
+
+interface OracleCase {
+  note: string;
+  shown: string;
+  other: string | null;
+  relation: FiledNameRelation;
+  jurisdiction_scoped: boolean;
+}
+
+/**
+ * THE SHARED ORACLE. backend/registry/match.py carries the same rule, and
+ * backend/tests/test_adviser_registry.py::FiledNameRelationTest asserts
+ * against this same file. Its verdicts are hand-written from the SEC filings,
+ * so neither implementation is grading its own homework: drift on either side
+ * turns the other side's suite red on the identical inputs.
+ */
+const ORACLE: OracleCase[] = JSON.parse(
+  readFileSync(
+    path.join(
+      import.meta.dirname,
+      "..",
+      "..",
+      "backend",
+      "tests",
+      "fixtures",
+      "filed_name_relations.json",
+    ),
+    "utf8",
+  ),
+).cases;
+
+describe("nameRelation, against the shared oracle", () => {
+  it("exercises all four verdicts and both jurisdiction answers", () => {
+    const verdicts = new Set(ORACLE.map((c) => c.relation));
+    assert.deepEqual(
+      [...verdicts].sort(),
+      ["other", "same", "single", "unit"],
+      "a fixture that never exercises a verdict cannot catch a drift in it",
+    );
+    assert.ok(ORACLE.some((c) => c.jurisdiction_scoped));
+    assert.ok(ORACLE.some((c) => !c.jurisdiction_scoped));
+  });
+
+  for (const c of ORACLE) {
+    it(`${c.relation}: ${c.shown} vs ${c.other ?? "(none)"}`, () => {
+      assert.equal(nameRelation(c.shown, c.other), c.relation, c.note);
+      assert.equal(isJurisdictionScoped(c.shown, c.other), c.jurisdiction_scoped, c.note);
+    });
+  }
+});
+
+describe("isTerritorialSlice", () => {
+  it("suppresses the RAUM figure when the legal name scopes it to a territory", () => {
+    // Measured: the same June 2026 roster carries INVESCO CAPITAL MANAGEMENT
+    // LLC at $941.02B, so this figure is 2.1% of the group's largest single
+    // registrant. A caveat under the number cannot fix that; only not drawing
+    // it can.
+    const invesco = adviser({
+      businessName: "INVESCO",
+      legalName: "INVESCO CANADA LTD.",
+      raumTotalUsd: 19_870_000_000,
+      matchTier: "exact",
+    });
+    assert.equal(isTerritorialSlice(invesco), true);
+    assert.equal(hasRaumFigure(invesco), false);
+  });
+
+  it("keeps a differently-named adviser entity of the same firm", () => {
+    // A16Z CAPITAL MANAGEMENT is Andreessen Horowitz. Its RAUM is the firm's
+    // book, so suppressing it would delete correct coverage to fix a label.
+    const a16z = adviser({
+      businessName: "ANDREESSEN HOROWITZ",
+      legalName: "A16Z CAPITAL MANAGEMENT, L.L.C.",
+      raumTotalUsd: 106_480_000_000,
+    });
+    assert.equal(nameRelation(a16z.businessName, a16z.legalName), "other");
+    assert.equal(isTerritorialSlice(a16z), false);
+    assert.equal(hasRaumFigure(a16z), true);
+  });
+
+  it("keeps a legal name that differs only by a suffix or an article", () => {
+    const vanguard = adviser({
+      businessName: "VANGUARD GROUP INC",
+      legalName: "THE VANGUARD GROUP, INC.",
+      raumTotalUsd: 11_092_670_000_000,
+    });
+    assert.equal(nameRelation(vanguard.businessName, vanguard.legalName), "same");
+    assert.equal(hasRaumFigure(vanguard), true);
+  });
+
+  it("keeps a sub-unit that names no territory, because the book is the firm's", () => {
+    const hamiltonLane = adviser({
+      businessName: "HAMILTON LANE",
+      legalName: "HAMILTON LANE ADVISORS, L.L.C.",
+    });
+    assert.equal(nameRelation(hamiltonLane.businessName, hamiltonLane.legalName), "unit");
+    assert.equal(isTerritorialSlice(hamiltonLane), false);
+    assert.equal(hasRaumFigure(hamiltonLane), true);
+  });
+
+  it("defers to a human adjudication", () => {
+    const confirmed = adviser({
+      businessName: "INVESCO",
+      legalName: "INVESCO CANADA LTD.",
+      matchConfirmed: true,
+    });
+    assert.equal(isTerritorialSlice(confirmed), false);
+    assert.equal(hasRaumFigure(confirmed), true);
+  });
+
+  it("still refuses a zero or undated figure regardless of the names", () => {
+    assert.equal(hasRaumFigure(adviser({ raumTotalUsd: 0 })), false);
+    assert.equal(hasRaumFigure(adviser({ reportedAt: null })), false);
+  });
+});
+
+describe("is13FAttributable", () => {
+  it("refuses a filer whose current name belongs to a different firm", () => {
+    const wrong = manager({
+      filerName: "LOCKHEED MARTIN INVESTMENT MANAGEMENT CO",
+      matchedName: "MARTIN MARIETTA CORP /MD/",
+    });
+    assert.equal(is13FAttributable(wrong), false);
+    assert.equal(is13FCurrent(wrong, NOW), true, "staleness is a separate fact and still passes");
+    assert.equal(has13FEvidence(wrong, NOW), false);
+  });
+
+  it("keeps a filer that merely renamed itself", () => {
+    const renamed = manager({
+      filerName: "SOFTBANK GROUP CORP.",
+      matchedName: "SOFTBANK CORP",
+    });
+    assert.equal(is13FAttributable(renamed), true);
+    assert.equal(has13FEvidence(renamed, NOW), true);
+  });
+
+  it("treats a row with no recorded matched name as attributable", () => {
+    // A hand-loaded row, or one written before the column existed. There is no
+    // evidence of a conflict, and inventing one suppresses every valid row.
+    assert.equal(is13FAttributable(manager({ matchedName: null })), true);
+  });
+
+  it("defers to a human adjudication", () => {
+    const confirmed = manager({
+      filerName: "LOCKHEED MARTIN INVESTMENT MANAGEMENT CO",
+      matchedName: "MARTIN MARIETTA CORP /MD/",
+      matchConfirmed: true,
+    });
+    assert.equal(is13FAttributable(confirmed), true);
+  });
+
+  it("still refuses a stale filer regardless of the names", () => {
+    assert.equal(
+      has13FEvidence(manager({ lastFilingDate: "2006-05-15" }), NOW),
+      false,
+      "the 550-day bound is upstream of attribution and stays upstream",
+    );
+  });
+});
+
+describe("suppliesNumbersPillar carries both suppressions", () => {
+  it("a territorial slice alone supplies no pillar", () => {
+    assert.equal(
+      suppliesNumbersPillar(
+        {
+          adviser: adviser({ businessName: "ARDIAN", legalName: "ARDIAN US LLC" }),
+          manager: null,
+          readFailed: false,
+        },
+        NOW,
+      ),
+      false,
+    );
+  });
+
+  it("an unattributable filer alone supplies no pillar", () => {
+    assert.equal(
+      suppliesNumbersPillar(
+        {
+          adviser: null,
+          manager: manager({
+            filerName: "Peak XV Partners Operations LLC",
+            matchedName: "SEQUOIA CAPITAL INDIA OPERATIONS II, LLC",
+          }),
+          readFailed: false,
+        },
+        NOW,
+      ),
+      false,
+    );
+  });
+});
+
+describe("the read path selects both names", () => {
+  it("carries legal_name and matched_name through instead of dropping them", async () => {
+    const profile = await fetchRegistryProfile(
+      stubClient({
+        adviser_registrations: {
+          data: {
+            crd: 105618,
+            primary_business_name: "INVESCO",
+            legal_name: "INVESCO CANADA LTD.",
+            matched_name: "INVESCO",
+            raum_total_usd: "19870000000.00",
+            raum_discretionary_usd: null,
+            raum_non_discretionary_usd: null,
+            raum_total_accounts: null,
+            raum_reported_at: "2026-06-01",
+            match_tier: "exact",
+            match_confirmed: false,
+          },
+        },
+        institutional_managers: {
+          data: {
+            cik: 936468,
+            filer_name: "LOCKHEED MARTIN INVESTMENT MANAGEMENT CO",
+            matched_name: "MARTIN MARIETTA CORP /MD/",
+            files_13f_hr: true,
+            last_filing_date: "2026-08-14",
+            match_tier: "prefix",
+            match_confirmed: false,
+          },
+        },
+      }),
+      "abc",
+    );
+    assert.equal(profile.adviser?.businessName, "INVESCO");
+    assert.equal(profile.adviser?.legalName, "INVESCO CANADA LTD.");
+    assert.equal(profile.manager?.matchedName, "MARTIN MARIETTA CORP /MD/");
+    // and neither of them reaches the page
+    assert.equal(hasRaumFigure(profile.adviser), false);
+    assert.equal(has13FEvidence(profile.manager, NOW), false);
+    assert.equal(suppliesNumbersPillar(profile, NOW), false);
   });
 });

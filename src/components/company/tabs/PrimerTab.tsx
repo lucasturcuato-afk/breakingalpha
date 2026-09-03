@@ -30,8 +30,8 @@ import type { CompanyFinancialsResult } from "@/lib/financial-facts";
 import type { QuoteSummaryLive } from "@/lib/yahoo/quoteSummary";
 import {
   EMPTY_REGISTRY_PROFILE,
+  has13FEvidence,
   hasRaumFigure,
-  is13FCurrent,
   type RegistryProfile,
 } from "@/lib/adviser-registry";
 import { worthDisplaying, type WikidataDescriptor } from "@/lib/wikidata-descriptor";
@@ -175,7 +175,7 @@ export function PrimerTab({
   // crossing a millisecond boundary cannot change the answer.
   const now = new Date();
   const raumUsable = hasRaumFigure(registry.adviser);
-  const managerUsable = is13FCurrent(registry.manager, now);
+  const managerUsable = has13FEvidence(registry.manager, now);
   const showRegistry = raumUsable || managerUsable;
 
   return (

@@ -445,5 +445,181 @@ class IngestJobTest(unittest.TestCase):
         )
 
 
+# ---------------------------------------------------------------------------
+# Filed-name relation: the shared oracle
+# ---------------------------------------------------------------------------
+FILED_NAME_FIXTURE = os.path.join(_HERE, "fixtures", "filed_name_relations.json")
+
+
+class FiledNameRelationTest(unittest.TestCase):
+    """The Python half of a rule that is stated twice.
+
+    src/lib/adviser-registry.ts carries the same four verdicts, and
+    src/lib/adviser-registry.test.ts asserts against THIS SAME FILE. The
+    verdicts in it are hand-written from the SEC filings, so neither
+    implementation is grading its own homework and a drift on either side goes
+    red on the other.
+    """
+
+    def setUp(self):
+        with open(FILED_NAME_FIXTURE, "r", encoding="utf-8") as fh:
+            self.cases = json.load(fh)["cases"]
+
+    def test_the_oracle_covers_every_verdict(self):
+        seen = {c["relation"] for c in self.cases}
+        self.assertEqual(
+            seen,
+            {match.RELATION_SINGLE, match.RELATION_SAME,
+             match.RELATION_UNIT, match.RELATION_OTHER},
+            "a fixture that never exercises a verdict cannot catch a drift in it",
+        )
+        self.assertTrue(any(c["jurisdiction_scoped"] for c in self.cases))
+        self.assertTrue(any(not c["jurisdiction_scoped"] for c in self.cases))
+
+    def test_every_hand_written_verdict_holds(self):
+        for case in self.cases:
+            shown, other = case["shown"], case["other"]
+            with self.subTest(shown=shown, other=other):
+                self.assertEqual(
+                    match.name_relation(shown, other), case["relation"], case["note"]
+                )
+                self.assertEqual(
+                    match.is_jurisdiction_scoped(shown, other),
+                    case["jurisdiction_scoped"],
+                    case["note"],
+                )
+
+    def test_jurisdiction_is_directional(self):
+        """A printed name that already says AUSTRALIA hides nothing."""
+        self.assertTrue(
+            match.is_jurisdiction_scoped("ARDIAN", "ARDIAN US LLC")
+        )
+        self.assertFalse(
+            match.is_jurisdiction_scoped("ARDIAN US LLC", "ARDIAN")
+        )
+
+    def test_generic_words_are_not_reused_here(self):
+        """GENERIC_WORDS drops 'us' and 'america'; this rule must not.
+
+        Reusing the matcher's core_tokens would fold ARDIAN US LLC into ARDIAN
+        and silently classify the defect as benign, which is how the original
+        discard survived review.
+        """
+        self.assertIn("us", match.GENERIC_WORDS)
+        self.assertEqual(match.core_tokens("ARDIAN US LLC"), ("ardian",))
+        self.assertEqual(match.filed_tokens("ARDIAN US LLC"), ("ardian", "us"))
+
+
+# ---------------------------------------------------------------------------
+# The two suppressions, end to end through the job
+# ---------------------------------------------------------------------------
+SLICE_ADV_ROWS = [
+    # legal name scopes the business name to a territory: a group-level page
+    # would print the group name over a Canadian book
+    ["105618", "INVESCO", "INVESCO CANADA LTD.", "06/01/2026", "Approved",
+     "  19,870,000,000.00", "0.00", "  19,870,000,000.00", "11.00"],
+    # same firm, adviser entity, no territory named: this one must survive
+    ["157041", "THOMA BRAVO", "THOMA BRAVO, L.P.", "05/11/2026", "Approved",
+     "  182,900,000,000.00", "0.00", "  182,900,000,000.00", "42.00"],
+]
+
+SLICE_SUBMISSIONS = [
+    # linked through a FORMER name; the current filer is a different firm
+    {"cik": 936468, "name": "LOCKHEED MARTIN INVESTMENT MANAGEMENT CO",
+     "forms_set": ["13F-HR"], "last_filing": "2026-08-14",
+     "formerNames": ["MARTIN MARIETTA CORP /MD/"]},
+    # linked through a former name that is a RESPELLING: must survive
+    {"cik": 1527166, "name": "Carlyle Group Inc.", "forms_set": ["13F-HR"],
+     "last_filing": "2026-08-14", "formerNames": ["Carlyle Group L.P."]},
+]
+
+SLICE_COMPANIES = [
+    {"id": "inv", "name": "Invesco"},
+    {"id": "tb", "name": "Thoma Bravo"},
+    {"id": "mm", "name": "Martin Marietta Corp"},
+    {"id": "cg", "name": "Carlyle Group"},
+]
+
+
+class FiledNameSuppressionTest(unittest.TestCase):
+    """The job's coverage report must describe what the page will draw."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.adv_zip = write_adv_zip(
+            os.path.join(self.tmp.name, "adv.zip"), rows=SLICE_ADV_ROWS
+        )
+        self.subs = write_submissions(
+            os.path.join(self.tmp.name, "subs.jsonl"), entries=SLICE_SUBMISSIONS
+        )
+
+    def _run(self, **kw):
+        sb = FakeSupabase({"companies": SLICE_COMPANIES})
+        stats = job.run(
+            adv_zip=self.adv_zip,
+            submissions_index=self.subs,
+            sb=sb,
+            as_of=date(2026, 9, 2),
+            **kw,
+        )
+        return sb, stats
+
+    def test_both_rows_are_linked_and_stored_either_way(self):
+        """Suppression is a RENDER decision. The row and its link still exist."""
+        sb, _ = self._run()
+        by_crd = {r["crd"]: r for r in sb.upserted(job.ADVISER_TABLE)}
+        self.assertEqual(by_crd[105618]["company_id"], "inv")
+        self.assertEqual(by_crd[105618]["legal_name"], "INVESCO CANADA LTD.")
+        self.assertEqual(by_crd[105618]["raum_total_usd"], 19870000000.0)
+
+    def test_the_matched_name_is_recorded_on_both_tables(self):
+        sb, _ = self._run()
+        by_crd = {r["crd"]: r for r in sb.upserted(job.ADVISER_TABLE)}
+        self.assertEqual(by_crd[105618]["matched_name"], "INVESCO")
+        by_cik = {r["cik"]: r for r in sb.upserted(job.MANAGER_TABLE)}
+        self.assertEqual(
+            by_cik[936468]["matched_name"], "MARTIN MARIETTA CORP /MD/",
+            "the link was won by a FORMER name and the row has to say so",
+        )
+
+    def test_a_territorial_slice_does_not_credit_the_adv_pillar(self):
+        _, stats = self._run()
+        self.assertEqual(stats["adv_suppressed_territorial_slice"], 1)
+        self.assertEqual(
+            stats["companies_credited_adv"], 1,
+            "Thoma Bravo credits; Invesco Canada is a slice of the group",
+        )
+
+    def test_an_unattributable_filer_does_not_credit_the_13f_pillar(self):
+        _, stats = self._run()
+        self.assertEqual(stats["mgr_suppressed_unattributable_name"], 1)
+        self.assertEqual(
+            stats["companies_credited_13f"], 1,
+            "Carlyle is a respelling and credits; Martin Marietta -> Lockheed does not",
+        )
+
+    def test_a_confirmed_link_overrides_both_suppressions(self):
+        """Adjudication is the escape hatch, and it is the one that exists."""
+        confirmed = {
+            match.normalize("Invesco"): match.LinkOverride(
+                blocked=False, crd=105618, cik=None, reason="test"
+            ),
+            match.normalize("Martin Marietta Corp"): match.LinkOverride(
+                blocked=False, crd=None, cik=936468, reason="test"
+            ),
+        }
+        original = job.load_overrides
+        job.load_overrides = lambda *a, **k: confirmed
+        try:
+            _, stats = self._run()
+        finally:
+            job.load_overrides = original
+        self.assertEqual(stats["adv_suppressed_territorial_slice"], 0)
+        self.assertEqual(stats["mgr_suppressed_unattributable_name"], 0)
+        self.assertEqual(stats["companies_credited_adv"], 2)
+        self.assertEqual(stats["companies_credited_13f"], 2)
+
+
 if __name__ == "__main__":
     unittest.main()

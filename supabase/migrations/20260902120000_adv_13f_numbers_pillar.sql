@@ -69,9 +69,17 @@ CREATE TABLE IF NOT EXISTS public.adviser_registrations (
     -- link into Company Intel; NULL when the roster row matches no companies row
     company_id          uuid REFERENCES public.companies(id) ON DELETE SET NULL,
 
-    -- identity as filed
+    -- identity as filed. BOTH names are read, never one. The matcher is fed
+    -- both, so the link can be won by either, and a read path that prints one
+    -- and drops the other attributes a figure to an entity that did not file
+    -- it: "INVESCO" printed over a book filed by INVESCO CANADA LTD.
     primary_business_name text NOT NULL,
     legal_name            text,
+
+    -- the EXACT registry string that won the company_id link, so the read path
+    -- and an auditor can both see which of the row's names produced the tier
+    -- below rather than inferring it. NULL for an unlinked row.
+    matched_name          text,
 
     -- Item 5.F(2): regulatory assets under management, full dollars, as filed.
     -- total = discretionary + non_discretionary (the roster's own arithmetic;
@@ -124,7 +132,14 @@ CREATE TABLE IF NOT EXISTS public.institutional_managers (
 
     company_id          uuid REFERENCES public.companies(id) ON DELETE SET NULL,
 
+    -- the filer's CURRENT name on EDGAR.
     filer_name          text NOT NULL,
+
+    -- the EXACT registry string that won the company_id link. The matcher is
+    -- fed every FORMER name EDGAR lists, so this is frequently NOT filer_name,
+    -- and without it the read path cannot tell that "Martin Marietta" was
+    -- linked to a filer now called LOCKHEED MARTIN INVESTMENT MANAGEMENT CO.
+    matched_name        text,
 
     -- EXISTENCE FLAG, the whole point of this table. TRUE means the manager has
     -- filed at least one 13F-HR, i.e. it reported discretion over $100M+ of
