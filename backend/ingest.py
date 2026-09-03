@@ -350,6 +350,35 @@ RSS_FEEDS = {
     "Federal Reserve":  "https://www.federalreserve.gov/feeds/press_all.xml",
     "PR Newswire":      "https://www.prnewswire.com/rss/news-releases-list.rss",
     "GlobeNewswire":    "https://www.globenewswire.com/RssFeed/subjectcode/01-ABN/feedTitle/All%20Press%20Releases",
+
+    # ── Added 2026-09-02 to widen the PROSE substrate ────────────────────────
+    # WHY. Google News per-ticker is 84.8% of stored rows and carries a real
+    # description on 0.3% of them (measured 45/17,103 over 2026-08-20..09-02),
+    # because the gnews <description> is a headline echo regardless of who
+    # published it. Prose comes from the FEED TYPE, not the publisher: every
+    # named feed runs 58-100%. These six were picked from a `GROUP BY publisher`
+    # over the gnews rows (publisher is non-null on 100% of them since the
+    # column landed) and then VERIFIED by fetching, not assumed.
+    #
+    # Each line records what the probe measured on 2026-09-02:
+    #   entries returned / prose rate / median description chars / fetch seconds.
+    #
+    # Rejected after probing, so nobody re-litigates them: Reuters (all three
+    # URL shapes 404 or DNS-fail, so the backlog note above stays open),
+    # MarketScreener (404, despite the highest median relevance of any
+    # publisher at 9), Stock Titan (100 entries, ALL descriptions empty, despite
+    # 72 articles/day and median relevance 7), Seeking Alpha market_currents
+    # (7 entries, all empty), Nasdaq (hit the 20s timeout exactly), Barron's
+    # (404). Investing.com and Stocktwits are deliberately excluded on principle
+    # rather than on data: both are in publishers.SYNDICATOR_DOMAINS, and
+    # fetching a syndicator directly is the false-breadth artifact that module
+    # exists to remove.
+    "WSJ Business":     "https://feeds.content.dowjones.io/public/rss/WSJcomUSBusiness",       # 85 / 88% / 119ch / 0.10s
+    "WSJ Markets":      "https://feeds.content.dowjones.io/public/rss/RSSMarketsMain",         # 61 / 79% / 109ch / 0.19s
+    "Investors Business Daily": "https://www.investors.com/feed/",                            # 100 / 86% / 125ch / 0.14s
+    "CNBC Business":    "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=10001147",  # 30 / 87% / 136ch / 0.25s
+    "The Globe and Mail": "https://www.theglobeandmail.com/arc/outboundfeeds/rss/category/business/",           # 100 / 58% / 106ch / 0.28s
+    "Business Insider": "https://markets.businessinsider.com/rss/news",                       # 10 / 90% / 294ch / 1.07s
 }
 
 #: NO LONGER DRIVES content_type. It used to, and that was the bug: it labelled
@@ -362,7 +391,43 @@ RSS_FEEDS = {
 FULL_TEXT_SOURCES = {"SEC 8-K", "SEC 10-Q", "Federal Reserve"}
 
 # Press wire sources — used for per-wire signal/noise logging in run_ingestion.
+# NOTE: this set no longer drives the entry cap. It is a LOGGING set only; the
+# cap moved to ENTRY_CAP_OVERRIDES below so a feed's volume budget and its
+# "is a press wire" classification are separate facts.
 WIRE_SOURCES = {"PR Newswire", "GlobeNewswire"}
+
+#: Entries read per feed per run. Every article costs one Gemini filter call, so
+#: this is the volume AND cost knob for the named-RSS leg.
+#:
+#: 8 was chosen when every named feed was low-volume: measured 2026-08-20..09-02
+#: the original 18 delivered 5.3 articles/day each (~2.7/run), so the cap almost
+#: never bound. It is a real constraint for a deep feed: probed 2026-09-02, WSJ
+#: Business returns 79 fresh entries per fetch and Investors Business Daily 100,
+#: so at 8 we were reading a tenth of what they offer.
+ENTRY_CAP_DEFAULT = 8
+
+#: Per-feed overrides. A feed belongs here when it (a) reliably offers far more
+#: than ENTRY_CAP_DEFAULT fresh entries and (b) carries a real description on
+#: most of them, so the extra filter spend buys extractable prose rather than
+#: headlines. Each entry records the probe that justifies it.
+ENTRY_CAP_OVERRIDES: dict[str, int] = {
+    # Press wires. Unchanged at 40 — this is the value the binary
+    # `40 if source in WIRE_SOURCES else 8` rule gave them, moved verbatim.
+    "PR Newswire":   40,
+    "GlobeNewswire": 40,
+    # Raised 8 -> 40 on 2026-09-03. Prose is the binding constraint on the fact
+    # layer, and at 8 these six contributed ~32 stored articles/day; at 40 they
+    # contribute roughly four times that for ~$6/month in filter spend. The
+    # number after each is fresh entries available per fetch, so a cap above the
+    # supply would buy nothing: three of these six are supply-limited, not
+    # cap-limited, and that is fine — 40 is a ceiling, not a target.
+    "WSJ Business":             40,   # 79 fresh available
+    "WSJ Markets":              40,   # 60
+    "Investors Business Daily": 40,   # 100
+    "The Globe and Mail":       40,   # 99
+    "CNBC Business":            40,   # 22  (supply-limited)
+    "Business Insider":         40,   # 10  (supply-limited)
+}
 
 # Google News per-ticker RSS
 GNEWS_PREFIX = "https://news.google.com/rss/search?hl=en-US&gl=US&ceid=US:en&q="
@@ -1885,9 +1950,10 @@ def fetch_all_articles():
             # upstream cannot block the pipeline forever (run #98 root cause).
             raw = _fetch_feed_bytes(url)
             feed = feedparser.parse(raw)
-            # Wire sources get a higher entry cap — they produce more volume
-            # and the relevance filter handles noise.
-            entry_cap = 40 if source in WIRE_SOURCES else 8
+            # Per-feed cap; see ENTRY_CAP_OVERRIDES for why each one is what
+            # it is. Every entry read here becomes one Gemini filter call, so
+            # this line is the cost knob for the whole named-RSS leg.
+            entry_cap = ENTRY_CAP_OVERRIDES.get(source, ENTRY_CAP_DEFAULT)
             for e in feed.entries[:entry_cap]:
                 feed_total += 1
                 # Missing date stays NULL: never now-stamp a date-less item, or a
@@ -1946,6 +2012,16 @@ def fetch_all_articles():
     print(f"  RSS total: {rss_added} articles from {len(RSS_FEEDS)} feeds in {time.time() - rss_t0:.2f}s")
     print(f"  RSS total: skipped {total_skipped_stale} stale articles across all feeds "
           f"(>{INGEST_FRESHNESS_DAYS}d old)")
+    # A dead feed is otherwise INVISIBLE once the run scrolls past: its error is
+    # one line among ~24, `source_fetch_stats` is never persisted (see
+    # sql/proposals/0036_ingest_rss_feed_stats.sql), and the run still exits 0.
+    # Name the zero-yield feeds together, at the end, so "which feeds are dead"
+    # is one grep instead of a diff across per-feed lines. Zero is not
+    # necessarily broken -- a quiet feed inside the freshness window is also
+    # zero -- so this reports, it does not fail the run.
+    zero_yield = sorted(s for s, v in source_fetch_stats.items() if v["fetched"] == 0)
+    if zero_yield:
+        print(f"  RSS ZERO-YIELD ({len(zero_yield)}/{len(RSS_FEEDS)}): {', '.join(zero_yield)}")
 
     # NewsAPI
     try:
