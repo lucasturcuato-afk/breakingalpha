@@ -4,7 +4,7 @@ paragraphs, guarded.
 
 DRY RUN BY DEFAULT. `--apply` is the only thing that writes, and it refuses to
 run until the provenance migration
-(supabase/migrations/20260902120000_wikipedia_identity_provenance.sql) has been
+(supabase/migrations/20260902130000_wikipedia_identity_provenance.sql) has been
 applied by hand.
 
 WHAT IT WRITES
@@ -159,7 +159,7 @@ def preflight_schema(client) -> None:
     except Exception as exc:  # noqa: BLE001
         sys.exit(
             "ERROR: companies.description_source is missing. Apply\n"
-            "  supabase/migrations/20260902120000_wikipedia_identity_provenance.sql\n"
+            "  supabase/migrations/20260902130000_wikipedia_identity_provenance.sql\n"
             f"by hand first. Underlying error: {exc}"
         )
 
