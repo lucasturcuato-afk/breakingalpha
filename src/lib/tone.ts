@@ -95,8 +95,16 @@ function meanScore(labels: SentimentLabel[]): number {
  * Map an internal -1..+1 score to a level. Boundaries are inclusive toward the
  * milder bucket: exactly +0.20 reads Mixed (not Positive), exactly +0.60 reads
  * Positive (not Strongly Positive), and symmetrically on the negative side.
+ *
+ * EXPORTED so a second surface can bucket a mean without restating the cuts.
+ * `src/lib/company-mobile/tone-series.ts` reads a per-week mean off
+ * `/api/company-trend` and needs exactly this mapping. The alternative was a
+ * copy of the +-0.20 / +-0.60 cuts sitting a directory away from the
+ * calibration note at the top of this file, which is how two surfaces start
+ * disagreeing about the same company. `computeTone` cannot serve that caller:
+ * it takes a label list, and a mean plus a count cannot be turned back into one.
  */
-function levelOf(score: number): ToneLevel {
+export function levelOf(score: number): ToneLevel {
   if (score > STRONG_THRESHOLD) return "STRONGLY_POSITIVE";
   if (score > MILD_THRESHOLD) return "POSITIVE";
   if (score >= -MILD_THRESHOLD) return "MIXED";

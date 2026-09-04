@@ -1,7 +1,20 @@
+import { useEffect, useLayoutEffect } from "react";
 import type { CSSProperties, ReactNode } from "react";
 
 import styles from "./company-mobile.module.css";
 import { FONT_DISPLAY, FONT_SANS } from "@/components/mobile/fonts";
+
+/**
+ * `useLayoutEffect` on the client, `useEffect` on the server render.
+ *
+ * The tone section corrects one layout value from a measurement, and it has to
+ * land BEFORE paint or the level is drawn on the wrong pixel for a frame and
+ * then snaps. `useLayoutEffect` is the hook for that, and React warns when it
+ * runs during a server render, where there is no layout to read. This is the
+ * standard swap, kept here because two files in this folder need it.
+ */
+export const useIsomorphicLayoutEffect =
+  typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
 /**
  * The small shapes the five Company Intel sections share. Each one is measured

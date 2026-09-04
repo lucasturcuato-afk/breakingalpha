@@ -38,6 +38,27 @@
   }
 }
 
+/* A band on the tone strip, growing off the midline it is measured against.
+ * `transform-origin` is set per band inline, because a band above the midline
+ * grows downward from its own top and one below it grows upward from its
+ * bottom; a single origin would make half of them grow the wrong way. The
+ * resting frame is the drawn one, so dropping the animation leaves every band
+ * exactly where it belongs. */
+.toneBand {
+  animation: toneBandIn 260ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+
+@keyframes toneBandIn {
+  from {
+    opacity: 0;
+    transform: scaleY(0.2);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
 /* Loading. The design's own shimmer at the design's own duration. */
 .sk {
   border-radius: 4px;
@@ -81,6 +102,7 @@
    * on screen and readable. */
   .sectionIn,
   .screenIn,
+  .toneBand,
   .sk {
     animation: none;
   }
