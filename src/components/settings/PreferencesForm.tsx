@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { USER_ROLES } from "@/lib/user-roles";
+import { MobilePreferencesScreen } from "@/components/settings/mobile-preferences-screen";
 import type {
   UserRole,
   RiskAppetite,
@@ -60,6 +61,11 @@ const WORKFLOWS: { id: WorkflowStyle; label: string }[] = [
 /* ── Props ── */
 
 const DEFAULT_MARKET_CARDS = ["SPY", "VIX", "TNX", "SIGNALS"];
+
+/* How many cards the dashboard draws. It was written as a bare literal in
+   three places, one of which is the slice that decides what is actually sent.
+   Both layouts read this one name. */
+const MARKET_CARD_LIMIT = 4;
 
 const MARKET_CARD_OPTIONS = [
   "SPY", "QQQ", "DIA", "VIX", "TNX", "DXY",
@@ -139,6 +145,16 @@ export function PreferencesForm({
     setWatchlist((prev) => prev.filter((x) => x !== t));
   }
 
+  /* Chosen cards are a set with a ceiling. Written once so the two layouts
+     cannot disagree about what happens at the ceiling. */
+  const toggleMarketCard = useCallback((sym: string) => {
+    setMarketCards((prev) => {
+      if (prev.includes(sym)) return prev.filter((s) => s !== sym);
+      if (prev.length >= MARKET_CARD_LIMIT) return prev;
+      return [...prev, sym];
+    });
+  }, []);
+
   async function handleSave() {
     setSaving(true);
     setError(null);
@@ -159,7 +175,7 @@ export function PreferencesForm({
           workflow_style: workflow,
           risk_appetite: risk,
           watchlist_tickers: watchlist,
-          market_cards: marketCards.filter(Boolean).slice(0, 4),
+          market_cards: marketCards.filter(Boolean).slice(0, MARKET_CARD_LIMIT),
         }),
       });
 
@@ -178,7 +194,63 @@ export function PreferencesForm({
     }
   }
 
+  /* `toast` is set to a sentence on a successful save and cleared three
+     seconds later, so it already IS the saved flag; a second boolean beside it
+     could disagree with the toast the desk half renders. */
+  const saved = toast !== null;
+
   return (
+    /* ONE STATE, TWO LAYOUTS, AND THAT IS THE WHOLE REASON THE MOBILE SCREEN
+       LIVES INSIDE THIS COMPONENT.
+       Rendering it from the page instead would mount a SECOND component with
+       its own copy of every field. Both halves mount at once, `md:hidden` only
+       hides one of them, and the two would drift apart on a resize and then
+       race each other to PATCH the same profile. `settings/profile/page.tsx`
+       settled this the same way, and says so.
+       Gating is in CLASSES on both wrappers. An inline `display` beats a
+       responsive class at every breakpoint, which is design-lint rule 10 and
+       the defect that once shipped the tab bar to the desk. */
+    <>
+      <div className="md:hidden">
+        <MobilePreferencesScreen
+          saving={saving}
+          saved={saved}
+          error={error}
+          firstName={firstName}
+          firmOrSchool={firmOrSchool}
+          role={role}
+          strategy={strategy}
+          sectors={sectors}
+          horizon={horizon}
+          workflow={workflow}
+          watchlist={watchlist}
+          tickerInput={tickerInput}
+          marketCards={marketCards}
+          strategyOptions={STRATEGIES}
+          sectorOptions={SECTORS}
+          horizonOptions={HORIZONS}
+          workflowOptions={WORKFLOWS}
+          marketCardOptions={MARKET_CARD_OPTIONS}
+          marketCardLimit={MARKET_CARD_LIMIT}
+          onFirstName={setFirstName}
+          onFirmOrSchool={setFirmOrSchool}
+          /* Tapping the chosen one again clears it, exactly as the desk pills
+             do. A single-choice group with no way back to "not chosen" cannot
+             express the state a new account starts in. */
+          onRole={(v) => setRole(role === v ? null : (v as UserRole))}
+          onStrategy={(v) => setStrategy(strategy === v ? null : (v as StrategyType))}
+          onToggleSector={toggleSector}
+          onHorizon={(v) => setHorizon(horizon === v ? null : (v as InvestmentHorizon))}
+          onWorkflow={(v) => setWorkflow(workflow === v ? null : (v as WorkflowStyle))}
+          onTickerInput={setTickerInput}
+          onAddTickers={addTicker}
+          onRemoveTicker={removeTicker}
+          onToggleMarketCard={toggleMarketCard}
+          onSave={handleSave}
+        />
+      </div>
+
+      <div className="hidden md:block" data-desk-preferences="">
     <div className="space-y-6">
       {/* SECTION 1 — Identity */}
       <section className="bg-parchment border border-border-base rounded-2xl p-6">
@@ -353,28 +425,22 @@ export function PreferencesForm({
           Dashboard Market Cards
         </h2>
         <p className="font-sans text-[12px] text-text-secondary mb-3">
-          {marketCards.length} / 4 selected
-          {marketCards.length >= 4 && (
+          {marketCards.length} / {MARKET_CARD_LIMIT} selected
+          {marketCards.length >= MARKET_CARD_LIMIT && (
             <span className="ml-2 text-gold-dark font-semibold">Maximum 4 cards</span>
           )}
         </p>
         <div className="flex flex-wrap gap-2">
           {MARKET_CARD_OPTIONS.map((sym) => {
             const selected = marketCards.includes(sym);
-            const atMax = marketCards.length >= 4 && !selected;
+            const atMax = marketCards.length >= MARKET_CARD_LIMIT && !selected;
             return (
               <Pill
                 key={sym}
                 label={sym}
                 selected={selected}
                 disabled={atMax}
-                onClick={() => {
-                  if (selected) {
-                    setMarketCards((prev) => prev.filter((s) => s !== sym));
-                  } else if (!atMax) {
-                    setMarketCards((prev) => [...prev, sym]);
-                  }
-                }}
+                onClick={() => toggleMarketCard(sym)}
               />
             );
           })}
@@ -407,6 +473,8 @@ export function PreferencesForm({
         Some content (like Morning Briefs) updates with the next pipeline run.
       </p>
     </div>
+      </div>
+    </>
   );
 }
 
