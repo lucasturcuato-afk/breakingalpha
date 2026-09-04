@@ -447,17 +447,101 @@ AMBIGUOUS_TICKERS = {
 _TICKER_COMPANY_NAMES: dict[str, str] = {}
 
 
+# ---------------------------------------------------------------------------
+# Bounded reads with a count assertion.
+#
+# PostgREST caps EVERY response at db-max-rows (1000 here) and does NOT error
+# when it truncates: a query that should return 1,200 rows returns 1,000 and is
+# indistinguishable from a complete answer. Same class as the merge-map
+# truncation fixed in #803, and the same remedy: paginate with
+# .order().range(), take a server-side count(*) in the same breath, and refuse
+# the result if the two disagree.
+#
+# WHY THIS MATTERS HERE. `companies WHERE ticker IS NOT NULL` is the Google
+# News ticker universe. It sat at 961 when the row cap was swept (see the
+# Learnings section of CLAUDE.md) and measures 900 on 2026-09-03. Nothing about
+# it is pinned: it grows as the entity resolver mints companies, and on the day
+# it crosses 1,000 the unbounded read would start returning exactly 1,000
+# tickers. Google News fetching would quietly shrink, the run would stay green,
+# no deploy would coincide with it, and the only visible symptom would be
+# slightly less news. There is no worse failure shape than that.
+# ---------------------------------------------------------------------------
+
+#: Rows per PostgREST page. Must stay <= db-max-rows or paging silently
+#: short-reads every page.
+_READ_PAGE_SIZE = 1000
+
+
+class TruncatedReadError(RuntimeError):
+    """A paginated read did not reach its own server-side count(*).
+
+    Deliberately NOT a subclass of the exceptions the surrounding read helpers
+    swallow. A network blip degrading a read to "fewer tickers this run" is
+    tolerable and already handled; a SILENT truncation is the thing this module
+    must never do, so it propagates.
+    """
+
+
+def _fetch_all_rows(table: str, cols: str, apply_filters=None, *,
+                    order_col: str = "id", label: str = "") -> list[dict]:
+    """Every row matching a filtered read, or raise.
+
+    `apply_filters` receives the select builder and returns it with the SAME
+    filters applied every call -- the count and the pages must describe the
+    same query or the assertion is meaningless.
+
+    Ordering is on `order_col` (a stable unique key, not the selected column)
+    so .range() paging is total-ordered and cannot skip or repeat a row.
+    """
+    def _q(count_mode=None):
+        b = supabase.table(table).select(cols, count=count_mode)
+        return apply_filters(b) if apply_filters else b
+
+    what = label or f"{table}.{cols}"
+    head = _q("exact").limit(1).execute()
+    expected = head.count
+    if expected is None:
+        raise TruncatedReadError(
+            f"{what}: PostgREST returned no exact count; refusing to use the "
+            "result, because an unverified read is how the row cap hides.")
+
+    rows: list[dict] = []
+    page = 0
+    while len(rows) < expected:
+        r = (_q().order(order_col)
+             .range(page * _READ_PAGE_SIZE, page * _READ_PAGE_SIZE + _READ_PAGE_SIZE - 1)
+             .execute())
+        if not r.data:
+            break
+        rows += r.data
+        page += 1
+
+    if len(rows) != expected:
+        raise TruncatedReadError(
+            f"TRUNCATED READ: {what} reports {expected} rows, fetched "
+            f"{len(rows)}. Refusing to continue on a partial result.")
+    return rows
+
+
 def _load_ticker_company_names() -> dict[str, str]:
     """Load ticker → company name mapping from companies table (cached)."""
     if _TICKER_COMPANY_NAMES:
         return _TICKER_COMPANY_NAMES
     try:
-        resp = supabase.table("companies").select("ticker, name").not_.is_("ticker", "null").execute()
-        for row in (resp.data or []):
+        rows = _fetch_all_rows(
+            "companies", "ticker, name",
+            lambda b: b.not_.is_("ticker", "null"),
+            label="companies WHERE ticker IS NOT NULL (ticker->name)")
+        for row in rows:
             t = (row.get("ticker") or "").strip().upper()
             n = (row.get("name") or "").strip()
             if t and n:
                 _TICKER_COMPANY_NAMES[t] = n
+    except TruncatedReadError:
+        # Never softened into a warning: a short map silently de-disambiguates
+        # AMBIGUOUS_TICKERS, so the affected feeds quietly search for "A stock"
+        # instead of "A Agilent stock" and the noise looks like bad luck.
+        raise
     except Exception as ex:
         print(f"  gnews: failed to load company names: {ex}")
     return _TICKER_COMPANY_NAMES
@@ -484,20 +568,35 @@ def _build_gnews_url(ticker: str) -> str:
 def _get_gnews_tickers() -> list[str]:
     """Return deduplicated ticker list from watchlist + top companies."""
     tickers: set[str] = set()
+    # Both legs go through _fetch_all_rows. The watchlist leg is far from the
+    # cap today (197 rows) but it is the same unbounded shape sitting two lines
+    # from the one that is not, and a half-fixed function invites the next bug.
     try:
-        resp = supabase.table("watchlist").select("identifier").eq("type", "ticker").execute()
-        for row in (resp.data or []):
+        rows = _fetch_all_rows(
+            "watchlist", "identifier",
+            lambda b: b.eq("type", "ticker"),
+            label="watchlist WHERE type='ticker'")
+        for row in rows:
             t = (row.get("identifier") or "").strip().upper()
             if t:
                 tickers.add(t)
+    except TruncatedReadError:
+        raise
     except Exception as ex:
         print(f"  gnews: watchlist read failed: {ex}")
     try:
-        resp = supabase.table("companies").select("ticker").not_.is_("ticker", "null").execute()
-        for row in (resp.data or []):
+        rows = _fetch_all_rows(
+            "companies", "ticker",
+            lambda b: b.not_.is_("ticker", "null"),
+            label="companies WHERE ticker IS NOT NULL (gnews universe)")
+        for row in rows:
             t = (row.get("ticker") or "").strip().upper()
             if t:
                 tickers.add(t)
+    except TruncatedReadError:
+        # THE read this fix exists for. A truncated universe means we simply
+        # stop fetching news for the tickers past the cap, forever, silently.
+        raise
     except Exception as ex:
         print(f"  gnews: companies read failed: {ex}")
     return sorted(tickers)

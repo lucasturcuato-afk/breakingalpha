@@ -70,15 +70,29 @@ class _FakeResponse:
 class _FakeQuery:
     """Fluent Supabase query stub: every builder method returns self and
     execute() yields a canned .data payload. `not_` is the property the real
-    builder exposes before .is_(...)."""
+    builder exposes before .is_(...).
+
+    UPDATED 2026-09-03 for the row-cap fix. `_load_ticker_company_names` no
+    longer calls a bare .execute(); it goes through ingest._fetch_all_rows,
+    which takes a `count="exact"` head and then pages with .order().range().
+    This stub therefore has to answer .count and honour a range, or the count
+    assertion in the helper sees `expected=None` and (correctly) refuses the
+    read. Row-cap behaviour itself is covered in test_row_cap_reads.py; this
+    stub stays deliberately simple and never truncates.
+    """
 
     def __init__(self, data):
         self._data = data
+        self._count_mode = None
+        self._lo = 0
+        self._hi = None
 
     def table(self, *_a, **_k):
         return self
 
-    def select(self, *_a, **_k):
+    def select(self, *_a, count=None, **_k):
+        self._count_mode = count
+        self._lo, self._hi = 0, None
         return self
 
     @property
@@ -91,8 +105,20 @@ class _FakeQuery:
     def eq(self, *_a, **_k):
         return self
 
+    def order(self, *_a, **_k):
+        return self
+
+    def range(self, lo, hi):
+        self._lo, self._hi = lo, hi
+        return self
+
+    def limit(self, *_a, **_k):
+        return self
+
     def execute(self):
-        return type("Resp", (), {"data": self._data})()
+        count = len(self._data) if self._count_mode == "exact" else None
+        hi = len(self._data) if self._hi is None else self._hi + 1
+        return type("Resp", (), {"data": self._data[self._lo:hi], "count": count})()
 
 
 # ---------------------------------------------------------------------------
