@@ -41,6 +41,10 @@ USAGE
                                                              # feed URLs on each
                                                              # candidate domain
     python backend/tools/rss_feed_targets.py --json out.json
+    python backend/tools/rss_feed_targets.py --health       # audit CONFIGURED
+                                                            # feeds for the
+                                                            # signals that
+                                                            # precede a death
 
 Read-only. The --probe leg makes one bounded HTTP request per URL shape per
 candidate (RSS_FETCH_TIMEOUT_SEC-equivalent timeout); everything else is one
@@ -54,6 +58,7 @@ import json
 import os
 import re
 import socket
+import ssl
 import statistics
 import sys
 import urllib.error
@@ -231,6 +236,145 @@ def probe_candidates(report: dict, limit: int) -> None:
         cand["probe"] = result
 
 
+# ---------------------------------------------------------------------------
+# Feed health audit (--health)
+#
+# Verification at ADD time only proves a feed answered once. These are the
+# signals that go bad BEFORE a feed stops producing, so the monthly run can
+# name a feed that is dying rather than waiting for rss_feed_stats to show a
+# run of zeros. Measured across all 31 configured feeds on 2026-09-04:
+#
+#   stale     newest item age. THE strongest signal, and the only one with a
+#             live example: C4ISRNET's newest item was 57.6h old, and its
+#             rss_feed_stats line the same day was 8 fetched / 2 fresh / 6
+#             stale. A feed does not usually 404; it goes quiet, and the
+#             freshness filter eats the difference silently.
+#   cert      TLS expiry in days. Nothing here is imminent, but GlobeNewswire
+#             sits at 30 and three more are inside 40. An expired cert is a
+#             hard, total, next-morning failure.
+#   redirect  the URL we configured is not the URL that serves. 5 of 31 are on
+#             a 301/308 (Axios, Bloomberg Tech, TIKR, Fortune, TheStreet).
+#             urlopen follows them so nothing breaks today, but the publisher
+#             is free to drop the old path, and that is a silent death.
+#   thin      fewer items than the feed's own entry cap: the cap is not the
+#             constraint, supply is, and a shrinking feed shows up here first.
+#
+# Read as WARNINGS, never as an auto-remove list. Every one of these has a
+# benign reading (a quiet weekend, a publisher on a long cert cadence), which
+# is exactly why the tool reports and a human decides.
+# ---------------------------------------------------------------------------
+
+#: Warn when the newest item is older than this. Sits above a normal weekend
+#: gap and below INGEST_FRESHNESS_DAYS (7d), so a feed trips this while it is
+#: still contributing something rather than after it has gone fully stale.
+STALE_WARN_HOURS = 48.0
+
+#: Warn when the TLS cert expires within this many days.
+CERT_WARN_DAYS = 30
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Surfaces a redirect instead of following it, so it can be reported."""
+
+    def redirect_request(self, *_a, **_k):
+        return None
+
+
+def _cert_days_remaining(host: str) -> int | None:
+    try:
+        ctx = ssl.create_default_context()
+        with socket.create_connection((host, 443), timeout=8) as sock:
+            with ctx.wrap_socket(sock, server_hostname=host) as ss:
+                cert = ss.getpeercert()
+        expires = datetime.strptime(
+            cert["notAfter"], "%b %d %H:%M:%S %Y %Z"
+        ).replace(tzinfo=timezone.utc)
+        return (expires - datetime.now(timezone.utc)).days
+    except Exception:
+        return None
+
+
+def audit_feed_health(feeds: dict[str, str], caps: dict[str, int],
+                      default_cap: int) -> list[dict]:
+    """One health record per configured feed. Read-only; two requests each."""
+    import feedparser
+    now = datetime.now(timezone.utc)
+    out: list[dict] = []
+    for name, url in feeds.items():
+        host = urllib.parse.urlparse(url).hostname or ""
+        rec: dict = {"feed": name, "url": url, "host": host, "warnings": []}
+
+        rec["cert_days"] = _cert_days_remaining(host)
+        if rec["cert_days"] is not None and rec["cert_days"] <= CERT_WARN_DAYS:
+            rec["warnings"].append(f"cert expires in {rec['cert_days']}d")
+
+        try:
+            opener = urllib.request.build_opener(_NoRedirect)
+            resp = opener.open(
+                urllib.request.Request(url, headers={"User-Agent": _UA}), timeout=12
+            )
+            rec["status"] = resp.status
+        except urllib.error.HTTPError as e:
+            rec["status"] = e.code
+            if e.code in (301, 302, 307, 308):
+                rec["redirects_to"] = e.headers.get("Location")
+                rec["warnings"].append(f"{e.code} redirect; pin the final URL")
+        except Exception as e:
+            rec["status"] = f"{type(e).__name__}"
+
+        try:
+            feed = feedparser.parse(_fetch(url))
+            rec["items"] = len(feed.entries)
+            ages = []
+            for entry in feed.entries[:60]:
+                published = entry.get("published") or entry.get("updated")
+                parsed = entry.get("published_parsed") or entry.get("updated_parsed")
+                if parsed:
+                    dt = datetime(*parsed[:6], tzinfo=timezone.utc)
+                elif published:
+                    try:
+                        dt = datetime.fromisoformat(str(published)[:19]).replace(
+                            tzinfo=timezone.utc)
+                    except ValueError:
+                        continue
+                else:
+                    continue
+                ages.append((now - dt).total_seconds() / 3600.0)
+            rec["newest_item_hours"] = round(min(ages), 1) if ages else None
+        except Exception as e:
+            rec["items"] = 0
+            rec["newest_item_hours"] = None
+            rec["warnings"].append(f"fetch/parse failed: {type(e).__name__}")
+
+        if rec["items"] == 0:
+            rec["warnings"].append("returns ZERO items")
+        elif rec["newest_item_hours"] is None:
+            rec["warnings"].append("no parseable date on any item")
+        elif rec["newest_item_hours"] > STALE_WARN_HOURS:
+            rec["warnings"].append(
+                f"newest item is {rec['newest_item_hours']}h old")
+
+        cap = caps.get(name, default_cap)
+        if 0 < rec["items"] < cap:
+            rec["warnings"].append(f"only {rec['items']} items for a cap of {cap}")
+
+        out.append(rec)
+    return out
+
+
+def _entry_caps() -> tuple[dict[str, int], int]:
+    """ENTRY_CAP_OVERRIDES / ENTRY_CAP_DEFAULT, parsed from ingest source."""
+    src = (_BACKEND / "ingest.py").read_text()
+    default = 8
+    m = re.search(r"ENTRY_CAP_DEFAULT\s*=\s*(\d+)", src)
+    if m:
+        default = int(m.group(1))
+    caps: dict[str, int] = {}
+    b = re.search(r"ENTRY_CAP_OVERRIDES[^{]*\{(.*?)\n\}", src, re.S)
+    if b:
+        caps = {k: int(v) for k, v in re.findall(r'"([^"]+)":\s*(\d+)', b.group(1))}
+    return caps, default
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -241,8 +385,32 @@ def main() -> None:
                     help="probe common feed URL shapes on candidate domains")
     ap.add_argument("--probe-limit", type=int, default=15)
     ap.add_argument("--top", type=int, default=45)
+    ap.add_argument("--health", action="store_true",
+                    help="audit CONFIGURED feeds for the signals that precede a "
+                         "death (staleness, cert expiry, redirects, thin supply)")
     ap.add_argument("--json", help="write the full report to this path")
     args = ap.parse_args()
+
+    if args.health:
+        feeds = _rss_feeds_from_source()
+        caps, default_cap = _entry_caps()
+        recs = audit_feed_health(feeds, caps, default_cap)
+        print(f"feed health: {len(recs)} configured feeds\n")
+        print(f"{'feed':26s} {'status':>8s} {'certD':>6s} {'items':>6s} {'newest_h':>9s}  warnings")
+        print("-" * 92)
+        for r in recs:
+            print(f"{r['feed'][:26]:26s} {str(r['status']):>8s} "
+                  f"{str(r['cert_days']):>6s} {r['items']:6d} "
+                  f"{str(r['newest_item_hours']):>9s}  "
+                  f"{'; '.join(r['warnings']) if r['warnings'] else 'ok'}")
+        bad = [r for r in recs if r["warnings"]]
+        print(f"\n{len(bad)}/{len(recs)} feeds have at least one warning.")
+        print("None of these is an auto-remove signal: every one has a benign "
+              "reading. Confirm by hand before touching RSS_FEEDS.")
+        if args.json:
+            Path(args.json).write_text(json.dumps(recs, indent=1, default=str))
+            print(f"full report -> {args.json}")
+        return
 
     rows = load_window(args.days)
     report = build_report(rows, args.days, args.min_per_day, args.min_rel)
