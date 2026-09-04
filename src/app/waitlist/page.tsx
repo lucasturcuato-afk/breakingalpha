@@ -1,5 +1,6 @@
 import Link from "next/link"
 import { Wordmark } from "@/components/ui/wordmark"
+import { LegalLink } from "@/components/auth/legal-link"
 
 // Server component so it can read ?existing=1 off the (async) searchParams and
 // render the duplicate variant. A duplicate arrival (already on the waitlist
@@ -80,8 +81,31 @@ export default async function WaitlistPage({
           </Link>
         </div>
 
+        {/* The small print, and the way out of it.
+
+            Measured signed out at 320, 390 and 1440 before this change, this
+            page rendered two links: a mailto at 132.47 by 18 and "Back to
+            homepage". This line named neither Terms nor Privacy and linked
+            neither, on a page a stranger reaches with no account, which makes
+            it one of the two most likely first contacts anyone has with the
+            product. That is the whole justification. No regime is cited
+            because none is needed to see the gap.
+
+            ONE LINK TO THE HUB RATHER THAN TWO TO THE DOCUMENTS. `/legal`
+            carries Terms, Privacy and Support as 56px rows, and this page
+            already needs the third: its own support address is a mailto
+            measured at 18px tall, well under the 44px floor, and the hub row
+            is the same address at 56px. Two anchors on one line of 12px print
+            at 320 would be two targets competing for one line box and would
+            still leave Support at 18px. One anchor gives all three
+            destinations a two-tap path and every target on it clears 44.
+
+            `LegalLink` carries the hit area; see that file for why the padding
+            and the equal negative margin leave the line box exactly as it
+            was. */}
         <p className="text-center text-xs text-text-muted mt-6">
-          © 2026 Signalera. AI-generated content. Not investment advice.
+          © 2026 Signalera. AI-generated content. Not investment advice.{" "}
+          <LegalLink href="/legal">Legal</LegalLink>
         </p>
       </div>
     </div>

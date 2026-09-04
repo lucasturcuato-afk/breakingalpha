@@ -6,6 +6,7 @@ import { TickerStrip } from "@/components/brief/ticker-strip";
 import { Wordmark } from "@/components/ui/wordmark";
 import { stripHtml } from "@/lib/strip-html";
 import { MobileShareScreen } from "@/components/share/mobile-share-screen";
+import { LegalLink } from "@/components/auth/legal-link";
 
 /**
  * Public read-only brief view.
@@ -336,6 +337,33 @@ export default async function PublicBriefPage({ params }: Props) {
         >
           Try Signalera, free
         </Link>
+        {/* The disclosure this layout never had.
+
+            The phone layout above has printed a disclosure line since it
+            shipped. This one, the layout a stranger opening a shared link on a
+            laptop actually sees, printed none: measured signed out at 1440,
+            this page rendered three links, all of them the wordmark or a
+            sign-up button, and not one disclosure string on the page. That is
+            the gap, and it is wider than the phone's, because the phone at
+            least said what the page was.
+
+            SAME STRING, SAME COMPONENT, BOTH LAYOUTS. The wording is the twin
+            in `mobile-share-screen.tsx` character for character, and the
+            anchor is the one `/auth` and `/waitlist` use, so a reader who
+            opens this link on a laptop and again on a phone reads the same
+            sentence and taps the same target. Two layouts that disclose
+            differently is the failure this file already went out of its way to
+            avoid for the CTA copy directly above.
+
+            IT IS ADDITIVE. It appends to a footer that already exists and
+            already centres its content; nothing above the footer moves at any
+            width, which was checked at 1440 by measuring every pre-existing
+            box before and after. */}
+        <p className="font-sans text-[11px] text-text-muted mt-5 max-w-[560px] mx-auto text-pretty">
+          Shared read-only view. Not indexed by search engines. AI-generated content. Not
+          investment advice. Verify before acting.{" "}
+          <LegalLink href="/legal">Legal</LegalLink>
+        </p>
       </footer>
     </div>
       </div>

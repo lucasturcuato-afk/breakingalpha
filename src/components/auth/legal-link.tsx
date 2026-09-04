@@ -2,14 +2,24 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 
 /**
- * The two anchors in the sign-in small print.
+ * The anchor that opens a legal document from a line of small print.
  *
  * WHY THIS EXISTS AT ALL. `/auth` renders "By continuing, you agree to
  * Signalera's Terms of Service and Privacy Policy." on both layouts, and on
- * both layouts it was plain text. Measured at 390 before this change, `/auth`
+ * both layouts it was plain text. Measured at 390 before that change, `/auth`
  * had zero visible links of any kind: the page asserted an agreement to two
  * documents a reader could not open from it. That is the defect, and it is the
  * whole reason for this component.
+ *
+ * IT NOW SERVES FOUR CALL SITES, NOT TWO, and the two new ones are the reason
+ * this paragraph exists. `/waitlist` and `/share/brief/[id]` are both reachable
+ * with no session, and measured signed out at 320, 390 and 1440 neither carried
+ * a single link into `/legal`: `/waitlist` had one mailto and a link home,
+ * `/share/brief/[id]` had a wordmark and two sign-up buttons. Both surfaces
+ * carry exactly the problem this component was written for, a line of small
+ * print naming things a reader cannot open, so both use it rather than growing
+ * a second way to do the same job. The label there is "Legal", the same word
+ * `legal-up-link.tsx` uses, so one destination keeps one name.
  *
  * WHY IT IS SHARED RATHER THAN WRITTEN TWICE. `src/app/auth/page.tsx` and
  * `src/components/auth/mobile-auth.tsx` draw the same sentence with different
