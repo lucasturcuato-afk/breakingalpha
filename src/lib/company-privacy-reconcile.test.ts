@@ -48,7 +48,24 @@ const APPLE: Row = { id: "apple", name: "Apple", ticker: "AAPL", sec_cik: 320193
 /** A genuinely private company: no ticker, no CIK, and no alias to a filer. */
 const SPACEX: Row = { id: "spacex", name: "SpaceX", ticker: null, sec_cik: null };
 
-const COMPANIES: Row[] = [EXXON_BRAND, EXXON_FILER, APPLE, SPACEX];
+/**
+ * GENIUS GROUP: the third production shape, and the one that shows why the
+ * URL's own string cannot be dropped as a match key.
+ *
+ * `resolveAlias` anchors on `canonicalize()`d input, and canonicalize collapses
+ * "Genius Group" to "Genius", so `/company/genius-group` resolves a head on the
+ * CIK-less row named "Genius". The row carrying that company's own ticker and
+ * CIK is named "Genius Group", which is exactly what the URL reconstructs to
+ * and is NOT what the head is called. No alias bridges the two.
+ *
+ * So the head's name is BETTER information about which company the page is on
+ * and WORSE as a match key inside `companies`, and a resolver handed only the
+ * head's name answers with less than the URL already knew.
+ */
+const GENIUS_HEAD: Row = { id: "genius-head", name: "Genius", ticker: null, sec_cik: null };
+const GENIUS_FILER: Row = { id: "genius-filer", name: "Genius Group", ticker: "GNS", sec_cik: 1847806 };
+
+const COMPANIES: Row[] = [EXXON_BRAND, EXXON_FILER, APPLE, SPACEX, GENIUS_HEAD, GENIUS_FILER];
 const ALIASES: AliasRow[] = [
   { lookup_key: "exxonmobil", canonical_id: EXXON_BRAND.id },
   { lookup_key: "exxonmobil", canonical_id: EXXON_FILER.id },
@@ -60,36 +77,51 @@ const ALIASES: AliasRow[] = [
  * resolveCompanyCik issues. `ilike` with no wildcards is a case-INSENSITIVE
  * exact match, which is what the real calls rely on and what the anchored-row
  * mismatch turns on, so it is modelled rather than lowered to `===`.
+ *
+ * IT RECORDS EVERY READ. Some of the claims below are about WHICH STEP
+ * answered, not about the value that came back, and a value assertion cannot
+ * tell those apart: several steps resolve Apple to the same CIK, so a test that
+ * only reads `res.cik` stays green when the step it names is deleted. The log
+ * is the seam. See `queries()` and the step-1 test.
  */
 function fakeSupabase(companies: Row[], aliases: AliasRow[]) {
+  const log: string[] = [];
   const ci = (a: string | null, b: string) => (a ?? "").toLowerCase() === b.toLowerCase();
   function builder(table: string) {
     let rows: unknown[] = table === "companies" ? [...companies] : [...aliases];
+    const trace: string[] = [];
     const api = {
       select() { return api; },
       eq(col: string, val: unknown) {
+        trace.push(`eq(${col})`);
         rows = (rows as Record<string, unknown>[]).filter((r) => r[col] === val);
         return api;
       },
       ilike(col: string, val: string) {
+        trace.push(`ilike(${col})`);
         rows = (rows as Record<string, unknown>[]).filter((r) => ci(r[col] as string | null, val));
         return api;
       },
       in(col: string, vals: unknown[]) {
+        trace.push(`in(${col})`);
         rows = (rows as Record<string, unknown>[]).filter((r) => vals.includes(r[col]));
         return api;
       },
       limit(n: number) { rows = rows.slice(0, n); return api; },
       then(resolve: (v: { data: unknown[]; error: null }) => unknown) {
+        log.push(`${table}.${trace.join(".")}`);
         return Promise.resolve(resolve({ data: rows, error: null }));
       },
     };
     return api;
   }
-  return { from: (table: string) => builder(table) } as never;
+  return { client: { from: (table: string) => builder(table) } as never, log };
 }
 
-const db = fakeSupabase(COMPANIES, ALIASES);
+const fake = fakeSupabase(COMPANIES, ALIASES);
+const db = fake.client;
+/** Drain and return the reads issued since the last call. */
+const queries = (): string[] => fake.log.splice(0, fake.log.length);
 
 // ---------------------------------------------------------------------------
 // Path B: resolveCompanyCik must not answer with LESS than the name it was
@@ -97,10 +129,12 @@ const db = fakeSupabase(COMPANIES, ALIASES);
 // ---------------------------------------------------------------------------
 
 test("a null-CIK id does not short-circuit past the alias bridge to the filer", async () => {
-  // THE STEP-1 GUARD. The page now passes the anchored row's id, and that row
-  // is the brand-form duplicate with no CIK. When step 1 returned on ANY row,
-  // this came back null and the Financials tab went empty on a page that had
-  // been rendering that filer's XBRL from the slug-derived name a moment ago.
+  // THE STEP-1 CONDITION. The page now passes the anchored row's id, and that
+  // row is the brand-form duplicate with no CIK. When step 1 returned on ANY
+  // row, this came back null and the Financials tab went empty on a page that
+  // had been rendering that filer's XBRL from the slug-derived name a moment
+  // ago. Reverting the condition to `if (idRow)` reddens this.
+  queries();
   const res = await resolveCompanyCik(db, {
     id: EXXON_BRAND.id,
     name: EXXON_BRAND.name,
@@ -111,10 +145,26 @@ test("a null-CIK id does not short-circuit past the alias bridge to the filer", 
 });
 
 test("an id whose row HAS a CIK still resolves on step 1 without consulting aliases", async () => {
-  // The step-1 fast path is intact for the rows it was written for: a filer id
-  // answers from its own row, so the change costs no extra query where the old
-  // code was already right.
+  /* THIS TEST NAMES A STEP, SO IT ASSERTS THE IO AND NOT THE VALUE, and the
+     distinction is the whole reason the assertion looks like this.
+
+     The value here is not discriminating: delete the step-1 early return
+     outright and Apple still resolves to 320193 and to its own id, off the
+     ticker match one step down. A `res.cik` assertion is green either way, so
+     it proves the fixture and not the branch, which is the incidental
+     fingerprint CLAUDE.md documents. What step 1 actually promises is that a
+     CIK-bearing id is TERMINAL: one read, of `companies`, by id, and nothing
+     after it. That is a claim about reads, so it is read off the reads.
+
+     Deleting `if (idRow?.sec_cik != null) return toResolution(idRow);` reddens
+     this, and so does reverting its condition. */
+  queries();
   const res = await resolveCompanyCik(db, { id: APPLE.id, name: APPLE.name, ticker: APPLE.ticker });
+  assert.deepEqual(
+    queries(),
+    ["companies.eq(id)"],
+    "a CIK-bearing id must be terminal: one read, by id, and no ticker or alias lookup after it",
+  );
   assert.equal(res.cik, 320193);
   assert.equal(res.companyId, APPLE.id);
 });
@@ -142,6 +192,45 @@ test("the ticker on the ref rescues a /company/<TICKER> URL the name cannot", as
     ticker: APPLE.ticker,
   });
   assert.equal(withHeaderTicker.cik, 320193, "the identity the header already resolved must be used");
+});
+
+// ---------------------------------------------------------------------------
+// The URL's own string is a match key, and giving the ref a better `name` is
+// not a reason to stop reading it.
+// ---------------------------------------------------------------------------
+
+test("the slug stays a match key once the page also sets a name", async () => {
+  /* /company/genius-group. `resolveAlias` canonicalizes its input, which
+     collapses "Genius Group" to the separate CIK-less row named "Genius", so
+     the head this page gets is not the row carrying the company's own ticker
+     and CIK. The URL reconstructs to the name that IS that row, and no alias
+     bridges the two, so the slug is the only key that reaches the filer.
+
+     `const raw = ref.name ?? ref.slug` made that key unreachable the moment a
+     caller set a name, and this page now always sets one. Restoring `??` here
+     reddens this test. */
+  const res = await resolveCompanyCik(db, {
+    id: GENIUS_HEAD.id,
+    name: GENIUS_HEAD.name,
+    ticker: null,
+    slug: "Genius Group",
+  });
+  assert.equal(res.cik, 1847806, "the URL's own string must still reach the filer");
+  assert.equal(res.ticker, "GNS");
+  assert.equal(res.companyId, GENIUS_FILER.id);
+});
+
+test("the name leads, so a second surface form can add a filer but never swap one", async () => {
+  /* THE NO-REDIRECT GUARANTEE, and the reason a second surface form is safe to
+     add at all. `matchCompaniesByName` collects in the order it is given and
+     `preferCik` takes the FIRST CIK-bearing candidate, so name-derived rows
+     always win. A slug naming a DIFFERENT filer cannot move an answer the name
+     already found; it can only answer where the name found nothing.
+
+     Reversing the order of `surfaces` reddens this. */
+  const res = await resolveCompanyCik(db, { name: APPLE.name, slug: "Exxon" });
+  assert.equal(res.cik, 320193, "the name's filer must win over the slug's");
+  assert.equal(res.companyId, APPLE.id);
 });
 
 // ---------------------------------------------------------------------------

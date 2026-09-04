@@ -259,11 +259,23 @@ export default async function CompanyDetailPage({
      Passing the resolved head's id, name AND ticker collapses the two paths to
      one. The ticker is the key that carries `/company/<TICKER>` URLs, whose
      slug reconstructs to a bare ticker string that matches no company name and
-     no alias key. See the reconciliation below the reads for the other half. */
+     no alias key. See the reconciliation below the reads for the other half.
+
+     `slug` IS THE OLD KEY AND IT IS STILL HERE, WHICH IS WHAT MAKES THIS REF A
+     STRICT SUPERSET OF THE ONE IT REPLACES RATHER THAN A SWAP. The old call
+     passed `{ name: companyName }` and nothing else, so dropping `companyName`
+     would have retired a working key while adding three: `resolveAlias`
+     anchors on `canonicalize()`d input, which collapses surface forms, so
+     `baseDetail.canonical` is a BETTER answer to "which company is this page"
+     and a WORSE match key inside `companies`. Measured over every reachable
+     slug in both URL spaces, dropping it lost two CIKs, one of them that
+     company's own. `resolveCompanyCik` matches both strings in one pass, name
+     first; see the `surfaces` block there. */
   const companyRef = {
     id: baseDetail.companyId,
     name: baseDetail.canonical,
     ticker: baseDetail.ticker,
+    slug: companyName,
   };
 
   // Everything from here down depends only on `companyDetail` (already

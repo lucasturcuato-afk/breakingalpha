@@ -105,7 +105,19 @@ export { edgarFilingsUrl } from "./edgar-url";
 
 export interface CompanyRef {
   id?: string | null;
+  /** A surface form of the company. Typically `companies.name` on the row the
+   * caller already anchored. NOT exclusive with `slug`; see `slug`. */
   name?: string | null;
+  /**
+   * A SECOND surface form, and the URL's own. `/company/[id]` sets it to
+   * `slugToCompanyName(id)`, the string it reconstructs from the path.
+   *
+   * IT IS NOT A FALLBACK FOR A MISSING `name`, and reading it as one is how it
+   * went dead. This used to be `ref.name ?? ref.slug`, so the moment a caller
+   * set a name the slug became unreachable, and the page began setting one.
+   * Both strings name the same company from different sources, so both are
+   * matched, in order; see the `surfaces` block in `resolveCompanyCik`.
+   */
   slug?: string | null;
   /** Optional exact ticker; the most reliable key, since every CIK-bearing
    * companies row carries a ticker while null-CIK name duplicates do not. */
@@ -249,8 +261,36 @@ export async function resolveCompanyCik(
       if (idRow?.sec_cik != null) return toResolution(idRow);
     }
 
-    const raw = (ref.name ?? ref.slug ?? "").replace(/-/g, " ").trim();
+    /* EVERY SURFACE FORM THIS REF CARRIES, IN PREFERENCE ORDER, MATCHED IN ONE
+       PASS. This was `ref.name ?? ref.slug`, and the `??` is what made the slug
+       dead the moment a caller set a name. `/company/[id]` used to pass
+       `slugToCompanyName(id)` AS the name, so the slug string was the only key
+       in play and it was doing real work: `/company/genius-group` reconstructs
+       to "Genius Group", which is the `companies` row carrying that company's
+       own ticker and CIK. Passing the resolved head's name instead is strictly
+       better information about WHICH company the page is on, and it is strictly
+       worse as a match key here, because `resolveAlias` anchors on
+       `canonicalize()`d input and that collapses "Genius Group" to the separate,
+       CIK-less row named "Genius". Losing the slug lost the filer.
+
+       TWO SURFACE FORMS, ONE RESOLUTION. This is not a second resolver and not
+       a second answer to the same question, which is the defect this whole
+       change is about. `ref.name` is `companies.name` on the row `resolveAlias`
+       anchored. `ref.slug` is the URL as `slugToCompanyName` reconstructs it.
+       Both are strings that may name the same company, both are fed to the SAME
+       ordered steps below, and one rule (`preferCik`) picks the winner.
+
+       ORDER IS THE NO-REDIRECT GUARANTEE. `preferCik` takes the FIRST
+       CIK-bearing candidate, and `matchCompaniesByName` collects in the order
+       given, so name-derived rows are always ahead of slug-derived ones. A ref
+       that already resolved to a filer cannot be moved to a different one by
+       adding the slug; the slug can only answer where the name found nothing. */
+    const surfaces = [ref.name, ref.slug]
+      .map((s) => (s ?? "").replace(/-/g, " ").trim())
+      .filter((s) => s.length > 0);
+    const raw = surfaces[0] ?? "";
     const canon = raw ? canonicalize(raw) : "";
+    const forms = [...new Set(surfaces.flatMap((s) => [s, canonicalize(s)]))].filter(Boolean);
     const ticker = ref.ticker?.trim() ?? "";
 
     // 2. Exact ticker: the CIK lives on the ticker'd row, so this is the most
@@ -261,16 +301,17 @@ export async function resolveCompanyCik(
       if (row?.sec_cik != null) return toResolution(row);
     }
 
-    if (!raw) return idRow ? toResolution(idRow) : EMPTY_RESOLUTION;
+    if (forms.length === 0) return idRow ? toResolution(idRow) : EMPTY_RESOLUTION;
 
-    // 3. Exact name (raw AND canonicalized), preferring a CIK-bearing match so a
-    //    null-CIK duplicate never shadows the filer row.
-    const nameRows = await matchCompaniesByName(supabase, [raw, canon]);
+    // 3. Exact name over every surface form (each raw AND canonicalized),
+    //    preferring a CIK-bearing match so a null-CIK duplicate never shadows
+    //    the filer row.
+    const nameRows = await matchCompaniesByName(supabase, forms);
     const directCik = pickPreferCik(nameRows);
     if (directCik?.sec_cik != null) return toResolution(directCik);
 
     // 4. Alias table: bridge a full legal name to the CIK-bearing company.
-    const aliasRows = await matchCompaniesByAlias(supabase, [aliasKey(raw), aliasKey(canon)]);
+    const aliasRows = await matchCompaniesByAlias(supabase, forms.map(aliasKey));
     const aliasCik = pickPreferCik(aliasRows);
     if (aliasCik?.sec_cik != null) return toResolution(aliasCik);
 
