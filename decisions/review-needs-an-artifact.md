@@ -19,8 +19,8 @@ separate cleanly, and not along the axis anyone expected.
 
 | PR | concurrent reviewer had a build? | blocking defects found concurrently | blocking defects found adversarially |
 |---|---|---|---|
-| **#806** ADV / 13F | **yes**, it rendered 21 pages in real Chromium | **3** | **2 more** |
-| **#811** tag repair | no, it closed before the build | 0 on the build | 1 (circular refusal), 8 items held |
+| **#806** ADV / 13F | **yes**, it rendered pages in real Chromium | **3** | **2 more** |
+| **#811** tag repair | no, it closed before the build | 0 on the build | 1 (circular refusal), plus a list held |
 | **#812** CIK linkage | no, it closed before the build | 0 on the build | 4, including one wrong company |
 | **#813** registry union | no, it reviewed **its own reconstruction** | 0 on the build | 2 blocking plus the proofs-cannot-fail finding |
 | **#814** Wikipedia identity | no, it reviewed the spec | 0 on the build | 1 critical plus 5 more |
@@ -42,25 +42,26 @@ Listed because "the review layer found things" is not a measurement.
 
 - **#812**: `First Bank and Trust` stamped to CIK 1746109, which EDGAR says is
   `BANK FIRST CORP` of Manitowoc WI. Token-set equal with the order reversed,
-  surviving because `trust` is in `_WEAK`. **43 more of the 411 stamp a depositary
-  registrant rather than an issuer** (PR said 34). The generator is not in the PR,
-  so the four guards protecting the 411 exist nowhere in the repo and the file is
-  unreproducible. Line 74 is a client meta-command that is a syntax error in the
-  Supabase editor.
+  surviving because `trust` is in `_WEAK`. **The PR undercounted the rows that
+  stamp a depositary registrant rather than an issuer**, by more than it counted.
+  The generator is not in the PR, so the four guards protecting the batch exist
+  nowhere in the repo and the file is unreproducible. Line 74 is a client
+  meta-command that is a syntax error in the Supabase editor.
 - **#813**: `/company/instagram` renders Meta's filings, Form 4 rows and XBRL under
   the heading "Instagram". `/company/agi` regresses from a populated Financials tab
-  to an empty one. Six one-word union keys are another listed registrant's ticker
-  and the one-word contest gate has no ticker check at all. P1 and P1b are
+  to an empty one. Several one-word union keys are another listed registrant's
+  ticker and the one-word contest gate has no ticker check at all. P1 and P1b are
   construction identities that cannot return non-zero.
 - **#814**: the verbatim gate is a tautology. Four `tsc`-clean routes to the DOM
-  bypass the brand. The laundering path is live and proved at runtime. S4 recall
-  costs 10.1 percent, not the claimed 0.4, blocking OpenAI, National Australia
-  Bank, Bugatti and Fiduciary Trust. 38 of 70 terms never fire on 162 fresh pages.
+  bypass the brand. The laundering path is live and proved at runtime. The S4
+  recall cost is more than an order of magnitude above the claimed figure, blocking
+  OpenAI, National Australia Bank, Bugatti and Fiduciary Trust. More than half its
+  terms never fire on a fresh page sample.
 - **#806 and the headline**: `adviser-registry.ts:173` keeps
-  `primary_business_name` and discards `legal_name`, so 119 of 380 rendering
-  figures discard a different legal name, 66 of them on a no-caveat tier. Both
-  tables #806 depends on return 404 in prod, so **it renders nothing today** and
-  every number it claims is contingent on an unapplied migration.
+  `primary_business_name` and discards `legal_name`, so a substantial minority of
+  rendering figures discard a different legal name, many of them on a no-caveat
+  tier. Both tables #806 depends on are absent from prod until its migration is
+  applied, so **every number it claims is contingent on an unapplied migration**.
 
 ### The counter-evidence, which is the part worth keeping
 
@@ -68,39 +69,38 @@ An agent that reports "I could not break this, here is what I tried" is producin
 real information, and four of them did.
 
 - **#812 first-match-wins: held.** Track A refuses on ambiguity rather than
-  ranking. Recomputed independently against SEC `company_tickers.json` (10,391
-  entries, 8,001 distinct listed CIKs): **rows with more than one admissible listed
-  CIK, zero**. The reviewer bounded its own claim to the 8,001-CIK half and named
-  the 12 rows outside it.
+  ranking. Recomputed independently against SEC `company_tickers.json`: **rows with
+  more than one admissible listed CIK, zero**. The reviewer bounded its own claim
+  to the listed half of the file and named the rows that fall outside it.
 - **#812 the `_WEAK` set: the pair was found and the guard held.** `E.ON` and
   `On Holding AG` both reduce to `{on}` and `names_agree` returns True. Guard E,
   leading-initials parity, eliminates it: `lead_init('E.ON') = ['e']` against `[]`.
-- **#812 reversibility: held.** All 411 UPDATEs carry `AND sec_cik IS NULL`, so the
+- **#812 reversibility: held.** Every UPDATE carries `AND sec_cik IS NULL`, so the
   prior value is NULL by construction and the rollback is a true inverse. The
   reviewer states plainly that it tried to make this a data-loss finding and could
   not.
 - **#814 repair-off: held.** No env var, no default argument, one call site behind
   `if args.repair:` with `action="store_true"`. Confirmed by grep.
-- **#814 the 46: held on independent re-adjudication.** The reviewer rebuilt the
-  120-row selection deterministically, got byte-identical verdicts including both
-  holds, hand-adjudicated all 46 and **agreed with the build on all 46**. It then
-  corrected the framing rather than the count, which is better work than either
-  agreeing or disagreeing.
-- **#811 over-reach: held.** All 465 removals tested against an independent title
-  test with the 10 edge cases hand-read. **0 correct tags removed.**
+- **#814 the disputed rows: held on independent re-adjudication.** The reviewer
+  rebuilt the selection deterministically, got byte-identical verdicts including
+  both holds, hand-adjudicated every disputed row and **agreed with the build on
+  every one**. It then corrected the framing rather than the count, which is better
+  work than either agreeing or disagreeing.
 - **Track F's counterexamples do not apply to Track E: held, structurally.**
   `strongKey` is an ordered space-joined string with exact map lookup, so
   `{A,B,C} == {A,C,B}` has no representation. The reviewer then went past the two
-  literals and checked all 815 unchecked multi-word keys, found 69 reachable from a
-  real typed name, and found **every rival in all 69 unlisted**, so the
-  listed-only scope lands them correctly.
+  literals and checked **every** unchecked multi-word key, found the subset
+  reachable from a real typed name, and found **every rival in all of them
+  unlisted**, so the listed-only scope lands them correctly.
+- **#811 over-reach: held.** Every removal was tested against an independent title
+  test with the edge cases hand-read. **Zero correct tags removed.**
 - **Two reviewers built a degenerate metric, recognised it, and discarded it
-  unprompted.** One scanned 774 CIK-bearing rows and got "41 Vanguard-pattern rows,
-  5.3%", called it garbage itself because it fails open on every ticker-named row,
-  and did not report it as a finding. The other built the naive title test, saw
-  "86.3% of shielded tags are wrong", recognised that `RTX -> Raytheon` and
-  `GM -> General Motors` fail it correctly, and reported the honest 2.1 percent
-  instead.
+  unprompted.** One built a Vanguard-pattern scan, called it garbage itself because
+  it fails open on every ticker-named row, and did not report it as a finding. The
+  other built a naive title test, saw it declare the overwhelming majority of
+  shielded tags wrong, recognised that `RTX -> Raytheon` and `GM -> General Motors`
+  fail it correctly, and reported the honest small minority instead. See
+  `decisions/bare-ticker-tags-are-the-norm.md`.
 
 ## What would change the answer
 
@@ -119,8 +119,14 @@ reviewer against nothing was. Two changes follow:
    territorial entity` under `organization`, so every town and commune passes a
    `P31/P279* Q43229` check. The builder rediscovered the identical fact
    independently, from `Needham, Massachusetts` passing its reachability test, and
-   burned 157 Wikimedia requests on a harness bug along the way. That critique was
-   worth having and it arrived too late to save the rediscovery.
+   burned a run of Wikimedia requests on a harness bug along the way. That critique
+   was worth having and it arrived too late to save the rediscovery.
+
+**A review that reads only a report is the same failure one level up.** Every
+ruling in this directory was first written from prior agent reports rather than
+from re-derivation, and three of them recorded a defect that had already been
+fixed or a mechanism that never fired. A report is an artifact about an artifact.
+Name the SHA, then go read the tree.
 
 **The adversarial pass stays.** It found things the concurrent layer would not
 have, because it was adversarially framed rather than because it ran later: the

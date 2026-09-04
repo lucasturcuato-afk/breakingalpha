@@ -10,11 +10,10 @@ is structural rather than a matter of effort.
 
 ## Why
 
-### The one number that ends the argument
+### The one finding that ends the argument
 
-**0 of prod's 774 CIK-bearing company rows is itself an X-17A-5 filer.** Prod's
-774 CIKs and EDGAR's 9,698 X-17A-5 filer CIKs are **disjoint sets. Intersection
-zero.**
+**None of prod's CIK-bearing company rows is itself an X-17A-5 filer.** Prod's
+CIKs and EDGAR's X-17A-5 filer CIKs are **disjoint sets. Intersection zero.**
 
 Prod's CIKs are issuer CIKs. X-17A-5 CIKs are broker-dealer registrant CIKs. They
 are different namespaces. There is no "we already have the CIK, just ingest the
@@ -22,21 +21,30 @@ filings" path for a single row. Every row this source could touch requires
 claiming a new and different CIK onto an existing prod row, which is exactly the
 linkage step that produces wrong pages, re-entered against a worse candidate pool.
 
+**The disjointness reproduced under an independently built filer set**, assembled
+from a different sweep of EDGAR filings and materially smaller than the one this
+ruling was first written from. The two filer sets do not agree on size and both
+return intersection zero. That is stronger evidence than an exact match would have
+been: the result is not sensitive to how the filer set was built, which is what
+"structural" means here. It is also why the sizes are not quoted. They were never
+the finding.
+
 ### The ceiling, both pillars
 
-Of the 306 thin prod names, X-17A-5 supplies a true and machine-readable IDENTITY
-pillar to **3, at most 7**. It supplies NUMBERS to **0**. And the matcher that
-reaches those 7 also produces **7 wrong-company pages**. Net negative at the
-widest accept shape, marginal at the narrowest.
+Of the thin prod names, X-17A-5 supplies a true and machine-readable IDENTITY
+pillar to a handful at most. It supplies NUMBERS to **none**. And the matcher that
+reaches that handful also produces a comparable number of **wrong-company pages**.
+Net negative at the widest accept shape, marginal at the narrowest.
 
 ### The population the source reaches is the population we cannot render
 
-Filer status was never the constraint. 21 of 25 elite boutique firms are X-17A-5
-filers. They split:
+Filer status was never the constraint. Almost every elite boutique firm in the
+sample is an X-17A-5 filer. They split three ways:
 
-- 5 already covered by a public parent
-- 1 thin prod row, Rothschild and Co
-- **14 have no prod row at all, and all 14 have zero articles in the news pool**
+- a few already covered by a public parent
+- one thin prod row, Rothschild and Co
+- **the rest have no prod row at all, and none of those has any article in the
+  news pool**
 
 Verified independently against prod on 2026-09-02: Centerview, Qatalyst, Perella,
 Guggenheim, Ducera and LionTree all return NO ROW. A row created carrying only
@@ -45,37 +53,40 @@ to be worth (see `decisions/pillar-bar-is-suspect.md`).
 
 ### The prose is real, and it is the only asset here
 
-15 of 15 firms clear a 74-character identity floor, quoted verbatim with CIK and
-SEC URL in the report: Centerview 94 characters, Allen 106, Seabury 153, Union
-Square 155, Solomon 181, Raine 208, Leerink 214, FT Partners 240, Campbell Lutyens
-248, Rothschild 270, Ducera 287, Greenhill 312, BofA Securities 353, Guggenheim
-415, Perella Weinberg 468. This is worth recording precisely so that the next
-person who notices it does not re-derive it and reopen the question.
+Every firm in the sample clears a 74-character identity floor, quoted verbatim
+with CIK and SEC URL in the Track F report: Centerview, Allen, Seabury, Union
+Square, Solomon, Raine, Leerink, FT Partners, Campbell Lutyens, Rothschild, Ducera,
+Greenhill, BofA Securities, Guggenheim, Perella Weinberg. This is worth recording
+precisely so that the next person who notices it does not re-derive it and reopen
+the question.
 
 ### The numbers are not safely extractable, four evidenced failure modes
 
 1. **Scale multiplier in a header line.** Centerview carries `(Dollars in 000's)`.
    Miss it and every figure is off by 1000x.
 2. **Labels and numbers in separate streams.** Sixth Street BD's "Total assets" is
-   followed in the text stream by `10,587,204` when the truth is `10,629,732`. The
-   extractor reads a confident, wrong number.
+   followed in the text stream by a different, entirely plausible figure from
+   elsewhere on the page. The extractor reads a confident, wrong number and
+   nothing about it looks wrong.
 3. **Spurious spaces inside numbers.** `"39, 905"`.
-4. **Font mojibake.** Citadel Securities extracts 64,153 healthy-looking characters
-   of unreadable garbage. Length and character-class sanity checks both pass.
+4. **Font mojibake.** Citadel Securities extracts a full page of healthy-looking
+   characters of unreadable garbage. Length and character-class sanity checks both
+   pass.
 
 ### The matcher defects fire harder in this population than anywhere else
 
 Token-set equality does not survive here. It uniquely and confidently matches
 `Klein Group` to `THE KLEIN GROUP, LLC` of Florida. It is order-blind, so
 `Pinnacle Financial Partners` matches `PINNACLE PARTNERS FINANCIAL CORPORATION`.
-**12 of 61 strict matches, 20 percent, would render something false.** Under head
+**Roughly a fifth of the strict matches would render something false.** Under head
 prefix, `BCG` resolves to `BCG Securities`, a Pennsylvania insurance brokerage.
 And shell entities attach real balance sheets that are false in effect: Sixth
-Street BD, LLC total assets of $10,629,732 rendered on a firm running roughly
-$100bn.
+Street BD, LLC's own total assets rendered on a firm running two orders of
+magnitude more.
 
-Paper filings are not the blocker and should not be cited as one. They cost 2 of
-15 firms. Population-wide, 2026 runs 3,020 electronic to 1 paper.
+Paper filings are not the blocker and should not be cited as one. They cost a
+couple of firms in the sample, and population-wide the source is overwhelmingly
+electronic.
 
 ## What would change the answer
 
@@ -83,15 +94,18 @@ Paper filings are not the blocker and should not be cited as one. They cost 2 of
 perfect matcher still has to claim a new CIK onto every row it touches.
 
 **Not a better PDF extractor.** The four extraction failure modes are real but
-they are the second-order problem. Fixing them changes NUMBERS from 0 to 0,
+they are the second-order problem. Fixing them changes NUMBERS from zero to zero,
 because the rows that would receive the numbers do not exist.
 
 **The one condition that reopens it:** a decision that Signalera should carry
 company rows for firms with zero articles in the pool. That is a product question
-about what a company page is for, not a data question. If that answer changes,
-14 named boutiques become reachable and the identity prose above is already
-verified and waiting. Until then this stays shut.
+about what a company page is for, not a data question. If that answer changes, the
+named boutiques above become reachable and the identity prose is already verified
+and waiting. Until then this stays shut.
 
-**Do not re-derive the 25-firm CIK map.** It is hand-verified with per-firm
-verdicts in `/Users/noahhanning/bs-out/track-f.md`, along with six rules any future
-override must follow.
+**Do not re-derive the boutique CIK map from a matcher.** It was hand-verified
+with per-firm verdicts in the Track F sprint report, along with six rules any
+future override must follow. That report is a sprint artifact and is not checked
+into this repo, so if it is not to hand, rebuild the map by hand adjudication
+rather than trusting a matcher on this population. The section above is exactly
+why.

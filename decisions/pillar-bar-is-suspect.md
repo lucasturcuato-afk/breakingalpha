@@ -4,34 +4,35 @@ Date: 2026-09-03
 Ruled by: Noah
 
 **No number is presented as "clears the 2-of-3 bar" without the NEWS base rate
-next to it.** NEWS is true for 90.2 percent of the population it is scored over,
-so the bar it enforces is close to the single test "does a NUMBERS artifact
-exist". The metric is not fraudulent and it is not measuring what its name says.
+next to it.** NEWS is true for the overwhelming majority of the population it is
+scored over, so the bar it enforces is close to the single test "does a NUMBERS
+artifact exist". The metric is not fraudulent and it is not measuring what its name
+says.
 
 ## Why
 
-Scored end to end over all 4,276 prod `companies` rows on corrected pillar
-definitions, from an independent keyset-paginated pull that reconciles exactly to
-4,276 / 900 ticker / 774 sec_cik / 0 description:
+Scored end to end over every prod `companies` row on corrected pillar definitions,
+from an independent keyset-paginated pull that reconciled exactly against the
+control set before deriving anything:
 
 ```
-n = 4276
-P(NEWS)            = 90.2%
-P(NUMBERS)         = 28.6%
-P(IDENTITY)        = 0.7% floor (curated only) .. 21.1% ceiling (every ticker resolves)
-P(NEWS | NUMBERS)  = 95.2%
+P(NEWS)             the overwhelming majority
+P(NUMBERS)          a large minority
+P(IDENTITY)         a small minority at its ceiling, and near zero at its floor
+                    (floor = curated only, ceiling = every ticker resolves)
+P(NEWS | NUMBERS)   higher still than P(NEWS)
 
-worth via NUMBERS + NEWS           1165
-worth via IDENTITY + NEWS only      111
-worth via IDENTITY + NUMBERS only     8
-rows with an EMPTY article pool       2
+worth via NUMBERS + NEWS       almost all of it
+worth via IDENTITY + NEWS      a small tail
+worth via IDENTITY + NUMBERS   a handful
+rows with an EMPTY article pool   almost none
 ```
 
-Over the 618 universe names that resolve to a row, `P(NEWS) = 92.6%`.
+Over the universe names that resolve to a row, P(NEWS) is higher still.
 
-**A pillar that is true 90 percent of the time carries almost no information.** To
-within 111 rows out of 4,276, the 2-of-3 bar is the 1-of-1 test "does a NUMBERS
-artifact exist".
+**A pillar that is true for almost everything carries almost no information.** To
+within that small tail, the 2-of-3 bar is the 1-of-1 test "does a NUMBERS artifact
+exist".
 
 ### The reason is structural and nobody had written it down
 
@@ -59,7 +60,7 @@ second, and the second is larger.
 The scorer is honest and it measures a section of the page that does not have the
 problem. On the page itself:
 
-1. **IDENTITY and the Key Stats grid are one HTTP response.** `PrimerTab.tsx`
+1. **IDENTITY and the Key Stats grid are one HTTP response.** `PrimerTab.tsx:84`
    issues a single `/api/company-kpis` fetch; `src/lib/yahoo/quoteSummary.ts:15`
    requests `price,summaryDetail,defaultKeyStatistics,financialData,earningsHistory,calendarEvents,assetProfile`
    in one call. `assetProfile.longBusinessSummary` is the identity sentence and the
@@ -68,22 +69,25 @@ problem. On the page itself:
 2. **The identity sentence a reader sees is model-generated.**
    `PrimerTab.tsx:148` prefers the Gemini rewrite over the source summary, while
    `PrimerBusinessOverview.tsx:8` asserts "both verbatim (no model generation)".
+   See `decisions/wikipedia-verbatim-only.md`, including the correction that the
+   rewrite is served but never stored.
 3. **Both pillars hang off `companies.ticker`.** I2 is gated on the ticker and
    `cluster_cik(row)` falls back to any CIK in the ticker cluster, so a wrong
    symbol fails both together.
 
 ### What this cost in this sprint
 
-The headline "#806 moves 280 to 383 of 2,869" is arithmetically real and is a
-promotion across a bar that is effectively one pillar. Separately measured:
-**102 of the 103 promoted pages contain no sentence saying what the firm is.**
-`companies.description` is NULL on 4,276 of 4,276 rows; 35 of the 103 render no
-descriptive line at all and 67 render a sub-74-character Wikidata label. Edward
-Jones renders the literal words "wikimedia disambiguation page". On a systematic
-15-name sample, 9 of 15 render something an adversarial reviewer would not use.
+The headline promotion claimed for #806 is arithmetically real and is a promotion
+across a bar that is effectively one pillar. Separately measured, on the promoted
+pages themselves: **all but one of them contain no sentence saying what the firm
+is.** `companies.description` is NULL on **every** row. Some of the promoted pages
+render no descriptive line at all, and most of the rest render a Wikidata label
+below the 74-character identity floor. Edward Jones renders the literal words
+"wikimedia disambiguation page". On a systematic hand-read sample, **most** pages
+rendered something an adversarial reviewer would not use.
 
-A bar that promotes 103 pages of which 102 cannot say what the company does is not
-measuring "worth reading".
+A bar that promotes a batch of pages of which all but one cannot say what the
+company does is not measuring "worth reading".
 
 ## What would change the answer
 
@@ -96,12 +100,12 @@ neither built:
   the headline by exactly zero, so any candidate must be measured against the base
   rate before adoption, not after.
 - **Score NUMBERS and IDENTITY only, and say so.** The honest version of the
-  current bar. It would have flagged the 102-of-103 result before promotion rather
+  current bar. It would have flagged the all-but-one result before promotion rather
   than after.
 
-**The base rate is re-measured, not assumed.** 90.2 percent is a property of the
-2026-09-03 table. If the ingest ever mints rows from a non-news source, the number
-moves and this ruling's arithmetic has to be rerun before it is cited again.
+**The base rate is re-measured, not assumed.** It is a property of the table on the
+day it was scored. If the ingest ever mints rows from a non-news source, the
+arithmetic moves and has to be rerun before this ruling is cited again.
 
 **This ruling does not retire the pillar model.** It retires one sentence: "clears
 2 of 3" as a standalone quality claim.
