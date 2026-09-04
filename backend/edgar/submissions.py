@@ -9,6 +9,7 @@ from typing import Optional
 
 from supabase import Client
 
+from backend.edgar import shard_coverage
 from backend.edgar.client import sec_get
 from backend.edgar.constants import FILING_LOOKBACK_DAYS
 
@@ -386,29 +387,113 @@ def get_recent_filer_ciks(sb: Client) -> list[dict]:
     ]
 
 
-def get_poll_ciks(
+# --- Catch-up sizing --------------------------------------------------------
+# How many STALE shards a run may replay on top of its own. The job timeout is
+# 20 minutes and the SEC client paces at 5 req/sec, so the budget is set in
+# shards rather than time: measured tail shards run 14 to 33 CIKs on a mean of
+# 21.3, so three replayed shards add roughly 64 CIK fetches to a run that
+# already polls the hot set plus its own shard. That is well inside the budget
+# a normal run already fits in, and it is deliberately conservative because a
+# new filing costs a second SEC fetch and, for an 8-K, a Gemini summarize.
+DEFAULT_CATCHUP_MAX_SHARDS = 3
+# Staleness past which a shard is shouted about rather than quietly retried.
+# Filings older than FILING_LOOKBACK_DAYS are dropped by filter_new_filings, so
+# a shard stale for half that window is on a clock toward permanent data loss
+# and wants a human, not another quiet retry.
+DEFAULT_CATCHUP_ALERT_DAYS = FILING_LOOKBACK_DAYS / 2
+
+
+class ShardGroup:
+    """One shard's worth of tail CIKs, and whether the run finished it.
+
+    Carries the identity needed to record coverage (slot, shards, the moment it
+    was selected for, what chose it) next to the CIK set, so completion is
+    asserted against the diff between what was selected and what was polled
+    rather than against a row-level error count. A whole-CIK fetch failure is
+    invisible in an error count; it is not invisible in this diff.
+    """
+
+    __slots__ = ("slot", "shards", "moment", "run_kind", "entries")
+
+    def __init__(self, *, slot, shards, moment, run_kind, entries):
+        self.slot = slot
+        self.shards = shards
+        self.moment = moment
+        self.run_kind = run_kind
+        self.entries = entries
+
+    @property
+    def ciks(self) -> set[int]:
+        return {e["cik"] for e in self.entries}
+
+    def __repr__(self) -> str:  # pragma: no cover - debugging aid
+        return (
+            f"ShardGroup(slot={self.slot}, shards={self.shards}, "
+            f"run_kind={self.run_kind!r}, ciks={len(self.entries)})"
+        )
+
+
+class PollPlan:
+    """What a run intends to poll, split so coverage can be recorded per shard."""
+
+    __slots__ = ("hot", "groups", "slot_source", "slot_at", "now", "backlog", "stale")
+
+    def __init__(self, *, hot, groups, slot_source, slot_at, now, backlog, stale):
+        self.hot = hot
+        self.groups = groups
+        self.slot_source = slot_source
+        self.slot_at = slot_at
+        self.now = now
+        self.backlog = backlog
+        self.stale = stale
+
+    @property
+    def entries(self) -> list[dict]:
+        """The flat poll list, hot first then each shard in order."""
+        out = list(self.hot)
+        for g in self.groups:
+            out.extend(g.entries)
+        return out
+
+
+def plan_poll(
     sb: Client,
     *,
     now: Optional[datetime] = None,
     scheduled_hour: Optional[object] = None,
-) -> list[dict]:
-    """CIKs to poll this run: the full hot set plus this slot's tail shard.
+) -> PollPlan:
+    """This run's poll: the hot set, this slot's shard, and any stale shards.
 
-    Replaces the bare get_watchlist_ciks call in the hourly EDGAR ingest. The
-    hot set is exactly what get_watchlist_ciks already returned (watchlist +
-    top mention) widened by recent filers; the tail is every other CIK-bearing
-    company, sharded so the whole universe is covered without blowing the job
-    timeout. Set EDGAR_POLL_TAIL_SHARDS=0 to fall back to hot-only behavior.
+    The single implementation of what a run polls. get_poll_ciks delegates
+    here, so there is one selection path and not two.
 
-    `now` is when the run EXECUTES. `scheduled_hour` is the UTC hour it was
-    scheduled FOR, and it is what the shard is derived from; falling back to
-    EDGAR_SCHEDULED_HOUR and then to execution time. See the note above
-    scheduled_moment for why a late run must not be allowed to move the shard.
+    Catch-up replays a stale slot by feeding its own moment back into the REAL
+    select_tail_ciks. Shard membership is not reimplemented anywhere.
+
+    TWO APPROXIMATIONS IN A REPLAY, both bounded:
+      hot membership  the hot set is read as it is TODAY, not as it was at the
+                      replayed hour. That cannot lose a CIK. A CIK that was
+                      tail then and is hot now is polled as hot; one that was
+                      hot then and is tail now is polled as tail. The only
+                      unreachable case is a CIK deleted from companies
+                      outright, which no selection could reach either.
+      rotation        select_tail_ciks rotates an oversized bucket by the
+                      moment's ordinal. The replayed moment supplies its own
+                      ordinal, so a replay of an oversized shard picks a
+                      possibly different subset than the original run would
+                      have. It only bites when a shard exceeds max_per_run,
+                      which measured shards do not, and when it does it
+                      degrades to the starvation rotation the cap already has
+                      rather than to a new failure mode.
     """
     now = now or datetime.now(timezone.utc)
     if scheduled_hour is None:
         scheduled_hour = os.environ.get(SCHEDULED_HOUR_ENV)
-    slot_at = scheduled_moment(now, parse_scheduled_hour(scheduled_hour))
+    parsed_hour = parse_scheduled_hour(scheduled_hour)
+    # Named in the ledger so the two writers of "which shard was covered" are
+    # distinguishable in the data instead of inferred from the shard count.
+    slot_source = "stamped" if parsed_hour is not None else "execution_time"
+    slot_at = scheduled_moment(now, parsed_hour)
 
     hot = get_watchlist_ciks(sb)
     seen = {e["cik"] for e in hot}
@@ -420,29 +505,128 @@ def get_poll_ciks(
     shards = _env_int("EDGAR_POLL_TAIL_SHARDS", DEFAULT_TAIL_SHARDS)
     if not _env_flag("EDGAR_POLL_TAIL_ENABLED", True) or shards <= 0:
         logger.info("[edgar] tail sharding off, polling %d hot CIKs", len(hot))
-        return hot
+        return PollPlan(
+            hot=hot, groups=[], slot_source=slot_source, slot_at=slot_at,
+            now=now, backlog=[], stale=[],
+        )
 
     universe = get_xbrl_ciks(sb, log_prefix="edgar")
     candidates = [c for c in universe if c["cik"] not in seen]
+    max_per_run = _env_int("EDGAR_POLL_TAIL_MAX_PER_RUN", DEFAULT_TAIL_MAX_PER_RUN)
+
     # slot_at, not now: both the shard and the starvation rotation key off the
     # SCHEDULED moment, so two runs claiming the same slot select identically.
-    slot = tail_slot(slot_at, shards)
-    tail = select_tail_ciks(
-        candidates,
-        slot=slot,
-        shards=shards,
-        max_per_run=_env_int("EDGAR_POLL_TAIL_MAX_PER_RUN", DEFAULT_TAIL_MAX_PER_RUN),
-        rotation=slot_at.toordinal(),
+    current = tail_slot(slot_at, shards)
+
+    last_covered: dict[int, datetime] = {}
+    catchup_slots: list[int] = []
+    stale: list = []
+    if _env_flag("EDGAR_CATCHUP_ENABLED", True):
+        try:
+            last_covered = shard_coverage.read_coverage(sb, shards=shards)
+            catchup_slots = shard_coverage.due_slots(
+                slot_at=slot_at,
+                shards=shards,
+                current_slot=current,
+                last_covered=last_covered,
+                max_catchup=_env_int(
+                    "EDGAR_CATCHUP_MAX_SHARDS", DEFAULT_CATCHUP_MAX_SHARDS
+                ),
+            )
+            stale = shard_coverage.stale_beyond(
+                slot_at=slot_at,
+                shards=shards,
+                last_covered=last_covered,
+                limit=timedelta(days=_env_int(
+                    "EDGAR_CATCHUP_ALERT_DAYS", int(DEFAULT_CATCHUP_ALERT_DAYS)
+                )),
+            )
+        except Exception as e:
+            # A ledger that cannot be read must not take the normal poll down,
+            # but it must not be silent either: with no catch-up the run
+            # degrades to exactly the pre-existing one-shard-per-run behavior.
+            logger.error("[edgar] shard coverage unavailable, no catch-up: %s", e)
+            last_covered, catchup_slots, stale = {}, [], []
+
+    # The current slot first, then stale slots oldest-first. One
+    # select_tail_ciks call PER SLOT, never one call over the union: max_per_run
+    # caps a single slot's picked list, so a unioned call would apply one cap of
+    # 60 to every shard at once and silently drop the remainder. Per slot, the
+    # cap is per shard and measured shards (14 to 33) never reach it.
+    groups: list[ShardGroup] = []
+    for slot, moment, kind in _catchup_order(
+        current, slot_at, catchup_slots, shards
+    ):
+        picked = select_tail_ciks(
+            candidates,
+            slot=slot,
+            shards=shards,
+            max_per_run=max_per_run,
+            rotation=moment.toordinal(),
+        )
+        groups.append(ShardGroup(
+            slot=slot, shards=shards, moment=moment, run_kind=kind, entries=picked,
+        ))
+
+    # Measured at PLAN time, so it includes the shards this run is about to
+    # cover. That is the useful reading: it is the depth of the hole as this
+    # run found it, and comparing it across runs is how you see whether
+    # catch-up is gaining or losing ground.
+    backlog = [
+        s for s in range(shards)
+        if s != current % shards
+        and shard_coverage.staleness(s, last_covered, slot_at)
+        > shard_coverage.cycle_length(shards)
+    ]
+
+    tail_total = sum(len(g.entries) for g in groups)
+    logger.info(
+        "[edgar] polling %d CIKs: %d hot + %d tail across %d shard(s) "
+        "(current shard %d of %d via %s, catch-up %s, backlog %d, "
+        "%d tail candidates, scheduled %s, executing %s)",
+        len(hot) + tail_total, len(hot), tail_total, len(groups),
+        current, shards, slot_source, catchup_slots or "none", len(backlog),
+        len(candidates), slot_at.isoformat(), now.isoformat(),
+    )
+    if stale:
+        logger.error(
+            "[edgar] %d shard(s) stale beyond the alert threshold and losing "
+            "filings past the %d day ingest window: %s",
+            len(stale), FILING_LOOKBACK_DAYS, stale,
+        )
+
+    return PollPlan(
+        hot=hot, groups=groups, slot_source=slot_source, slot_at=slot_at,
+        now=now, backlog=backlog, stale=stale,
     )
 
-    logger.info(
-        "[edgar] polling %d CIKs: %d hot + %d tail (shard %d of %d, "
-        "%d tail candidates, scheduled %s, executing %s)",
-        len(hot) + len(tail), len(hot), len(tail),
-        slot, shards, len(candidates),
-        slot_at.isoformat(), now.isoformat(),
-    )
-    return hot + tail
+
+def _catchup_order(current, slot_at, catchup_slots, shards):
+    """(slot, moment, run_kind) for every shard this run intends to cover."""
+    out = [(current, slot_at, "current")]
+    for slot in catchup_slots:
+        moment = shard_coverage.replay_moment(
+            slot_at=slot_at, shards=shards, slot=slot, slot_of=tail_slot
+        )
+        if moment is None:
+            continue
+        out.append((slot, moment, "catchup"))
+    return out
+
+
+def get_poll_ciks(
+    sb: Client,
+    *,
+    now: Optional[datetime] = None,
+    scheduled_hour: Optional[object] = None,
+) -> list[dict]:
+    """CIKs to poll this run: the full hot set plus this slot's tail shard.
+
+    Thin wrapper over plan_poll, kept because it is the flat-list shape callers
+    already use. plan_poll is the one that knows which shard each CIK came
+    from, which is what recording coverage needs.
+    """
+    return plan_poll(sb, now=now, scheduled_hour=scheduled_hour).entries
 
 
 def get_xbrl_ciks(sb: Client, *, log_prefix: str = "xbrl") -> list[dict]:
