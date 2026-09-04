@@ -36,6 +36,16 @@ export interface DeskEntryFixture {
   id: string;
   state: OutcomeState;
   /**
+   * The model's own bucket for this row, carried through rather than derived.
+   *
+   * The strip is a control now, and the cell a reader presses is a bucket. The
+   * view could invert `LISTABLE` to get back from the word to the bucket, and
+   * that inverse would be a second copy of the one table that decides which
+   * bucket wears which word. This is the model's value, read once, so a cell
+   * and the rows it scopes to cannot come to disagree.
+   */
+  bucket: Resolution;
+  /**
    * Ticker and brief date, on the trailing edge of the state row. Optional:
    * a macro call has no symbol and an old row can have no brief date, and a
    * lone separator is worse than an absent line.
@@ -133,6 +143,7 @@ export const DESK_FIXTURE: DeskRecordData = {
     {
       id: "d1",
       state: "challenged",
+      bucket: "challenged",
       instrument: "CEG · AUG 27",
       claim:
         "Constellation Energy trades above the utilities sector index through the next PJM capacity auction result.",
@@ -141,6 +152,7 @@ export const DESK_FIXTURE: DeskRecordData = {
     {
       id: "d2",
       state: "supported",
+      bucket: "supported",
       instrument: "MSFT · JUL 31",
       claim: "Azure growth reaccelerates above 30% when the June quarter prints.",
       result: "MSFT +6.41% against XLK +1.02%. Clean read.",
@@ -148,6 +160,7 @@ export const DESK_FIXTURE: DeskRecordData = {
     {
       id: "d3",
       state: "developing",
+      bucket: "noCleanRead",
       instrument: "SOFI · JUL 28",
       claim: "SoFi's deposit costs peak in the June quarter.",
       result: "SOFI +4.02% against XLF +3.71%. The move could not be separated from the sector.",

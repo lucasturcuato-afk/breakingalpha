@@ -81,6 +81,9 @@ export function deskRecordToScreenData(record: DeskRecord): DeskRecordData {
     entries.push({
       id: entry.id,
       state,
+      /* The model's own bucket, carried rather than re-derived. See the field
+         note in fixture.ts. */
+      bucket: entry.resolution,
       instrument: instrumentOf(entry),
       /* Verbatim, as the desk published it. Never rewritten and never
          truncated: the row clamps in CSS, which is reversible, and a
@@ -129,8 +132,20 @@ export function deskRecordToScreenData(record: DeskRecord): DeskRecordData {
         ? { read: record.entries.length, counted: record.total }
         : null,
     entries,
-    /* The record model carries no grader-run timestamp, so the stale state has
-       nothing to name and the wired path never selects it. */
-    lastGradedOn: null,
+    /* CORRECTED. This read "the record model carries no grader-run timestamp",
+       and that was only half true. `graded_at` is non-null on every outcome
+       row and `fetchDeskRecord` has always selected it. What was missing was a
+       field on the model, which `buildDeskRecord` now folds as a maximum over
+       every row read. So the screen can answer "when was this last checked", which is the
+       question a record invites and the one it could not answer.
+
+       THIS DOES NOT SWITCH THE STAGE. `loadDeskRecord` still never yields
+       `stale` and nothing here decides it should: the stale notice is a claim
+       that calls closed after the last run are missing, and there is no
+       condition in this read that establishes that. What changes is that the
+       branch now has a real value to name if it is ever reached, instead of
+       being unreachable by construction. Both entrances get the same field off
+       the same read, so it is one record with one answer, not a second one. */
+    lastGradedOn: longDate(record.lastGradedAt),
   };
 }

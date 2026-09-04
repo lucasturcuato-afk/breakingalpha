@@ -58,6 +58,38 @@ export const VERDICT_WORD: Record<Resolution, string | undefined> = {
 };
 
 /**
+ * The two sentences a surface may put under a call that carries no grade.
+ *
+ * WHY THEY LIVE HERE AND NOT AT EITHER RENDER SITE. There were two literals,
+ * both reading "Window closed without a grade.", one in `scored-object-map.ts`
+ * and one as a fallback default inside `ScoredObject.tsx`. A grep that found
+ * the first and not the second is exactly how a half fix ships looking whole,
+ * and the mobile pass did find only the first. This module already exists to be
+ * the ONE place a state becomes words, so both sentences are here and both
+ * render sites import them.
+ *
+ * WHY TWO SENTENCES AND NOT ONE. They answer two different questions and only
+ * one of them was ever asked.
+ *
+ * PENDING is the mapper's own branch: no outcome row, and a window that has
+ * closed. That row satisfies every condition the grader scans for. The old
+ * string described it as a window that closed and produced nothing, which reads
+ * as settled, and it is not: the run has not happened. This is the sentence the
+ * mobile screens were already writing for themselves, moved to the source so
+ * the two surfaces cannot drift and so the desk stops saying the false thing.
+ *
+ * UNSPECIFIED is the component's fallback, for a caller that gives a notGraded
+ * card no reason at all. It must be true on EVERY route to that state, the
+ * terminal ones included, so it can assert neither that a grade is coming nor
+ * that none ever will. Giving that slot the pending sentence would have moved
+ * the falsehood rather than removed it.
+ */
+export const NOT_GRADED_PENDING_REASON =
+  "The window has closed and the grader has not reached this call yet. Nothing has been estimated in the meantime.";
+
+export const NOT_GRADED_UNSPECIFIED_REASON = "No grade has been recorded for this call.";
+
+/**
  * The word for a scored state. This is what the card renders when a caller
  * passes no explicit `verdict`, so the default is correct rather than being
  * something every surface has to remember to override.

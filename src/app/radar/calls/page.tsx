@@ -43,11 +43,22 @@ import {
   hasCommitFooter,
 } from "@/components/calls/TrackCallControl";
 import { notifyRadarLanded } from "@/lib/radar-landed";
+/* Lifted out of this file so Radar's Calls section on a phone states the same
+   rules in the same words. Sharing the two resolution SENTENCES is the point:
+   they describe the grading contract in prose, and two surfaces drifting on
+   "only a move beyond sector and market counts" is the product describing its
+   own grader two different ways. See the module header. */
+import {
+  briefResolutionSentence,
+  groupBriefCalls,
+  resolutionSentence,
+  type BriefCallRow,
+  type UserClaim,
+} from "@/lib/radar-calls-model";
 import {
   adoptWindowForCall,
   adoptWindowRequest,
   isPriceableClaimType,
-  horizonFromDates,
   horizonPhraseForDays,
   daysBetween,
   windowElapsed,
@@ -58,35 +69,6 @@ const SERIF = "var(--font-playfair-display), serif";
 
 /** One trust line per section; every card's button describes itself with it. */
 const BRIEF_TRUST_LINE_ID = "radar-brief-calls-track-why";
-
-interface UserClaim {
-  id: string;
-  user_claim: string;
-  evidence_entities?: string[] | null;
-  claim_type: string;
-  target_symbol: string | null;
-  expected_direction: string | null;
-  resolution_window_start: string | null;
-  resolution_window_end: string | null;
-  gradeable: boolean;
-  gradeability_note: string | null;
-  status: string;
-  source: "authored" | "adopted";
-  adopted_from_call_id: string | null;
-  created_at: string;
-}
-
-interface BriefCallRow {
-  id: string;
-  claim_text: string;
-  claim_type: string | null;
-  target_symbol: string | null;
-  brief_date: string | null;
-  /** Set at creation from the fixed horizon map. NULL on pre-migration-0014 calls. */
-  resolve_on: string | null;
-  created_at: string | null;
-  confidence: number | null;
-}
 
 interface AuthorProposal {
   claim_type: string;
@@ -112,84 +94,8 @@ type TopMode = "record" | "pinned" | "resolving";
 const TOP_MODE_KEY = "radar-calls-top";
 const PINNED_KEY = "radar-calls-pinned";
 
-interface BriefGroup {
-  id: string;
-  label: string;
-  calls: BriefCallRow[];
-}
-
-function groupSlug(label: string): string {
-  return label.toLowerCase().replace(/[^a-z0-9]+/g, "-");
-}
-
-/**
- * Group brief calls by what they are ABOUT: single-name calls under
- * their company's real sector (from the companies table), then sector
- * calls, indices, and macro. A ticker with no resolved sector lands in
- * an honest "Single names" bucket rather than a guessed sector.
- */
-function groupBriefCalls(
-  calls: BriefCallRow[],
-  tickerSectors: Record<string, string>,
-): BriefGroup[] {
-  const groups = new Map<string, BriefCallRow[]>();
-  const push = (label: string, c: BriefCallRow) => {
-    if (!groups.has(label)) groups.set(label, []);
-    groups.get(label)!.push(c);
-  };
-  for (const c of calls) {
-    const type = c.claim_type ?? "";
-    if (type === "ticker") {
-      push((c.target_symbol && tickerSectors[c.target_symbol]) || "Single names", c);
-    } else if (type === "sector") push("Sector calls", c);
-    else if (type === "index") push("Indices", c);
-    else if (type === "aggregate") push("Macro", c);
-    else push("Other", c);
-  }
-  return [...groups.entries()]
-    .map(([label, groupCalls]) => ({ id: groupSlug(label), label, calls: groupCalls }))
-    .sort((a, b) => b.calls.length - a.calls.length);
-}
-
 function todayPt(): string {
   return new Date().toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
-}
-
-/** A plain sentence for what a call is watching for and how it
- *  resolves, derived from its resolution method. Informative, never
- *  decorative; context-only claims state their honest note. */
-function resolutionSentence(c: UserClaim): string {
-  if (!c.gradeable) {
-    return c.gradeability_note ?? "Tracked as context only; no price resolution.";
-  }
-  const dir =
-    c.expected_direction === "bearish"
-      ? "to the downside"
-      : c.expected_direction === "neutral"
-        ? "by holding flat"
-        : "to the upside";
-  const windowText =
-    c.resolution_window_start && c.resolution_window_start !== c.resolution_window_end
-      ? `over ${c.resolution_window_start} to ${c.resolution_window_end}`
-      : `against the ${c.resolution_window_end ?? "session"} close`;
-  if (c.claim_type === "index") {
-    return `Watching whether ${c.target_symbol} moves ${dir} on its own, ${windowText}; indices are graded on their absolute move.`;
-  }
-  if (c.claim_type === "sector") {
-    return `Watching whether ${c.target_symbol} beats SPY ${dir} ${windowText}.`;
-  }
-  return `Watching whether ${c.target_symbol} beats its sector ETF and SPY ${dir} ${windowText}; a move the market explains is not credited.`;
-}
-
-function briefResolutionSentence(c: BriefCallRow): string {
-  const h = horizonFromDates(c.brief_date, c.resolve_on);
-  // A horizon-bearing call states its real window. A pre-horizons call (NULL
-  // resolve_on) keeps the old sentence rather than implying a window it does
-  // not have.
-  if (h && h.days > 0) {
-    return `Resolves over ${c.brief_date} to ${c.resolve_on} with benchmark attribution: only a move beyond sector and market counts.`;
-  }
-  return `Resolves against the ${c.brief_date ?? "session"} market close with benchmark attribution: only a move beyond sector and market counts.`;
 }
 
 // HorizonChip moved to @/components/calls/HorizonChip so BriefCallsSection

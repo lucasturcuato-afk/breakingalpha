@@ -17,12 +17,54 @@ import { useRouter } from "next/navigation";
 
 export type RadarTab = "following" | "watchlist" | "calls" | "desk-record";
 
-const TABS: { key: RadarTab; label: string; href: string }[] = [
-  { key: "following", label: "Following", href: "/radar/following" },
-  { key: "watchlist", label: "Watchlist", href: "/radar/watchlist" },
-  { key: "calls", label: "Calls", href: "/radar/calls" },
+/**
+ * THE FOUR WORDS RADAR IS MADE OF, and the one place they are written.
+ *
+ * The mobile surface renders the same four sections under `/watch`, and the
+ * complaint that opened that work was precisely that the two structures had
+ * drifted apart. A second literal copy of these strings is how they drift
+ * again, silently, with tsc and lint and the build all green. This repo has
+ * paid for one-rule-many-implementations at least five times (PR 713, PR 721,
+ * PR 736, PR 738, and four copies of `slugToCompanyName`), and PR 736's own
+ * failure was a LABEL going stale one line under an href that was already
+ * reading a constant.
+ *
+ * So the desk's tab row and the phone's segment row read the same table.
+ * `tests/unit/radar-segments.test.ts` asserts the two agree on every key, every
+ * word and the order, so renaming a section here is red until the phone
+ * follows.
+ *
+ * The hrefs are deliberately NOT here. They differ by surface (`/radar/*` on
+ * the desk, `/watch/*` on the phone) and sharing them would be sharing a
+ * coincidence rather than a rule.
+ *
+ * THE CLIENT-BOUNDARY HAZARD APPLIES, exactly as it does to `ASK_POLE_HREF` in
+ * `mobile-tab-bar.tsx`: this module is `"use client"`, so on the server every
+ * export of it is a client reference and not a string. Both consumers of this
+ * table are `"use client"`. A Server Component must write the word out as a
+ * literal instead, and nothing warns when it does not.
+ */
+export const RADAR_TAB_LABEL: Record<RadarTab, string> = {
+  following: "Following",
+  watchlist: "Watchlist",
+  calls: "Calls",
   // The desk's own graded record, distinct from the user's record on Calls.
-  { key: "desk-record", label: "Desk record", href: "/radar/desk-record" },
+  "desk-record": "Desk record",
+};
+
+/** The order the sections are read in, on both surfaces. */
+export const RADAR_TAB_ORDER: RadarTab[] = [
+  "following",
+  "watchlist",
+  "calls",
+  "desk-record",
+];
+
+const TABS: { key: RadarTab; label: string; href: string }[] = [
+  { key: "following", label: RADAR_TAB_LABEL.following, href: "/radar/following" },
+  { key: "watchlist", label: RADAR_TAB_LABEL.watchlist, href: "/radar/watchlist" },
+  { key: "calls", label: RADAR_TAB_LABEL.calls, href: "/radar/calls" },
+  { key: "desk-record", label: RADAR_TAB_LABEL["desk-record"], href: "/radar/desk-record" },
 ];
 
 /* Exit duration mirrors --duration-page-exit in tokens.css. Kept as a

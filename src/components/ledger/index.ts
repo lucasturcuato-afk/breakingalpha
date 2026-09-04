@@ -17,6 +17,10 @@ export { LedgerClaimCard } from "./ledger-claim-card";
 export type { LedgerClaimCardProps, ClaimCardVariant } from "./ledger-claim-card";
 export { LedgerEntryRow } from "./ledger-entry-row";
 export type { LedgerEntryRowProps } from "./ledger-entry-row";
+/* The row that opens where it stands. Beside LedgerEntryRow, never inside it:
+   that row's container IS a navigation control and cannot carry aria-expanded. */
+export { LedgerDisclosureRow } from "./ledger-disclosure-row";
+export type { LedgerDisclosureRowProps } from "./ledger-disclosure-row";
 export { LedgerDateRule } from "./ledger-date-rule";
 export type { LedgerDateRuleProps } from "./ledger-date-rule";
 export { LedgerScreen } from "./ledger-screen";

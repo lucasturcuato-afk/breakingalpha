@@ -1,9 +1,7 @@
-import { createClient } from "@supabase/supabase-js";
 import { AppShell } from "@/components/shell";
 import { DeskRecordScreen, type DeskStage } from "@/components/desk-record";
-import { DESK_FIXTURE, type DeskRecordData } from "@/components/desk-record/fixture";
-import { deskRecordToScreenData } from "@/components/desk-record/from-record";
-import { fetchDeskRecord } from "@/lib/desk-record-query.ts";
+import { DESK_FIXTURE } from "@/components/desk-record/fixture";
+import { loadDeskRecord, type DeskRecordRead } from "@/lib/desk-record-load";
 import { mobileFixtureScreensEnabled } from "@/lib/mobile-fixture-gate";
 import { FONT_DISPLAY, FONT_SANS } from "@/components/mobile/fonts";
 
@@ -43,45 +41,18 @@ import { FONT_DISPLAY, FONT_SANS } from "@/components/mobile/fonts";
  */
 
 /**
- * How many resolved calls are READ INTO the list. An upper bound on rows read,
- * not on rows shown: `buildDeskRecord` truncates here, and
- * `deskRecordToScreenData` then drops the not-graded rows, which have no
- * verdict word, so the rendered list is shorter than this by however many of
- * the newest rows were not graded.
+ * THE READ MOVED, AND NOTHING ELSE DID. `LIST_LIMIT`, the `Resolved` shape and
+ * `loadDeskRecord` all used to live in this file. Radar's fourth section is a
+ * SECOND ENTRANCE to this same record, and the way a second entrance turns into
+ * a second record is a copy of those twenty lines that later drifts from these.
+ * They now live in `src/lib/desk-record-load.ts`, both routes call it, and that
+ * file's header carries the reasoning and the limit's own note.
  *
- * Counts always cover every row the read returned, never just the listed ones.
- * Matches /radar/desk-record.
+ * The behaviour here is unchanged: same limit of 40, same four states, same
+ * separation of a failed read from an empty one.
  */
-const LIST_LIMIT = 40;
 
 const STAGES: DeskStage[] = ["ready", "loading", "error", "empty", "stale"];
-
-type Resolved = { stage: DeskStage; data: DeskRecordData | null };
-
-/**
- * The real read. Errors and empties are kept apart on purpose: a failed query
- * that renders as "no graded calls yet" is the defect `supabase-query.ts`
- * exists to name, and it is worse here than anywhere, because the reader would
- * take an outage as the desk having no record at all.
- */
-async function loadDeskRecord(): Promise<Resolved> {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !anonKey) return { stage: "error", data: null };
-
-  try {
-    // Both tables are public-readable, so this needs no session. Same client
-    // shape /share/brief/[id] already uses for an anonymous server read.
-    const record = await fetchDeskRecord(createClient(url, anonKey), LIST_LIMIT);
-    // A null answer from fetchDeskRecord means a failed select, never an
-    // empty one. The two are kept apart deliberately.
-    if (!record) return { stage: "error", data: null };
-    if (record.total === 0) return { stage: "empty", data: null };
-    return { stage: "ready", data: deskRecordToScreenData(record) };
-  } catch {
-    return { stage: "error", data: null };
-  }
-}
 
 export default async function DeskRecordMobilePage({
   searchParams,
@@ -103,7 +74,7 @@ export default async function DeskRecordMobilePage({
      `?stage=`, dev reads the same live record production does, so the two
      cannot look different to whoever is checking. */
   const fixtureAllowed = mobileFixtureScreensEnabled();
-  const resolved: Resolved =
+  const resolved: DeskRecordRead =
     fixtureAllowed && requested !== null
       ? {
           stage: requested,

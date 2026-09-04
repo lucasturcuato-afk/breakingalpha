@@ -38,6 +38,7 @@ import { useSavedDeals } from "@/hooks/useSavedDeals";
 import { createBrowserClient } from "@supabase/ssr";
 import { dealRelevanceScore, dealIsWatchlistMatch, getDealTypeStyle } from "@/lib/deal-utils";
 import { useLiveMood } from "@/hooks/useLiveMood";
+import { TabBarClearance } from "@/components/mobile/tab-bar-clearance";
 
 function fireEvent(event_type: string, payload: Record<string, unknown> = {}) {
   fetch("/api/user-events", {
@@ -670,19 +671,17 @@ function DealFlowContent() {
             onOpenMemo={openMemoForDeal}
           />
         </Suspense>
-        {/* Tail spacer, and it has to be an ELEMENT rather than padding.
-            `AppShell` reserves the tab bar with `pb-[calc(...)]` on the scroll
-            container itself, and Chrome drops a scroll container's bottom
-            padding once the content overflows. Measured on this page before
-            this spacer existed: at the end of the scroll the last "Generate a
-            deal memo" control sat 20px UNDER the tab bar. A real box in the
-            flow is not padding on the scroller, so it survives. It lives here
-            rather than inside the screen so the screen's own box still matches
-            the design's for parity. */}
-        <div
-          aria-hidden="true"
-          style={{ height: "calc(var(--mobile-tabbar-height) + env(safe-area-inset-bottom))" }}
-        />
+        {/* Tail spacer, and it has to be an ELEMENT rather than padding. The
+            reason, the Chrome behaviour behind it and this page's own
+            measurement (before it existed, the last "Generate a deal memo"
+            control sat 20px UNDER the tab bar at the end of the scroll) are all
+            in `@/components/mobile/tab-bar-clearance`, which is now the only
+            place the declaration is written. This was one of four hand-rolled
+            copies of it.
+
+            It lives HERE rather than inside the screen so the screen's own box
+            still matches the design's for parity. */}
+        <TabBarClearance />
       </div>
 
       <div className="hidden md:flex flex-1 overflow-hidden">

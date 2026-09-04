@@ -24,10 +24,19 @@ import type {
 import { WATCH_OMISSIONS } from "./omissions";
 import styles from "./watch.module.css";
 import { FONT_DISPLAY, FONT_MONO, FONT_SANS } from "@/components/mobile/fonts";
+import { TabBarClearance } from "@/components/mobile/tab-bar-clearance";
 
 /**
- * Watch. The reader's watchlist and what they follow, as two visually distinct
- * tiers in one scroll region.
+ * Radar's two ungraded sections: the reader's watchlist, and what they follow.
+ *
+ * ONE COMPONENT, TWO ROUTES, ONE SECTION DRAWN AT A TIME. `segment` decides
+ * which. This used to draw both tiers in one scroll under a masthead reading
+ * "Radar", which is why the surface read as a renamed watchlist while the desk
+ * had four tabs. The two tiers are unchanged inside; what changed is that each
+ * is now a whole screen with its own route, its own masthead and its own place
+ * in the four-section row. Calls and Desk record are the graded half of Radar
+ * and are their own screens, because their data has nothing to do with this
+ * loader. See `decisions/mobile-radar-mirrors-the-desk.md`.
  *
  * WHAT IS DRAWN AND WHAT IS NOT.
  *
@@ -76,18 +85,34 @@ export type WatchStage = "ready" | "loading" | "error" | "stale";
 const PAD = "var(--v3-pad)";
 
 /**
- * How a short screen's free space is divided, as flex-grow weights on the
- * `Slack` blocks. Three at the root, and the middle one is the body, which
- * splits its own share equally between its two seams.
- *
- * Read them as sixteenths of the free space once the body's split is unrolled:
- * 3 above the masthead, 4 above the first section rule, 4 between the tiers, 1
- * below the last notice. The tail is smallest because it is the only seam that
- * starts with a structural floor under it, 83px of tab-bar clearance and
- * padding that no layout here can remove. The arithmetic against the 844px
- * viewport is in the block comment on the body.
+ * How a short section's free space is divided, as flex-grow weights on the
+ * `Slack` blocks.
  */
-const SLACK_LEAD = 3;
+/* THE LEAD IS 0 NOW, AND THE WEIGHTS BELOW ARE RE-DERIVED, because splitting
+   Radar into four sections changed the layout these numbers described.
+
+   WHAT THEY USED TO SERVE. One screen, one masthead, TWO tiers, so the body had
+   two interior seams and 3:8:1 spread the free space across four gaps: above
+   the masthead, above the first section rule, between the tiers, and below the
+   last notice. Measured on the empty state at 390x844 that was 59px / 158px
+   split in two / 20px, every gap inside the 15% gate.
+
+   WHAT BROKE. With one tier per route there is no gap BETWEEN tiers, so the
+   body's whole share fell into the single seam that was left, and that seam sat
+   ABOVE the content. Measured on the empty Following section at 390: roughly
+   300px of nothing between the standfirst and the section rule, with the
+   masthead pinned to the top and the notice pushed to the bottom. That is the
+   two-lump composition the original comment was written to remove, reproduced
+   by the change that inherited it. It was found by looking at the rendered
+   screen, not by reading the code.
+
+   WHAT THEY SERVE NOW. There is also a new element above the masthead that did
+   not exist when these were chosen: the four-section row. It is the top chrome,
+   and the masthead belongs directly under it, which is exactly where Calls and
+   Desk record put theirs. So the lead is 0, the masthead sits under the row on
+   all four sections, and the free space goes BELOW the content where a short
+   document naturally leaves it. */
+const SLACK_LEAD = 0;
 const SLACK_BODY = 8;
 const SLACK_TAIL = 1;
 
@@ -187,8 +212,34 @@ export function WatchScreen({
   stage = "ready",
   data,
   onRetry,
+  segment,
+  nav,
 }: {
   stage?: WatchStage;
+  /**
+   * WHICH OF RADAR'S FOUR SECTIONS THIS IS. REQUIRED, with no default, so a
+   * call site has to say which one it is drawing rather than inheriting
+   * whichever the last author happened to write first.
+   *
+   * This screen used to draw both tiers in one scroll under one masthead, and
+   * that masthead led on the watchlist, which is exactly why the surface read
+   * as a renamed watchlist while the desk had four tabs. Each tier is now its
+   * own route and its own section, and this prop is the switch. Only two of
+   * Radar's four sections live in this component; Calls and Desk record are
+   * their own screens because their data has nothing to do with this loader.
+   */
+  segment: "watchlist" | "following";
+  /**
+   * The section row, supplied by the route. REQUIRED, so a Radar route cannot
+   * ship without the navigation that makes its three siblings reachable, which
+   * is the failure this whole surface exists to correct.
+   *
+   * Passed in rather than imported here for one reason: this component is one
+   * of three screens under the row, and the other two are `DeskRecordScreen`
+   * and `CallsScreen`. A row each screen imported for itself would be a row no
+   * route owns and three places to forget it.
+   */
+  nav: React.ReactNode;
   /**
    * REQUIRED and NULLABLE, and never defaulted to the sample content. Two
    * separate reasons, and the second is the one that blocked PR #653.
@@ -251,7 +302,8 @@ export function WatchScreen({
           flexDirection: "column",
         }}
       >
-        <WatchMasthead />
+        {nav}
+        <WatchMasthead segment={segment} />
         {/* STILL CENTRED, and this is the one branch that is. The block below
             distributes its free space across the seams the layout already has,
             which is what stops a short screen reading as a hole under the
@@ -281,9 +333,21 @@ export function WatchScreen({
             padding: `18px ${PAD} 24px`,
           }}
         >
+          {/* The section names itself in both halves. This branch used to say
+              "whose watchlist" on a screen that also drew what the reader
+              follows; now each section is its own route, so the sentence can
+              name the one thing that was not read instead of the pair. */}
           <WatchNotice
-            heading="Could not work out whose watchlist to read."
-            body="Your session did not resolve, so nothing was read. This is not an empty watchlist, and nothing you track has been lost."
+            heading={
+              segment === "watchlist"
+                ? "Could not work out whose watchlist to read."
+                : "Could not work out whose follows to read."
+            }
+            body={
+              segment === "watchlist"
+                ? "Your session did not resolve, so nothing was read. This is not an empty watchlist, and nothing you track has been lost."
+                : "Your session did not resolve, so nothing was read. This is not an empty follow list, and nothing you follow has been lost."
+            }
             onRetry={retry}
           />
         </div>
@@ -310,11 +374,19 @@ export function WatchScreen({
     (lens === "all" || lens === "public") && data.quietNames.length > 0;
   const followRows = data.following.reduce((n, c) => n + c.rows.length, 0);
 
-  /* A screen with no cards and no rows in either tier. Reported on the root so
-     a test and a measurement script can name the state they are looking at;
-     the centring below does not depend on it. */
+  /* A section with no cards and no rows. Reported on the root so a test and a
+     measurement script can name the state they are looking at; the slack
+     distribution below does not depend on it.
+
+     SCOPED TO THE SECTION BEING DRAWN. This used to require both tiers to be
+     empty, which was right when both were on one screen and is wrong now: with
+     the sections split, a populated watchlist would have reported the
+     Following route "populated" while it drew nothing at all. The attribute
+     has to describe what is on the screen, or it is worse than absent. */
   const sparse =
-    (watchlistFailed || visible.length === 0) && (followingFailed || followRows === 0);
+    segment === "watchlist"
+      ? watchlistFailed || visible.length === 0
+      : followingFailed || followRows === 0;
 
   /* LOADING IS ITS OWN NAME, and it outranks the other two.
      `sparse` is computed off `data`, which under `stage: "loading"` is whatever
@@ -347,8 +419,9 @@ export function WatchScreen({
         flexDirection: "column",
       }}
     >
+      {nav}
       <Slack grow={SLACK_LEAD} />
-      <WatchMasthead />
+      <WatchMasthead segment={segment} />
 
       {/* THE SLACK IS SPREAD ACROSS THE LAYOUT'S OWN SEAMS, not dumped in one
           place. This replaces `justifyContent: center` on this block, and the
@@ -397,7 +470,6 @@ export function WatchScreen({
           padding: `18px ${PAD} 24px`,
         }}
       >
-        <Slack grow={1} />
         {stale ? (
           <WatchNotice
             body={`Last checked ${data.lastCheckedLabel}. Today's pass has not run yet, so everything below is the last reading rather than this morning's.`}
@@ -407,6 +479,15 @@ export function WatchScreen({
         ) : null}
 
         {/* ── watchlist ──────────────────────────────────────────────── */}
+        {/* ONE SECTION PER ROUTE. The two blocks below are unchanged inside;
+            what changed is that exactly one of them is ever drawn, and which
+            one is decided by the route rather than by the scroll position.
+
+            The section rule stays even with one section on the screen. It
+            carries the count, and the count is the only place a reader is told
+            how much of their list produced anything this week. */}
+        {segment === "watchlist" ? (
+        <>
         <SectionRule
           label="watchlist"
           /* Both halves are read off what the screen is actually drawing under
@@ -490,12 +571,20 @@ export function WatchScreen({
             {quietVisible ? <QuietLine names={data.quietNames} shown={data.quietShown} /> : null}
           </>
         ) : null}
+        </>
+        ) : null}
 
         {/* ── following ──────────────────────────────────────────────── */}
-        {/* The second seam. It sits between the tiers rather than inside
-            either, so a short screen opens the gap the two sections already
-            have between them instead of inventing a new one. */}
-        <Slack grow={1} />
+        {/* THE SECOND INTERIOR SEAM IS GONE WITH THE SECOND TIER. It sat
+            between the two tiers, and with one tier per route there is nothing
+            between. The free space it used to take is not lost: the body's
+            remaining `Slack grow={1}` above is the only weighted child left
+            inside the body, so it now receives the whole of the body's share
+            rather than half of it. The 3:8:1 root weights are untouched, which
+            is why the lead and the tail measure as they did. Re-measured for
+            every state and both sections in the PR body. */}
+        {segment === "following" ? (
+        <>
         <SectionRule
           label="following"
           count={
@@ -532,6 +621,8 @@ export function WatchScreen({
             />
           </>
         ) : null}
+        </>
+        ) : null}
 
         {/* ── what is not drawn here ─────────────────────────────────── */}
         {/* NOTHING RENDERS HERE TODAY. `WATCH_OMISSIONS` is empty and
@@ -560,6 +651,17 @@ export function WatchScreen({
             array decides whether the gate still applies; it is not a rule about
             omissions, it is a fact about one that no longer exists. */}
         {stale ? null : <OmittedNotes />}
+
+        {/* THE FREE SPACE, TAKEN BELOW THE CONTENT RATHER THAN ABOVE IT. This
+            is the seam that used to sit between the two tiers. With one section
+            per route the only honest place for the body's share is after the
+            last block: put it above the content and a short section renders as
+            a masthead, a hole, and a notice pressed against the bottom.
+
+            A `Slack` is `flex-basis: 0`, so on a section with enough content to
+            fill the viewport it is 0px high and the layout is exactly what it
+            would be without it. Only the short states move. */}
+        <Slack grow={1} />
       </div>
 
       <Slack grow={SLACK_TAIL} />
@@ -584,35 +686,6 @@ export function WatchScreen({
  */
 function Slack({ grow }: { grow: number }) {
   return <div aria-hidden="true" style={{ flex: `${grow} 0 0`, minHeight: 0 }} />;
-}
-
-/**
- * Clearance for the tab bar, as an element rather than as padding on the
- * shell's scroll container.
- *
- * `app-shell.tsx` already puts
- * `pb-[calc(var(--mobile-tabbar-height)+env(safe-area-inset-bottom))]` on
- * #main-content, and on this route that padding is not honoured at the end of
- * the scroll. Measured on the running page at 390 with
- * `scripts/screen-geometry.mjs`: without this element the last line bottomed
- * out at 820px against a bar top of 785px, so 35px of it sat behind the bar.
- * A synthetic reproduction of the container does honour the padding, which is
- * what makes this worth measuring on the real page rather than reasoning about.
- *
- * It is the LAST child of the screen ROOT rather than of the body, so the
- * sparse state's centring cannot push content under the bar: the centred
- * region is the space between the masthead and this block.
- */
-function TabBarClearance() {
-  return (
-    <div
-      aria-hidden="true"
-      style={{
-        flex: "none",
-        height: "calc(var(--mobile-tabbar-height) + env(safe-area-inset-bottom))",
-      }}
-    />
-  );
 }
 
 /** "3 with coverage · 2 quiet · 1 muted". Muted only when there are muted. */
@@ -648,7 +721,7 @@ function TierStandfirst({ children }: { children: React.ReactNode }) {
  * Neither string is a claim about the reader. They describe what the screen is
  * for, which is true whether or not anything was read.
  */
-function WatchMasthead() {
+function WatchMasthead({ segment }: { segment: "watchlist" | "following" }) {
   return (
     <div style={{ flex: "none", padding: `6px ${PAD} 0` }}>
       <h1
@@ -659,7 +732,20 @@ function WatchMasthead() {
           color: "var(--c-ink)",
         }}
       >
-        Radar
+        {/* THE SECTION, NOT THE SURFACE. The row above already says Radar and
+            says which of its four sections is lit, so a masthead reading
+            "Radar" spent the largest type on the screen repeating it. Naming
+            the section is also what stops this screen reading as a renamed
+            watchlist: the reader is told they are in one of four places, not
+            in the whole thing.
+
+            Written as a literal rather than read out of `RADAR_TAB_LABEL`,
+            deliberately. The words are the same by construction and the test
+            holds them together, but this is a headline and the table is a
+            navigation label; a shared constant would weld a 26px display
+            headline to a 12px nav word and the next person to want one changed
+            would have to change both. */}
+        {segment === "watchlist" ? "Watchlist" : "Following"}
       </h1>
       <p
         style={{
@@ -668,7 +754,19 @@ function WatchMasthead() {
           color: "var(--c-secondary)",
         }}
       >
-        Your watchlist and what you follow. Nothing on this screen is ever graded.
+        {/* ONE SENTENCE, AND IT IS NOT A DESCRIPTION. The section rule below
+            already carries a standfirst describing what the tier holds, and
+            repeating it here would spend the top of the screen saying the same
+            thing twice at two sizes.
+
+            What this line says instead is the thing only the four-section
+            structure makes sayable: these two sections are the ungraded half
+            of Radar and the two beside them are the graded half. A reader
+            arriving from Calls or Desk record needs that, and before those two
+            sections existed on this surface there was nothing to distinguish
+            from. It is a claim about the product, never about the reader, so
+            it needs no read behind it and is true in every state. */}
+        Nothing in this section is ever graded.
       </p>
     </div>
   );

@@ -54,6 +54,59 @@ const EXCLUDE_FILES = new Set(['e2e/pressure/lib/rules.ts']);
 /* ------------------------------------------------------------------ */
 const BANNED = ['buy', 'sell', 'hold', 'allocation', 'returns', 'performance'];
 
+/* STORED DATABASE IDENTIFIERS. The one shape this list grants repeatedly, and
+ * the reason it is still a list of literals rather than a pattern.
+ *
+ * THE SHAPE. A column or a key that exists in Postgres, is read by name in
+ * `src/`, is NEVER rendered to a reader, and whose banned substring is glued
+ * inside a longer snake_case segment rather than standing as a word. Renaming
+ * one is a migration plus a backfill for no compliance gain, and the only way
+ * to name it without an entry here is to assemble the string from two halves at
+ * the read site, which is a workaround for a linter rather than code anyone
+ * would write.
+ *
+ * WHY IT IS NOT A PATTERN, asked and answered rather than left as an unexamined
+ * literal. The obvious pattern is "a banned substring glued inside a longer
+ * segment of a snake_case identifier":
+ *
+ *     /\b[a-z0-9]*(?:buy|sell|hold|allocation|returns|performance)[a-z0-9]*_[a-z0-9_]+\b/
+ *
+ * It admits both entries below. It also admits `shareholder_count`,
+ * `holdings_value`, `buyback_ratio` and `oversell_score`, and `shareholder` is
+ * logged in github.md as a REAL hit rather than a false one. A pattern that
+ * exempts the recorded violation is not a tighter statement of this shape, it
+ * is a hole shaped like it. `SELFTEST` below now carries `shareholder_count` as
+ * a specimen that MUST still fail, so this boundary is mechanical and not a
+ * claim in a comment.
+ *
+ * The second reason is structural and independent of which words are chosen.
+ * `isAllowlisted` tests the WHOLE LINE, so any match downgrades every hit on
+ * that line to WARN. A literal binds the exemption to one token that a reader
+ * can look up in the database; a pattern binds it to any line that happens to
+ * contain something of the same shape, and it does so for hits that have
+ * nothing to do with the stored key.
+ *
+ * The property that actually separates a granted key from a violation is
+ * SEMANTIC: it is stored, and it is never rendered. Nothing in the source text
+ * carries that fact, so no lexical pattern can read it. The list stays literal
+ * on purpose, and the admission test above is what makes each entry a ruling
+ * rather than an instance.
+ *
+ * TO ADD ONE: name the table and the column or key, say where it is written and
+ * where it is read, and confirm it is never rendered. One line, one ruling. */
+const STORED_IDENTIFIERS = [
+  // A real column on `financial_facts_latest`, read by the financials mappers.
+  // Preserved by the same reasoning as the enum ids below: a database
+  // identifier, never rendered, and renaming it is a migration plus a backfill.
+  { id: 'stockholders_equity', why: 'stored column name, never rendered' },
+  // A jsonb key on `morning_brief_call_outcomes.metadata`, written by
+  // backend/grading/price_attribution.py and read by every frontend outcome
+  // mapper. The bare `threshold(s)` entry below does not cover it, because
+  // there is no word boundary between the `s` and the `_`, so reading the key on
+  // any NEW line failed a rule that every existing reader of it predates.
+  { id: 'thresholds_pct', why: 'stored metadata key, never rendered' },
+];
+
 /* Substring bans collide with ordinary English and with the platform API.
  * Each exception below is a deliberate ruling. Anything not listed is an
  * error. Keep this list short and argue for every addition. */
@@ -69,13 +122,10 @@ const BANNED_ALLOW = [
   // line that also contains one of these ids downgrades to WARN rather than
   // ERROR. It still prints, so it is visible, not silenced.
   { pattern: /\b(buy|sell)_side\b/, why: 'stored enum id, never rendered, ruling 5' },
-  // A real column on `financial_facts_latest`, granted on the same reasoning as
-  // the enum ids above: it is a database identifier, it is never rendered, and
-  // renaming it is a migration plus a backfill for no compliance gain. Without
-  // this entry the only way to name the column was to assemble it from two
-  // string halves at the read site, which is a workaround for a linter rule
-  // rather than code anyone would write.
-  { pattern: /\bstockholders_equity\b/, why: 'stored column name, never rendered' },
+  // The stored identifiers, admitted one at a time by the test above this list.
+  // Anchored on word boundaries here so an entry can never widen into a prefix
+  // match by the way it was typed.
+  ...STORED_IDENTIFIERS.map(({ id, why }) => ({ pattern: new RegExp(`\\b${id}\\b`), why })),
   // Ordinary words that contain a banned substring and carry no claim.
   { pattern: /\bthreshold(s)?\b/i, why: 'contains hold, no claim about a position' },
   { pattern: /\bhousehold(s)?\b/i, why: 'contains hold' },
@@ -753,6 +803,15 @@ const SELFTEST = [
       '/* opens and closes */ const holder = 1;',
       /* The block ends mid-line and code follows it. */
       '/**\n * prose about performance\n */ const holder = 1;',
+      /* THE BOUNDARY ON `STORED_IDENTIFIERS`, pinned rather than argued.
+         Every granted entry is a snake_case identifier with a banned substring
+         glued inside a longer segment, and the tempting generalisation is a
+         pattern for exactly that shape. These three have the same shape and are
+         real hits, so the shape is not the rule and the list stays literal.
+         A pattern added here that made any of them pass would be a hole. */
+      'const n = row.shareholder_count;',
+      'const v = row.holdings_value;',
+      'const r = row.buyback_ratio;',
     ],
     good: [
       '// the loader returns a value before the effect settles',
@@ -765,6 +824,10 @@ const SELFTEST = [
       '        {/* buy and sell, in a section marker */}',
       /* Indented continuation of a JSDoc block. */
       '  /**\n   * allocation of the grid, described\n   */',
+      /* The other side of the same boundary: every granted stored identifier
+         still passes, so the entries are proved live rather than assumed. */
+      'const eq = facts.stockholders_equity;',
+      'const t = meta.thresholds_pct;',
     ],
   },
   {
