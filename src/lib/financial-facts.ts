@@ -88,14 +88,22 @@ export interface CompanyFinancialsResult {
    * old behaviour, which is why every consumer of an empty view on this
    * surface reads it.
    *
-   * THE TIMEOUT ITSELF IS FIXED, and this flag still matters. The 57014 was
-   * not intermittent-by-nature: the read materialised a company's entire
-   * filing history to draw thirteen columns, so its cost scaled with that
-   * company's row count and the biggest filers ran into the statement timeout
-   * whenever their pages were not already cached. FACT_LOOKBACK_YEARS bounds
-   * the read on `period_end` and removes that scaling. What remains is every
-   * other way a query can fail -- a dropped connection, a pooler restart, a
-   * genuinely slow instant -- so the flag stays, and so does the rule that no
+   * THE 57014 IS MUCH RARER AND IS NOT GONE, so this flag matters as much as
+   * it ever did. The timeout was not intermittent-by-nature: the read
+   * materialised a company's entire filing history to draw thirteen columns,
+   * so its cost scaled with that company's row count and the biggest filers
+   * ran into the statement timeout whenever their pages were not already
+   * cached. FACT_LOOKBACK_YEARS bounds the read on `period_end` and removes
+   * that scaling, and a randomised between-companies comparison put the
+   * bounded failure rate roughly a fifth of the unbounded one.
+   *
+   * A FIFTH IS NOT ZERO. The bounded read was still observed returning 57014
+   * for high-volume filers, in a single sweep taken while the instance was
+   * plainly IO-starved (see sql/0024_disk_io_indexes.sql, which documents this
+   * same query alternating between sub-second and over-timeout within seconds).
+   * Do not read a rate off one sweep, and do not write "the timeout is fixed"
+   * into this file again: an earlier revision of this comment did, and one
+   * read-only pass falsified it. The flag stays, and so does the rule that no
    * consumer may collapse it into an empty view.
    */
   readFailed: boolean;
@@ -130,15 +138,24 @@ export const QUARTERLY_PERIODS = 8;
  * resident. The driver is row volume, NOT market capitalisation: filers of
  * ordinary size but long history failed the same way, measured.
  *
- * WHY EIGHT. The bound must never cost a column. Measured read-only against the
- * highest-volume companies available, an eight-year window still returns more
- * distinct fiscal years than ANNUAL_PERIODS and several times more distinct
- * quarter-ends than QUARTERLY_PERIODS, so the window is nowhere near binding on
- * either dimension while roughly halving the rows the view has to build.
+ * WHY EIGHT. For a QUARTERLY filer, eight years is nowhere near binding on
+ * either dimension: it returns more distinct fiscal years than ANNUAL_PERIODS
+ * and several times more distinct quarter-ends than QUARTERLY_PERIODS, while
+ * roughly halving the rows the view has to build.
+ *
+ * IT IS BINDING FOR ANNUAL-ONLY FILERS, and an earlier version of this comment
+ * claimed otherwise on the strength of a sample that contained none of them.
+ * A 20-F filer posts one FY income row and one FY year-end balance sheet per
+ * year and no Q rows at all, so its quarterly table gets ONE column per fiscal
+ * year: eight years of window is at best exactly QUARTERLY_PERIODS and in
+ * practice fewer, because the window's edge falls mid-year. Widening the
+ * constant does not fix that class, it only moves it; the guard in
+ * fetchCompanyFinancials does, and it has to read BOTH quotas to do it.
  *
  * Eight years of slack is NOT a correctness argument on its own, because a
- * filer with gaps can need more. The guard in fetchCompanyFinancials is what
- * makes the bound safe; this constant only makes the common case cheap.
+ * filer with gaps, a dormant filer, or an annual-only filer can need more. The
+ * guard is what makes the bound safe; this constant only makes the common case
+ * cheap.
  */
 export const FACT_LOOKBACK_YEARS = 8;
 
@@ -384,14 +401,32 @@ function prepareRows(rows: FactRow[], currency: string | null, cik: number): Fac
 }
 
 /**
+ * Which rows can populate a QUARTERLY column: every instant row (balance
+ * sheets, including the FY-labeled year-end) plus every non-FY duration
+ * (discrete Q1..Q4). FY full-year durations never populate one.
+ *
+ * ONE definition, two readers: the quarterly half of the widening guard and
+ * the `quarterlyRows` filter that actually feeds buildQuarterlyView. A copy in
+ * either place is a rule with two homes, and the guard would then be counting
+ * a population the view does not draw from.
+ */
+function isQuarterlyRow(r: FactRow): boolean {
+  return r.period_type === "instant" || r.fiscal_period !== "FY";
+}
+
+/**
  * How many distinct fiscal years the annual view could draw from these rows.
  *
- * Counted on the currency-pinned rows and BEFORE any slice(), which is the
- * whole point: `buildView(...).periods.length` is already clamped to
- * ANNUAL_PERIODS by its own `keep` argument, so comparing it against
- * ANNUAL_PERIODS would be comparing that constant with itself normalised. The
- * two sides of the guard below have to be independent, and this is the side
- * the database wrote.
+ * Counted on the currency-pinned rows and BEFORE any slice(). `buildView` has
+ * already clamped its own output to `keep`, so reading
+ * `buildView(...).periods.length` back would only ever tell you
+ * `min(n, ANNUAL_PERIODS)`. That is not literally a constant compared with
+ * itself, and the PR body that said so was wrong: `min(n,5) < 5` is equivalent
+ * to `n < 5` today, so the guard would still fire correctly. What it would NOT
+ * survive is `keep` ever ceasing to equal the quota it is checked against, at
+ * which point the comparison silently stops meaning anything. Counting what
+ * the DATABASE returned keeps the two sides independent of each other by
+ * construction rather than by coincidence.
  */
 function distinctAnnualPeriods(rows: FactRow[]): number {
   const years = new Set<number>();
@@ -399,6 +434,27 @@ function distinctAnnualPeriods(rows: FactRow[]): number {
     if (r.fiscal_period === "FY" && r.fiscal_year != null) years.add(r.fiscal_year);
   }
   return years.size;
+}
+
+/**
+ * How many distinct quarterly columns the quarterly view could draw from these
+ * rows. Same shape and same reasoning as distinctAnnualPeriods, on the other
+ * dimension: buildQuarterlyView keys its columns by DISTINCT `period_end`, so
+ * that is what gets counted, on the raw currency-pinned rows and before any
+ * slice().
+ *
+ * The `fiscal_year == null || !fiscal_period` skip mirrors the one
+ * buildQuarterlyView applies to its own input. Keeping it here means the count
+ * can never exceed the number of columns the view would actually build, and an
+ * undercount only ever costs one extra read, never a short table.
+ */
+function distinctQuarterlyPeriods(rows: FactRow[]): number {
+  const ends = new Set<string>();
+  for (const r of rows) {
+    if (r.fiscal_year == null || !r.fiscal_period) continue;
+    if (isQuarterlyRow(r)) ends.add(r.period_end);
+  }
+  return ends.size;
 }
 
 /**
@@ -481,24 +537,38 @@ export async function fetchCompanyFinancials(
     /* THE GUARD. Without it the lookback window would be a silent truncation of
        a company's history, which is the exact class of bug `readFailed` exists
        to prevent: a filer with a gap in its filings, or one that stopped filing
-       nine years ago, would draw fewer annual columns than it has and say
-       nothing about why. Two independent sides: the count of fiscal years the
-       DATABASE returned inside the window, and ANNUAL_PERIODS, the quota this
-       module renders. Short of quota means the window may have cut real
-       history, so re-read without a bound and let the full history win.
+       nine years ago, would draw fewer columns than it has and say nothing
+       about why. Each side is a count the DATABASE returned inside the window
+       against a quota THIS MODULE renders, taken on the raw rows before any
+       slice so the two sides stay independent.
 
-       Cost is paid only by companies that cannot fill five annual columns from
-       eight years, and those are short-history or dormant filers, which are
-       precisely the low-row-count companies whose unbounded read is the
-       cheapest in the table anyway. A recent listing therefore pays a second
-       read on every load, and measured, that pair still lands far below what
-       one unbounded read cost the heaviest filers.
+       BOTH DIMENSIONS, and it has to be both. The tab renders two tables off
+       one read, and they exhaust the window at different rates. An annual-only
+       filer (the 20-F shape: one FY income row and one FY year-end balance
+       sheet per year, no Q rows at all) draws ONE quarterly column per fiscal
+       year, so eight years of window can satisfy ANNUAL_PERIODS several times
+       over while still coming up short of QUARTERLY_PERIODS. Checking the
+       annual dimension alone left exactly those filers short of the quarterly
+       quota with nothing to say why, which is the bug this guard was written
+       to refuse. Measured against the module on real filers: the annual half
+       was satisfied, the guard never fired, and the quarterly table came back
+       short every time.
+
+       Cost is paid only by companies that cannot fill both quotas from eight
+       years: short-history filers, dormant filers, and annual-only filers.
+       The first two are the low-row-count companies whose unbounded read is
+       the cheapest in the table anyway. Annual-only filers are the genuine
+       addition here, and they are cheap for the same reason a quarterly filer
+       is not: roughly one filing a year instead of four.
 
        A failed widening returns readFailed rather than the bounded rows: this
        branch is only reached when the bounded result is SUSPECTED incomplete,
        and drawing a possibly-truncated table as though it were whole is the
        assertion-about-the-issuer this file exists to refuse. */
-    if (distinctAnnualPeriods(rows) < ANNUAL_PERIODS) {
+    if (
+      distinctAnnualPeriods(rows) < ANNUAL_PERIODS ||
+      distinctQuarterlyPeriods(rows) < QUARTERLY_PERIODS
+    ) {
       const full = await readFacts(null);
       if (full.error) return failed("unbounded re-read", full.error.message);
       allRows = (full.data ?? []) as unknown as FactRow[];
@@ -509,9 +579,9 @@ export async function fetchCompanyFinancials(
     const annualRows = rows.filter((r) => r.fiscal_period === "FY");
     // Quarterly takes every INSTANT row (balance sheets, including FY-labeled
     // year-ends) but only DISCRETE-QUARTER durations; FY durations stay out.
-    const quarterlyRows = rows.filter(
-      (r) => r.period_type === "instant" || r.fiscal_period !== "FY",
-    );
+    // isQuarterlyRow, not an inline copy: the guard above counts this same
+    // population, and the two must not be able to drift apart.
+    const quarterlyRows = rows.filter(isQuarterlyRow);
     const annual = buildView(annualRows, ANNUAL_PERIODS);
     const quarterly = buildQuarterlyView(quarterlyRows, QUARTERLY_PERIODS);
 
