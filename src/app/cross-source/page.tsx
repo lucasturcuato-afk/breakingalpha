@@ -16,6 +16,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { AppShell } from "@/components/shell";
 import { AlertTriangle, Clock, Info, RefreshCw, Radio } from "lucide-react";
+import { CrossSourceScreen } from "@/components/cross-source-mobile";
+import { formatLag } from "@/components/cross-source-mobile/cross-source-model";
 
 interface SourceRow {
   identity: string;
@@ -116,14 +118,11 @@ function ErrorPanel({ err, label }: { err: FetchError; label: string }) {
   );
 }
 
-function formatLag(minutes: number | null): string {
-  if (minutes === null) return "unknown";
-  if (minutes < 1) return "same minute";
-  if (minutes < 60) return `+${Math.round(minutes)}m`;
-  const hours = minutes / 60;
-  if (hours < 24) return `+${hours.toFixed(1)}h`;
-  return `+${(hours / 24).toFixed(1)}d`;
-}
+/* `formatLag` used to be defined here. It moved to
+ * `src/components/cross-source-mobile/cross-source-model.ts` so the phone
+ * layout and this one read a cluster the same way rather than each carrying a
+ * copy of the rule. Nothing this screen draws changed; the import is the only
+ * difference on the desk. */
 
 export default function CrossSourcePage() {
   const [sources, setSources] = useState<SourceRow[] | null>(null);
@@ -180,8 +179,34 @@ export default function CrossSourcePage() {
   }, [load]);
 
   return (
-    <AppShell pageTitle="Cross-source">
-      <div className="mx-auto w-full max-w-5xl space-y-8 px-4 py-6" data-testid="cross-source-page">
+    /* `mobileFullBleed` gates the desk's mood bar, topbar and footer out below
+       `md`. The phone screen draws its own head, and measured on `cfe0a5ee`
+       the footer's own legal row sat 39px UNDER the tab bar at every width
+       while three of its links failed an `elementFromPoint` hit test at 430.
+       The tab bar itself stays. Desktop is untouched at every width. */
+    <AppShell pageTitle="Cross-source" mobileFullBleed>
+      {/* Gated in CLASSES, never in an inline style: an inline `display` beats
+          the class at every breakpoint, which is the defect design-lint's rule
+          10 exists to catch. */}
+      <div className="md:hidden">
+        <CrossSourceScreen
+          sources={sources}
+          sourceFault={sourceErr}
+          clusters={clusters}
+          clusterFault={clusterErr}
+          loading={loading}
+          onRefresh={() => void load()}
+        />
+      </div>
+
+      {/* The desk layout, unchanged. `hidden md:block` is added to the wrapper
+          it already had rather than to a new one, so above the breakpoint this
+          subtree is the same element with the same computed display and no
+          extra box in the tree. */}
+      <div
+        className="hidden md:block mx-auto w-full max-w-5xl space-y-8 px-4 py-6"
+        data-testid="cross-source-page"
+      >
         <header className="space-y-3">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2">
