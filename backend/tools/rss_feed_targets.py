@@ -166,7 +166,14 @@ def build_report(rows: list[dict], days: int, min_per_day: float, min_rel: float
     for p, a in agg.items():
         dom = a["dom"].most_common(1)[0][0] if a["dom"] else None
         med = statistics.median(a["rel"]) if a["rel"] else None
-        covered = _norm_name(p) in named_norm or _norm_name(p) in non_gnews_sources
+        pn = _norm_name(p)
+        # Containment, not equality: the publisher "MarketWatch" IS reached by
+        # the "MarketWatch Top" feed, and exact matching flagged it as a
+        # candidate in the 2026-09-03 sweep (a wasted probe). One-sided guards
+        # (len >= 6) keep short names from matching everything.
+        covered = (pn in named_norm or pn in non_gnews_sources
+                   or (len(pn) >= 6 and any(pn in n or (len(n) >= 6 and n in pn)
+                                            for n in named_norm)))
         synd = bool(dom and (dom in synd_domains
                              or any(dom.endswith("." + d) for d in synd_domains)))
         per_day = a["n"] / days

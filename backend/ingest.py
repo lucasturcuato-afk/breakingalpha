@@ -404,6 +404,16 @@ RSS_FEEDS = {
     "CNBC Earnings":    "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=15839135",  # 30 / 67% / 121ch
     "CNBC Technology":  "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=19854910",  # 30 / 80% / 120ch
     "Fortune":          "https://fortune.com/feed/",                                          # 10 / 60% / 141ch
+    # Added in the 25-publisher sweep (browser-UA retry round). Rejected in that
+    # same sweep with evidence: GuruFocus (feed works but 4,050 entries at 10%
+    # prose, medRel 3 -- a quant-screen firehose), The Motley Fool (42% prose
+    # but medRel 2), StockStory (100% prose but medRel 2, templated recaps --
+    # the one a human might overrule), Reuters (now NINE dead URL shapes across
+    # three rounds, both UAs), Barron's (6 shapes), MarketScreener (5),
+    # TipRanks / Moomoo / Quiver / simplywall.st / StocksToTrade / TradingKey /
+    # timothysykes / TechStock2 / Eastern Progress / Pluang / AD HOC NEWS /
+    # finance.biggo (no feed at any shape, either UA).
+    "TheStreet":        "https://www.thestreet.com/.rss/full/",                               # 50 / 46% / medRel 6
 }
 
 #: NO LONGER DRIVES content_type. It used to, and that was the bug: it labelled
@@ -461,6 +471,7 @@ ENTRY_CAP_OVERRIDES: dict[str, int] = {
     "CNBC Earnings":    40,   # ~13 (supply-limited; the feed lists 30 but half are >7d old)
     "CNBC Technology":  40,   # 30 (supply-limited)
     "Fortune":          16,   # 10 (supply-limited; default 8 would bind)
+    "TheStreet":        40,   # 50 fresh available -- cap binds
 }
 
 # Google News per-ticker RSS
