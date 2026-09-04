@@ -21,6 +21,7 @@ import {
 import type { CompanyIntelData, ToneDirection, ToneRowDirection } from "./types";
 import { Chip, EmptyWell, RuledRow, SECTION_FILL, SectionNote, SectionRule } from "./parts";
 import { QuoteLine } from "./QuoteLine";
+import { ToneSeries } from "./ToneSeries";
 import { FONT_DISPLAY, FONT_MONO, FONT_SANS } from "@/components/mobile/fonts";
 import styles from "./company-mobile.module.css";
 
@@ -412,6 +413,31 @@ export function ToneSection({ data }: { data: CompanyIntelData }) {
           {tone.evidence}
         </p>
       ) : null}
+
+      {/* THE READING GETS A PAST. Above this line the section states one
+          seven-day window and, when both windows clear DIRECTION_MIN_N, the one
+          before it. This carries the same reading back four weeks, on the same
+          per-mention scoring and the same five-step scale, so the strip and the
+          headline cannot tell different stories.
+
+          BELOW THE LEVEL, NEVER ABOVE IT, and that placement is the whole
+          non-regression argument. The quote line that landed at the head of
+          this section pushed the tone level below the fold at 375x667, and the
+          level is the point of this tab. A block drawn under the evidence
+          sentence cannot move the level by a pixel at any width, which is
+          measured in the PR body rather than asserted here. What it does move
+          is the caveat under it, which is the cheapest thing in the section.
+
+          IT DRAWS ON THE INSUFFICIENT BRANCH TOO, and that is not a bug. A
+          company whose past week is too thin to state a level can still have
+          three readable weeks behind it: State Street carried 1 mention in the
+          current window and 8, 28 and 39 in the three before it. The headline
+          correctly refuses to name a level; the strip shows that a reading
+          existed and has gone quiet, which is a different fact and one this
+          screen previously threw away. When the past four weeks carry fewer
+          than two readable ones the strip renders nothing at all, so the
+          absence is never stated twice. */}
+      <ToneSeries company={data.name} />
 
       <p
         style={{
