@@ -707,6 +707,20 @@ export function isSubjectOfTitle(title: string, companyName: string): boolean {
   );
 }
 
+/**
+ * A WHOLE-WORD occurrence of `needle` in `haystack`.
+ *
+ * This is what lets a short name earn title evidence without the substring
+ * catastrophe below. The boundary is "not alphanumeric", not `\b`, because `\b`
+ * treats "&" as a boundary character in a way that is fine here but treats a
+ * digit run as word-internal, and company names carry both ("AT&T", "Hut 8").
+ */
+function titleContainsWord(haystack: string, needle: string): boolean {
+  if (!needle) return false;
+  const escaped = needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(?:^|[^a-z0-9])${escaped}(?:$|[^a-z0-9])`, "i").test(haystack);
+}
+
 // Returns true if the selected company is explicitly named anywhere in the article title.
 export function titleNamesCompany(title: string, cosRaw: string[], name: string): boolean {
   const t = title.toLowerCase();
@@ -724,6 +738,44 @@ export function titleNamesCompany(title: string, cosRaw: string[], name: string)
     if (rawNorm.length >= 5 && t.includes(rawNorm)) return true;
     const firstWord = rawNorm.split(/\s+/)[0];
     if (firstWord.length >= 6 && t.includes(firstWord)) return true;
+
+    /* THE SHORT-NAME BRANCH, and it is a WHOLE-WORD match rather than a lower
+       floor. Both branches above are SUBSTRING tests, and a substring test is
+       why they carry a length floor at all: under five characters it stops
+       being a name test and starts being a spell-check. So a company whose name
+       is short could never earn title evidence from this function no matter
+       what the headline said, which made `isMaterialCounterparty` permanently
+       false for that whole population and quietly dropped their counterparty
+       M&A coverage. Measured against the corpus, that population is not a
+       rounding error: a large share of rows sits under the floor, and the head of it
+       is names any reader would expect to work.
+
+       WHY NOT JUST LOWER THE FLOOR. Because it is the same cure #816 already
+       refused one function up, and for the same reason. Two measurements, both
+       from the corpus, and they answer two different questions.
+
+       Dropping the floor from the FIRST branch, which is not tag-gated, fires
+       on the wrong company far more often than it helps, over pairs built from the
+       corpus: "Meta" reads out of "Rheinmetall" and "Metals X", "AMD" reads out
+       of "Camden National".
+
+       Keeping the tag gate but making THIS branch a substring test is the
+       narrower mistake, and it is still a mistake. Swept over a large recent
+       window of articles for the case that actually reaches here (an article
+       correctly TAGGED with the short company whose headline contains the name
+       only inside a longer word), the substring version fires on the wrong
+       company every time the case occurs and the whole-word version never does.
+       The live instance is "KLA" reading itself out of the ticker string
+       "KLAC". The case is rare; the failure is total when it happens.
+
+       IT IS ALSO TAG-GATED, which the first branch in this function is not. It
+       sits below `matchesCanonical(raw, name)`, so the article already carries
+       this company in `articles.companies` and the headline is only being asked
+       to confirm an identification ingest already made, never to make one.
+       Measured over the real pool this predicate gates: it newly admits a small
+       number of article/company pairs, every one a genuine counterparty, and it
+       fires on ZERO articles that do not already carry the company as a tag. */
+    if (rawNorm.length < 5 && titleContainsWord(t, rawNorm)) return true;
   }
   return false;
 }
