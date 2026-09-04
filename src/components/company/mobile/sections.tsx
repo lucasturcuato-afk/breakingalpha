@@ -20,6 +20,7 @@ import {
 
 import type { CompanyIntelData, ToneDirection, ToneRowDirection } from "./types";
 import { Chip, EmptyWell, RuledRow, SECTION_FILL, SectionNote, SectionRule } from "./parts";
+import { QuoteLine } from "./QuoteLine";
 import { FONT_DISPLAY, FONT_MONO, FONT_SANS } from "@/components/mobile/fonts";
 import styles from "./company-mobile.module.css";
 
@@ -350,6 +351,14 @@ export function ToneSection({ data }: { data: CompanyIntelData }) {
 
   return (
     <>
+      {/* THE TAB IS NAMED FOR A PRICE. Until now it carried none, and the only
+          figure on it that moved with the market was the chart's move since the
+          start of an unlabelled three-month range, which is not the day. This
+          draws the day, names its window, and reads it on the CLIENT: no part
+          of it reaches `CompanyIntelData`, so the server shape stays quote-free
+          exactly as ruled. See the header on ./QuoteLine. */}
+      <QuoteLine ticker={data.ticker} />
+
       <div style={shortBody ? SECTION_FILL : undefined}>
       {tone.level ? (
         <div style={{ display: "flex", alignItems: "baseline", gap: "10px", flexWrap: "wrap" }}>
