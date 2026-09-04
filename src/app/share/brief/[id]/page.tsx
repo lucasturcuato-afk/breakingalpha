@@ -362,7 +362,7 @@ export default async function PublicBriefPage({ params }: Props) {
         <p className="font-sans text-[11px] text-text-muted mt-5 max-w-[560px] mx-auto text-pretty">
           Shared read-only view. Not indexed by search engines. AI-generated content. Not
           investment advice. Verify before acting.{" "}
-          <LegalLink href="/legal">Legal</LegalLink>
+          <LegalLink href="/legal">Terms, privacy and support</LegalLink>
         </p>
       </footer>
     </div>

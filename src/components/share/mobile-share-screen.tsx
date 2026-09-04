@@ -361,7 +361,7 @@ export function MobileShareScreen({
           >
             Shared read-only view. Not indexed by search engines. AI-generated content. Not
             investment advice. Verify before acting.{" "}
-            <LegalLink href="/legal">Legal</LegalLink>
+            <LegalLink href="/legal">Terms, privacy and support</LegalLink>
           </p>
         </div>
       </div>

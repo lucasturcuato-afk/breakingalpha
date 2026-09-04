@@ -18,8 +18,17 @@ import type { ReactNode } from "react";
  * `/share/brief/[id]` had a wordmark and two sign-up buttons. Both surfaces
  * carry exactly the problem this component was written for, a line of small
  * print naming things a reader cannot open, so both use it rather than growing
- * a second way to do the same job. The label there is "Legal", the same word
- * `legal-up-link.tsx` uses, so one destination keeps one name.
+ * a second way to do the same job.
+ *
+ * THE NEW CALL SITES POINT AT THE HUB AND SPELL OUT ITS THREE ROWS,
+ * "Terms, privacy and support", where `/auth` names one document each. That is
+ * a measurement, not a preference. This component grows the hit area on the
+ * block axis only, which is all `/auth` ever needed because "Terms of Service"
+ * is wide on its own. A one-word label is not: "Legal" measured 31.16 by 48 on
+ * `/waitlist`, clearing the floor on height and missing it on width by 13px.
+ * Inline padding here would fix that and would also pull the full stop after
+ * the second `/auth` anchor 9px left, under its own underline. So the label
+ * does the work, and the component stays exactly as `/auth` shipped it.
  *
  * WHY IT IS SHARED RATHER THAN WRITTEN TWICE. `src/app/auth/page.tsx` and
  * `src/components/auth/mobile-auth.tsx` draw the same sentence with different

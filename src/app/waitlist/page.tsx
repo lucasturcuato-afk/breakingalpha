@@ -100,12 +100,23 @@ export default async function WaitlistPage({
             still leave Support at 18px. One anchor gives all three
             destinations a two-tap path and every target on it clears 44.
 
-            `LegalLink` carries the hit area; see that file for why the padding
-            and the equal negative margin leave the line box exactly as it
-            was. */}
+            `LegalLink` carries the vertical half of the hit area; see that
+            file for why the block padding and the equal negative block margin
+            leave the line box exactly as it was.
+
+            THE LABEL CARRIES THE HORIZONTAL HALF, and it is a measurement that
+            changed the copy rather than the CSS. "Legal", the word
+            `legal-up-link.tsx` uses, measured 31.16 by 48 here: tall enough and
+            26 per cent too narrow. `LegalLink` has no inline padding to grow
+            it with, and adding some would drag the full stop after the second
+            anchor on `/auth` under its own underline, which is a visible
+            regression on a page this unit does not own. Naming the hub's three
+            rows instead makes the anchor wide on its own, and it satisfies the
+            rule `screen-chrome.tsx` states, that a control promising a
+            specific destination says which. */}
         <p className="text-center text-xs text-text-muted mt-6">
           © 2026 Signalera. AI-generated content. Not investment advice.{" "}
-          <LegalLink href="/legal">Legal</LegalLink>
+          <LegalLink href="/legal">Terms, privacy and support</LegalLink>
         </p>
       </div>
     </div>
