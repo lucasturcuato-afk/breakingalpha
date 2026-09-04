@@ -48,6 +48,7 @@ def run(
     sync_ciks_first: bool = True,
     dry_run: bool = False,
     max_ciks: Optional[int] = None,
+    scheduled_hour: Optional[str] = None,
 ) -> dict:
     sb = create_client(
         os.environ["SUPABASE_URL"],
@@ -72,7 +73,7 @@ def run(
         sync_result = sync_cik_tickers(sb)
         stats["cik_sync"] = sync_result
 
-    watchlist = get_poll_ciks(sb)
+    watchlist = get_poll_ciks(sb, scheduled_hour=scheduled_hour)
     if max_ciks:
         watchlist = watchlist[:max_ciks]
 
@@ -479,10 +480,20 @@ if __name__ == "__main__":
     parser.add_argument("--dry-run", action="store_true", help="Log filings without writing to DB")
     parser.add_argument("--no-sync", action="store_true", help="Skip CIK mapping sync")
     parser.add_argument("--max-ciks", type=int, help="Cap CIKs polled (for testing)")
+    parser.add_argument(
+        "--scheduled-hour",
+        help=(
+            "UTC hour (0-23) or ISO-8601 timestamp this run was SCHEDULED for. "
+            "The tail shard is derived from it, so a run that starts late still "
+            "polls the shard it was scheduled to poll. Falls back to "
+            "EDGAR_SCHEDULED_HOUR, then to execution time."
+        ),
+    )
     args = parser.parse_args()
     result = run(
         sync_ciks_first=not args.no_sync,
         dry_run=args.dry_run,
         max_ciks=args.max_ciks,
+        scheduled_hour=args.scheduled_hour,
     )
     sys.exit(0 if result.get("errors", 0) == 0 else 1)

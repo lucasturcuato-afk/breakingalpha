@@ -17,6 +17,22 @@ on:
         description: 'Cap CIKs polled (for testing)'
         type: string
         default: ''
+      # The tail shard is derived from the hour a run was SCHEDULED for, not
+      # the hour it executes in. Those diverge whenever the runner queue is
+      # late, and a run that crosses an hour boundary used to poll the next
+      # shard twice and abandon its own. Delay is one-signed, so no clock-only
+      # heuristic recovers the intended hour: whoever schedules the run has to
+      # stamp it here. Leave empty and the run falls back to execution time,
+      # which is the old behavior.
+      #
+      # The `schedule:` event above CANNOT stamp this. Its payload carries the
+      # cron EXPRESSION (github.event.schedule == '0 * * * *'), which says
+      # "every hour" and cannot say which hour. Only an external scheduler
+      # firing workflow_dispatch can supply it.
+      scheduled_hour:
+        description: 'UTC hour 0-23 (or ISO-8601 timestamp) this run was SCHEDULED for. Empty = use execution time.'
+        type: string
+        default: ''
 
 jobs:
   ingest:
@@ -39,4 +55,5 @@ jobs:
           PYTHONPATH=. python3 backend/ingest_sec.py \
             ${{ inputs.dry_run == 'true' && '--dry-run' || '' }} \
             ${{ inputs.no_sync == 'true' && '--no-sync' || '' }} \
-            ${{ inputs.max_ciks != '' && format('--max-ciks {0}', inputs.max_ciks) || '' }}
+            ${{ inputs.max_ciks != '' && format('--max-ciks {0}', inputs.max_ciks) || '' }} \
+            ${{ inputs.scheduled_hour != '' && format('--scheduled-hour {0}', inputs.scheduled_hour) || '' }}
