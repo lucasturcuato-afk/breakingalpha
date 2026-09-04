@@ -130,6 +130,49 @@ test("every pending enum member is backed by a migration file that actually adds
   }
 });
 
+test("OUTPUT_TYPES carries every member the enum has, not merely a subset", () => {
+  // The other direction of the same fact. A subset check alone is what let
+  // three lists sit at 14, 15 and 16 members with nothing comparing them:
+  // OUTPUT_TYPES was missing sec_filing and insider_transaction, which the
+  // pipeline writes, and backend/outputs.py was missing radar_clusters and
+  // radar_cluster_label, which the app writes. Neither omission is a 22P02 on
+  // its own, and that is precisely why nobody noticed for as long as they did.
+  // Held EQUAL so there is one true statement of what the column accepts.
+  const expected = new Set([...fixture.observed, ...fixture.pending.map((p) => p.value)]);
+  const actual = new Set<string>(OUTPUT_TYPES);
+
+  assert.deepEqual(
+    [...actual].sort(),
+    [...expected].sort(),
+    `OUTPUT_TYPES has drifted from the captured enum. ` +
+      `missing from TypeScript: ${[...expected].filter((v) => !actual.has(v)).join(", ") || "none"}; ` +
+      `extra in TypeScript: ${[...actual].filter((v) => !expected.has(v)).join(", ") || "none"}. ` +
+      `Re-run scripts/capture-output-type-enum.mjs if the database moved.`
+  );
+});
+
+test("the TypeScript and Python lists agree with each other", () => {
+  // A and B directly, with the fixture out of the loop. Both are pinned to the
+  // same snapshot, so this is redundant while both guards hold; it is here
+  // because it is the assertion that fails FIRST and most legibly when someone
+  // edits one language's list and not the other.
+  const py = readFileSync(resolve(REPO, "backend/outputs.py"), "utf8");
+  const literal = py.match(/OutputType\s*=\s*Literal\[([\s\S]*?)\]/);
+  assert.ok(literal, "could not locate the OutputType Literal in backend/outputs.py");
+
+  const pyMembers = new Set([...literal[1].matchAll(/'([a-z_]+)'/g)].map((m) => m[1]));
+  assert.ok(pyMembers.size > 0, "parsed no members out of the Python Literal");
+
+  const tsMembers = new Set<string>(OUTPUT_TYPES);
+  assert.deepEqual(
+    [...pyMembers].sort(),
+    [...tsMembers].sort(),
+    `backend/outputs.py and src/lib/outputs.ts disagree about what outputs.output_type accepts. ` +
+      `only in Python: ${[...pyMembers].filter((v) => !tsMembers.has(v)).join(", ") || "none"}; ` +
+      `only in TypeScript: ${[...tsMembers].filter((v) => !pyMembers.has(v)).join(", ") || "none"}.`
+  );
+});
+
 test("pending never claims a member the database already reports", () => {
   const observed = new Set(fixture.observed);
   for (const p of fixture.pending) {

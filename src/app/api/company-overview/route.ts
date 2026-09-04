@@ -4,24 +4,35 @@
 //   { overview: string, cached: boolean,
 //     cache_write_ok?: boolean, cache_read_failed?: true }
 //
-// Reuses the existing `outputs` table, keyed by content->>target_company. Read
-// the latest row; if its source_hash still matches the current inputs, serve it
-// with NO write and NO model call; else generate a strictly-grounded normalized
-// overview via Gemini, sanitize, and write one per-company row. Never a bulk
-// write; never blocks on failure (returns the raw summary fallback). No new
-// table or column.
+// Reuses the existing `outputs` table, keyed on (output_type, target_company,
+// source_hash). Read the row matching those three; if it carries a usable
+// overview, serve it with NO write and NO model call; else generate a
+// strictly-grounded normalized overview via Gemini, sanitize, and write one row.
+// Never a bulk write; never blocks on failure (returns the raw summary
+// fallback). No new table or column.
 //
-// THE CACHE NEVER WORKED UNTIL THIS FIX. output_type 'company_overview' was not
-// a member of output_type_enum, so Postgres 22P02'd BOTH the read filter and the
-// write, and `source_id` (a uuid column) was being handed a company NAME, which
-// 22P02'd the write a second time independently. supabase-js returns those in
-// the result object rather than throwing, the read discarded `error` entirely,
-// and the write logged to a console nobody reads. Net effect: 100% cache miss
-// and a gemini-2.5-flash call on every Primer view. See
+// THREE THINGS WERE WRONG AND ANY ONE OF THEM ALONE KEPT THE CACHE AT 0%.
+//
+//   1. output_type 'company_overview' was not a member of output_type_enum, so
+//      Postgres 22P02'd BOTH the read filter and the write.
+//   2. `source_id` (a uuid column) was being handed a company NAME, which
+//      22P02'd the write a second, independent time.
+//   3. The read narrowed on company only and validated source_hash AFTER the
+//      row came back, so recency picked the winner. PrimerTab POSTs two
+//      different bodies per mount for any company with both a curated
+//      description and a live quote, which is two hashes under one cache key,
+//      so each read kept returning the other variant's row and missing.
+//
+// supabase-js returns 1 and 2 in the result object rather than throwing, the
+// read discarded `error` entirely, and the write logged to a console nobody
+// reads. 3 needs no error at all: it is a correct query answering the wrong
+// question. Net effect: 100% cache miss and a gemini-2.5-flash call on every
+// Primer view. See
 // supabase/migrations/20260903143000_add_company_overview_output_type.sql.
 //
-// NOTE ON WHAT IS SAVED: the client POSTs once per PrimerTab mount either way.
-// What the cache eliminates is the MODEL CALL inside this route, not the POST.
+// NOTE ON WHAT IS SAVED: the client POSTs once per effect run either way, and
+// the fix does not change how many times it POSTs. What the cache eliminates is
+// the MODEL CALL inside this route.
 
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
@@ -33,9 +44,9 @@ import {
   buildOverviewPrompt,
   buildOverviewCacheRow,
   isOverviewCacheHit,
+  overviewCacheFilter,
   overviewSourceHash,
   sanitizeOverview,
-  COMPANY_OVERVIEW_OUTPUT_TYPE,
   type OverviewCacheContent,
   type OverviewInputs,
 } from "@/lib/company-overview";
@@ -84,7 +95,22 @@ export async function POST(request: NextRequest) {
 
   const svc = serviceClient();
 
-  // 1. Read latest cached overview for this company.
+  // 1. Read the cached overview matching these exact inputs.
+  //
+  // SELECT BY HASH, DO NOT VALIDATE AFTER. Every equality in
+  // overviewCacheFilter is applied here, including content->>source_hash, so
+  // the query can only return a row that is servable. The earlier version
+  // narrowed on company alone and let `.order(created_at desc).limit(1)` pick
+  // the winner, then checked the hash on the way out. That is latest-row-wins,
+  // and it misses every time for the 34 curated companies, because PrimerTab
+  // POSTs two different bodies per mount (curated first, live Yahoo summary
+  // once the quote resolves and the effect deps change). Two hashes under one
+  // cache key: each read returned the OTHER variant's row. See the comment on
+  // overviewCacheFilter for the full mechanism.
+  //
+  // `.order().limit(1)` stays. The filter narrows to one logical entry, but two
+  // concurrent misses can both write, and maybeSingle() errors on more than one
+  // row. Recency now only breaks ties between rows that are already equivalent.
   //
   // supabase-js does NOT throw on a PostgREST error, it returns it in `error`.
   // This block previously destructured only `data`, discarding `error`, so a
@@ -94,11 +120,11 @@ export async function POST(request: NextRequest) {
   // `error` explicitly; the catch stays only for genuine transport throws.
   let cacheReadFailed = false;
   try {
-    const { data, error } = await svc
-      .from("outputs")
-      .select("content")
-      .eq("output_type", COMPANY_OVERVIEW_OUTPUT_TYPE)
-      .eq("content->>target_company", name)
+    let query = svc.from("outputs").select("content");
+    for (const [column, value] of Object.entries(overviewCacheFilter(name, hash))) {
+      query = query.eq(column, value);
+    }
+    const { data, error } = await query
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();

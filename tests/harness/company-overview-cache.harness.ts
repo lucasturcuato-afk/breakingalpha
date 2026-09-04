@@ -55,6 +55,8 @@ const counters = {
   httpPost: 0,
   http400: 0,
   rowsWritten: 0,
+  /** GETs whose PostgREST query string carried a content->>source_hash equality. */
+  hashFilteredGets: 0,
 };
 
 interface Row {
@@ -109,6 +111,20 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
 
   if (method === "GET") {
     counters.httpGet += 1;
+
+    // Apply a source_hash equality only if the route actually sends one. A
+    // route that does not narrow on the hash gets exactly the latest-row-wins
+    // behaviour Postgres would give it, which is what this stub is for: the
+    // defect must be reproducible here, not papered over by a helpful stub.
+    //
+    // COUNTED BEFORE THE ENUM REJECTION, deliberately. This counter measures
+    // what the ROUTE SENT, and the route sends the same query whether or not
+    // the enum member exists. Counting it after the 400 would make the seam
+    // assertion read 0 for a reason that has nothing to do with the seam.
+    const hashFilter = url.searchParams.get("content->>source_hash");
+    const wantHash = hashFilter?.startsWith("eq.") ? hashFilter.slice(3) : null;
+    if (wantHash !== null) counters.hashFilteredGets += 1;
+
     const typeFilter = url.searchParams.get("output_type");
     if (typeFilter?.startsWith("eq.")) {
       const val = typeFilter.slice(3);
@@ -120,8 +136,10 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
     const companyFilter = url.searchParams.get("content->>target_company") ?? "";
     const company = companyFilter.startsWith("eq.") ? companyFilter.slice(3) : null;
     const type = typeFilter?.slice(3);
+
     const hits = table
       .filter((r) => r.output_type === type && r.content.target_company === company)
+      .filter((r) => wantHash === null || r.content.source_hash === wantHash)
       .sort((a, b) => b.created_at.localeCompare(a.created_at))
       .map((r) => ({ content: r.content }));
     return new Response(JSON.stringify(hits.slice(0, 1)), {
@@ -171,56 +189,111 @@ mock.module(`${REPO}/src/lib/supabase-server.ts`, {
   },
 });
 
-const BODY = {
+// PrimerTab POSTs TWICE per mount for any company that has BOTH a curated
+// description and a live Yahoo quote, which is every curated company:
+//
+//   variant A  on mount, `quote` is null, so `resolvedIndustry` and
+//              `sourceSummary` are the CURATED values that came with the page;
+//   variant B  once /api/company-kpis resolves, both are effect deps and both
+//              flip to the LIVE Yahoo assetProfile values, so the effect reruns.
+//
+// One mount is therefore variant A followed by variant B. Modelling a mount as
+// a single body is what let a latest-row-wins read look like a working cache.
+const VARIANT_A_CURATED = {
   company: "NVIDIA",
   ticker: "NVDA",
   sector: "Technology",
   industry: "Semiconductors",
   summary:
+    "NVIDIA Corporation designs graphics processing units for the gaming and professional markets, as well as system on a chip units for the mobile computing and automotive market.",
+};
+const VARIANT_B_LIVE = {
+  company: "NVIDIA",
+  ticker: "NVDA",
+  sector: "Technology",
+  industry: "Semiconductors - Specialized",
+  summary:
     "NVIDIA Corporation provides graphics and compute solutions. Its segments include Graphics and Compute & Networking, and it sells GPUs for data center, gaming, and professional visualization markets worldwide.",
 };
 
-function req() {
+const MOUNTS = 5;
+
+function req(body: unknown) {
   return new Request("http://localhost:3000/api/company-overview", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(BODY),
+    body: JSON.stringify(body),
   });
 }
 
-test(`two identical Primer loads, migration applied = ${MIGRATION_APPLIED}`, async () => {
+test(`${MOUNTS} PrimerTab mounts, 2 bodies each, migration applied = ${MIGRATION_APPLIED}`, async () => {
   const { POST } = await import(`${REPO}/src/app/api/company-overview/route.ts`);
 
-  const r1 = await POST(req() as never);
-  const b1 = await r1.json();
-  const afterFirst = { ...counters };
-
-  const r2 = await POST(req() as never);
-  const b2 = await r2.json();
+  const perMount: { a: unknown; b: unknown; calls: number; rows: number }[] = [];
+  for (let m = 0; m < MOUNTS; m++) {
+    const before = counters.geminiCalls;
+    const a = await (await POST(req(VARIANT_A_CURATED) as never)).json();
+    const b = await (await POST(req(VARIANT_B_LIVE) as never)).json();
+    perMount.push({ a, b, calls: counters.geminiCalls - before, rows: table.length });
+  }
 
   console.log("\n================= MEASUREMENT =================");
   console.log(`migration applied:          ${MIGRATION_APPLIED}`);
   console.log(`enum members in force:      ${ENUM_MEMBERS.size}`);
-  console.log(`load 1 response:            ${JSON.stringify(b1)}`);
-  console.log(`  gemini calls after load 1: ${afterFirst.geminiCalls}`);
-  console.log(`load 2 response:            ${JSON.stringify(b2)}`);
-  console.log(`TOTAL gemini calls:         ${counters.geminiCalls}`);
+  console.log("mount | variant A (curated) | variant B (live)  | model calls | rows");
+  console.log("------+---------------------+-------------------+-------------+-----");
+  perMount.forEach((r, i) => {
+    const fmt = (x: { cached?: boolean; cache_write_ok?: boolean }) =>
+      `cached=${String(x.cached).padEnd(5)} wrote=${String(x.cache_write_ok ?? "-").padEnd(5)}`;
+    console.log(
+      `  ${i + 1}   | ${fmt(r.a as never)} | ${fmt(r.b as never)} |      ${r.calls}      |  ${r.rows}`
+    );
+  });
+  console.log(`TOTAL model calls:          ${counters.geminiCalls}`);
+  console.log(`TOTAL route POSTs:          ${MOUNTS * 2} (2 per mount, unchanged by this fix)`);
   console.log(`TOTAL PostgREST GET:        ${counters.httpGet}`);
-  console.log(`TOTAL PostgREST POST:       ${counters.httpPost}`);
+  console.log(`  of which hash-filtered:   ${counters.hashFilteredGets}`);
+  console.log(`TOTAL PostgREST insert:     ${counters.httpPost}`);
   console.log(`TOTAL PostgREST 400s:       ${counters.http400}`);
   console.log(`rows in outputs at end:     ${table.length}`);
   console.log("===============================================\n");
 
+  // THE SEAM. Every cache read must narrow on content->>source_hash. Without
+  // this the read is latest-row-wins and the assertions below can only be met
+  // by luck. Asserted on the real outgoing PostgREST query string, not on a
+  // restatement of the route's builder calls.
+  assert.equal(
+    counters.hashFilteredGets,
+    counters.httpGet,
+    "every cache read must SELECT BY HASH; a read that validates the hash afterwards is latest-row-wins"
+  );
+
   if (MIGRATION_APPLIED) {
-    assert.equal(counters.geminiCalls, 1, "second load must NOT reach Gemini");
-    assert.equal(b2.cached, true, "second load must be served from cache");
-    assert.equal(b1.cache_write_ok, true, "first load must land its cache row");
-    assert.equal(table.length, 1, "exactly one row per company");
+    // Mount 1 is two genuine misses, one per variant. Mounts 2..5 are pure hits.
+    assert.equal(
+      counters.geminiCalls,
+      2,
+      "one model call per distinct body, ever; mounts 2 onward must not reach Gemini"
+    );
+    assert.equal(table.length, 2, "two rows total, one per variant, and no growth after mount 1");
+    for (let m = 1; m < MOUNTS; m++) {
+      assert.equal(perMount[m].calls, 0, `mount ${m + 1} must make no model call`);
+      assert.equal((perMount[m].a as { cached: boolean }).cached, true, `mount ${m + 1} variant A must hit`);
+      assert.equal((perMount[m].b as { cached: boolean }).cached, true, `mount ${m + 1} variant B must hit`);
+      assert.equal(perMount[m].rows, 2, `mount ${m + 1} must add no row`);
+    }
+    assert.equal((perMount[0].a as { cache_write_ok: boolean }).cache_write_ok, true);
+    assert.equal((perMount[0].b as { cache_write_ok: boolean }).cache_write_ok, true);
     assert.equal(counters.http400, 0, "no 22P02 once the enum member exists");
   } else {
-    assert.equal(counters.geminiCalls, 2, "today every load reaches Gemini");
-    assert.equal(b2.cached, false);
-    assert.equal(b1.cache_write_ok, false, "today the cache write never lands");
+    // Migration not applied: every read filter and every write still 22P02s.
+    assert.equal(counters.geminiCalls, MOUNTS * 2, "today every body reaches Gemini");
     assert.equal(table.length, 0, "today outputs gains no row");
+    for (const r of perMount) {
+      assert.equal((r.a as { cached: boolean }).cached, false);
+      assert.equal((r.b as { cached: boolean }).cached, false);
+      assert.equal((r.a as { cache_write_ok: boolean }).cache_write_ok, false);
+      assert.equal((r.b as { cache_write_ok: boolean }).cache_write_ok, false);
+    }
   }
 });

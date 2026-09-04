@@ -13,11 +13,35 @@ from supabase import Client
 
 logger = logging.getLogger(__name__)
 
+# Every value this codebase is allowed to write to `outputs.output_type`.
+#
+# THE THIRD LIST. There are three statements of one fact:
+#
+#   A. this Literal                        written by a developer editing Python
+#   B. OUTPUT_TYPES in src/lib/outputs.ts  written by a developer editing TS
+#   C. public.output_type_enum             written by Postgres, and the only one
+#                                          that decides anything at runtime
+#
+# A and B are claims ABOUT C. Postgres rejects a non-member with SQLSTATE 22P02
+# and the supabase client surfaces that without raising, so a list that runs
+# ahead of the enum fails silently, forever, at runtime only. That is exactly
+# what 'company_overview' did on the TypeScript side.
+#
+# This list had drifted to 14 members against an enum of 16, with nothing
+# comparing them. It is now pinned to tests/fixtures/output-type-enum.json,
+# which is captured FROM the database by scripts/capture-output-type-enum.mjs
+# and is not hand-authored. backend/tests/test_output_type_enum.py enforces it,
+# and enforces separately that every output_type any backend module actually
+# passes to record_output is a member here. Adding a value requires a migration
+# that adds the same value to output_type_enum, declared under "pending" in that
+# fixture.
 OutputType = Literal[
     'memo', 'brief', 'brief_cluster', 'brief_section', 'chat_answer',
     'thesis', 'thesis_grade', 'contrarian_signal', 'deal_extraction',
     'user_addendum', 'mention_alert', 'cross_reference',
     'sec_filing', 'insider_transaction',
+    'radar_clusters', 'radar_cluster_label',
+    'company_overview',
 ]
 
 

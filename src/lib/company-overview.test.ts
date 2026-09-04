@@ -14,11 +14,13 @@ import {
   buildOverviewPrompt,
   buildOverviewCacheRow,
   isOverviewCacheHit,
+  overviewCacheFilter,
   overviewSourceHash,
   sanitizeOverview,
   isThinSource,
   COMPANY_OVERVIEW_OUTPUT_TYPE,
   OVERVIEW_MAX_CHARS,
+  OVERVIEW_PROMPT_FINGERPRINT,
   type OverviewInputs,
 } from "./company-overview";
 
@@ -198,4 +200,107 @@ test("a row written by buildOverviewCacheRow reads back as a hit for the same in
   const hash = overviewSourceHash(RICH);
   const row = buildOverviewCacheRow(RICH.name, "NVIDIA designs GPUs for data centers.", hash);
   assert.equal(isOverviewCacheHit(row.content, hash), true);
+});
+
+// ---------------------------------------------------------------------------
+// The read must SELECT BY HASH, not validate the hash after the fact.
+//
+// The route reads with `.order(created_at desc).limit(1)`, so any column this
+// filter fails to narrow is decided by recency instead. PrimerTab POSTs two
+// different bodies per mount for a company with both a curated description and
+// a live quote (curated while `quote` is null, then the live Yahoo values once
+// /api/company-kpis resolves and the effect deps flip). Two hashes under one
+// cache key, so a filter that omits source_hash returns the other variant's row
+// on every single read, regenerates, and writes again.
+//
+// These assert the SEAM. overviewCacheFilter is the object the route applies,
+// column for column, in a loop; it is not a restatement of the route's query.
+// ---------------------------------------------------------------------------
+
+test("cache filter narrows on source_hash, so the read cannot return a mismatched row", () => {
+  const hash = overviewSourceHash(RICH);
+  const filter = overviewCacheFilter(RICH.name, hash);
+  assert.equal(
+    filter["content->>source_hash"],
+    hash,
+    "without this equality the read is latest-row-wins and the two PrimerTab variants evict each other forever"
+  );
+});
+
+test("cache filter pins output_type and target_company alongside the hash", () => {
+  const hash = overviewSourceHash(RICH);
+  const filter = overviewCacheFilter(RICH.name, hash);
+  assert.deepEqual(Object.keys(filter).sort(), [
+    "content->>source_hash",
+    "content->>target_company",
+    "output_type",
+  ]);
+  assert.equal(filter.output_type, COMPANY_OVERVIEW_OUTPUT_TYPE);
+  assert.equal(filter["content->>target_company"], RICH.name);
+});
+
+test("the two PrimerTab body variants produce two different cache filters", () => {
+  // Same company, same mount. Variant A is the curated body sent while `quote`
+  // is null; variant B is the live body sent once the quote resolves. Under a
+  // filter that omits the hash these are indistinguishable, which is the defect.
+  const curated: OverviewInputs = { ...RICH, industry: "Semiconductors" };
+  const live: OverviewInputs = { ...RICH, industry: "Semiconductors - Specialized" };
+
+  const a = overviewCacheFilter(curated.name, overviewSourceHash(curated));
+  const b = overviewCacheFilter(live.name, overviewSourceHash(live));
+
+  assert.equal(a["content->>target_company"], b["content->>target_company"], "same cache key company");
+  assert.notEqual(
+    a["content->>source_hash"],
+    b["content->>source_hash"],
+    "the two variants must be two distinct cache entries, not one contested key"
+  );
+});
+
+test("a row written for one variant does not satisfy the other variant's filter", () => {
+  const curated: OverviewInputs = { ...RICH, industry: "Semiconductors" };
+  const live: OverviewInputs = { ...RICH, industry: "Semiconductors - Specialized" };
+  const row = buildOverviewCacheRow(
+    curated.name,
+    "NVIDIA designs GPUs.",
+    overviewSourceHash(curated)
+  );
+  // What the database would do with the live variant's filter against that row.
+  const liveFilter = overviewCacheFilter(live.name, overviewSourceHash(live));
+  assert.notEqual(
+    row.content.source_hash,
+    liveFilter["content->>source_hash"],
+    "the filter must exclude this row rather than return it and fail validation afterwards"
+  );
+});
+
+// ---------------------------------------------------------------------------
+// The cache key covers the PROMPT, not just the inputs.
+//
+// Without this, rows written under an old prompt outlive every later prompt
+// fix: the fix ships, the hash still matches, and cached companies keep serving
+// what the old instructions produced. memo solves this with a hand-maintained
+// MEMO_PROMPT_VERSION; this derives the fingerprint from the prompt builder so
+// there is no constant to forget to bump.
+// ---------------------------------------------------------------------------
+
+test("the source hash depends on the prompt fingerprint, not only on the inputs", () => {
+  // Drives the REAL hash function with two fingerprints. If the fingerprint is
+  // dropped from the key, identical inputs collide across prompt versions and
+  // this goes red.
+  assert.notEqual(
+    overviewSourceHash(RICH, "fingerprint-before-a-prompt-edit"),
+    overviewSourceHash(RICH, "fingerprint-after-a-prompt-edit"),
+    "a prompt change must invalidate every cached overview; otherwise a prompt fix never reaches cached companies"
+  );
+});
+
+test("the default source hash is the one computed with the live prompt fingerprint", () => {
+  // Pins the wiring: the exported constant is what the no-argument call uses,
+  // so the route (which calls it with one argument) gets prompt-aware keys.
+  assert.equal(overviewSourceHash(RICH), overviewSourceHash(RICH, OVERVIEW_PROMPT_FINGERPRINT));
+});
+
+test("the prompt fingerprint is a non-empty derived digest, not a placeholder", () => {
+  assert.match(OVERVIEW_PROMPT_FINGERPRINT, /^[0-9a-f]{1,8}$/);
 });
