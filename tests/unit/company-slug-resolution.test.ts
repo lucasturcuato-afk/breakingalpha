@@ -35,6 +35,29 @@
 //                           -> REJECTED. The prefix read is a candidate filter,
 //                              never the decision
 //
+// WHAT THIS DOES NOT FIX, named because the PR body claims they are named here.
+// Three catalog rows stay unreachable from their own index link:
+//
+//   "Miami International Holdings"
+//   "The Arena Group Holdings, Inc."
+//   "China Railway Construction Corporation Limited"
+//
+// One mechanism, and it is NOT the one the resolver owns. `canonicalize()` is
+// not idempotent: `LEGAL_SUFFIX_RE` strips a trailing
+// Markets|Holdings|Group|International on EVERY pass, and the detail route
+// canonicalizes twice, once in page.tsx and again inside `resolveAlias`. So the
+// index links "Miami International" and the resolver is handed "Miami", which
+// is not a key any row canonicalizes to. The equality filter then correctly
+// refuses "Miami International Holdings", because refusing a candidate that
+// does not canonicalize to the target is the whole point of it.
+//
+// There is a SECOND non-idempotence, a trailing "." lost on the second pass
+// ("Mitsui & Co." to "Mitsui & Co"), and it costs nothing: `nameMatchKey`
+// normalizes trailing punctuation on both operands, so those rows resolve. The
+// two are separated here because "canonicalize is not idempotent" reads as one
+// defect when it is two, with different consequences. Fixing the first means
+// changing `canonicalize`, which is a far larger blast radius than this file.
+//
 // Run: npm run test:unit
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -241,7 +264,26 @@ test("a candidate that does not canonicalize to the target is rejected", async (
   // "Visandia Holdings" is returned by the same `Visa%` prefix read that finds
   // "Visa Inc.", and it must lose. The prefix is a candidate filter; the
   // decision is nameMatchKey equality on both sides.
-  const decoy = row({ id: "d1", name: "Visandia Holdings", mention_count: 99999 });
+  //
+  // THE DECOY CARRIES A CIK ON PURPOSE, and the first draft of this test did
+  // not. That draft named the equality filter and measured `rankCluster`
+  // instead: with no CIK on the decoy, the CIK-first comparator put "Visa Inc."
+  // ahead of it before mention_count was ever read, so the assertion held with
+  // the filter DELETED. Green under its own mutation is the incidental
+  // fingerprint CLAUDE.md documents, and it is the reason this comment exists
+  // rather than a quiet edit.
+  //
+  // Same side of the CIK line, the next comparator is mention_count, and the
+  // decoy wins it outright. Every tiebreaker `rankCluster` owns now prefers the
+  // decoy, so the ONLY thing that can keep it out of the answer is the filter
+  // this test is named for. Proved by mutation: replace the filter with an
+  // unconditional `hits.push(row)` and this test goes red.
+  const decoy = row({
+    id: "d1",
+    name: "Visandia Holdings",
+    mention_count: 99999,
+    sec_cik: 9999999,
+  });
   const h = harness([decoy, VISA]);
   const res = await resolveAlias(h.client, "visa");
   assert.ok(res);
