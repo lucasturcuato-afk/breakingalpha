@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useState } from "react";
+import { Fragment, useCallback, useRef, useState } from "react";
 
 import {
   applyFilter,
@@ -19,7 +19,15 @@ import {
 } from "@/components/company/tabs/empty-state-copy";
 
 import type { CompanyIntelData, ToneDirection, ToneRowDirection } from "./types";
-import { Chip, EmptyWell, RuledRow, SECTION_FILL, SectionNote, SectionRule } from "./parts";
+import {
+  Chip,
+  EmptyWell,
+  RuledRow,
+  SECTION_FILL,
+  SectionNote,
+  SectionRule,
+  useIsomorphicLayoutEffect,
+} from "./parts";
 import { QuoteLine } from "./QuoteLine";
 import { ToneSeries } from "./ToneSeries";
 import { FONT_DISPLAY, FONT_MONO, FONT_SANS } from "@/components/mobile/fonts";
@@ -323,6 +331,31 @@ export function PrimerSection({
 /* Price and tone                                                      */
 /* ------------------------------------------------------------------ */
 
+/**
+ * The two rounding rules a measured length has to survive to be applied back.
+ *
+ * FIRST, layout is quantised: Chromium lays out on a 1/64px grid and floors a
+ * length onto it, so candidates are snapped to that grid and the applied value
+ * and the measured one become the same number.
+ *
+ * SECOND, and this is the one that cost a sweep: the CSSOM serialises a length
+ * to six significant digits. A grid-exact value like 16.953125px is stored as
+ * 16.9531px, which is BELOW the grid unit it came from, so it floors to the
+ * step underneath and the level lands a 64th low. Rounding UP at the sixth
+ * digit puts the stored value inside the same grid step it was snapped to,
+ * which is the only band of values that can survive the round trip. The bump
+ * is at most a ten-thousandth of a pixel and can never reach the next step.
+ */
+const LAYOUT_UNIT_PX = 1 / 64;
+
+function snapToGrid(px: number): number {
+  return Math.round(px / LAYOUT_UNIT_PX) * LAYOUT_UNIT_PX;
+}
+
+function toAppliedPx(px: number): string {
+  return `${Math.ceil(px * 1e4) / 1e4}px`;
+}
+
 export function ToneSection({ data }: { data: CompanyIntelData }) {
   const { tone } = data;
 
@@ -350,6 +383,129 @@ export function ToneSection({ data }: { data: CompanyIntelData }) {
      own box and is left alone. */
   const shortBody = !tone.level && tone.rows.length === 0;
 
+  /* THE COUNTERWEIGHT, and why a block below the level needs one at all.
+   *
+   * In the short state above, the section body is CENTRED, and a centred box
+   * splits its slack equally above and below what it carries. So any content
+   * added anywhere in that section moves the level UP by half the height
+   * added, and it makes no difference whether the block sits inside the
+   * centred wrapper or as a sibling after it: the slack it eats belongs to the
+   * section either way. Measured on a merge-base build with a 56px stand-in,
+   * at 320 / 375 / 390 / 430: -5.41, -16.95, -25.86, -28.00, byte-identical for
+   * both placements. A shorter block does not escape it, it just pays less: the
+   * same stand-in at 30px consumed costs -15.00 and at 38px costs -19.00. The
+   * cost is exactly half the height, and half of anything is never zero.
+   *
+   * Drawing it out of flow does keep the level still, and was rejected on
+   * measurement: two `overflow: hidden` ancestors sit between this wrapper and
+   * the scroll container, an out-of-flow box extends no scrollable area, and at
+   * 375x667 the whole block ends up under the fixed tab bar with no way to
+   * scroll to it. A block a reader cannot reach is not a block.
+   *
+   * So the block is paid for on BOTH sides. `mirror` is an empty band above the
+   * level exactly as tall as the strip below it, capped at the slack that
+   * exists, and that cap is the whole trick: with `x = min(strip, gap)` the
+   * level lands back on the same pixel whether the section has slack to spare
+   * or none at all. The section grows to contain the pair, so the strip stays
+   * in flow, stays painted and stays scrollable to.
+   *
+   * WHY IT IS MEASURED RATHER THAN DECLARED. The cap needs the section's own
+   * free space, which is a used value: no length, ratio or flex configuration
+   * can name it, and three constructions that tried are recorded above as
+   * measurements rather than as opinions. The measurement is taken with the
+   * strip hidden and the band at zero, which is the section's geometry without
+   * this block at all, so what is read is exactly the layout being preserved.
+   * If it never runs, `mirror` stays 0 and the block behaves as it did before
+   * this hook existed, which is the defect and not a broken screen. */
+  const fillRef = useRef<HTMLDivElement | null>(null);
+  const [mirror, setMirror] = useState(0);
+
+  const measureMirror = useCallback(() => {
+    const el = fillRef.current;
+    if (!el || !shortBody) {
+      setMirror(0);
+      return;
+    }
+    const strip = el.querySelector<HTMLElement>("[data-tone-series]");
+    const first = el.firstElementChild as HTMLElement | null;
+    if (!strip || !first) {
+      setMirror(0);
+      return;
+    }
+
+    const savedPad = el.style.paddingTop;
+    const savedDisplay = strip.style.display;
+
+    /* 1. The geometry this section has WITHOUT this block: band off, strip out
+          of the flow it is being measured against. That is the layout being
+          preserved, so `target` is read from it directly rather than argued
+          from a formula. Synchronous, so nothing is ever painted in this
+          state. */
+    el.style.paddingTop = "0px";
+    strip.style.display = "none";
+    const wrapTop = el.getBoundingClientRect().top;
+    const target = first.getBoundingClientRect().top;
+    const gap = target - wrapTop;
+    strip.style.display = savedDisplay;
+
+    /* 2. The band, capped at the slack that exists. `min(strip, gap)` is the
+          only value that lands the level on the same pixel both when the
+          section has room to spare and when it has none. */
+    const style = getComputedStyle(strip);
+    const consumed = strip.getBoundingClientRect().height + (parseFloat(style.marginTop) || 0);
+    let next = snapToGrid(Math.max(0, Math.min(consumed, gap)));
+
+    /* 3. Then put the level back EXACTLY, by reading where it lands rather
+          than trusting the arithmetic to have landed it.
+          Layout is quantised: a length is floored onto a 1/64px grid, so a
+          band computed off a difference of two rects can be applied a 64th
+          low and leave the level one grid step out. A 64th is invisible and
+          it is still not zero, and the sweep this has to pass permits nothing
+          but zero. So every candidate is snapped onto that grid, the residual
+          is measured, and the best candidate wins. The level moves with the
+          band at a rate of 1 or 1/2 depending on whether the section still has
+          slack, so the residual converges either at once or by halves; the
+          loop is bounded rather than conditional on converging, and the
+          best-so-far is kept in case it cannot. */
+    let best = next;
+    let bestErr = Number.POSITIVE_INFINITY;
+    for (let pass = 0; pass < 6; pass += 1) {
+      el.style.paddingTop = toAppliedPx(next);
+      const residual = target - first.getBoundingClientRect().top;
+      const err = Math.abs(residual);
+      if (err < bestErr) {
+        bestErr = err;
+        best = next;
+      }
+      if (residual === 0) break;
+      next = Math.max(0, snapToGrid(next + residual));
+    }
+
+    el.style.paddingTop = savedPad;
+    setMirror(best);
+  }, [shortBody]);
+
+  useIsomorphicLayoutEffect(() => {
+    if (!shortBody) {
+      setMirror(0);
+      return;
+    }
+    measureMirror();
+    const el = fillRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    let frame = 0;
+    const observer = new ResizeObserver(() => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(measureMirror);
+    });
+    observer.observe(el);
+    if (el.parentElement) observer.observe(el.parentElement);
+    return () => {
+      observer.disconnect();
+      cancelAnimationFrame(frame);
+    };
+  }, [shortBody, measureMirror, data.name]);
+
   return (
     <>
       {/* THE TAB IS NAMED FOR A PRICE. Until now it carried none, and the only
@@ -360,7 +516,10 @@ export function ToneSection({ data }: { data: CompanyIntelData }) {
           exactly as ruled. See the header on ./QuoteLine. */}
       <QuoteLine ticker={data.ticker} />
 
-      <div style={shortBody ? SECTION_FILL : undefined}>
+      <div
+        ref={fillRef}
+        style={shortBody ? { ...SECTION_FILL, paddingTop: toAppliedPx(mirror) } : undefined}
+      >
       {tone.level ? (
         <div style={{ display: "flex", alignItems: "baseline", gap: "10px", flexWrap: "wrap" }}>
           <span
@@ -420,39 +579,28 @@ export function ToneSection({ data }: { data: CompanyIntelData }) {
           per-mention scoring and the same five-step scale, so the strip and the
           headline cannot tell different stories.
 
-          BELOW THE LEVEL, NEVER ABOVE IT. The quote line that landed at the
-          head of this section pushed the tone level below the fold at 375x667,
-          and the level is the point of this tab. On a top-anchored section a
-          block drawn under the evidence sentence cannot move the level at any
-          width; what it moves is the caveat under it, which is the cheapest
-          thing in the section.
+          BELOW THE LEVEL, NEVER ABOVE IT, and it does not move the level at any
+          width, in any of its four states, in either theme. On a top-anchored
+          section that is free. In the centred short state it is NOT free, and
+          the band above the level is what pays for it: see the note on
+          `mirror`, which carries the measurements and the three constructions
+          that were tried and did not work.
 
-          AND NOT AT ALL IN THE CENTRED SHORT STATE, which is what `shortBody`
-          gates. "Below the level" is NOT enough on its own, and that was the
-          defect. When the section has no level and no rows it takes
-          `SECTION_FILL`, and a centred box splits its slack ABOVE and
-          BELOW what it carries: adding content anywhere inside that section moves
-          the level up by half the height added, whether the block sits inside
-          the fill wrapper or as a sibling after it. Measured on the merge-base
-          build with a 56px stand-in block, at 320 / 375 / 390 / 430: -5.41,
-          -16.95, -25.86, -28.00, and byte-identical for the inside and the
-          outside placement. Moving the block out of the wrapper fixes nothing,
-          because the slack it eats is the section's, not the wrapper's.
-
-          Drawing it out of flow does keep the level at 0.00, and was rejected
-          on measurement too: a zero-height block hangs 16.89px past the bottom
-          of the section box at 430 and 50.59px at 320, into space the section
-          does not own. A block that has to escape its own section to keep a
-          promise is not keeping it.
-
-          So the block draws where the section is top-anchored, which is every
-          company that states a level or carries an article row, and stands down
-          where the section centres. The cost is real and is stated rather than
-          absorbed: on a company with no level AND no rows the past four weeks
-          are not drawn, even when they exist. The level not moving is worth
-          more than the strip on that cohort, because the level is what the tab
-          is for. */}
-      {shortBody ? null : <ToneSeries company={data.name} />}
+          IT DRAWS ON THE INSUFFICIENT BRANCH TOO, and that branch is the reason
+          the block exists rather than an edge of it. A company whose past week
+          is too thin to state a level can still have three readable weeks
+          behind it, and one sampled large-cap carried a single mention in the
+          current window against a busy month before it. The headline correctly
+          refuses to name a level; the strip shows that a reading existed and
+          has gone quiet, which is a different fact and one this screen
+          previously threw away. That includes the companies whose section is
+          nearly empty, which is exactly where a reader has least else to go on,
+          so the block is NOT gated on the section having other content: an
+          earlier draft gated it there to keep the level still, and bought a
+          still level by removing the block from the cohort it was built for.
+          When the past four weeks carry fewer than two readable ones the strip
+          renders nothing at all, so the absence is never stated twice. */}
+      <ToneSeries company={data.name} onLayoutChange={measureMirror} />
 
       <p
         style={{

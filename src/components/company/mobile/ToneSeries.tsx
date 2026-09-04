@@ -38,6 +38,7 @@ import {
   type ToneBand,
   type ToneSeriesBody,
 } from "@/lib/company-mobile/tone-series";
+import { useIsomorphicLayoutEffect } from "./parts";
 import styles from "./company-mobile.module.css";
 
 /**
@@ -128,7 +129,23 @@ function Band({ band, index }: { band: ToneBand; index: number }) {
   );
 }
 
-export function ToneSeries({ company }: { company: string }) {
+export function ToneSeries({
+  company,
+  /**
+   * Called after every change to what this block draws, BEFORE paint.
+   *
+   * The section above centres itself in the short state, and a centred box
+   * moves what it carries when anything is added to it. The section corrects
+   * for that with a band whose height depends on this block's, so it has to be
+   * told when this block appears, changes state or goes away. A layout effect
+   * rather than a normal one, because the correction has to land in the same
+   * frame or the level is painted on the wrong pixel and snaps.
+   */
+  onLayoutChange,
+}: {
+  company: string;
+  onLayoutChange?: () => void;
+}) {
   const [outcome, setOutcome] = useState<ReadOutcome>({ phase: "pending", body: null });
 
   useEffect(() => {
@@ -164,6 +181,13 @@ export function ToneSeries({ company }: { company: string }) {
   }, [company]);
 
   const view = toneSeriesView({ phase: outcome.phase, body: outcome.body });
+
+  /* Fires on the render that changes the drawing, including the first one that
+     draws nothing, so the section can zero its band as readily as set it. */
+  const drawnCaption = view.kind === "drawn" ? view.caption : "";
+  useIsomorphicLayoutEffect(() => {
+    onLayoutChange?.();
+  }, [view.kind, drawnCaption, onLayoutChange]);
 
   /* NOTHING AT ALL when there is not enough to draw four weeks of. The headline
      a few pixels above has already stated the coverage it has, and a strip of
