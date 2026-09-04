@@ -123,7 +123,7 @@ sensitivity, not ownership.
 <!-- /learn appends new rules here when they do not fit a section above. One specific, verifiable line each. -->
 
 ### Measuring a browser
-Ten traps, each one found the expensive way by an agent that trusted a
+Eleven traps, each one found the expensive way by an agent that trusted a
 reading. Every one returns a plausible number rather than an error.
 
 The count went from nine to ten and not to eleven, which is the honest
@@ -139,6 +139,10 @@ traps is not exempt from being one.
   `addInitScript`. Otherwise you capture light twice and diff it against
   itself. Light body is `rgb(250,247,242)`, dark is `rgb(15,15,15)`; confirm
   two distinct values before believing a both-themes claim.
+- `--mobile-tabbar-height` is a `calc()`, not a number. Reading it off the
+  custom property and coercing it yields `NaN`, which silently makes the fold
+  the entire scroll extent, so every element appears to clear it. Resolve it
+  on a real box instead; it is 59px, 58 of row plus a 1px border.
 - `offsetParent` is null for `position: fixed`, so a probe built on it cannot
   see the tab bar. The bar is 58px of row plus a 1px border, height 59.
 - Playwright's `newPage()` starts on `about:blank`, so `goto` pushes and
