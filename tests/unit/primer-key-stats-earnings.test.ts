@@ -173,17 +173,51 @@ test("no quote at all still draws the sourced empty sentence, with no earnings c
 });
 
 // ---------------------------------------------------------------------------
-// Copy guard. The words this program does not put in front of a reader.
+// Copy guard.
+//
+// AN EXACT SET, NOT A BLOCKLIST, and the difference is the point. A blocklist
+// only catches the words somebody thought of, and writing one here would also
+// mean writing every banned word into the repo, which design-lint reads as an
+// occurrence rather than as an assertion of absence. Pinning the full label and
+// note set instead goes red on ANY new word reaching the grid, including one
+// nobody listed. It is the seam: these strings are the entire reader-facing
+// vocabulary of this component.
 // ---------------------------------------------------------------------------
 
-test("neither earnings cell introduces advice or outcome framing", () => {
+/** Every `<dt>` label the grid drew, in draw order. */
+function labels(html: string): string[] {
+  return [...html.matchAll(/<dt[^>]*>([^<]*)<\/dt>/g)].map((m) => m[1]);
+}
+
+/** Every attribution note the grid drew, in draw order. */
+function notes(html: string): string[] {
+  return [...html.matchAll(/<span[^>]*italic[^>]*>([^<]*)<\/span>/g)].map((m) => m[1]);
+}
+
+test("the grid's reader-facing vocabulary is exactly this set and nothing else", () => {
   const html = markup(AAPL);
-  for (const banned of [
-    /\bbuy\b/i, /\bsell\b/i, /\bhold\b/i, /\ballocat/i,
-    /\breturns\b/i, /\bperformance\b/i, /\boutperform/i, /\bbeat the street\b/i,
-  ]) {
-    assert.doesNotMatch(html, banned, `banned copy reached the grid: ${banned}`);
-  }
-  // Em-dash, which this repo bans everywhere.
-  assert.doesNotMatch(html, /—/);
+  assert.deepEqual(labels(html), [
+    "Market cap",
+    "P/E (trailing)",
+    "P/E (forward)",
+    "EPS (TTM)",
+    "52-week range",
+    "Dividend yield",
+    "Beta",
+    "1y target",
+    "Next earnings (est.)",
+    "Last EPS vs consensus",
+  ]);
+  assert.deepEqual(notes(html), [
+    "Analyst consensus (Yahoo Finance)",
+    "Analyst consensus (Yahoo Finance)",
+    "Estimated date (Yahoo Finance)",
+    "Reported vs consensus (Yahoo Finance)",
+  ]);
+});
+
+test("no em-dash reaches the grid", () => {
+  // Written as an escape on purpose: the character itself is banned repo-wide,
+  // including inside an assertion that it is absent.
+  assert.doesNotMatch(markup(AAPL), /\u2014/);
 });
