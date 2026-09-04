@@ -145,9 +145,9 @@ const SLACK_TAIL = 1;
  *
  * THIS WAS BRIEFLY WRITTEN THE OTHER WAY and the record matters, because the
  * copy here changed twice. While `/radar/following` was still in the redirect
- * map, this empty state lost its action and read "Follows are set up on a wider
- * screen", which was the only truthful thing to say when the desk was about to
- * become unreachable and nothing here could replace it. The owner's ruling of
+ * map, this empty state drew no action at all and read "Follows are set up on a
+ * wider screen", which was the only truthful thing to say when the desk was
+ * about to become unreachable and nothing here could replace it. The owner's ruling of
  * 2026-09-03 exempted that route precisely so the capability would survive, so
  * the sentence that described its loss is wrong again and the original is
  * restored verbatim.
