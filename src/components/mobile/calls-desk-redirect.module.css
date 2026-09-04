@@ -1,0 +1,48 @@
+/* The no-flash half of the /radar/calls redirect, and it is CSS on purpose.
+ *
+ * An effect runs after commit. The desk screen would therefore paint one frame
+ * at phone width before any navigation started, and that frame is the 248px of
+ * horizontal overflow this unit exists to remove: a reader would see it, on
+ * every arrival, exactly once. So the cover and the rule that takes the desk
+ * content out of layout are both stylesheet, both keyed on width alone, and
+ * both present in the server-rendered HTML. Neither needs JavaScript to have
+ * run and neither needs hydration to have finished.
+ *
+ * TWO RULES, AND EACH ALONE IS INSUFFICIENT. The cover alone leaves the desk
+ * screen laid out underneath it, still 248px wider than its box, so the page
+ * body can still be dragged sideways behind a cover that does not move with it.
+ * The display rule alone leaves the shell's own background showing through as a
+ * hard seam, worst in dark. Together the viewport is one flat token colour and
+ * nothing under it has a box.
+ *
+ * THE COVER SITS UNDER THE TAB BAR, 30 against the bar's 40. The bar is the
+ * only thing on the screen that stays true across the navigation, and a reader
+ * who arrives mid-flight can still use it.
+ *
+ * THE WIDTH IS WRITTEN TWICE, here and as PHONE_WIDTH in the sibling TSX. They
+ * must not drift: the stylesheet decides what is SEEN and the module decides
+ * where the reader GOES, so a mismatch is a covered screen with no navigation
+ * off it, or a redirect with a visible flash before it. Change both.
+ */
+
+.cover {
+  position: fixed;
+  inset: 0;
+  /* Under the tab bar (40) and over everything the desk route draws. */
+  z-index: 30;
+  background-color: var(--c-bg);
+  display: none;
+}
+
+@media (max-width: 767.98px) {
+  .cover {
+    display: block;
+  }
+
+  /* `#main-content` is AppShell's own `<main>`. Taking it out of layout, rather
+     than merely hiding it, is what makes the desk screen's horizontal extent
+     stop existing instead of stop being visible. */
+  :global(body:has([data-calls-desk-redirect]) #main-content) {
+    display: none;
+  }
+}

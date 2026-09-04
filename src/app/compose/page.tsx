@@ -47,10 +47,20 @@ import { FONT_DISPLAY, FONT_SANS } from "@/components/mobile/fonts";
 export default async function ComposePage({
   searchParams,
 }: {
-  searchParams: Promise<{ stage?: string | string[] }>;
+  searchParams: Promise<{ stage?: string | string[]; draft?: string | string[] }>;
 }) {
   const params = await searchParams;
   const raw = Array.isArray(params.stage) ? params.stage[0] : params.stage;
+
+  /* `?draft=`, the Track action's text, arriving from a story elsewhere in the
+     app. UNGATED, because it is not sample content: it is the reader's own
+     words, and this is the third place the same link shape is read after
+     `/radar/calls` and `src/lib/make-call-link.ts`.
+
+     TRUNCATED AT 400, the same number the desk uses at `radar/calls/page.tsx`
+     line 147, so a link built once behaves the same wherever it is opened. */
+  const rawDraft = Array.isArray(params.draft) ? params.draft[0] : params.draft;
+  const draftSeed = typeof rawDraft === "string" ? rawDraft.slice(0, 400) : "";
 
   /*
     The fixture stages are gated, and the gate fails closed. It now lives in
@@ -107,7 +117,17 @@ export default async function ComposePage({
             ?stage=empty drew the gradeable draft and its READ AS card under the
             empty state. A key remounts instead, which a full page load already
             did. */}
-        <ComposeScreen key={stage} stage={stage} seed={seed} sessionIso={sessionIso} />
+        {/* KEYED ON THE DRAFT AS WELL AS THE STAGE, for the reason the stage is
+            keyed: the screen seeds its field on mount, so a client-side move
+            from one `?draft=` to another would reuse the instance and keep the
+            first reader's text under the second link. */}
+        <ComposeScreen
+          key={`${stage}:${draftSeed}`}
+          stage={stage}
+          seed={seed}
+          sessionIso={sessionIso}
+          draftSeed={draftSeed}
+        />
       </div>
 
       {/* Above the breakpoint this route has no layout of its own. The desktop

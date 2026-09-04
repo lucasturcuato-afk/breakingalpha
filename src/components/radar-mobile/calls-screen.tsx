@@ -142,10 +142,38 @@ import { TabBarClearance } from "@/components/mobile/tab-bar-clearance";
  *                       belongs on a read surface, on the screen built for it.
  *   THE EVIDENCE MAP    `EvidenceMap` is an SVG force graph, desktop-only by
  *                       construction.
- *   TRACKED VIEWS       73 `theses` rows and every one of them has a NULL
- *                       `user_id`, so there is no reader to scope a tracked
- *                       view to. Already cut from `/watch` for the same reason;
- *                       `src/components/watch/omissions.ts` holds it.
+ *   TRACKED VIEWS       Not drawn, and NOT SILENTLY when a reader asks for it:
+ *                       see `viewsRequested` below. `/radar/calls` takes
+ *                       `?views=open` and `?thesis=<id>`, the phone redirect
+ *                       carries both, and an arrival that asked for the tier
+ *                       gets the absence named instead of a screen that looks
+ *                       like it answered.
+ *
+ *                       THE REASON WRITTEN HERE BEFORE WAS WRONG, and so is the
+ *                       one in `src/components/shell/mobile-tab-bar.tsx`. This
+ *                       entry said every `theses` row has a NULL `user_id` so
+ *                       there is no reader to scope to, and cited
+ *                       `src/components/watch/omissions.ts` as holding the same
+ *                       finding. Both halves fail on a read. `theses.user_id`
+ *                       is a live column with a foreign key on it, per-reader
+ *                       state lives in `user_thesis_states` and is what
+ *                       `TrackedViews` already scopes with, and `omissions.ts`
+ *                       records something else entirely. The tab bar's entry
+ *                       says `user_claims` has no article foreign key, which is
+ *                       true of the column list and beside the point, and
+ *                       `src/lib/watch-data.ts` and `src/components/watch/
+ *                       fixture.ts` both RETRACT that same premise in as many
+ *                       words. Three files, three reasons, no agreement.
+ *
+ *                       WHAT IS ACTUALLY IN THE WAY is a product decision
+ *                       nobody has taken, not a column. The desk's section
+ *                       draws `theses` rows, which are the system's, and the
+ *                       phone tier in the design draws the reader's own written
+ *                       notes, which are `user_claims` rows. Those are two
+ *                       different objects wearing one name. The PR that added
+ *                       this comment puts the question to an owner rather than
+ *                       picking for them, and until it is answered this section
+ *                       draws neither.
  *   THE EVIDENCE        The desk's `ClaimEvidenceStrip` is NOT reused, and this
  *   STRIP'S LINKS       one was found by measuring rather than by reading. Its
  *                       three recent-story links measured 13px tall at every
@@ -230,6 +258,7 @@ export function CallsScreen({
   data,
   nav,
   onRetry,
+  viewsRequested = false,
 }: {
   stage?: CallsStage;
   /**
@@ -243,6 +272,13 @@ export function CallsScreen({
   /** Radar's four-section row. Required, as on every section. */
   nav: ReactNode;
   onRetry?: () => void;
+  /**
+   * The arrival asked for tracked views, through `?views=open` or `?thesis=`.
+   * DEFAULTS FALSE, so every arrival that did not ask is unchanged and the
+   * omission stays silent for them. See the TRACKED VIEWS entry in the header
+   * for what is in the way and why this names it rather than drawing it.
+   */
+  viewsRequested?: boolean;
 }) {
   const router = useRouter();
   const retry = onRetry ?? (() => router.refresh());
@@ -293,6 +329,26 @@ export function CallsScreen({
       <Masthead />
 
       <div style={{ flex: 1, padding: `18px ${PAD} 24px` }}>
+        {/* ── the tier that was asked for and is not here ─────────────── */}
+        {/* FIRST, ABOVE BOTH LISTS, because it answers the arrival. A reader
+            who followed a link named Tracked Views and lands on two lists of
+            something else will scroll both of them looking for a third before
+            concluding anything, and the conclusion they reach is that the
+            screen is broken. It is drawn only when it was asked for.
+
+            NO ACTION LINK, AND THAT IS DELIBERATE. The obvious one is the desk,
+            and the desk is where this reader just came from: `/radar/calls`
+            redirects here below md, so a control offering to open it would
+            return them to this screen and read as a dead button. There is no
+            other surface that draws the tier. Saying so plainly and stopping is
+            the honest end of the sentence. */}
+        {viewsRequested ? (
+          <WatchNotice
+            heading="Tracked views are not on this screen."
+            body="You followed a link to them. They are a desk section, and which object a tracked view is on a phone is still an open question, so nothing here stands in for one. Your calls and the desk's are below, and neither is affected."
+          />
+        ) : null}
+
         {/* ── your calls ─────────────────────────────────────────────── */}
         <SectionRule
           label="your calls"
@@ -335,9 +391,15 @@ export function CallsScreen({
               />
             ))}
             {data.yours.length === 0 ? (
+              /* THE ACTION MOVED OFF THE DESK, and it had to. It pointed at
+                 `/radar/calls`, which below md now redirects straight back to
+                 this screen: the control would have returned the reader to the
+                 empty state they tapped it from. `/compose` is the phone screen
+                 for writing a call, it POSTs to the same two routes the desk
+                 does, and its own H1 is the words on this control. */
               <WatchNotice
-                body="No calls tracked yet. Calls are made in your own words on the desk, or adopted there from one of the desk's own."
-                action={{ href: "/radar/calls", label: "Open the calls desk" }}
+                body="No calls tracked yet. A call is made in your own words, and the desk's own calls below can be taken onto your record from the screen each one opens."
+                action={{ href: "/compose", label: "Write your own call" }}
               />
             ) : null}
           </>

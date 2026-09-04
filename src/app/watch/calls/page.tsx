@@ -39,11 +39,38 @@ import { FONT_DISPLAY, FONT_SANS } from "@/components/mobile/fonts";
  * THIS SECTION READS AND DOES NOT WRITE. Authoring a call and adopting one are
  * both writes, both live beside the authoring flow on the desk, and both are
  * absent here. Nothing on the screen implies either is available, so under the
- * ruling of 2026-08-29 the absence is silent. The empty state names the desk
- * and links to it, so a reader with no calls is given somewhere to go.
+ * ruling of 2026-08-29 the absence is silent. The empty state points at the
+ * composer, so a reader with no calls is given somewhere to go.
+ *
+ * IT NOW TAKES searchParams, AND THAT IS THE POINT OF THE CHANGE.
+ * `/radar/calls` redirects here on a phone (`src/app/radar/calls/layout.tsx`),
+ * and it reads four params. Two of them, `?views=open` and `?thesis=<id>`, ask
+ * for the tracked views section, which this screen does not draw. Carrying them
+ * here and then ignoring them would come to the same thing as dropping them, so
+ * they are carried and ANSWERED: `viewsRequested` turns a silent omission into
+ * a named one. The ruling of 2026-08-29 says omit silently unless the absence
+ * would mislead, and a reader who followed a link ASKING for tracked views and
+ * got a screen with none is the case where it would.
+ *
+ * The screen stays silent about that tier on every other arrival, which is most
+ * of them. Nothing here draws a tracked view, invents one, or promises one.
  */
 
-export default async function RadarCallsMobilePage() {
+export default async function RadarCallsMobilePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ views?: string | string[]; thesis?: string | string[] }>;
+}) {
+  const params = await searchParams;
+  const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
+
+  /* Both params mean one thing to this screen: the reader asked for tracked
+     views. `?thesis=` names a single one and `?views=open` opens the section.
+     Since neither can be drawn here, answering them identically is honest and
+     telling them apart would be theatre. */
+  const viewsRequested =
+    one(params.views) === "open" || Boolean(one(params.thesis)?.trim());
+
   const { supabase, user } = await getSupabaseWithUser();
   const read = await loadCallsScreen(supabase, user?.id ?? null);
 
@@ -63,7 +90,11 @@ export default async function RadarCallsMobilePage() {
           `bg-parchment` below it as a hard seam, worst in dark. The same
           measured comment stands on `/watch`, `/ledger` and `/desk-record`. */}
       <div className="md:hidden h-full">
-        <CallsScreen data={data} nav={<RadarSegments active="calls" />} />
+        <CallsScreen
+          data={data}
+          nav={<RadarSegments active="calls" />}
+          viewsRequested={viewsRequested}
+        />
       </div>
 
       {/* Above the breakpoint the desktop equivalent already exists at

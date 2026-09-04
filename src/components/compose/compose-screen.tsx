@@ -216,17 +216,37 @@ export function ComposeScreen({
    * written with `gradeable: false` and the screen reads as though it worked.
    */
   sessionIso,
+  /**
+   * Text the reader arrived with, from `?draft=`. NOT a fixture and NOT behind
+   * the fixture gate: it is the reader's own words, carried from a Track action
+   * on a story elsewhere in the app. `makeCallLink` has built that link for a
+   * long time and `/radar/calls` has read it for as long; the phone had nowhere
+   * to put it until this screen existed, and `src/lib/calls-desk-destination.ts`
+   * now sends it here.
+   *
+   * It seeds the field and nothing else. It cannot reach `note`, `proposal`,
+   * `span` or `phase`, so no part of the reader's commitment is pre-decided by
+   * a URL. The composer's own gate still applies: the primary control stays
+   * locked until the draft clears `DRAFT_MIN_CHARS`, whoever typed it.
+   */
+  draftSeed = "",
 }: {
   stage?: ComposeStage;
   seed: ComposeSeed | null;
   sessionIso: string;
+  draftSeed?: string;
 }) {
   /* Re-checked here, not trusted from the page. `EMPTY_SEED` is two blank
      fields and no proposal, which asserts nothing: it is what a real composer
      opens on and what production draws. */
   const seeded = COMPOSE_FIXTURE_ENABLED && seed !== null;
   const opening = seeded ? seed : EMPTY_SEED;
-  const [draft, setDraft] = useState(opening.draft);
+  /* The arriving text wins over the blank field and LOSES to a seeded stage,
+     because a seeded stage is a deliberate audit of one lifecycle phase and a
+     draft dropped into the middle of it would describe neither. Outside dev and
+     preview `seeded` is always false, so in production this is simply the text
+     the reader arrived with or nothing. */
+  const [draft, setDraft] = useState(seeded ? opening.draft : draftSeed || opening.draft);
   const [note, setNote] = useState(opening.note);
   const [proposal, setProposal] = useState<ComposeProposal | null>(opening.proposal);
   const [direction, setDirection] = useState<Direction>(
