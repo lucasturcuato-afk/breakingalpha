@@ -205,6 +205,22 @@ def select_tail_ciks(
     return picked
 
 
+def shard_member_count(candidates: list[dict], *, slot: int, shards: int) -> int:
+    """How many candidates belong to `slot`, BEFORE any cap. Pure, no I/O.
+
+    The denominator select_tail_ciks does not report. Its return is the capped
+    list, so len() of it says what the run took and cannot say what the shard
+    holds. Coverage needs both: polled == selected proves the run finished its
+    own list, and selected == members is what proves that list was the shard.
+    The membership rule is the same one expression as in select_tail_ciks and
+    is not a second definition of it.
+    """
+    if shards <= 0 or not candidates:
+        return 0
+    slot %= shards
+    return sum(1 for c in candidates if c["cik"] % shards == slot)
+
+
 # PostgREST answers at most PAGE_SIZE rows and does NOT error when it
 # truncates, so a bare .execute() on a table that can outgrow one page returns
 # a prefix that is indistinguishable from a complete answer.
@@ -413,14 +429,22 @@ class ShardGroup:
     invisible in an error count; it is not invisible in this diff.
     """
 
-    __slots__ = ("slot", "shards", "moment", "run_kind", "entries")
+    __slots__ = ("slot", "shards", "moment", "run_kind", "entries", "members")
 
-    def __init__(self, *, slot, shards, moment, run_kind, entries):
+    def __init__(self, *, slot, shards, moment, run_kind, entries, members=None):
         self.slot = slot
         self.shards = shards
         self.moment = moment
         self.run_kind = run_kind
         self.entries = entries
+        # Full membership before the per-run cap. Defaults to the entry count,
+        # which is correct whenever the cap did not bind.
+        self.members = len(entries) if members is None else members
+
+    @property
+    def truncated(self) -> bool:
+        """True when the per-run cap held this group short of its shard."""
+        return len(self.entries) < self.members
 
     @property
     def ciks(self) -> set[int]:
@@ -429,7 +453,8 @@ class ShardGroup:
     def __repr__(self) -> str:  # pragma: no cover - debugging aid
         return (
             f"ShardGroup(slot={self.slot}, shards={self.shards}, "
-            f"run_kind={self.run_kind!r}, ciks={len(self.entries)})"
+            f"run_kind={self.run_kind!r}, ciks={len(self.entries)}"
+            f"/{self.members})"
         )
 
 
@@ -519,11 +544,13 @@ def plan_poll(
     current = tail_slot(slot_at, shards)
 
     last_covered: dict[int, datetime] = {}
+    ledger_born = None
     catchup_slots: list[int] = []
     stale: list = []
     if _env_flag("EDGAR_CATCHUP_ENABLED", True):
         try:
-            last_covered = shard_coverage.read_coverage(sb, shards=shards)
+            view = shard_coverage.read_coverage(sb, shards=shards)
+            last_covered, ledger_born = view.last_covered, view.born
             catchup_slots = shard_coverage.due_slots(
                 slot_at=slot_at,
                 shards=shards,
@@ -540,13 +567,17 @@ def plan_poll(
                 limit=timedelta(days=_env_int(
                     "EDGAR_CATCHUP_ALERT_DAYS", int(DEFAULT_CATCHUP_ALERT_DAYS)
                 )),
+                # The ledger's own birth, not the oldest covered_at. A healthy
+                # neighbour refreshes covered_at hourly and would suppress the
+                # alarm on a slot that is never reached at all.
+                ledger_born=ledger_born,
             )
         except Exception as e:
             # A ledger that cannot be read must not take the normal poll down,
             # but it must not be silent either: with no catch-up the run
             # degrades to exactly the pre-existing one-shard-per-run behavior.
             logger.error("[edgar] shard coverage unavailable, no catch-up: %s", e)
-            last_covered, catchup_slots, stale = {}, [], []
+            last_covered, ledger_born, catchup_slots, stale = {}, None, [], []
 
     # The current slot first, then stale slots oldest-first. One
     # select_tail_ciks call PER SLOT, never one call over the union: max_per_run
@@ -566,6 +597,7 @@ def plan_poll(
         )
         groups.append(ShardGroup(
             slot=slot, shards=shards, moment=moment, run_kind=kind, entries=picked,
+            members=shard_member_count(candidates, slot=slot, shards=shards),
         ))
 
     # Measured at PLAN time, so it includes the shards this run is about to
@@ -588,6 +620,15 @@ def plan_poll(
         current, shards, slot_source, catchup_slots or "none", len(backlog),
         len(candidates), slot_at.isoformat(), now.isoformat(),
     )
+    capped = [g.slot for g in groups if g.truncated]
+    if capped:
+        logger.warning(
+            "[edgar] the per-run cap of %d truncated shard(s) %s. They are "
+            "polled completely and recorded with truncated=true, which is NOT "
+            "full coverage. Raise EDGAR_POLL_TAIL_MAX_PER_RUN or the shard "
+            "count.",
+            max_per_run, capped,
+        )
     if stale:
         logger.error(
             "[edgar] %d shard(s) stale beyond the alert threshold and losing "

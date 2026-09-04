@@ -91,11 +91,16 @@ class _Query:
         return mock.Mock(data=rows, count=count)
 
 
-def covrow(shard, when, *, shards=24, source="execution_time"):
+def covrow(shard, when, *, shards=24, source="execution_time", created=None):
+    """A ledger row. `created` defaults to `when`, which is the shape a row
+    written once and never refreshed has. Pass it explicitly to model a ledger
+    that is OLDER than its freshest coverage, which is the normal state and the
+    one the unknown alarm turns on."""
     return {
         "shards": shards,
         "shard": shard,
         "covered_at": when.isoformat(),
+        "created_at": (created or when).isoformat(),
         "slot_source": source,
     }
 
@@ -242,16 +247,65 @@ class TestStaleBeyond(unittest.TestCase):
         # had hundreds of runs to reach it and has not.
         cov = {s: self.NOW - timedelta(days=9) for s in range(23)}
         stale = SC.stale_beyond(
-            slot_at=self.NOW, shards=24, last_covered=cov, limit=timedelta(days=7)
+            slot_at=self.NOW, shards=24, last_covered=cov,
+            limit=timedelta(days=7), ledger_born=self.NOW - timedelta(days=30),
         )
         self.assertIn((23, None), stale)
+
+    def test_healthy_neighbours_cannot_suppress_a_never_covered_slot(self):
+        """THE REGRESSION. The first cut keyed the unknown alarm off
+        min(last_covered), and covered_at is refreshed on every poll. So 23
+        shards polled an hour ago held that minimum an hour old forever and a
+        shard that was NEVER covered could not alarm, no matter how long the
+        ledger had been running. Measured before the fix: alarms empty,
+        indefinitely, on a ledger 30 days old.
+
+        The slot is still served first by due_slots and the run still reports
+        partial every time, so the failure mode was a permanent yellow that
+        could never go red. That is a monitoring gap in the exact mechanism
+        this table exists to provide.
+        """
+        cov = {s: self.NOW - timedelta(hours=1) for s in range(24) if s != 5}
+        stale = SC.stale_beyond(
+            slot_at=self.NOW, shards=24, last_covered=cov,
+            limit=timedelta(days=7), ledger_born=self.NOW - timedelta(days=30),
+        )
+        self.assertEqual(stale, [(5, None)])
+        # And the neighbours, which are an hour old, do not alarm alongside it.
+        self.assertEqual([slot for slot, _ in stale], [5])
+
+    def test_the_alarm_reads_the_ledgers_birth_not_its_freshest_row(self):
+        """Same ledger age, opposite answers, decided only by created_at."""
+        cov = {s: self.NOW - timedelta(hours=1) for s in range(24) if s != 5}
+        young = SC.stale_beyond(
+            slot_at=self.NOW, shards=24, last_covered=cov,
+            limit=timedelta(days=7), ledger_born=self.NOW - timedelta(hours=2),
+        )
+        old = SC.stale_beyond(
+            slot_at=self.NOW, shards=24, last_covered=cov,
+            limit=timedelta(days=7), ledger_born=self.NOW - timedelta(days=30),
+        )
+        self.assertEqual(young, [], "a two-hour-old ledger must not alarm")
+        self.assertEqual(old, [(5, None)], "a 30-day-old ledger must")
+
+    def test_no_ledger_birth_means_no_unknown_alarm(self):
+        # An unreadable or cold ledger under-alarms rather than inventing an
+        # age. The safe direction.
+        cov = {s: self.NOW - timedelta(hours=1) for s in range(24) if s != 5}
+        self.assertEqual(
+            SC.stale_beyond(
+                slot_at=self.NOW, shards=24, last_covered=cov,
+                limit=timedelta(days=7), ledger_born=None,
+            ),
+            [],
+        )
 
     def test_unknown_days_is_never_a_fabricated_number(self):
         cov = {s: self.NOW - timedelta(days=9) for s in range(23)}
         stale = dict(
             SC.stale_beyond(
                 slot_at=self.NOW, shards=24, last_covered=cov,
-                limit=timedelta(days=7),
+                limit=timedelta(days=7), ledger_born=self.NOW - timedelta(days=30),
             )
         )
         self.assertIsNone(stale[23])
@@ -454,9 +508,29 @@ class TestLedgerReadIsNotTakenOnFaith(unittest.TestCase):
         when = datetime(2026, 7, 27, 5, tzinfo=UTC)
         client = RecordingClient(coverage_rows=[covrow(3, when)])
         got = SC.read_coverage(client, shards=24)
-        self.assertEqual(set(got), {3})
-        self.assertIsNotNone(got[3].tzinfo)
-        self.assertEqual(got[3], when)
+        self.assertEqual(set(got.last_covered), {3})
+        self.assertIsNotNone(got.last_covered[3].tzinfo)
+        self.assertEqual(got.last_covered[3], when)
+
+    def test_the_read_carries_the_ledgers_birth_not_just_its_freshness(self):
+        # One read, two facts. A second query for created_at would be a second
+        # path to the same row.
+        born = datetime(2026, 6, 1, tzinfo=UTC)
+        fresh = datetime(2026, 7, 27, 5, tzinfo=UTC)
+        client = RecordingClient(coverage_rows=[
+            covrow(3, fresh, created=born),
+            covrow(4, fresh, created=datetime(2026, 6, 15, tzinfo=UTC)),
+        ])
+        got = SC.read_coverage(client, shards=24)
+        self.assertEqual(got.born, born, "born is the EARLIEST created_at")
+        self.assertEqual(set(got.last_covered), {3, 4})
+
+    def test_a_row_without_created_at_does_not_vote_on_the_birth(self):
+        row = covrow(3, datetime(2026, 7, 27, 5, tzinfo=UTC))
+        del row["created_at"]
+        got = SC.read_coverage(RecordingClient(coverage_rows=[row]), shards=24)
+        self.assertIsNone(got.born)
+        self.assertEqual(set(got.last_covered), {3})
 
 
 # ---------------------------------------------------------------------------
@@ -470,7 +544,7 @@ class TestCoverageRequiresACompleteShard(unittest.TestCase):
                 client, shards=24, shard=5,
                 covered_at=datetime(2026, 7, 27, 5, tzinfo=UTC),
                 slot_source="stamped", run_kind="catchup",
-                ciks_selected=20, ciks_polled=19,
+                ciks_in_shard=20, ciks_selected=20, ciks_polled=19,
             )
         self.assertFalse(ok)
         self.assertEqual(client.upserts, [])
@@ -481,7 +555,7 @@ class TestCoverageRequiresACompleteShard(unittest.TestCase):
             client, shards=24, shard=5,
             covered_at=datetime(2026, 7, 27, 5, tzinfo=UTC),
             slot_source="stamped", run_kind="catchup",
-            ciks_selected=20, ciks_polled=20,
+            ciks_in_shard=20, ciks_selected=20, ciks_polled=20,
         )
         self.assertTrue(ok)
         self.assertEqual(len(client.upserts), 1)
@@ -490,6 +564,22 @@ class TestCoverageRequiresACompleteShard(unittest.TestCase):
         self.assertEqual(row["shards"], 24)
         self.assertEqual(row["slot_source"], "stamped")
         self.assertEqual(row["ciks_selected"], row["ciks_polled"])
+        self.assertEqual(row["ciks_in_shard"], 20)
+
+    def test_the_upsert_never_writes_created_at(self):
+        """created_at is the ledger's birth only while the upsert leaves it
+        alone. PostgREST builds ON CONFLICT DO UPDATE SET from the payload
+        keys, so a created_at in the payload would refresh on every poll and
+        turn it into a second updated_at, re-opening the suppression hole."""
+        client = RecordingClient()
+        SC.record_coverage(
+            client, shards=24, shard=5,
+            covered_at=datetime(2026, 7, 27, 5, tzinfo=UTC),
+            slot_source="stamped", run_kind="catchup",
+            ciks_in_shard=20, ciks_selected=20, ciks_polled=20,
+        )
+        self.assertNotIn("created_at", client.upserts[0])
+        self.assertIn("updated_at", client.upserts[0])
 
 
 class TestWholeCikFailureIsVisible(unittest.TestCase):
@@ -583,23 +673,11 @@ class TestRunStatusAndAlarm(unittest.TestCase):
 class TestConvergence(unittest.TestCase):
     UNIVERSE = [entry(c) for c in range(1000, 1600)]
 
-    def test_a_cold_ledger_heals_within_the_arithmetic_it_claims(self):
-        """From nothing covered, budget B per run heals `shards` slots.
-
-        Each run covers its own slot plus B stale ones, so the backlog falls by
-        at least B per run and full coverage arrives in at most
-        ceil(shards / B) runs. At 24 shards and B=3 that is 8 runs, which at an
-        hourly cadence is 8 hours.
-        """
-        shards, budget = 24, 3
+    def _runs_to_full_coverage(self, start, *, shards=24, budget=3):
         ledger: dict[int, dict] = {}
-        start = datetime(2026, 7, 27, 0, tzinfo=UTC)
-
-        runs = 0
-        for h in range(48):
+        for h in range(shards * 4):
             now = start + timedelta(hours=h)
-            rows = list(ledger.values())
-            client = RecordingClient(coverage_rows=rows)
+            client = RecordingClient(coverage_rows=list(ledger.values()))
             env = {
                 "EDGAR_POLL_TAIL_SHARDS": str(shards),
                 "EDGAR_CATCHUP_MAX_SHARDS": str(budget),
@@ -609,18 +687,51 @@ class TestConvergence(unittest.TestCase):
                  mock.patch.object(S, "get_recent_filer_ciks", return_value=[]), \
                  mock.patch.object(S, "get_xbrl_ciks", return_value=list(self.UNIVERSE)):
                 plan = S.plan_poll(client, now=now)
-            runs += 1
             for g in plan.groups:
                 ledger[g.slot] = covrow(g.slot, now, shards=shards)
             if len(ledger) == shards:
-                break
+                return h + 1
+        return None
 
-        self.assertEqual(len(ledger), shards, "never reached full coverage")
-        # ceil(24 / 3) = 8 runs. Run one covers its own slot plus 3, every run
-        # after that lands on a slot an earlier catch-up already took, so it
-        # adds exactly `budget`. 4 + 3k >= 24 gives k = 7, so 8 runs total.
-        self.assertEqual(runs, -(-shards // budget))
-        self.assertEqual(runs, 8)
+    def test_a_cold_ledger_heals_within_the_arithmetic_it_claims(self):
+        """From nothing covered, budget B per run heals `shards` slots.
+
+        Each run covers its own slot plus B stale ones, so full coverage
+        arrives in AT MOST ceil(shards / B) runs. At 24 shards and B=3 that is
+        8 runs, which at an hourly cadence is 8 hours.
+
+        A BOUND, NOT AN IDENTITY, and this test used to assert the identity.
+        The exact count depends on the start hour, because whether the next
+        run's own slot lands on one an earlier catch-up already took decides
+        whether that run adds B or B+1. Measured across all 24 start hours the
+        answer ranges 6 to 8. The old assertEqual(runs, 8) was green only
+        because it started at hour 0, and would have failed at 16 of the 24.
+        Its own docstring said "at most"; the assertion said something else.
+        So every start hour is walked and the bound is asserted.
+        """
+        shards, budget = 24, 3
+        bound = -(-shards // budget)
+        self.assertEqual(bound, 8)
+        observed = {}
+        for hour in range(24):
+            start = datetime(2026, 7, 27, hour, tzinfo=UTC)
+            runs = self._runs_to_full_coverage(start, shards=shards, budget=budget)
+            self.assertIsNotNone(runs, f"never reached full coverage from {hour:02d}:00")
+            self.assertLessEqual(
+                runs, bound,
+                f"start hour {hour:02d}:00 took {runs} runs, over the "
+                f"ceil({shards}/{budget}) = {bound} bound",
+            )
+            observed[hour] = runs
+        # The bound is tight: some start hour actually reaches it, so this is
+        # not a vacuous ceiling that a regression could slide under unnoticed.
+        self.assertEqual(max(observed.values()), bound)
+        # And the spread is real, which is the fact the identity assertion hid.
+        self.assertGreater(
+            len(set(observed.values())), 1,
+            "if every start hour agrees, the identity assertion was fine and "
+            "this test is now testing nothing",
+        )
 
     def test_a_run_covers_its_own_slot_plus_at_most_the_budget(self):
         env = {"EDGAR_POLL_TAIL_SHARDS": "24", "EDGAR_CATCHUP_MAX_SHARDS": "3"}
@@ -721,6 +832,121 @@ class TestResumability(unittest.TestCase):
             stats = ingest_sec.run(sync_ciks_first=False, dry_run=False, max_ciks=2)
         rec.assert_not_called()
         self.assertEqual(stats["shards_targeted"], 0)
+
+
+class TestTheCapDoesNotMakeAShardLookCovered(unittest.TestCase):
+    """A shard bigger than the per-run cap is polled completely and is still
+    not a covered shard.
+
+    THE HOLE THIS CLOSES. ciks_selected is what the run TOOK, and
+    select_tail_ciks caps it. So `ciks_polled = ciks_selected` proves the run
+    finished its own list and says nothing about whether that list was the
+    whole shard. A capped shard satisfied the constraint and landed in the
+    ledger indistinguishable from full coverage, resetting its staleness while
+    members went unpolled. Measured membership sits close enough to the cap that
+    one period of universe growth crosses it, with no code change and no signal.
+    Exactly the shape CLAUDE.md already records for the 1000-row cap: "Under
+    1000 today is not a fix." Figures withheld here per the public-repo rule.
+    """
+
+    ENV = {"EDGAR_POLL_TAIL_SHARDS": "24", "EDGAR_CATCHUP_ENABLED": "0"}
+
+    def _plan(self, *, members_per_shard, cap):
+        # cik % 24 == 5 for every entry, so shard 5 holds all of them.
+        universe = [entry(24 * (50 + i) + 5) for i in range(members_per_shard)]
+        env = dict(self.ENV, EDGAR_POLL_TAIL_MAX_PER_RUN=str(cap))
+        with mock.patch.dict(os.environ, env, clear=False), \
+             mock.patch.object(S, "get_watchlist_ciks", return_value=[]), \
+             mock.patch.object(S, "get_recent_filer_ciks", return_value=[]), \
+             mock.patch.object(S, "get_xbrl_ciks", return_value=universe):
+            # 2026-07-27 05:00 UTC is a Monday, so tail_slot is hour 5.
+            return S.plan_poll(
+                RecordingClient(), now=datetime(2026, 7, 27, 5, tzinfo=UTC)
+            )
+
+    def test_shard_member_count_is_the_denominator_the_selector_does_not_give(self):
+        universe = [entry(24 * (50 + i) + 5) for i in range(40)]
+        self.assertEqual(S.shard_member_count(universe, slot=5, shards=24), 40)
+        picked = S.select_tail_ciks(universe, slot=5, shards=24, max_per_run=10)
+        self.assertEqual(len(picked), 10, "the selector reports only what it took")
+
+    def test_a_capped_shard_is_marked_truncated(self):
+        plan = self._plan(members_per_shard=40, cap=10)
+        g = plan.groups[0]
+        self.assertEqual(g.slot, 5)
+        self.assertEqual(len(g.entries), 10, "the cap took ten")
+        self.assertEqual(g.members, 40, "the shard holds forty")
+        self.assertTrue(g.truncated)
+
+    def test_an_uncapped_shard_is_not_marked_truncated(self):
+        plan = self._plan(members_per_shard=40, cap=60)
+        g = plan.groups[0]
+        self.assertEqual(len(g.entries), 40)
+        self.assertEqual(g.members, 40)
+        self.assertFalse(g.truncated)
+
+    def test_full_membership_reaches_the_ledger_not_just_the_capped_count(self):
+        """The row carries both counts, so `truncated` is generated from data
+        rather than from a flag somebody has to remember to set."""
+        recorded = []
+        plan = self._plan(members_per_shard=40, cap=10)
+
+        def spy(_sb, **kw):
+            recorded.append(kw)
+            return True
+
+        env = dict(self.ENV, SUPABASE_URL="http://x", SUPABASE_SERVICE_ROLE_KEY="k")
+        with mock.patch.dict(os.environ, env, clear=False), \
+             mock.patch.object(ingest_sec, "create_client", return_value=object()), \
+             mock.patch.object(ingest_sec, "sync_cik_tickers", return_value={}), \
+             mock.patch.object(ingest_sec, "plan_poll", return_value=plan), \
+             mock.patch.object(ingest_sec, "resummarize_null_8k"), \
+             mock.patch.object(ingest_sec, "fetch_recent_filings", return_value=[]), \
+             mock.patch.object(
+                 ingest_sec.shard_coverage, "record_coverage", side_effect=spy
+             ):
+            stats = ingest_sec.run(sync_ciks_first=False, dry_run=False)
+
+        self.assertEqual(len(recorded), 1)
+        self.assertEqual(recorded[0]["ciks_in_shard"], 40)
+        self.assertEqual(recorded[0]["ciks_selected"], 10)
+        self.assertEqual(recorded[0]["ciks_polled"], 10)
+        # ciks_selected < ciks_in_shard is what the generated column reads.
+        self.assertLess(recorded[0]["ciks_selected"], recorded[0]["ciks_in_shard"])
+        self.assertEqual(stats["shards_truncated"], [5])
+
+    def test_a_full_shard_reports_no_truncation_in_the_stats(self):
+        recorded = []
+        plan = self._plan(members_per_shard=40, cap=60)
+
+        env = dict(self.ENV, SUPABASE_URL="http://x", SUPABASE_SERVICE_ROLE_KEY="k")
+        with mock.patch.dict(os.environ, env, clear=False), \
+             mock.patch.object(ingest_sec, "create_client", return_value=object()), \
+             mock.patch.object(ingest_sec, "sync_cik_tickers", return_value={}), \
+             mock.patch.object(ingest_sec, "plan_poll", return_value=plan), \
+             mock.patch.object(ingest_sec, "resummarize_null_8k"), \
+             mock.patch.object(ingest_sec, "fetch_recent_filings", return_value=[]), \
+             mock.patch.object(
+                 ingest_sec.shard_coverage, "record_coverage",
+                 side_effect=lambda _sb, **kw: recorded.append(kw) or True
+             ):
+            stats = ingest_sec.run(sync_ciks_first=False, dry_run=False)
+
+        self.assertEqual(recorded[0]["ciks_in_shard"], recorded[0]["ciks_selected"])
+        self.assertEqual(stats["shards_truncated"], [])
+
+    def test_the_recorder_says_so_out_loud_when_it_writes_a_truncated_row(self):
+        client = RecordingClient()
+        with self.assertLogs("backend.edgar.shard_coverage", level="WARNING") as log:
+            ok = SC.record_coverage(
+                client, shards=24, shard=5,
+                covered_at=datetime(2026, 7, 27, 5, tzinfo=UTC),
+                slot_source="stamped", run_kind="current",
+                ciks_in_shard=40, ciks_selected=10, ciks_polled=10,
+            )
+        self.assertTrue(ok, "a capped shard is still recorded, with the flag")
+        self.assertIn("TRUNCATED", "".join(log.output))
+        self.assertEqual(client.upserts[0]["ciks_in_shard"], 40)
 
 
 class TestBudgetSizing(unittest.TestCase):

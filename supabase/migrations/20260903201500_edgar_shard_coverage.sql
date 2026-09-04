@@ -27,9 +27,22 @@
 -- swallowed `except: continue`, and a whole-CIK fetch failure is invisible in a
 -- row-level error count. The lesson was to assert completion against the diff.
 -- ciks_polled = ciks_selected is that assertion, enforced by the database: a
--- half-covered shard cannot be recorded as covered even if application code
--- regresses. The write is rejected, the shard stays stale, and the next run
--- retries it.
+-- shard that did not finish what it took cannot be recorded, even if
+-- application code regresses. The write is rejected, the shard stays stale, and
+-- the next run retries it.
+--
+-- WHAT THAT CONSTRAINT ALONE DOES NOT CATCH, and why ciks_in_shard is here
+-- ciks_selected is what the run TOOK, and select_tail_ciks caps it at
+-- EDGAR_POLL_TAIL_MAX_PER_RUN. Comparing polled to selected therefore says the
+-- run finished its own list; it says nothing about whether that list was the
+-- whole shard. A shard larger than the cap is truncated, polled completely, and
+-- would satisfy `ciks_polled = ciks_selected` while leaving members unpolled.
+-- Measured membership sits close enough to the cap that one period of universe
+-- growth crosses it, with no code change and no signal: a live condition rather
+-- than a hypothetical. (Figures withheld per the public-repo rule; they are in
+-- the private report.) ciks_in_shard records full membership, the range
+-- constraint holds selected within it, and `truncated` is GENERATED from the
+-- two so the rule cannot drift from a hand-maintained flag.
 --
 -- NOT APPLIED BY THE AUTHOR OF THIS FILE. Apply by hand.
 
@@ -47,16 +60,31 @@ create table if not exists public.edgar_shard_coverage (
   slot_source   text        not null,
   -- 'current' is this run's own slot, 'catchup' is a replayed stale slot.
   run_kind      text        not null,
+  -- Full membership of this shard, BEFORE the per-run cap. ciks_selected is
+  -- what the run took from it; the two differ only when the cap truncated.
+  ciks_in_shard integer     not null,
   ciks_selected integer     not null,
   ciks_polled   integer     not null,
+  -- Derived, never written. A capped shard is polled completely and still is
+  -- not a covered shard, and this is what makes the two distinguishable to any
+  -- reader without re-deriving the cap rule.
+  truncated     boolean     generated always as (ciks_selected < ciks_in_shard) stored,
+  -- Set once on insert and never touched by the upsert, so it dates the LEDGER
+  -- rather than the row. covered_at is refreshed every time a shard is polled,
+  -- which is why it cannot answer "how long has this ledger been running": a
+  -- healthy neighbour keeps min(covered_at) an hour old forever. The unknown
+  -- alarm needs the ledger's own age, and this is it.
+  created_at    timestamptz not null default now(),
   updated_at    timestamptz not null default now(),
 
   primary key (shards, shard),
 
   constraint edgar_shard_coverage_complete
     check (ciks_polled = ciks_selected),
+  constraint edgar_shard_coverage_selected_within_shard
+    check (ciks_selected <= ciks_in_shard),
   constraint edgar_shard_coverage_nonneg
-    check (ciks_selected >= 0 and ciks_polled >= 0),
+    check (ciks_selected >= 0 and ciks_polled >= 0 and ciks_in_shard >= 0),
   constraint edgar_shard_coverage_slot_source
     check (slot_source in ('stamped', 'execution_time')),
   constraint edgar_shard_coverage_run_kind
@@ -67,14 +95,25 @@ create table if not exists public.edgar_shard_coverage (
 
 comment on table public.edgar_shard_coverage is
   'Latest successful poll per EDGAR tail shard. One row per (shards, shard). '
-  'Written only after every CIK in the shard was polled; the complete '
-  'constraint makes a partial write impossible.';
+  'Written only after every CIK the run SELECTED was polled. Check truncated '
+  'to tell a fully covered shard from one the per-run cap held short.';
 
 comment on column public.edgar_shard_coverage.covered_at is
   'Scheduled moment of the run that covered this shard, not execution time.';
 
 comment on column public.edgar_shard_coverage.slot_source is
   'Which writer chose the slot: an external stamp, or the execution clock.';
+
+comment on column public.edgar_shard_coverage.ciks_in_shard is
+  'Full shard membership before the per-run cap. ciks_selected <= this.';
+
+comment on column public.edgar_shard_coverage.truncated is
+  'Generated. True when the per-run cap held this run short of full membership.';
+
+comment on column public.edgar_shard_coverage.created_at is
+  'When this (shards, shard) row was FIRST written. Never updated by the '
+  'upsert, so min(created_at) dates the ledger generation and drives the '
+  'unknown-slot alarm.';
 
 -- Staleness lookup is "give me every row for the current shard count, newest
 -- first". The primary key already covers (shards, shard); this serves the

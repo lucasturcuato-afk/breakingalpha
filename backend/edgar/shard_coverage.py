@@ -21,16 +21,48 @@ mark shards covered that were never polled, and the skip would be permanent and
 invisible. So the ledger is the single writer and the single reader of "which
 shard was covered", and an empty ledger means "nothing is known", not
 "nothing was covered".
+
+WHY THE UNKNOWN ALARM READS created_at AND NOT covered_at
+An unknown slot has no row, so it has no staleness to compare. The first cut
+decided when to start alarming on one by asking whether the OLDEST covered_at
+in the ledger was past the limit, on the reasoning that an old ledger has had
+ample runs to reach every slot. That reasoning is wrong, and the failure is
+quiet: covered_at is REFRESHED on every poll, so 23 healthy shards hold
+min(covered_at) about an hour old forever and suppress the condition for the
+24th. Measured: 23 shards covered an hour ago, one never covered, seven day
+limit, no alarm, indefinitely. A shard whose CIKs consistently fail would be
+targeted first by due_slots on every single run, report partial on every single
+run, and never once turn the job red.
+
+created_at is written once and never touched by the upsert, so min(created_at)
+is the age of the LEDGER GENERATION rather than of any row in it. Once that
+exceeds the limit, catch-up has demonstrably been running longer than a heal
+takes and a slot still missing is being genuinely skipped. Neighbours cannot
+suppress it.
 """
 from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import NamedTuple, Optional
 
 logger = logging.getLogger(__name__)
 
 TABLE = "edgar_shard_coverage"
+
+
+class LedgerView(NamedTuple):
+    """What one bounded read of the ledger tells the planner.
+
+    Two facts, not one, because they answer different questions and one cannot
+    be derived from the other. `last_covered` is per-slot freshness and moves
+    every poll. `born` is when this shard generation's ledger first recorded
+    anything and never moves, which is the only thing that can say whether an
+    absent slot has had time to be reached.
+    """
+
+    last_covered: dict[int, datetime]
+    born: Optional[datetime]
 
 
 def parse_supabase_ts(value) -> Optional[datetime]:
@@ -128,6 +160,7 @@ def stale_beyond(
     shards: int,
     last_covered: dict[int, datetime],
     limit: timedelta,
+    ledger_born: Optional[datetime] = None,
 ) -> list[tuple[int, Optional[float]]]:
     """Slots whose staleness exceeds `limit`, as (slot, days) pairs. Pure.
 
@@ -135,7 +168,7 @@ def stale_beyond(
 
     A slot with a row older than `limit` is stale: catch-up has been running
     and still could not reach it, and past FILING_LOOKBACK_DAYS the filings it
-    missed are gone for good. That alarms.
+    missed are gone for good. That alarms, with its real age.
 
     A slot with NO row is merely unknown. On a cold ledger every slot is
     unknown, and by construction catch-up covers them all within
@@ -143,15 +176,18 @@ def stale_beyond(
     first deploy for a condition that heals itself in hours. It is reported
     with `days` of None, never a fabricated number.
 
-    The hole that leaves is an unknown slot catch-up never actually reaches.
-    That is closed by the ledger's own age: once the OLDEST row in the ledger
-    is itself older than `limit`, the ledger has been alive far longer than a
-    heal takes, and a slot still missing from it is being genuinely skipped.
-    From that point unknown slots alarm too.
+    An unknown slot starts alarming once `ledger_born` is itself older than
+    `limit`. That is the ledger's OWN age, taken from a created_at that the
+    upsert never touches, and it is not min(last_covered) for the reason in the
+    module docstring: covered_at is refreshed on every poll, so healthy
+    neighbours hold that minimum young forever and a genuinely skipped slot is
+    suppressed by the health of the shards around it. With no `ledger_born` the
+    ledger is cold or unreadable and nothing unknown alarms.
     """
     out: list[tuple[int, Optional[float]]] = []
-    oldest = min(last_covered.values()) if last_covered else None
-    unknown_alarms = oldest is not None and (slot_at - oldest) > limit
+    unknown_alarms = (
+        ledger_born is not None and (slot_at - ledger_born) > limit
+    )
     for s in range(max(shards, 0)):
         if s not in last_covered:
             if unknown_alarms:
@@ -195,17 +231,21 @@ def replay_moment(
     return None
 
 
-def read_coverage(sb, *, shards: int) -> dict[int, datetime]:
-    """Latest coverage per shard for THIS shard count. One bounded read.
+def read_coverage(sb, *, shards: int) -> LedgerView:
+    """Latest coverage per shard for THIS shard count, plus the ledger's age.
 
-    Bounded by construction: the table holds one row per (shards, shard), so
-    the result cannot exceed `shards` rows. The count assertion is still made,
-    because "small today" is not a property the server enforces and this repo
-    has already shipped four wrong numbers to a silent 1000-row truncation.
+    One bounded read. Bounded by construction: the table holds one row per
+    (shards, shard), so the result cannot exceed `shards` rows. The count
+    assertion is still made, because "small today" is not a property the server
+    enforces and this repo has already shipped four wrong numbers to a silent
+    1000-row truncation.
+
+    created_at comes back on the same read rather than in a second query. It is
+    what the unknown-slot alarm keys off; see stale_beyond.
     """
     resp = (
         sb.table(TABLE)
-        .select("shard, covered_at", count="exact")
+        .select("shard, covered_at, created_at", count="exact")
         .eq("shards", shards)
         .order("shard")
         .limit(max(shards, 1))
@@ -220,12 +260,19 @@ def read_coverage(sb, *, shards: int) -> dict[int, datetime]:
         )
 
     out: dict[int, datetime] = {}
+    births: list[datetime] = []
     for row in rows:
         moment = parse_supabase_ts(row.get("covered_at"))
         if moment is None:
             continue
         out[int(row["shard"])] = moment
-    return out
+        # A row predating the created_at column, or a fake without it, simply
+        # does not vote. An absent birth means no unknown alarm, which is the
+        # safe direction: it under-alarms rather than inventing an age.
+        born = parse_supabase_ts(row.get("created_at"))
+        if born is not None:
+            births.append(born)
+    return LedgerView(last_covered=out, born=min(births) if births else None)
 
 
 def record_coverage(
@@ -236,6 +283,7 @@ def record_coverage(
     covered_at: datetime,
     slot_source: str,
     run_kind: str,
+    ciks_in_shard: int,
     ciks_selected: int,
     ciks_polled: int,
 ) -> bool:
@@ -245,6 +293,12 @@ def record_coverage(
     refuses again via the complete constraint. Two gates on purpose: the local
     one keeps the reason in the log, the database one holds even if this
     function is bypassed or regresses.
+
+    ciks_in_shard is FULL membership, before EDGAR_POLL_TAIL_MAX_PER_RUN cut it
+    down. The row is still written when the cap truncated, because the rotation
+    in select_tail_ciks does reach the rest across later runs, but `truncated`
+    is generated from these two counts so nobody reads a capped shard as a
+    fully covered one.
     """
     if ciks_polled != ciks_selected:
         logger.warning(
@@ -253,7 +307,18 @@ def record_coverage(
             shard, shards, ciks_polled, ciks_selected,
         )
         return False
+    if ciks_selected < ciks_in_shard:
+        logger.warning(
+            "[edgar] shard %d of %d recorded TRUNCATED: the per-run cap took "
+            "%d of %d members. The rotation reaches the rest on later runs, "
+            "but this row is not full coverage.",
+            shard, shards, ciks_selected, ciks_in_shard,
+        )
     try:
+        # created_at is deliberately absent from the payload. PostgREST builds
+        # the ON CONFLICT DO UPDATE SET list from the keys present, so omitting
+        # it defaults on insert and is left untouched on update. That is what
+        # makes it the ledger's birth rather than a second updated_at.
         sb.table(TABLE).upsert(
             {
                 "shards": shards,
@@ -261,6 +326,7 @@ def record_coverage(
                 "covered_at": covered_at.isoformat(),
                 "slot_source": slot_source,
                 "run_kind": run_kind,
+                "ciks_in_shard": ciks_in_shard,
                 "ciks_selected": ciks_selected,
                 "ciks_polled": ciks_polled,
                 "updated_at": datetime.now(timezone.utc).isoformat(),

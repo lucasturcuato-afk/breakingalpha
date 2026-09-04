@@ -76,6 +76,9 @@ def run(
         "shards_targeted": 0,
         "shards_covered": 0,
         "shards_incomplete": [],
+        # Shards the per-run cap held short of full membership. Polled
+        # completely, recorded with truncated=true, and NOT full coverage.
+        "shards_truncated": [],
         "shards_backlog": 0,
         "shards_past_alert": [],
         "catchup_slots": [],
@@ -132,6 +135,8 @@ def run(
                     "coverage not recorded", group.slot, group.shards, len(selected),
                 )
                 continue
+            if group.truncated:
+                stats["shards_truncated"].append(group.slot)
             if shard_coverage.record_coverage(
                 sb,
                 shards=group.shards,
@@ -139,6 +144,7 @@ def run(
                 covered_at=group.moment,
                 slot_source=plan.slot_source,
                 run_kind=group.run_kind,
+                ciks_in_shard=group.members,
                 ciks_selected=len(selected),
                 ciks_polled=len(selected & polled_ok),
             ):
@@ -178,6 +184,12 @@ def run(
             "[edgar] %d of %d targeted shard(s) NOT covered this run: %s",
             len(stats["shards_incomplete"]), stats["shards_targeted"],
             stats["shards_incomplete"],
+        )
+    if stats["shards_truncated"]:
+        logger.warning(
+            "[edgar] %d shard(s) recorded TRUNCATED (the per-run cap held them "
+            "short of full membership): %s",
+            len(stats["shards_truncated"]), stats["shards_truncated"],
         )
     return stats
 
