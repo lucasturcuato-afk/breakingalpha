@@ -57,9 +57,15 @@ export function RadarTabs({
   return (
     <nav
       aria-label="Radar sections"
-      className="mb-5 flex items-baseline gap-1 border-b border-border-subtle font-sans"
+      /* THE ROW SCROLLS RATHER THAN WRAPPING. Measured at 320 and 390: the
+         eyebrow plus four tabs need 356px, so "Desk record" broke onto two
+         lines inside its own link and its right edge sat past the viewport
+         with no way to reach it. `flex-nowrap` with `overflow-x-auto` keeps
+         every tab on one line and swipeable; at desk widths the content fits,
+         `auto` draws nothing, and the row is unchanged. */
+      className="mb-5 flex flex-nowrap items-baseline gap-1 overflow-x-auto border-b border-border-subtle font-sans"
     >
-      <span className="mr-3 pb-2.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-text-faint">
+      <span className="mr-3 shrink-0 pb-2.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-text-faint">
         Radar
       </span>
       {TABS.map((tab) => {
@@ -71,7 +77,7 @@ export function RadarTabs({
             onClick={(e) => navigate(e, tab.href, isActive)}
             aria-current={isActive ? "page" : undefined}
             className={
-              "relative px-3 pb-2.5 text-[13px] transition-colors " +
+              "relative shrink-0 whitespace-nowrap px-3 pb-2.5 text-[13px] transition-colors " +
               (isActive
                 ? "font-semibold text-text-primary"
                 : "font-medium text-text-muted hover:text-text-primary")
@@ -89,7 +95,7 @@ export function RadarTabs({
         );
       })}
       {context && (
-        <span className="ml-3 pb-2.5 text-[12px] italic text-text-faint">
+        <span className="ml-3 shrink-0 whitespace-nowrap pb-2.5 text-[12px] italic text-text-faint">
           {context}
         </span>
       )}

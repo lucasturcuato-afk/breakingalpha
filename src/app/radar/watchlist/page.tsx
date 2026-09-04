@@ -180,6 +180,31 @@ type ArticleReads = Record<string, ArticleRead>;
 const FAILED_READ: ArticleRead = { status: "failed" };
 
 /**
+ * THE BOTTOM BAND BELONGS TO THE SHELL'S TAB BAR, NOT TO THIS SCREEN.
+ *
+ * `MobileTabBar` is fixed at bottom 0 on z-40 and is the only navigation a
+ * phone reader has here: the sidebar is `hidden md:block`, so below 768px the
+ * four poles are the whole exit. Every fixed layer this page drew at the
+ * bottom started at 0 with a z-index above 40, so the bar was painted over and
+ * no pole could be hit or tapped. Measured before this change, at 320 and 390
+ * in both themes and in both drawer states: 32 of 32 `elementFromPoint` probes
+ * at a pole centre returned something other than that pole, and 32 of 32 real
+ * taps left the URL on /radar/watchlist. Browser-back was the only way out,
+ * and on a phone that is a gesture rather than a control on the screen.
+ *
+ * THE FIX IS NOT A LOWER z-index ON THE BAR. The bar is the shell's and every
+ * other mobile screen sits under it, so the thing that covers it is the thing
+ * that moves. Each fixed layer this screen draws now stops at the top of the
+ * bar's band instead of at the viewport floor, which leaves all four poles
+ * painted and hit-testable in both the closed and the open drawer state.
+ *
+ * `--mobile-tabbar-height` is a `calc()` (a 58px row plus its 1px rule), so it
+ * has to be composed inside another `calc()` and can never be coerced to a
+ * number. The safe-area inset is added because the bar pads itself by it.
+ */
+const TABBAR_BAND = "calc(var(--mobile-tabbar-height) + env(safe-area-inset-bottom))";
+
+/**
  * Every read must be able to REACH a terminal state.
  *
  * fetchCachedArticles was bounded at 4000ms, but the two PostgREST queries and
@@ -1155,7 +1180,9 @@ export default function WatchlistPage() {
           display: 'flex',
           gap: '24px',
           padding: isMobile ? '12px' : '24px',
-          height: 'calc(100vh - var(--topbar-height) - var(--moodbar-height) - 58px)',
+          /* dvh, not vh: on a phone `vh` is the tall-bar height, so the
+             workspace was taller than the visible page by the browser chrome. */
+          height: 'calc(100dvh - var(--topbar-height) - var(--moodbar-height) - 58px)',
           flexDirection: isMobile ? 'column' : 'row',
         }}
       >
@@ -1394,7 +1421,10 @@ export default function WatchlistPage() {
         </div>
 
         {/* RIGHT COL — full width on mobile */}
-        <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', paddingBottom: isMobile ? '64px' : '0' }}>
+        {/* The 64px reserve was measured against a drawer trigger that started
+            at the viewport floor. The trigger now sits one tab bar band higher,
+            so the reserve has to clear both or the last article parks under it. */}
+        <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', paddingBottom: isMobile ? `calc(64px + ${TABBAR_BAND})` : '0' }}>
           {/* Persistent entity filter: move between what you track
               without scrolling. Sticky within the feed's own scroll box. */}
           {watchlist.length > 1 && (
@@ -1415,7 +1445,11 @@ export default function WatchlistPage() {
               onSelect={(id) => setSelectedIdentifier(id === "__all" ? null : id)}
             />
           )}
-          <div className="flex items-center justify-between mb-3">
+          {/* Stacked below md, side by side above it. Six filter chips and a
+              heading do not share a 390px row: the chip row took what it
+              needed and left the heading a column narrow enough to wrap
+              "Watchlist feed" onto three lines. Desktop keeps the single row. */}
+          <div className="flex flex-col items-stretch gap-2 mb-3 md:flex-row md:items-center md:justify-between md:gap-0">
             {selectedIdentifier ? (
               <div className="flex items-center gap-2">
                 <span className="font-display text-[15px] font-bold text-espresso">{selectedDisplayLabel}</span>
@@ -1443,14 +1477,17 @@ export default function WatchlistPage() {
                 )}
               </div>
             )}
-            <div className="flex items-center gap-1.5">
+            {/* The six chips are 356px wide and the column is 320 at the
+                narrow end, so the last one was cut off at the edge with no way
+                to reach it. The row scrolls instead of being clipped. */}
+            <div className="flex items-center gap-1.5 overflow-x-auto">
               {(["all", "today", "week", "month"] as const).map((f) => (
                 <button
                   key={f}
                   type="button"
                   onClick={() => setAgeFilter(f)}
                   className={cn(
-                    "px-2.5 py-1 rounded-md font-sans text-[9px] cursor-pointer transition-colors border",
+                    "px-2.5 py-1 rounded-md font-sans text-[9px] cursor-pointer transition-colors border flex-shrink-0 whitespace-nowrap",
                     ageFilter === f
                       ? "border-gold bg-gold-muted text-gold font-semibold"
                       : "border-border-base bg-white dark:bg-elevated text-text-muted hover:text-text-primary",
@@ -1459,14 +1496,14 @@ export default function WatchlistPage() {
                   {f === "all" ? "All" : f === "today" ? "Today" : f === "week" ? "This Week" : "This Month"}
                 </button>
               ))}
-              <div className="w-px h-4 bg-border-base mx-0.5" />
+              <div className="w-px h-4 bg-border-base mx-0.5 flex-shrink-0" />
               {(["newest", "relevant"] as const).map((mode) => (
                 <button
                   key={mode}
                   type="button"
                   onClick={() => setSortMode(mode)}
                   className={cn(
-                    "px-2.5 py-1 rounded-md font-sans text-[9px] cursor-pointer transition-colors border",
+                    "px-2.5 py-1 rounded-md font-sans text-[9px] cursor-pointer transition-colors border flex-shrink-0 whitespace-nowrap",
                     sortMode === mode
                       ? "border-gold bg-gold-muted text-gold font-semibold"
                       : "border-border-base bg-white dark:bg-elevated text-text-muted hover:text-text-primary",
@@ -1517,8 +1554,16 @@ export default function WatchlistPage() {
                 return (
                   <div className="bg-parchment-mid border border-border-base rounded-xl p-5 text-center">
                     <p className="font-sans text-[13px] font-semibold text-text-primary mb-1">Your feed is empty</p>
+                    {/* THE COPY HAS TO NAME SOMETHING THE READER CAN SEE.
+                        Below 768px the left column is `display: none`, so
+                        "in the left panel" pointed at nothing and the one add
+                        control on the screen is inside the drawer the button
+                        at the foot opens. Two sentences, each true at its own
+                        width, rather than one sentence true at neither. */}
                     <p className="font-sans text-[12px] text-text-secondary">
-                      Add tickers, companies, or sectors in the left panel to start tracking articles.
+                      {isMobile
+                        ? "Open the Watchlist button below to add tickers, companies, or sectors and start tracking articles."
+                        : "Add tickers, companies, or sectors in the left panel to start tracking articles."}
                     </p>
                   </div>
                 );
@@ -1641,11 +1686,12 @@ export default function WatchlistPage() {
         </div>
       </div>
 
-      {/* Mobile bottom bar */}
+      {/* Mobile drawer trigger. Sits ON TOP of the shell's tab bar band, never
+          over it: see TABBAR_BAND. */}
       {isMobile && (
         <div style={{
-          position: 'fixed', bottom: 0, left: 0, right: 0,
-          background: '#fff', borderTop: '1px solid var(--border-base)',
+          position: 'fixed', bottom: TABBAR_BAND, left: 0, right: 0,
+          background: 'var(--elevated)', borderTop: '1px solid var(--border-base)',
           padding: '12px 16px', zIndex: 200,
           display: 'flex', gap: '8px',
         }}>
@@ -1654,7 +1700,12 @@ export default function WatchlistPage() {
             onClick={() => setMobileSheetOpen(true)}
             style={{
               flex: 1, padding: '10px', borderRadius: '10px',
-              background: '#1c160f', color: '#fff',
+              /* 44px is the floor for a tap target. `padding` plus a
+                 `minHeight` needs `boxSizing: border-box` for the two to
+                 describe the same box, and the button has no border, so the
+                 rendered height is exactly the larger of 44 and the content. */
+              boxSizing: 'border-box', minHeight: '44px',
+              background: 'var(--espresso)', color: 'var(--cream)',
               fontFamily: 'Inter, sans-serif', fontSize: '13px', fontWeight: 600,
               border: 'none', cursor: 'pointer',
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
@@ -1666,22 +1717,33 @@ export default function WatchlistPage() {
         </div>
       )}
 
-      {/* Mobile bottom sheet backdrop */}
+      {/* Mobile drawer backdrop. Stops at the top of the tab bar band so the
+          four poles stay reachable while the drawer is open. */}
       {isMobile && mobileSheetOpen && (
         <div
           onClick={() => setMobileSheetOpen(false)}
-          style={{ position: 'fixed', inset: 0, zIndex: 300, background: 'rgba(30,20,10,0.4)' }}
+          style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: TABBAR_BAND,
+            zIndex: 300, background: 'rgba(30,20,10,0.4)',
+          }}
         />
       )}
 
-      {/* Mobile bottom sheet */}
+      {/* Mobile drawer */}
       {isMobile && (
         <div style={{
-          position: 'fixed', bottom: 0, left: 0, right: 0,
-          height: '60vh', zIndex: 301,
-          background: '#fff', borderRadius: '16px 16px 0 0',
+          position: 'fixed', bottom: TABBAR_BAND, left: 0, right: 0,
+          height: '60dvh', zIndex: 301,
+          background: 'var(--elevated)', borderRadius: '14px 14px 0 0',
           borderTop: '1px solid var(--border-base)',
-          transform: mobileSheetOpen ? 'translateY(0)' : 'translateY(100%)',
+          /* Closed, the panel travels its own height PLUS the band, so it
+             clears the viewport entirely instead of parking on the tab bar.
+             `pointerEvents` is the belt to that brace: a panel mid-transition
+             must not hit-test over a pole either. */
+          transform: mobileSheetOpen
+            ? 'translateY(0)'
+            : `translateY(calc(100% + ${TABBAR_BAND}))`,
+          pointerEvents: mobileSheetOpen ? 'auto' : 'none',
           transition: 'transform 0.28s cubic-bezier(0.4,0,0.2,1)',
           display: 'flex', flexDirection: 'column', overflow: 'hidden',
         }}>
@@ -1738,8 +1800,12 @@ export default function WatchlistPage() {
                         style={{
                           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                           padding: '12px 14px', borderRadius: '12px',
-                          border: selectedIdentifier === entry.identifier ? '1px solid #d97706' : '1px solid var(--border-base)',
-                          background: selectedIdentifier === entry.identifier ? 'rgba(251,191,36,0.06)' : '#fff',
+                          /* Tokens, not literals: the drawer's own surface is
+                             `--elevated` now, and a row painted #fff sat as a
+                             white slab inside a dark panel. */
+                          border: selectedIdentifier === entry.identifier ? '1px solid var(--gold)' : '1px solid var(--border-base)',
+                          background: selectedIdentifier === entry.identifier ? 'var(--parchment-mid)' : 'var(--elevated)',
+                          boxSizing: 'border-box', minHeight: '44px',
                           cursor: 'pointer',
                         }}
                       >
@@ -1758,7 +1824,12 @@ export default function WatchlistPage() {
       )}
 
       {dragError && (
-        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 bg-signal-dn text-white font-sans text-[11px] px-4 py-2 rounded-lg shadow-lg z-50">
+        /* The toast is z-50, above the shell's z-40 bar. At bottom-4 it landed
+           across the poles. It now floats clear of the band. */
+        <div
+          className="fixed left-1/2 -translate-x-1/2 bg-signal-dn text-white font-sans text-[11px] px-4 py-2 rounded-lg shadow-lg z-50"
+          style={{ bottom: isMobile ? `calc(${TABBAR_BAND} + 16px)` : '16px' }}
+        >
           {dragError}
         </div>
       )}
@@ -1814,11 +1885,17 @@ export default function WatchlistPage() {
         </div>
       )}
 
-      {/* Shortcut hint button */}
+      {/* Shortcut hint button.
+          GATED OUT BELOW md, AND FOR TWO REASONS THAT AGREE. It is fixed at
+          bottom-6 right-6 on z-50, which is above the shell's z-40 tab bar: at
+          390 its 32px box straddles the Browse pole's centre, so it is the
+          SECOND thing that made a pole untappable and it would have survived
+          the drawer fix on its own. It is also a 32px target listing J, K and
+          Esc to a reader who has no keyboard. Desktop is untouched. */}
       <button
         type="button"
         onClick={() => setShowShortcutLegend(prev => !prev)}
-        className="fixed bottom-6 right-6 z-50 w-8 h-8 rounded-full bg-white dark:bg-elevated border border-border-base shadow-md flex items-center justify-center font-sans text-[12px] text-text-muted hover:text-espresso hover:border-gold transition-colors cursor-pointer"
+        className="hidden md:flex fixed bottom-6 right-6 z-50 w-8 h-8 rounded-full bg-white dark:bg-elevated border border-border-base shadow-md items-center justify-center font-sans text-[12px] text-text-muted hover:text-espresso hover:border-gold transition-colors cursor-pointer"
         aria-label="Keyboard shortcuts"
       >
         ?
