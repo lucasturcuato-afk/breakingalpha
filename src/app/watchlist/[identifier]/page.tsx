@@ -178,7 +178,7 @@ export default function WatchlistIdentifierPage({
   const [alerts, setAlerts] = useState<PriceAlert[]>([]);
   const [alertsLoading, setAlertsLoading] = useState(true);
   const [alertType, setAlertType] = useState<"percent_change" | "price_above" | "price_below">("percent_change");
-  const [alertThreshold, setAlertThreshold] = useState("");
+  const [alertAmount, setAlertAmount] = useState("");
   /* THE WRITE'S OWN TWO STATES, and they are new.
    *
    * `handleAddAlert` adds the row optimistically and REMOVES IT AGAIN when the
@@ -500,7 +500,7 @@ export default function WatchlistIdentifierPage({
   }, [decoded, isSector]);
 
   const handleAddAlert = useCallback(async () => {
-    const t = parseFloat(alertThreshold);
+    const t = parseFloat(alertAmount);
     if (isNaN(t) || t <= 0) return;
     const optimisticAlert: PriceAlert = {
       id: `tmp-${Date.now()}`,
@@ -511,7 +511,7 @@ export default function WatchlistIdentifierPage({
       created_at: new Date().toISOString(),
     };
     setAlerts((prev) => [...prev, optimisticAlert]);
-    setAlertThreshold("");
+    setAlertAmount("");
     setAlertFailed(false);
     setAlertSubmitting(true);
     try {
@@ -533,7 +533,7 @@ export default function WatchlistIdentifierPage({
     } finally {
       setAlertSubmitting(false);
     }
-  }, [decoded, alertType, alertThreshold]);
+  }, [decoded, alertType, alertAmount]);
 
   const handleToggleAlert = useCallback(async (id: string, enabled: boolean) => {
     setAlerts((prev) => prev.map((a) => a.id === id ? { ...a, enabled } : a));
@@ -885,8 +885,8 @@ Constraints:
           alertsFull={alerts.length >= 5}
           alertKind={alertType}
           onAlertKind={setAlertType}
-          alertAmount={alertThreshold}
-          onAlertAmount={(next) => { setAlertFailed(false); setAlertThreshold(next); }}
+          alertAmount={alertAmount}
+          onAlertAmount={(next) => { setAlertFailed(false); setAlertAmount(next); }}
           alertSubmitting={alertSubmitting}
           alertFailed={alertFailed}
           onAddAlert={handleAddAlert}
@@ -1141,7 +1141,7 @@ Constraints:
                       const typeLabel_ =
                         alert.alert_type === "percent_change" ? "% move" :
                         alert.alert_type === "price_above" ? "Above $" : "Below $";
-                      const thresholdDisplay =
+                      const valueShown =
                         alert.alert_type === "percent_change"
                           ? `${alert.threshold}%`
                           : `$${alert.threshold}`;
@@ -1151,7 +1151,7 @@ Constraints:
                           className="flex items-center gap-3 px-3 py-2 bg-white border border-border-base rounded-xl"
                         >
                           <span className="font-data text-[11px] text-text-muted flex-1">
-                            {typeLabel_} {thresholdDisplay}
+                            {typeLabel_} {valueShown}
                           </span>
                           <button
                             type="button"
@@ -1204,15 +1204,15 @@ Constraints:
                       type="number"
                       min="0.01"
                       step="0.01"
-                      value={alertThreshold}
-                      onChange={(e) => setAlertThreshold(e.target.value)}
+                      value={alertAmount}
+                      onChange={(e) => setAlertAmount(e.target.value)}
                       placeholder={alertType === "percent_change" ? "e.g. 5" : "e.g. 150.00"}
                       className="font-sans text-[11px] border border-border-base rounded-lg px-2 py-1.5 bg-white text-text-primary w-24 focus:outline-none focus:border-gold"
                     />
                     <button
                       type="button"
                       onClick={handleAddAlert}
-                      disabled={!alertThreshold || parseFloat(alertThreshold) <= 0}
+                      disabled={!alertAmount || parseFloat(alertAmount) <= 0}
                       className="px-3 py-1.5 rounded-lg bg-gold text-cream font-sans text-[11px] font-semibold hover:bg-gold-dark transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       Add alert
