@@ -152,7 +152,7 @@ describe("the redirect cannot bounce a reader back and forth", () => {
     // redirect below md would send it straight back to this screen.
     assert.ok(
       !/href:\s*"\/radar\/calls/.test(screen) && !/href=\{?"\/radar\/calls/.test(screen),
-      "calls-screen must not link at /radar/calls; the redirect returns it here",
+      "calls-screen must not link at /radar/calls; the redirect sends it back here",
     );
   });
 
