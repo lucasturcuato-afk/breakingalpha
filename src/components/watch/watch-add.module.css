@@ -1,0 +1,109 @@
+/*
+ * The desk's add widget, corrected for a phone, WITHOUT EDITING IT.
+ *
+ * `src/components/watchlist/WatchlistAddInput.tsx` is propose-only and is
+ * imported here by reference, unmodified. Everything below is scoped under
+ * `.host`, so it reaches that widget only where this wrapper mounts it and
+ * changes nothing about the desk's own two mounts of the same component.
+ *
+ * WHAT THE WIDGET GETS WRONG FOR A PHONE, all of it measured off the source:
+ * the text input is `h-9` (36px) at 13px, the type chips are `py-1` at 10px,
+ * the sector chips are 9px, and the ADD button is `py-2` at 11px. Three of
+ * those are under the 44px target floor, one is under the 10px type floor, and
+ * the 13px input is the one that actually costs the reader something: iOS
+ * Safari zooms the page on focus for any text control under 16px, and the zoom
+ * does not undo itself.
+ *
+ * THREE RULES COVER ALL OF IT, and they are element selectors on purpose.
+ * Structural selectors (`> div:nth-child(2) > div:first-child`) would have been
+ * the obvious way to reach each group, and they would break the first time the
+ * widget's sector block stops rendering, which it already does conditionally.
+ * Every control the widget draws is an `input` or a `button`, so the two
+ * element selectors reach all of them and cannot drift.
+ *
+ * THE DROPDOWN ROW LABELS ARE NOT TOUCHED BY THE BUTTON RULE and that is
+ * correct rather than lucky: they are `span`s carrying their own size classes,
+ * which are more specific than a bare element selector, so the row keeps its
+ * label-over-sublabel hierarchy while the row itself grows to a real target.
+ *
+ * COLOURS ARE REMAPPED THROUGH THE WIDGET'S OWN VARIABLES rather than
+ * overridden per class. `globals.css` aliases every Tailwind colour to a plain
+ * custom property (`--color-border-base: var(--border-base)`), and custom
+ * properties resolve at the point of use, so shadowing the second name on
+ * `.host` re-points the widget's existing classes at the mobile palette with no
+ * selector fight and nothing to keep in sync. The one exception is `bg-white`,
+ * which is a Tailwind built-in with no alias to shadow, so it is named.
+ *
+ * THE TYPE FAMILY NEEDED NOTHING. `--font-sans` is already
+ * `var(--font-space-grotesk)`, which is the same face the mobile screens set
+ * through `FONT_SANS`, so the widget's `font-sans` class was never foreign.
+ *
+ * WHAT IS DELIBERATELY LEFT ALONE is in the wrapper's header.
+ */
+
+.host {
+  /* The widget's palette, re-pointed at the mobile tokens. Left name is the
+     widget's, right name is the screen's. */
+  --border-base: var(--c-border);
+  --border-hover: var(--c-border);
+  --parchment-mid: var(--c-well);
+  --text-primary: var(--c-ink);
+  --text-muted: var(--c-secondary);
+  --text-faint: var(--c-secondary);
+  --espresso: var(--c-ink);
+  --cream: var(--c-bg);
+  --gold: var(--c-gold);
+  --gold-dark: var(--c-gold);
+  --gold-muted: var(--c-well);
+  --gold-border: var(--c-border);
+}
+
+/*
+ * 16px, and this is the one rule that is not cosmetic. Under 16px iOS Safari
+ * zooms the viewport on focus and does not restore it, which leaves the reader
+ * on a horizontally scrolled screen with no way back short of a reload.
+ */
+.host input {
+  font-size: 16px;
+  min-height: 44px;
+}
+
+/*
+ * Every control the widget draws, at a real target size. `min-height` under the
+ * inherited `border-box` counts the border and the padding, so 44px here is 44px
+ * of box rather than 44px plus whatever the widget adds. Measured in the PR
+ * body rather than assumed.
+ */
+.host button {
+  min-height: 44px;
+  font-size: 12px;
+}
+
+/* The card and the suggestion sheet. `bg-white` is the one colour with no
+   custom property behind it to shadow. */
+.host :global(.bg-white) {
+  background-color: var(--c-card);
+}
+
+/* The disclosure that opens the widget. */
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--c-border);
+  border-radius: 9px;
+  background-color: var(--c-surface);
+  color: var(--c-goldink);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* The one line that says a write is in flight. */
+.status {
+  margin: 8px 0 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--c-secondary);
+}
