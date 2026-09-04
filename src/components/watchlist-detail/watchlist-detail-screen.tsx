@@ -419,9 +419,6 @@ export function WatchlistDetailScreen(props: WatchlistDetailScreenProps) {
                   {quote.pct >= 0 ? "+" : ""}
                   {quote.pct}%
                 </span>
-                <span style={{ font: `400 10.5px/1.3 ${FONT_SANS}`, color: "var(--c-muted)" }}>
-                  as of market close
-                </span>
               </>
             ) : loading ? (
               <Bar h={22} top={0} />
@@ -460,6 +457,15 @@ export function WatchlistDetailScreen(props: WatchlistDetailScreenProps) {
               </button>
             )}
           </div>
+        )}
+        {/* THE STAMP IS ITS OWN LINE, and that is measured. Sitting inside the
+            tape row it wrapped to two lines at 320 and closed the gap to the
+            refresh control to nothing. A line of its own is stable at every
+            width the screen is built for. */}
+        {!isSector && quote && (
+          <p style={{ margin: "6px 0 0", font: `400 11px/1.4 ${FONT_SANS}`, color: "var(--c-muted)" }}>
+            As of market close.
+          </p>
         )}
 
         {/* ── Signed out ───────────────────────────────────────────── */}
