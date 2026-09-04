@@ -105,7 +105,19 @@ export { edgarFilingsUrl } from "./edgar-url";
 
 export interface CompanyRef {
   id?: string | null;
+  /** A surface form of the company. Typically `companies.name` on the row the
+   * caller already anchored. NOT exclusive with `slug`; see `slug`. */
   name?: string | null;
+  /**
+   * A SECOND surface form, and the URL's own. `/company/[id]` sets it to
+   * `slugToCompanyName(id)`, the string it reconstructs from the path.
+   *
+   * IT IS NOT A FALLBACK FOR A MISSING `name`, and reading it as one is how it
+   * went dead. This used to be `ref.name ?? ref.slug`, so the moment a caller
+   * set a name the slug became unreachable, and the page began setting one.
+   * Both strings name the same company from different sources, so both are
+   * matched, in order; see the `surfaces` block in `resolveCompanyCik`.
+   */
   slug?: string | null;
   /** Optional exact ticker; the most reliable key, since every CIK-bearing
    * companies row carries a ticker while null-CIK name duplicates do not. */
@@ -138,6 +150,15 @@ export interface CompanyFiling {
 export interface CompanyFilingsResult {
   cik: number | null;
   companyId: string | null;
+  /**
+   * `companies.ticker` on the row `cik` was read from, so a caller can tell the
+   * header the same thing the tabs were told. `/company/[id]` reconciles the
+   * PRIVATE badge against this: an anchored row with a null ticker column that
+   * nonetheless resolves to a filer here is public, and printing "Private" over
+   * that filer's own SEC financials is the defect this field closes. Null
+   * whenever `cik` is null.
+   */
+  ticker: string | null;
   filings: CompanyFiling[];
 }
 
@@ -222,15 +243,54 @@ export async function resolveCompanyCik(
   ref: CompanyRef,
 ): Promise<CikResolution> {
   try {
-    // 1. Exact id (unique key; unchanged behavior).
+    // 1. Exact id (unique key). TERMINAL ONLY WHEN THE ROW CARRIES A CIK, which
+    //    is the same test steps 2, 3 and 4 below already apply to their own
+    //    matches. It used to return on ANY row, which made the id the one key
+    //    that could ANSWER WITH LESS than the name it was resolved from: the
+    //    `companies` table stores the CIK on a short filer row ("Exxon", XOM,
+    //    cik 34088) and the long or brand-form duplicate beside it
+    //    ("ExxonMobil", 355 mentions) carries null in both columns, so passing
+    //    the duplicate's id short-circuited past the alias bridge in step 4
+    //    that reaches the filer. A null-CIK id row is still the FIRST fallback
+    //    in step 5, so `companyId` / `name` come back exactly as before when
+    //    nothing better is found.
+    let idRow: CompanyRow | null = null;
     if (ref.id) {
       const { data } = await supabase.from("companies").select(COMPANY_COLS).eq("id", ref.id).limit(1);
-      const row = (data?.[0] as CompanyRow) ?? null;
-      if (row) return toResolution(row);
+      idRow = (data?.[0] as CompanyRow) ?? null;
+      if (idRow?.sec_cik != null) return toResolution(idRow);
     }
 
-    const raw = (ref.name ?? ref.slug ?? "").replace(/-/g, " ").trim();
+    /* EVERY SURFACE FORM THIS REF CARRIES, IN PREFERENCE ORDER, MATCHED IN ONE
+       PASS. This was `ref.name ?? ref.slug`, and the `??` is what made the slug
+       dead the moment a caller set a name. `/company/[id]` used to pass
+       `slugToCompanyName(id)` AS the name, so the slug string was the only key
+       in play and it was doing real work: `/company/genius-group` reconstructs
+       to "Genius Group", which is the `companies` row carrying that company's
+       own ticker and CIK. Passing the resolved head's name instead is strictly
+       better information about WHICH company the page is on, and it is strictly
+       worse as a match key here, because `resolveAlias` anchors on
+       `canonicalize()`d input and that collapses "Genius Group" to the separate,
+       CIK-less row named "Genius". Losing the slug lost the filer.
+
+       TWO SURFACE FORMS, ONE RESOLUTION. This is not a second resolver and not
+       a second answer to the same question, which is the defect this whole
+       change is about. `ref.name` is `companies.name` on the row `resolveAlias`
+       anchored. `ref.slug` is the URL as `slugToCompanyName` reconstructs it.
+       Both are strings that may name the same company, both are fed to the SAME
+       ordered steps below, and one rule (`preferCik`) picks the winner.
+
+       ORDER IS THE NO-REDIRECT GUARANTEE. `preferCik` takes the FIRST
+       CIK-bearing candidate, and `matchCompaniesByName` collects in the order
+       given, so name-derived rows are always ahead of slug-derived ones. A ref
+       that already resolved to a filer cannot be moved to a different one by
+       adding the slug; the slug can only answer where the name found nothing. */
+    const surfaces = [ref.name, ref.slug]
+      .map((s) => (s ?? "").replace(/-/g, " ").trim())
+      .filter((s) => s.length > 0);
+    const raw = surfaces[0] ?? "";
     const canon = raw ? canonicalize(raw) : "";
+    const forms = [...new Set(surfaces.flatMap((s) => [s, canonicalize(s)]))].filter(Boolean);
     const ticker = ref.ticker?.trim() ?? "";
 
     // 2. Exact ticker: the CIK lives on the ticker'd row, so this is the most
@@ -241,22 +301,25 @@ export async function resolveCompanyCik(
       if (row?.sec_cik != null) return toResolution(row);
     }
 
-    if (!raw) return ticker ? EMPTY_RESOLUTION : EMPTY_RESOLUTION;
+    if (forms.length === 0) return idRow ? toResolution(idRow) : EMPTY_RESOLUTION;
 
-    // 3. Exact name (raw AND canonicalized), preferring a CIK-bearing match so a
-    //    null-CIK duplicate never shadows the filer row.
-    const nameRows = await matchCompaniesByName(supabase, [raw, canon]);
+    // 3. Exact name over every surface form (each raw AND canonicalized),
+    //    preferring a CIK-bearing match so a null-CIK duplicate never shadows
+    //    the filer row.
+    const nameRows = await matchCompaniesByName(supabase, forms);
     const directCik = pickPreferCik(nameRows);
     if (directCik?.sec_cik != null) return toResolution(directCik);
 
     // 4. Alias table: bridge a full legal name to the CIK-bearing company.
-    const aliasRows = await matchCompaniesByAlias(supabase, [aliasKey(raw), aliasKey(canon)]);
+    const aliasRows = await matchCompaniesByAlias(supabase, forms.map(aliasKey));
     const aliasCik = pickPreferCik(aliasRows);
     if (aliasCik?.sec_cik != null) return toResolution(aliasCik);
 
     // 5. No CIK anywhere: return the best available match so name/companyId are
     //    populated and the caller renders an honest no-data (Tier C) state.
-    const fallback = directCik ?? aliasCik ?? nameRows[0] ?? aliasRows[0] ?? null;
+    //    `idRow` leads, so a caller that passed an id still gets that row's
+    //    identity back exactly as it did when step 1 was terminal.
+    const fallback = idRow ?? directCik ?? aliasCik ?? nameRows[0] ?? aliasRows[0] ?? null;
     if (fallback) return toResolution(fallback);
     return { ...EMPTY_RESOLUTION, name: canon || raw || null };
   } catch (e) {
@@ -294,7 +357,7 @@ export async function fetchCompanyFilings(
 ): Promise<CompanyFilingsResult> {
   const res = await resolveCompanyCik(supabase, ref);
   if (res.cik == null && res.companyId == null) {
-    return { cik: null, companyId: null, filings: [] };
+    return { cik: null, companyId: null, ticker: null, filings: [] };
   }
   try {
     let query = supabase.from("sec_filings").select(FILING_COLS);
@@ -311,7 +374,7 @@ export async function fetchCompanyFilings(
       .limit(limit);
     if (error) {
       console.error("[sec-filings] fetchCompanyFilings failed:", error.message);
-      return { cik: res.cik, companyId: res.companyId, filings: [] };
+      return { cik: res.cik, companyId: res.companyId, ticker: res.ticker, filings: [] };
     }
     const filings: CompanyFiling[] = (data ?? []).map((r: Record<string, unknown>) => ({
       accessionNumber: r.accession_number as string,
@@ -321,9 +384,9 @@ export async function fetchCompanyFilings(
       summary: (r.summary as string) ?? null,
       outputId: (r.output_id as string) ?? null,
     }));
-    return { cik: res.cik, companyId: res.companyId, filings };
+    return { cik: res.cik, companyId: res.companyId, ticker: res.ticker, filings };
   } catch (e) {
     console.error("[sec-filings] fetchCompanyFilings exception:", e);
-    return { cik: res.cik, companyId: res.companyId, filings: [] };
+    return { cik: res.cik, companyId: res.companyId, ticker: res.ticker, filings: [] };
   }
 }

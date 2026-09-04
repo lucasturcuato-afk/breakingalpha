@@ -41,6 +41,7 @@ import { fetchCompanyArticles } from "@/app/api/companies/[id]/articles/route";
 import { CompanyIntelScreen } from "@/components/company/mobile";
 import { buildCompanyIntelData } from "@/lib/company-mobile/build";
 import { mobileFixtureAuthBypass } from "@/lib/mobile-fixture-gate";
+import { reconcileTickerPrivacy } from "@/lib/company-privacy";
 
 /**
  * MOBILE REDESIGN, step 9, screen 15.
@@ -178,7 +179,7 @@ export default async function CompanyDetailPage({
   // streaming boundaries land. Today the page is a server component that
   // fully resolves before render. The resolve below stays a standalone await:
   // every read after it needs either its result or its null short-circuit.
-  const companyDetail = await getCompanyDetail(supabase, canonicalize(companyName));
+  const baseDetail = await getCompanyDetail(supabase, canonicalize(companyName));
 
   /* Null branch: no companies-row match (un-indexed via web-fallback path).
      Renders the PR-E1 empty state inside LiveMoodShell so the sidebar and
@@ -204,7 +205,7 @@ export default async function CompanyDetailPage({
      a defect specifically because the SAME route sets the flag on its other
      branch, so one company renders full-bleed and the next renders under two
      bars purely on whether it happens to be indexed. */
-  if (!companyDetail) {
+  if (!baseDetail) {
     return (
       <LiveMoodShell pageTitle="Company Intel" mobileFullBleed>
         {/* THE MISS IS THE MORE INFORMATIVE EVENT AND IT EMITS FIRST. Until
@@ -239,7 +240,43 @@ export default async function CompanyDetailPage({
   // on it returned 0 articles while the panel showed dozens. Side effect:
   // memo-cache entries keyed under old slug-cased names miss and regenerate
   // once.
-  const canonical = companyDetail.canonical;
+  const canonical = baseDetail.canonical;
+
+  /* ONE IDENTITY FOR THE WHOLE PAGE, and the three SEC reads below no longer
+     re-derive their own from the slug.
+
+     They used to be handed `{ name: companyName }`, the string
+     `slugToCompanyName` reconstructs from the URL, while the header, the ticker
+     and the PRIVATE badge came from `getCompanyDetail` -> `resolveAlias`. Two
+     resolvers, two different inputs, and neither one a superset of the other:
+     `resolveCompanyCik` bridges through the `aliases` table and `resolveAlias`
+     does not, while `resolveAlias` has a ticker branch that `resolveCompanyCik`
+     was never given a ticker to use. So the page could reach a filer the header
+     called private, and it could also deny an EDGAR identity the header had
+     already resolved. Both directions are the same omission: the answer was in
+     hand and was thrown away.
+
+     Passing the resolved head's id, name AND ticker collapses the two paths to
+     one. The ticker is the key that carries `/company/<TICKER>` URLs, whose
+     slug reconstructs to a bare ticker string that matches no company name and
+     no alias key. See the reconciliation below the reads for the other half.
+
+     `slug` IS THE OLD KEY AND IT IS STILL HERE, WHICH IS WHAT MAKES THIS REF A
+     STRICT SUPERSET OF THE ONE IT REPLACES RATHER THAN A SWAP. The old call
+     passed `{ name: companyName }` and nothing else, so dropping `companyName`
+     would have retired a working key while adding three: `resolveAlias`
+     anchors on `canonicalize()`d input, which collapses surface forms, so
+     `baseDetail.canonical` is a BETTER answer to "which company is this page"
+     and a WORSE match key inside `companies`. Measured over every reachable
+     slug in both URL spaces, dropping it lost two CIKs, one of them that
+     company's own. `resolveCompanyCik` matches both strings in one pass, name
+     first; see the `surfaces` block there. */
+  const companyRef = {
+    id: baseDetail.companyId,
+    name: baseDetail.canonical,
+    ticker: baseDetail.ticker,
+    slug: companyName,
+  };
 
   // Everything from here down depends only on `companyDetail` (already
   // resolved) or on `companyName` (the slug-derived string computed above), so
@@ -297,8 +334,8 @@ export default async function CompanyDetailPage({
     getArticleFallback(
       supabase,
       canonical,
-      companyDetail.articles,
-      companyDetail.display,
+      baseDetail.articles,
+      baseDetail.display,
     ),
     fetchCompanyArticles(supabase, canonical),
     // SEC filings (read-only). Resolves by name to a CIK; private/pre-IPO names
@@ -327,13 +364,13 @@ export default async function CompanyDetailPage({
     // Insider shells are 1,364 of those 4,251 rows and every one is a Form 4.
     // The table carries zero Form 3 and zero Form 5, so filing-categories.ts's
     // "Form 3/4/5" names a category with exactly one populated member.
-    fetchCompanyFilings(supabase, { name: companyName }, 100),
+    fetchCompanyFilings(supabase, companyRef, 100),
     // Form 4 insider transactions (read-only), same name -> CIK resolution as
     // filings so all three tabs describe the same company row. The SELECT policy
     // from sql/0019_insider_transactions_read_policy.sql IS applied in prod
     // (verified 2026-07-26: one policy, cmd SELECT, roles public, qual true), so
     // an empty list here means no stored rows, not an RLS denial.
-    getInsiderTransactions(supabase, { name: companyName }),
+    getInsiderTransactions(supabase, companyRef),
     // Validated XBRL financials (read-only). Same name -> CIK resolution as
     // filings; companies without a CIK render the tab's empty state.
     //
@@ -348,8 +385,28 @@ export default async function CompanyDetailPage({
     // strictly worse than the sequential version, where it blocked only the
     // reads after it. It now carries AbortSignal.timeout; see
     // SEC_SUBMISSIONS_TIMEOUT_MS in financial-facts.ts.
-    fetchCompanyFinancials(supabase, { name: companyName }),
+    fetchCompanyFinancials(supabase, companyRef),
   ]);
+
+  /* THE PRIVACY DETERMINATION AND THE FINANCIAL READ NOW AGREE, BY CONSTRUCTION.
+     `getCompanyDetail` derives "private" from `companies.ticker` on the anchored
+     row and nothing else. That column is null on brand-form duplicate rows whose
+     filer twin carries the ticker and the CIK, so the header could print
+     "Ticker Private" and "Market data is not available for this company"
+     directly above that filer's own SEC financials. An empty state that asserts
+     something false is worse than showing nothing.
+
+     `reconcileTickerPrivacy` is one-directional and cannot flip a company that
+     is already public, so no page that is correct today can move. It only
+     answers the case the header had no ticker for AND the SEC reads resolved a
+     filer for, which is the exact contradiction. See company-privacy.ts. */
+  const companyDetail = {
+    ...baseDetail,
+    ...reconcileTickerPrivacy(
+      { ticker: baseDetail.ticker, isPrivate: baseDetail.isPrivate },
+      { cik: filingsResult.cik, ticker: filingsResult.ticker },
+    ),
+  };
 
   const articlesForTab =
     fallbackArticles.length > 0

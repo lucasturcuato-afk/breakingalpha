@@ -80,6 +80,7 @@ test("a null form type and a null summary are carried, not replaced", () => {
   const withNulls: CompanyFilingsResult = {
     cik: 1,
     companyId: "test",
+    ticker: "TEST",
     filings: [
       {
         accessionNumber: "0000000000-00-000000",
