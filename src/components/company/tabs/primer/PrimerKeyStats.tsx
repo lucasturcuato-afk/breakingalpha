@@ -50,6 +50,50 @@ function fmtRange(lo: number | null, hi: number | null): string | null {
   return l && h ? `${l} - ${h}` : null;
 }
 
+/**
+ * Yahoo's next-earnings timestamp, drawn as a day.
+ *
+ * FIXED TO UTC, and not as a stylistic choice. The value is a unix second read
+ * from `calendarEvents.earnings.earningsDate`, and rendering it in whatever zone
+ * the reader's browser reports lets the same stored instant draw as two
+ * different days for two readers. A timestamp near a zone boundary is exactly
+ * where that bites, so the zone is pinned and the drawn day is the same
+ * everywhere.
+ */
+function fmtEarningsDate(v: number | null): string | null {
+  if (v == null || !Number.isFinite(v) || v <= 0) return null;
+  const d = new Date(v * 1000);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}
+
+/**
+ * Reported EPS against consensus, as the percent Yahoo already computed.
+ *
+ * THE SCALE IS A FRACTION, measured rather than assumed:
+ * `earningsHistory.history[].surprisePercent.raw` comes back as 0.0674 beside a
+ * `fmt` of "6.74%", so it multiplies by 100 like `dividendYield` above and
+ * unlike Finnhub's field of the same name, which is already whole percent in
+ * `theses.signal_breakdown`. Two providers, two scales, one name.
+ *
+ * The sign is taken from the ROUNDED figure, matching
+ * `company-mobile/quote-line.ts`. A surprise of +0.0004% draws as "0.00%", and
+ * a plus sign on that states a beat the drawn number does not show.
+ */
+function fmtEarningsSurprise(
+  v: QuoteSummaryLive["lastEarnings"],
+): string | null {
+  const pct = v?.surprisePct;
+  if (pct == null || !Number.isFinite(pct)) return null;
+  const rounded = Math.round(pct * 100 * 100) / 100;
+  return `${rounded > 0 ? "+" : ""}${rounded.toFixed(2)}%`;
+}
+
 const SHELL = "bg-cream-hi border border-border-base rounded-lg p-4 space-y-3";
 const EYEBROW = "font-sans text-[9.5px] font-bold text-text-faint";
 
@@ -78,6 +122,15 @@ export function PrimerKeyStats({ quote, loading }: PrimerKeyStatsProps) {
     push("Dividend yield", fmtPct(quote.dividendYield));
     push("Beta", fmtBeta(quote.beta));
     push("1y target", fmtUsd(quote.targetMeanPrice), "Analyst consensus (Yahoo Finance)");
+    // Both cells name their provenance in the note, and the earnings date names
+    // it twice. `calendarEvents.earnings.earningsDate` is Yahoo's ESTIMATE until
+    // the filer confirms, and quoteSummary.ts:116 takes element [0] of it
+    // unconditionally, so on a company Yahoo is still giving a window this is the
+    // EARLIEST day of that window and not a date anybody has announced. The label
+    // says est. and the note says estimated for that reason; neither states a
+    // confirmed date, because this shape cannot tell a confirmed one from a guess.
+    push("Next earnings (est.)", fmtEarningsDate(quote.nextEarningsDate), "Estimated date (Yahoo Finance)");
+    push("Last EPS vs consensus", fmtEarningsSurprise(quote.lastEarnings), "Reported vs consensus (Yahoo Finance)");
   }
 
   return (
