@@ -7,12 +7,12 @@
  * `/api/company-trend` gives back one point per UTC day: a mean of per-mention
  * sentiment over that day, and the count behind it. Desktop plots those points
  * on a signed -1..+1 axis. Measured over the live corpus on a 30-day window,
- * 1,798 companies carry at least one scored mention and their median depth is
- * THREE distinct days. p75 is 12, the deepest company in the corpus reaches 23
- * of 30. A line through three points spread over a 30-day axis is not a chart,
- * it is three dots and a lot of interpolation.
+ * the median company that carries any scored mention at all reaches only a
+ * HANDFUL of distinct days, and even the deepest company in the corpus is empty
+ * on most days of the window. A line through a handful of points spread over a
+ * 30-day axis is not a chart, it is a few dots and a lot of interpolation.
  *
- * The second measurement is the one that settled the form. 44.1% of all
+ * The second measurement is the one that settled the form. NEARLY HALF of live
  * company-days in that window carry EXACTLY ONE scored mention, and the mean of
  * a single mention is exactly -1, 0 or +1. So on a signed axis, nearly half of
  * every series is drawn at full deflection by one article. A reader cannot tell
@@ -22,20 +22,20 @@
  * information to correct it with.
  *
  * The repo already had the answer. `src/lib/tone.ts` will not state a level at
- * all under `LEVEL_MIN_N` scored mentions, because three is where it judged a
+ * all under `LEVEL_MIN_N` scored mentions, because that is where it judged a
  * mean to mean something. This module applies that same floor to a seven-day
  * band: a band that clears it is drawn as a level on the same five-step scale
- * with the same +-0.20 / +-0.60 cuts, and a band that does not clear it is
- * drawn as an explicit void. Nothing is interpolated across a void, because
- * there is nothing to interpolate from.
+ * with the same calibrated cuts, and a band that does not clear it is drawn as
+ * an explicit void. Nothing is interpolated across a void, because there is
+ * nothing to interpolate from.
  *
- * WHAT THAT COSTS AND WHAT IT GAINS. Measured over the same 28 days: a
- * two-points-or-more sparkline would draw for 1,144 companies, and a
- * two-readable-bands-or-more strip draws for 672. The strip reaches fewer, and
- * every one it reaches is built out of readings the app already considers
- * statable. It also still reaches past the quote line that shares this section:
- * 95 of those 672 carry no symbol at all, and only 774 companies in the same
- * window carry one.
+ * WHAT THAT COSTS AND WHAT IT GAINS. Measured over the same 28 days, the strip
+ * draws for a little under three fifths of the companies a two-points-or-more
+ * sparkline would have drawn for. It reaches fewer, and every one it reaches is
+ * built out of readings the app already considers statable. It also still
+ * reaches past the quote line that shares this section: roughly one in seven of
+ * the companies it draws for carry no symbol at all, and only a minority of the
+ * companies with any scored mention in the window carry one.
  *
  * NOTHING HERE DIVIDES INTO A RATE. A band mean is a LEVEL, the same quantity
  * the headline above it states in words, and it is never rendered as a figure.
@@ -108,8 +108,8 @@ export type ToneBand =
 export type ToneSeriesView =
   /** Too little to draw honestly. The headline has already said so. */
   | { kind: "absent" }
-  /** The read is in flight. `announce` gates the only visible pending copy. */
-  | { kind: "pending"; announce: boolean }
+  /** The read is in flight. Draws nothing and reserves nothing, at any age. */
+  | { kind: "pending" }
   /** The read did not answer. A different fact from an empty one. */
   | { kind: "failed" }
   | {
@@ -133,6 +133,40 @@ const LEVEL_STEP: Record<string, number> = {
 };
 
 /**
+ * The UTC day an instant falls in, as an integer day number.
+ *
+ * BOTH SIDES OF THE AGE COMPARISON ARE SNAPPED THE SAME WAY, and that is the
+ * whole point of this function existing. An earlier draft compared a derived
+ * "now" still carrying the route's wall clock against each day pinned to 12:00
+ * UTC, so for every answer before noon UTC the current day came out with a
+ * NEGATIVE age and was skipped: for half of every day the newest band rendered
+ * void with a count of zero and the day's whole mention set went missing.
+ * Reduced to day numbers there is no hour left to disagree about, and an age is
+ * an exact integer count of days.
+ */
+function utcDayNumber(ms: number): number {
+  return Math.floor(ms / DAY_MS);
+}
+
+/**
+ * A day's weighted contribution, with the float drift taken back out.
+ *
+ * The route hands back `score` as a per-day MEAN of per-mention sentiment in
+ * {-1, 0, +1} over `n` mentions, so `score * n` is an integer by construction:
+ * the count of bullish mentions minus the count of bearish ones. Rebuilt
+ * through a float mean it is that integer plus a few parts in 10^16, which is
+ * enough to carry a band mean sitting exactly on a calibrated cut across it and
+ * draw one step harsher than `computeTone` over the identical labels. Snapped
+ * back when it is within a whisker of an integer, and left alone when it is
+ * not, so a caller handing back some other grain of score is never distorted.
+ */
+function weightedDay(score: number, n: number): number {
+  const raw = score * n;
+  const nearest = Math.round(raw);
+  return Math.abs(raw - nearest) < 1e-6 ? nearest : raw;
+}
+
+/**
  * Fold daily points into `BAND_COUNT` weekly bands, newest band first.
  *
  * "NOW" IS DERIVED, NEVER READ FROM THE CLOCK. `rangeStart` is the route's own
@@ -147,26 +181,26 @@ const LEVEL_STEP: Record<string, number> = {
  * band. Averaging the daily means instead would weight a day carrying one
  * mention the same as a day carrying eighty, and this corpus has both.
  */
-function foldToBands(body: ToneSeriesBody): Array<{ sum: number; n: number }> {
-  const startMs = Date.parse(body.rangeStart);
-  const days = Number.isFinite(startMs) ? SERIES_RANGE_DAYS : 0;
-  const nowMs = startMs + days * DAY_MS;
-
+function foldToBands(
+  points: ToneSeriesPoint[],
+  nowMs: number,
+): Array<{ sum: number; n: number }> {
   const acc = Array.from({ length: BAND_COUNT }, () => ({ sum: 0, n: 0 }));
-  if (!Number.isFinite(startMs)) return acc;
+  const nowDay = utcDayNumber(nowMs);
 
-  for (const p of body.points) {
+  for (const p of points) {
     if (!p || typeof p.n !== "number" || p.n <= 0) continue;
     if (typeof p.score !== "number" || !Number.isFinite(p.score)) continue;
-    // Midday UTC, matching the desktop chart, so a date string cannot land on
-    // the wrong side of a boundary through a timezone offset.
+    // Midday UTC, so a date-only string cannot land on the wrong side of a
+    // boundary through an offset before it is reduced to a day number.
     const dayMs = Date.parse(`${p.date}T12:00:00Z`);
     if (!Number.isFinite(dayMs)) continue;
-    const ageDays = (nowMs - dayMs) / DAY_MS;
+    // An exact integer. The current day is 0 at every hour the route can answer.
+    const ageDays = nowDay - utcDayNumber(dayMs);
     if (ageDays < 0) continue;
     const band = Math.floor(ageDays / BAND_DAYS);
     if (band < 0 || band >= BAND_COUNT) continue;
-    acc[band].sum += p.score * p.n;
+    acc[band].sum += weightedDay(p.score, p.n);
     acc[band].n += p.n;
   }
   return acc;
@@ -186,26 +220,7 @@ export function buildSeriesCaption(totalMentions: number): string {
 export interface ToneSeriesInput {
   phase: "pending" | "answered" | "failed";
   body?: ToneSeriesBody | null;
-  /** Milliseconds the read has been in flight. Only consulted while pending. */
-  elapsedMs?: number;
 }
-
-/**
- * How long a read may run before the strip admits it is reading.
- *
- * Same gate and same reasoning as the quote line at the head of this section:
- * a shimmer over a fast read is a drawing of a load rather than a load. Unlike
- * that line, this block reserves NO height while it waits, and the reason is
- * that it sits BELOW the tone level rather than above it. Reserving would gain
- * nothing for the level, which cannot move either way, and would cost a
- * collapse on the majority of companies, where the strip resolves to `absent`
- * and the reserved box has to disappear. A push down on the caveat paragraph
- * under it is the cheaper of the two.
- */
-export const SERIES_PENDING_ANNOUNCE_MS = 600;
-
-/** The one line the pending case may draw, once it has earned it. */
-export const SERIES_PENDING_COPY = "reading tone history";
 
 /**
  * The single decision the strip makes.
@@ -216,15 +231,24 @@ export const SERIES_PENDING_COPY = "reading tone history";
  * this company has too little scored coverage to draw four weeks of it, which
  * the headline above has already said in words, so the strip stands down
  * entirely. A failed read means the screen does not know, and it says so.
+ *
+ * A MALFORMED 200 IS ALSO A READ THAT DID NOT ANSWER. The transport succeeding
+ * says nothing about the body being a body. Before the `rangeStart` check
+ * below, a 200 carrying an unparseable window start folded into four empty
+ * bands, fell under `MIN_READABLE_BANDS` and drew as `absent`, which is
+ * pixel-identical to a company with genuinely too little coverage. Same rule,
+ * broken a second way, so the shape is checked before it is trusted.
  */
 export function toneSeriesView(input: ToneSeriesInput): ToneSeriesView {
-  if (input.phase === "pending") {
-    return { kind: "pending", announce: (input.elapsedMs ?? 0) >= SERIES_PENDING_ANNOUNCE_MS };
-  }
+  if (input.phase === "pending") return { kind: "pending" };
   if (input.phase === "failed" || !input.body) return { kind: "failed" };
   if (!Array.isArray(input.body.points)) return { kind: "failed" };
 
-  const acc = foldToBands(input.body);
+  const startMs =
+    typeof input.body.rangeStart === "string" ? Date.parse(input.body.rangeStart) : NaN;
+  if (!Number.isFinite(startMs)) return { kind: "failed" };
+
+  const acc = foldToBands(input.body.points, startMs + SERIES_RANGE_DAYS * DAY_MS);
 
   // Oldest first. The route hands the series back ascending and a reader reads
   // left to right, so the strip runs the same way the sentence above it does.

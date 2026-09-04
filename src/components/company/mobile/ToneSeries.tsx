@@ -23,9 +23,9 @@
  * carries 7D / 30D / 90D. A 44px tap row is the single most expensive thing
  * this section could add, the fold budget above it was already spent by the
  * quote line, and the control's whole value is choosing a depth the data mostly
- * does not have: the median company reaches three distinct days in thirty, so
- * 7D is empty for most of the corpus and 90D redraws the same thin series over
- * a wider axis. Four fixed weeks, no control, no row.
+ * does not have: the median company reaches only a handful of distinct days in
+ * a thirty-day window, so 7D is empty for most of the corpus and 90D redraws
+ * the same thin series over a wider axis. Four fixed weeks, no control, no row.
  */
 
 import { useEffect, useState } from "react";
@@ -33,8 +33,6 @@ import { useEffect, useState } from "react";
 import { FONT_MONO, FONT_SANS } from "@/components/mobile/fonts";
 import {
   SERIES_FAILED_COPY,
-  SERIES_PENDING_ANNOUNCE_MS,
-  SERIES_PENDING_COPY,
   SERIES_RANGE,
   toneSeriesView,
   type ToneBand,
@@ -76,9 +74,19 @@ function Band({ band, index }: { band: ToneBand; index: number }) {
   if (band.kind === "void") {
     /* DIFFERENT IN COLOUR AND IN WEIGHT from a Mixed band, which is also a flat
        mark on the midline. Mixed is a solid 2px block in the amber a balanced
-       reading owns; a void is a 1px dashed hairline in the border token and
-       owns no tone at all. A reader has to be able to tell "this week read as
-       balanced" from "this week did not carry enough to read". */
+       reading owns; a void is a 2px DASHED rule in a neutral text-grade token
+       and owns no tone at all. A reader has to be able to tell "this week read
+       as balanced" from "this week did not carry enough to read".
+
+       IT IS DRAWN ON THE MIDLINE, NOT BESIDE IT, and in `--c-muted` rather than
+       the border token. The first draft put a 1px hairline in `--c-hair` one
+       pixel above the always-drawn midline, which is the same token: measured
+       against the painted page it came out at 1.11:1 in light and 1.22:1 in
+       dark, under the 3:1 floor for a non-text mark, and the two hairlines
+       merged into one slightly thicker line. So the mark the header called
+       explicit read as nothing at all. `--c-muted` measures 4.93:1 in light and
+       6.18:1 in dark against the same ground, and sitting ON the midline it
+       replaces that line across the band instead of doubling it. */
     return (
       <span
         data-tone-band="void"
@@ -89,7 +97,7 @@ function Band({ band, index }: { band: ToneBand; index: number }) {
           width: `${width}%`,
           top: `${HALF_TRACK_PX - 1}px`,
           height: 0,
-          borderTop: "1px dashed var(--c-hair)",
+          borderTop: "2px dashed var(--c-muted)",
         }}
       />
     );
@@ -122,13 +130,11 @@ function Band({ band, index }: { band: ToneBand; index: number }) {
 
 export function ToneSeries({ company }: { company: string }) {
   const [outcome, setOutcome] = useState<ReadOutcome>({ phase: "pending", body: null });
-  const [announce, setAnnounce] = useState(false);
 
   useEffect(() => {
     if (!company.trim()) return;
 
     const ctrl = new AbortController();
-    const timer = setTimeout(() => setAnnounce(true), SERIES_PENDING_ANNOUNCE_MS);
 
     (async () => {
       try {
@@ -154,44 +160,39 @@ export function ToneSeries({ company }: { company: string }) {
 
     return () => {
       ctrl.abort();
-      clearTimeout(timer);
     };
   }, [company]);
 
-  const view = toneSeriesView({
-    phase: outcome.phase,
-    body: outcome.body,
-    elapsedMs: announce ? SERIES_PENDING_ANNOUNCE_MS : 0,
-  });
+  const view = toneSeriesView({ phase: outcome.phase, body: outcome.body });
 
   /* NOTHING AT ALL when there is not enough to draw four weeks of. The headline
      a few pixels above has already stated the coverage it has, and a strip of
      empty boxes under it says the same absence a second time in a weaker voice.
-     This is also the pending case before the gate opens: no skeleton, no
-     reserved box. See the note on SERIES_PENDING_ANNOUNCE_MS for why this block
-     reserves nothing while the quote line above it reserves everything. */
-  if (view.kind === "absent") return null;
-  if (view.kind === "pending" && !view.announce) return null;
 
-  const standIn =
-    view.kind === "failed"
-      ? SERIES_FAILED_COPY
-      : view.kind === "pending"
-        ? SERIES_PENDING_COPY
-        : "";
+     AND NOTHING AT ALL WHILE THE READ IS IN FLIGHT, at any duration. An earlier
+     draft drew one line of stand-in copy once the read passed a gate, and that
+     line was a height this block reserved and then threw away: measured on a
+     company that resolves to `absent` under a slow read, the scroll body grew
+     by the line at the gate, held, and collapsed back when the read answered.
+     That is the exact jump the block claims not to cause, landing on the
+     thinnest companies, which are the majority of the cohort that resolves to
+     absent. There is no gate now and no stand-in, so there is nothing to take
+     back: the block occupies zero height until it has something true to draw.
+     `failed` still draws its line, which is an append and never a collapse. */
+  if (view.kind === "absent" || view.kind === "pending") return null;
 
-  if (view.kind !== "drawn") {
+  if (view.kind === "failed") {
     return (
       <div
         data-tone-series=""
-        data-tone-series-kind={view.kind}
+        data-tone-series-kind="failed"
         style={{
           marginTop: "14px",
           font: `400 11.5px/1.25 ${FONT_SANS}`,
           color: "var(--c-secondary)",
         }}
       >
-        {standIn}
+        {SERIES_FAILED_COPY}
       </div>
     );
   }

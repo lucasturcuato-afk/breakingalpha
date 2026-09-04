@@ -420,24 +420,39 @@ export function ToneSection({ data }: { data: CompanyIntelData }) {
           per-mention scoring and the same five-step scale, so the strip and the
           headline cannot tell different stories.
 
-          BELOW THE LEVEL, NEVER ABOVE IT, and that placement is the whole
-          non-regression argument. The quote line that landed at the head of
-          this section pushed the tone level below the fold at 375x667, and the
-          level is the point of this tab. A block drawn under the evidence
-          sentence cannot move the level by a pixel at any width, which is
-          measured in the PR body rather than asserted here. What it does move
-          is the caveat under it, which is the cheapest thing in the section.
+          BELOW THE LEVEL, NEVER ABOVE IT. The quote line that landed at the
+          head of this section pushed the tone level below the fold at 375x667,
+          and the level is the point of this tab. On a top-anchored section a
+          block drawn under the evidence sentence cannot move the level at any
+          width; what it moves is the caveat under it, which is the cheapest
+          thing in the section.
 
-          IT DRAWS ON THE INSUFFICIENT BRANCH TOO, and that is not a bug. A
-          company whose past week is too thin to state a level can still have
-          three readable weeks behind it: State Street carried 1 mention in the
-          current window and 8, 28 and 39 in the three before it. The headline
-          correctly refuses to name a level; the strip shows that a reading
-          existed and has gone quiet, which is a different fact and one this
-          screen previously threw away. When the past four weeks carry fewer
-          than two readable ones the strip renders nothing at all, so the
-          absence is never stated twice. */}
-      <ToneSeries company={data.name} />
+          AND NOT AT ALL IN THE CENTRED SHORT STATE, which is what `shortBody`
+          gates. "Below the level" is NOT enough on its own, and that was the
+          defect. When the section has no level and no rows it takes
+          `SECTION_FILL`, and a centred box splits its slack ABOVE and
+          BELOW what it carries: adding content anywhere inside that section moves
+          the level up by half the height added, whether the block sits inside
+          the fill wrapper or as a sibling after it. Measured on the merge-base
+          build with a 56px stand-in block, at 320 / 375 / 390 / 430: -5.41,
+          -16.95, -25.86, -28.00, and byte-identical for the inside and the
+          outside placement. Moving the block out of the wrapper fixes nothing,
+          because the slack it eats is the section's, not the wrapper's.
+
+          Drawing it out of flow does keep the level at 0.00, and was rejected
+          on measurement too: a zero-height block hangs 16.89px past the bottom
+          of the section box at 430 and 50.59px at 320, into space the section
+          does not own. A block that has to escape its own section to keep a
+          promise is not keeping it.
+
+          So the block draws where the section is top-anchored, which is every
+          company that states a level or carries an article row, and stands down
+          where the section centres. The cost is real and is stated rather than
+          absorbed: on a company with no level AND no rows the past four weeks
+          are not drawn, even when they exist. The level not moving is worth
+          more than the strip on that cohort, because the level is what the tab
+          is for. */}
+      {shortBody ? null : <ToneSeries company={data.name} />}
 
       <p
         style={{
