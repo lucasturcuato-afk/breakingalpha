@@ -266,7 +266,12 @@ describe("toneSeriesView, the copy", () => {
     assert.equal(view.kind, "drawn");
     if (view.kind !== "drawn") return;
     assert.equal(view.caption, "4 weeks, oldest first · 10 mentions");
-    assert.doesNotMatch(view.caption, /%|per cent|percent|rate|accuracy|average|avg/i);
+    /* A CLOSED SHAPE, not a list of forbidden words. An earlier draft spelled
+       the words a caption may not carry into a blocklist regex, and the design
+       lint flagged the assertion line itself. Pinning the whole caption to one
+       pattern is the stronger check anyway: the only figures it can carry are
+       two integers, so nothing divided can reach it. */
+    assert.match(view.caption, /^\d+ weeks, oldest first · \d+ mentions$/);
   });
 
   it("read-out names every week in the order drawn", () => {
