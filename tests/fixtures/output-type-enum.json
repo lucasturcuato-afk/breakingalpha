@@ -1,0 +1,30 @@
+{
+  "_comment": "Snapshot of public.output_type_enum. `observed` is written by Postgres via scripts/capture-output-type-enum.mjs (read-only OpenAPI introspection); do not hand-edit it. `pending` is hand-declared for members a committed-but-unapplied migration adds; each entry must be backed by a real migration file, which src/lib/outputs.enum.test.ts verifies.",
+  "captured_at": "2026-09-03",
+  "source": "GET /rest/v1/ -> definitions.outputs.properties.output_type.enum",
+  "observed": [
+    "memo",
+    "brief",
+    "brief_cluster",
+    "chat_answer",
+    "thesis",
+    "thesis_grade",
+    "contrarian_signal",
+    "deal_extraction",
+    "user_addendum",
+    "mention_alert",
+    "cross_reference",
+    "brief_section",
+    "sec_filing",
+    "insider_transaction",
+    "radar_clusters",
+    "radar_cluster_label"
+  ],
+  "pending": [
+    {
+      "value": "company_overview",
+      "migration": "20260903143000_add_company_overview_output_type.sql",
+      "why": "Coverage Primer overview cache. Listed in OUTPUT_TYPES since the Primer shipped but never added to the enum, so every cache write 22P02'd and every page view re-billed Gemini. Move to `observed` by re-running scripts/capture-output-type-enum.mjs once the migration is applied."
+    }
+  ]
+}
