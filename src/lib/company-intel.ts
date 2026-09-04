@@ -747,7 +747,7 @@ export function titleNamesCompany(title: string, cosRaw: string[], name: string)
        what the headline said, which made `isMaterialCounterparty` permanently
        false for that whole population and quietly dropped their counterparty
        M&A coverage. Measured against the corpus, that population is not a
-       rounding error: hundreds of rows sit under the floor, and the head of it
+       rounding error: a large share of rows sits under the floor, and the head of it
        is names any reader would expect to work.
 
        WHY NOT JUST LOWER THE FLOOR. Because it is the same cure #816 already
@@ -755,7 +755,7 @@ export function titleNamesCompany(title: string, cosRaw: string[], name: string)
        from the corpus, and they answer two different questions.
 
        Dropping the floor from the FIRST branch, which is not tag-gated, fires
-       on the wrong company more than a thousand times over pairs built from the
+       on the wrong company far more often than it helps, over pairs built from the
        corpus: "Meta" reads out of "Rheinmetall" and "Metals X", "AMD" reads out
        of "Camden National".
 

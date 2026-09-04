@@ -86,9 +86,10 @@ function escapeLikePattern(value: string): string {
  * `matchesCanonical`, and it is why a name that IS in the corpus renders "not
  * on Signalera".
  *
- * Measured read-only against the corpus before this change: 13.0% of rows could
- * not be reached from the slug the Company Intel index builds for them. Every
- * one of those was this asymmetry or the slug round-trip below.
+ * Measured read-only against the corpus before this change: a meaningful share
+ * of rows could not be reached from the slug the Company Intel index builds
+ * for them. Every one of those was this asymmetry or the slug round-trip
+ * below.
  *
  * WHAT THE KEY ABSORBS, and nothing else:
  *   - case, which `ilike` already handled
