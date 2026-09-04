@@ -353,6 +353,27 @@ export function MobileSettingsScreen(props: MobileSettingsScreenProps) {
             href="/radar/calls"
             label="Prepared record"
             sub="Your own entries, complete and uncurated"
+          />
+          {/* THE ONLY DELIBERATE PHONE PATH TO THE LEGAL DOCUMENTS.
+              `mobileFullBleed` gates the desk footer to `hidden md:block` on 26
+              routes, all four poles included, so the footer's Terms, Privacy
+              and Support links are in the DOM at 0x0 and tappable on none of
+              them. Measured before this row, the one path that worked ran
+              through `/radar/following`, which kept its footer only because it
+              is absent from the redirect map, and that exemption is one PR from
+              being closed. This row does not depend on it.
+
+              It points at the hub rather than at Terms because the reader who
+              wants Privacy should not have to arrive at Terms and find a 17.6px
+              footer link.
+
+              This is NOT the informational line further down this screen. That
+              line states what the product is; this row is navigation. Neither
+              replaces the other and the line is untouched. */}
+          <ListRowLink
+            href="/legal"
+            label="Legal"
+            sub="Terms, privacy and support"
             bottomRule
           />
           <ListRowButton label="Sign out" onClick={props.onSignOut} chevron={false} topRule={false} />

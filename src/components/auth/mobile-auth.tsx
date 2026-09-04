@@ -11,6 +11,7 @@ import {
   GoogleMark,
   Wordmark,
 } from "@/components/mobile/primitives";
+import { LegalLink } from "@/components/auth/legal-link";
 
 /* ══════════════════════════════════════════════════════════════════════
    Sign in, mobile. Prototype flag `isSignin`.
@@ -554,8 +555,13 @@ export function MobileAuth({
                 textWrap: "pretty",
               }}
             >
-              By continuing, you agree to Signalera{"’"}s Terms of Service and Privacy
-              Policy.
+              {/* The two documents are openable from the sentence that binds
+                  the reader to them. `legal-link.tsx` carries the hit area, and
+                  it is the same component the desktop layout uses, so the two
+                  cannot drift into two destinations. */}
+              By continuing, you agree to Signalera{"’"}s{" "}
+              <LegalLink href="/legal/terms">Terms of Service</LegalLink> and{" "}
+              <LegalLink href="/legal/privacy">Privacy Policy</LegalLink>.
             </p>
 
             <div
