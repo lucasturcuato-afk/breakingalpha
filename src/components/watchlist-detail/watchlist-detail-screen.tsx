@@ -520,10 +520,15 @@ export function WatchlistDetailScreen(props: WatchlistDetailScreenProps) {
               </>
             ) : (
               <>
+                {/* THE SECTOR WORDING IS NOT THE COMPANY WORDING. The desk
+                    writes two prompts and this line described only one of
+                    them, so a sector read "what the company is" over a
+                    vertical. Measured on `/watchlist/Technology`. */}
                 <Line top={12}>
                   A research note on {identifier}, written from the {storyCount}{" "}
-                  {storyCount === 1 ? "story" : "stories"} below: what the company is, what has
-                  moved, what to watch. AI-generated, and not financial advice.
+                  {storyCount === 1 ? "story" : "stories"} below:{" "}
+                  {isSector ? "what is moving in it" : "what the business is, what has moved"}, and
+                  what to watch. AI-generated, and not financial advice.
                 </Line>
                 <div style={{ marginTop: "12px" }}>
                   <PrimaryButton
@@ -842,14 +847,18 @@ export function WatchlistDetailScreen(props: WatchlistDetailScreenProps) {
                               href={o.url}
                               target="_blank"
                               rel="noopener noreferrer"
+                              /* 44 in BOTH axes. The drawn word is 28px wide,
+                                 so the horizontal padding is taken back the
+                                 same way the vertical is. */
                               style={{
                                 boxSizing: "content-box",
                                 marginLeft: "auto",
+                                minWidth: "28px",
                                 minHeight: "16px",
-                                padding: "14px 0",
-                                marginTop: "-14px",
-                                marginBottom: "-14px",
+                                padding: "14px 8px",
+                                margin: "-14px -8px -14px auto",
                                 display: "inline-flex",
+                                justifyContent: "flex-end",
                                 alignItems: "center",
                                 font: `600 11px/1 ${FONT_SANS}`,
                                 color: "var(--c-goldink)",
