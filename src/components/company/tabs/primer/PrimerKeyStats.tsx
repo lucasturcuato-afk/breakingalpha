@@ -88,9 +88,9 @@ function fmtEarningsDate(v: number | null): string | null {
 function fmtEarningsSurprise(
   v: QuoteSummaryLive["lastEarnings"],
 ): string | null {
-  const pct = v?.surprisePct;
-  if (pct == null || !Number.isFinite(pct)) return null;
-  const rounded = Math.round(pct * 100 * 100) / 100;
+  const surprise = v?.surprisePct;
+  if (surprise == null || !Number.isFinite(surprise)) return null;
+  const rounded = Math.round(surprise * 100 * 100) / 100;
   return `${rounded > 0 ? "+" : ""}${rounded.toFixed(2)}%`;
 }
 
