@@ -1,6 +1,6 @@
 "use client";
 
-import { BackHeader, ListRowControl, Screen, ScreenBody, ToggleSwitch } from "@/components/mobile";
+import { BackHeader, ListRowControl, Screen, ScreenBody, TabBarClearance, ToggleSwitch } from "@/components/mobile";
 import { FONT_DISPLAY, FONT_MONO, FONT_SANS } from "@/components/mobile/fonts";
 
 /**
@@ -207,6 +207,21 @@ export function AlertsView() {
           </p>
         </div>
       </ScreenBody>
+
+      {/* The tab bar's height, as the LAST CHILD OF THE SCREEN ROOT, which is
+          where the shared module says it belongs.
+
+          The shell already puts the same expression on `#main-content`
+          (`app-shell.tsx:178`) and Chrome drops a scroll container's bottom
+          padding once its content overflows. Measured on this screen at 320
+          after the shell was mounted and before this element: `#main-content`
+          scrollHeight and the screen root agreed exactly, so the padding
+          contributed nothing and the closing card's last rule sat inside the
+          bar's band. `Screen` is a flex column, so a `flex: none` block here
+          takes its 59px out of `ScreenBody`'s share rather than being scrolled
+          past. It is the shared declaration and not a sixth copy of it;
+          `tests/unit/tab-bar-clearance.test.ts` enforces that. */}
+      <TabBarClearance />
     </Screen>
   );
 }

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { BackHeader, Screen, ScreenBody } from "@/components/mobile";
+import { BackHeader, Screen, ScreenBody, TabBarClearance } from "@/components/mobile";
 import styles from "@/components/mobile/mobile.module.css";
 import { FONT_DISPLAY, FONT_MONO, FONT_SANS } from "@/components/mobile/fonts";
 
@@ -196,6 +196,22 @@ export function MobileLearnedScreen({
             runs on a page VISIT rather than per reading session, and the result
             is then discarded because there is no column to keep it in. */}
       </ScreenBody>
+
+      {/* The tab bar's height, as the LAST CHILD OF THE SCREEN ROOT, which is
+          where the shared module says it belongs.
+
+          The shell already puts the same expression on `#main-content`
+          (`app-shell.tsx:178`) and Chrome drops a scroll container's bottom
+          padding once its content overflows. Measured on the sibling
+          `/settings/profile`, which has carried the shell for longer and has
+          no clearance: at 390 its `#main-content` reports scrollHeight 1741
+          against a root of 1741, so the 59px of padding contributed nothing
+          and the last 35px of drawn content sits under a bar whose top edge is
+          785. This screen is the same anatomy and would land the same way, so
+          it takes the shared declaration rather than the defect. `Screen` is a
+          flex column, so `flex: none` here takes the 59px out of
+          `ScreenBody`'s share instead of being scrolled past. */}
+      <TabBarClearance />
     </Screen>
   );
 }

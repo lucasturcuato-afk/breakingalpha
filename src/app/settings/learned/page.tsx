@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { AppShell } from "@/components/shell";
 import { getSupabaseWithUser } from "@/lib/supabase-server";
 import { getUserProfile, updateInferredWeights } from "@/lib/user-profile";
 import { MobileLearnedScreen } from "@/components/settings/mobile-learned-screen";
@@ -15,6 +16,30 @@ import { FONT_DISPLAY, FONT_SANS } from "@/components/mobile/fonts";
  * renders identically to a genuine zero. The failure is carried through here
  * instead, so the screen can say the numbers are stale rather than imply the
  * user has done nothing.
+ *
+ * THE SHELL, AND WHY IT WAS MISSING. This route and `/settings/alerts` were
+ * the only two `/settings/*` pages that mounted no `AppShell` at all. Measured
+ * on a production build at 320 and 390 in both themes before this change:
+ * `#main-content` did not exist, `nav[aria-label="Primary"]` did not exist,
+ * and all four poles were absent from the DOM, so a reader who tapped through
+ * to this screen had exactly one control on it, the back link, and no way to
+ * reach any pole. It is worse than the navigation trap `/settings/profile`
+ * carried, because a trap leaves the poles present and unclickable while this
+ * never drew them.
+ *
+ * `mobileFullBleed` is the mechanism, and it is `profile`'s and
+ * `trends-mobile`'s, not a third one: it gates the desk's mood bar, topbar and
+ * footer below `md` and leaves the tab bar mounted, so the screen keeps its
+ * own masthead and gains its navigation. Gating stays in CLASSES on the two
+ * wrappers below.
+ *
+ * WHAT THIS DOES CHANGE AT `md` AND ABOVE, stated rather than buried: the desk
+ * message below now renders inside the desk shell, with the sidebar, topbar
+ * and footer around it. It had none of those before. `AppShell` mounts the
+ * sidebar at `md+` unconditionally, so there is no way to give a phone the tab
+ * bar through this component without also giving the desk its own chrome, and
+ * `/trends-mobile` already ships exactly this shape for the same kind of page.
+ * The message itself is unchanged, word for word.
  */
 
 export const dynamic = "force-dynamic";
@@ -79,7 +104,7 @@ export default async function LearnedPage() {
   const updatedAt = storedAt ? new Date(storedAt).toLocaleString() : null;
 
   return (
-    <>
+    <AppShell pageTitle="What Signalera has learned" mobileFullBleed>
       <div className="md:hidden">
         <MobileLearnedScreen
           weights={sorted}
@@ -110,6 +135,6 @@ export default async function LearnedPage() {
           .
         </p>
       </div>
-    </>
+    </AppShell>
   );
 }
