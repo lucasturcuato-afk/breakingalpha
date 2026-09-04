@@ -299,6 +299,22 @@ export function MobileSettingsScreen(props: MobileSettingsScreenProps) {
               </button>
             }
           />
+          {/* THE PORT'S ONLY WAY IN. `/settings/preferences` now has a phone
+              layout, and before this row nothing on any mobile surface pointed
+              at it: the hub carried five rows and none of them was this one, so
+              the screen was reachable only by typing the URL.
+
+              It is NOT called "Your preferences". This hub's own masthead
+              already says that, and two rows deep in one product cannot both
+              be the preferences. The row is named for what it adds beyond this
+              screen, and the sub lists three of the four groups only that
+              route has. The collision between the two mastheads is real and is
+              flagged in the PR rather than fixed from here. */}
+          <ListRowLink
+            href="/settings/preferences"
+            label="More preferences"
+            sub="Strategy, horizon, workflow and dashboard cards"
+          />
           <ListRowLink
             href="/settings/learned"
             label="What Signalera has learned"

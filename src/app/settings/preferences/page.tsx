@@ -47,9 +47,23 @@ export default async function PreferencesPage() {
   const updatedAt = storedAt ? new Date(storedAt).toLocaleString() : null;
 
   return (
-    <AppShell pageTitle="Preferences">
-      <div className="max-w-3xl mx-auto px-6 py-10">
-        <header className="mb-8">
+    /* `mobileFullBleed` gates the desk's mood bar, topbar and footer out below
+       `md` and leaves the tab bar mounted, which is most of this port.
+       Measured on this route at 390 before it was set: `#main-content` had a
+       634px window onto 3297px of content, the footer was drawn inside that
+       window, and its last line ran under a tab bar whose top edge is 785 on an
+       844 viewport. The flag is the same one `/settings/profile`, `/ledger`,
+       `/saved` and twenty other screens already set; desktop is untouched at
+       every width. */
+    <AppShell pageTitle="Preferences" mobileFullBleed>
+      {/* THE WRAPPER'S PADDING IS DESK PADDING, so it is gated in classes with
+          the rest of the desk layout rather than removed. At `md` and above
+          every one of these resolves to exactly what it was: max-w-3xl,
+          mx-auto, px-6, py-10. Below `md` the wrapper generates a plain block
+          and the mobile screen inside `PreferencesForm` draws full bleed, with
+          its own `var(--v3-pad)` gutter. */}
+      <div className="mx-auto max-w-none px-0 py-0 md:max-w-3xl md:px-6 md:py-10">
+        <header className="mb-8 hidden md:block">
           <p className="font-sans text-[11px] font-semibold text-text-muted mb-1">
             Settings
           </p>
@@ -86,6 +100,17 @@ export default async function PreferencesPage() {
           initialMarketCards={profile.market_cards ?? undefined}
         />
 
+        {/* The read-only half of the page is DESK ONLY, and that is a
+            deliberate deletion rather than an omission.
+
+            `/settings/learned` already exists as a full mobile screen. It
+            renders these same weights, and it carries the honest reading of
+            whether anything is stored at all, which this section only
+            half-carries. Drawing them a second time here would put one truth
+            in two renderings, and the two would disagree the first time either
+            moved. The mobile screen links at that route by the same label and
+            the same sub the hub already uses. */}
+        <div className="hidden md:block">
         {/* Divider */}
         <div className="border-t border-border-base my-8" />
 
@@ -156,6 +181,7 @@ export default async function PreferencesPage() {
         {/* Behavioral insights */}
         <div className="mb-6">
           <BehavioralInsights />
+        </div>
         </div>
 
         {/* Removed, same reason as the mobile screen: the recompute runs on a page
