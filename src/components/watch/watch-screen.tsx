@@ -22,6 +22,9 @@ import type {
    The rule the import beside it obeys is about `fixture.ts`'s invented prose
    reaching `.next/static`; this is the opposite of invented. */
 import { WATCH_OMISSIONS } from "./omissions";
+/* The add control. A wrapper around the desk's own `WatchlistAddInput`, which
+   it imports by reference and does not modify. See `watch-add.tsx`. */
+import { WatchAdd } from "./watch-add";
 import styles from "./watch.module.css";
 import { FONT_DISPLAY, FONT_MONO, FONT_SANS } from "@/components/mobile/fonts";
 import { TabBarClearance } from "@/components/mobile/tab-bar-clearance";
@@ -116,10 +119,40 @@ const SLACK_LEAD = 0;
 const SLACK_BODY = 8;
 const SLACK_TAIL = 1;
 
-/** Where a reader adds names and follows. `/watch` has no add affordance. */
-const WATCHLIST_DESK = "/radar/watchlist";
+/*
+ * ONE DESK LINK IS GONE AND ONE SURVIVES, AND THE DIFFERENCE IS THE WHOLE POINT.
+ *
+ * Both tiers used to carry an `action` on their empty state pointing at the desk
+ * that could do what this screen could not: `WATCHLIST_DESK = "/radar/watchlist"`
+ * and `FOLLOWING_DESK = "/radar/following"`. Until this branch both were the
+ * honest answer.
+ *
+ * `src/components/mobile/desk-redirect.tsx` now sends `/radar/watchlist` to this
+ * screen below `md`. That turned the WATCHLIST link into a closed circle: the
+ * reader taps "Open the watchlist desk", the desk route sends them to
+ * `/watch/watchlist`, and they arrive back on the empty state they tapped out
+ * of. Two navigations, no movement, no way to tell anything happened.
+ *
+ *   watchlist  THE LINK IS GONE and `WatchAdd` replaces it. The circle is closed
+ *              by making the destination unnecessary rather than by pointing the
+ *              link somewhere else. The copy no longer says names are added "on
+ *              the desk", because they are added here.
+ *   following  THE LINK STAYS, UNCHANGED. `/radar/following` is exempt from the
+ *              redirect, so it is still a real route that still renders at every
+ *              width, and it is still the only surface in the app that writes a
+ *              follow. Nothing about it loops: it is not in the redirect map, so
+ *              tapping through lands on the desk and stays there.
+ *
+ * THIS WAS BRIEFLY WRITTEN THE OTHER WAY and the record matters, because the
+ * copy here changed twice. While `/radar/following` was still in the redirect
+ * map, this empty state drew no action at all and read "Follows are set up on a
+ * wider screen", which was the only truthful thing to say when the desk was
+ * about to become unreachable and nothing here could replace it. The owner's ruling of
+ * 2026-09-03 exempted that route precisely so the capability would survive, so
+ * the sentence that described its loss is wrong again and the original is
+ * restored verbatim.
+ */
 const FOLLOWING_DESK = "/radar/following";
-
 /**
  * Small counts are spelled, matching the design's own prose. Above twelve the
  * numeral reads better and the design never draws one. Either way the word is
@@ -276,6 +309,33 @@ export function WatchScreen({
     [data],
   );
   const quotes = useQuotes(tickers);
+
+  /**
+   * What the add control greys out as already tracked.
+   *
+   * Folded from the three lists the loader already handed down rather than read
+   * again: entries that produced articles, entries that were quiet, and entries
+   * whose article read faulted. Between them that is every watchlist row this
+   * screen was told about, and no new query is made to build it.
+   *
+   * It can still be short of the table, because these lists are what the
+   * article read answered for. A row it misses is simply not greyed; the reader
+   * taps it and the API answers with its own duplicate sentence, which the
+   * wrapper draws. Under-greying costs a round trip. Over-greying would tell a
+   * reader they already track something they do not, so the incomplete
+   * direction is the safe one.
+   */
+  const trackedIdentifiers = useMemo(
+    () =>
+      data === null
+        ? []
+        : [
+            ...data.watchlist.map((i) => i.identifier),
+            ...data.quietNames,
+            ...data.watchlistCouldNotRead,
+          ],
+    [data],
+  );
 
   const loading = stage === "loading";
   const stale = stage === "stale";
@@ -546,10 +606,14 @@ export function WatchScreen({
             {data.watchlist.length === 0 &&
             data.quietNames.length === 0 &&
             data.watchlistCouldNotRead.length === 0 ? (
-              <WatchNotice
-                body="Nothing on your watchlist yet. Names, private companies and industries are added on the desk."
-                action={{ href: WATCHLIST_DESK, label: "Open the watchlist desk" }}
-              />
+              /* THE COPY CHANGED WITH THE CONTROL. It used to end "are added
+                 on the desk", which was true when this screen could not add
+                 anything and is now false: they are added here, on the control
+                 directly below this notice. A sentence sending a reader to a
+                 desk they cannot reach from a phone would be the loop this
+                 unit exists to remove, written in prose instead of in an
+                 `action`. */
+              <WatchNotice body="Nothing on your watchlist yet. Add a name, a private company or an industry and its news arrives here." />
             ) : visible.length === 0 && data.watchlist.length > 0 ? (
               <WatchNotice body="Nothing tracked under this filter yet." />
             ) : null}
@@ -569,6 +633,22 @@ export function WatchScreen({
             ) : null}
 
             {quietVisible ? <QuietLine names={data.quietNames} shown={data.quietShown} /> : null}
+
+            {/* THE ADD CONTROL, and it sits inside `!loading && !watchlistFailed`
+                on purpose. A tier whose read faulted draws its failure and
+                nothing else: offering to add a name underneath a notice saying
+                the list could not be read invites a reader to write into a
+                surface that cannot show them the result.
+
+                OPEN ON AN EMPTY TIER, CLOSED OTHERWISE. With nothing on the
+                list this control is the only useful thing on the screen and a
+                closed disclosure would put one tap between the reader and the
+                only action there is. With a list drawn, the list is what they
+                came for and the control waits under it. */}
+            <WatchAdd
+              trackedIdentifiers={trackedIdentifiers}
+              defaultOpen={data.watchlist.length === 0 && data.quietNames.length === 0}
+            />
           </>
         ) : null}
         </>
@@ -609,6 +689,12 @@ export function WatchScreen({
               <ThemeCluster key={cluster.id} cluster={cluster} first={i === 0} />
             ))}
             {followingEmpty ? (
+              /* THE ACTION IS INTACT, and it is the one desk link on this
+                 screen that is still true. `/radar/following` is exempt from
+                 the redirect map, so this goes to the desk and stays there. It
+                 is also the only place in the app a follow can be created, so
+                 dropping it would take a phone reader's last route to the
+                 capability away for no gain. */
               <WatchNotice
                 body="You follow nothing yet. Themes, companies and people are followed on the desk."
                 action={{ href: FOLLOWING_DESK, label: "Open the following desk" }}

@@ -3,6 +3,7 @@ import { Fraunces, Space_Grotesk, IBM_Plex_Mono } from "next/font/google";
 import { ThemeProvider } from "@/components/providers/theme-provider";
 import { UserProfileProvider } from "@/hooks/useUserProfile";
 import { SignaleraTour, TourHelpButton } from "@/components/tour/SignaleraTour";
+import { DeskRedirect } from "@/components/mobile/desk-redirect";
 import "./globals.css";
 
 // Three-part type system:
@@ -91,6 +92,13 @@ export default function RootLayout({
       >
         <ThemeProvider>
           <UserProfileProvider>
+            {/* MOUNTED BEFORE `children`, so the cover and the rule that hides
+                `#main-content` are in the stream ahead of the element they act
+                on. The `:has()` selector is order-independent, but arriving
+                first means the rule is already resolved when the main element
+                is parsed, so it has no first layout at phone width rather than
+                one that is then undone. */}
+            <DeskRedirect />
             {children}
             <SignaleraTour />
             <TourHelpButton />

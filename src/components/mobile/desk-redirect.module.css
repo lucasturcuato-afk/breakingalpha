@@ -1,0 +1,60 @@
+/*
+ * The cover a desk route wears below `md` while it is being left.
+ *
+ * WHY THIS IS CSS AND NOT AN EFFECT. A client effect that navigates has already
+ * let the desk screen paint: the effect runs after commit, so the first frame is
+ * the desk layout at phone width, which is the exact frame this unit exists to
+ * remove. The rules below are in the server-rendered HTML, so they are in force
+ * on the FIRST style resolution, before any of the route's own boxes are laid
+ * out. No frame of the desk screen is ever composited.
+ *
+ * TWO RULES, AND EACH ONE ALONE IS NOT ENOUGH.
+ *
+ *   the cover     paints the app background over the viewport, so the reader
+ *                 sees a settled surface rather than whatever the shell paints
+ *                 under a missing main element.
+ *   the :has()    takes the route's own content out of layout entirely. The
+ *                 cover alone is a z-index argument, and a desk screen with a
+ *                 sticky head above `z-index: 30` would poke through it. A
+ *                 subtree that is `display: none` cannot paint at any depth.
+ *
+ * THE COVER SITS UNDER THE TAB BAR, at 30 against the bar's 40, deliberately.
+ * The bar is the one piece of chrome that is identical on the desk route and on
+ * the twin, and it lives outside `#main-content`. Painting over it would blink
+ * it out and back for the length of the navigation, which reads as a reload.
+ * Under it, the bar is continuous across the whole redirect and stays tappable,
+ * because hit testing follows paint order.
+ *
+ * THE QUERY IS THE `md` BREAKPOINT AND IT IS WRITTEN ONCE MORE IN THE TSX.
+ * `desk-redirect.tsx` matches the same width to decide whether to navigate at
+ * all, and the two have to agree: a width where this file hides the screen but
+ * the module does not navigate is a blank page. The constant there names this
+ * file as its pair.
+ */
+
+.cover {
+  position: fixed;
+  inset: 0;
+  /* Under the tab bar (40) and over everything the route draws. */
+  z-index: 30;
+  background-color: var(--c-bg);
+  /* Above `md` this element renders and does nothing at all. Gating the paint
+     in a media query rather than in the component keeps the desktop render free
+     of a width branch that would have to hydrate before it settled. */
+  display: none;
+}
+
+@media (max-width: 767.98px) {
+  .cover {
+    display: block;
+  }
+
+  /*
+   * Keyed on the data attribute rather than on the hashed class, so the rule
+   * states its own condition: this applies exactly while a cover is mounted,
+   * which is exactly while a redirect is in flight.
+   */
+  :global(body:has([data-desk-redirect]) #main-content) {
+    display: none;
+  }
+}

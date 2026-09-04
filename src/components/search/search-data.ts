@@ -37,8 +37,8 @@ import type { OutcomeState } from "@/components/ledger/claim-anatomy";
  *                  destination. Drawing it here as a first-class row would
  *                  reinstate a surface the product demoted.
  *
- * Every href below resolves to a route that exists on this branch. THREE ROWS
- * are not a plain copy of the palette, and they are not the same case: two
+ * Every href below resolves to a route that exists on this branch. FIVE ROWS
+ * are not a plain copy of the palette, and they are not the same case: four
  * differ from the palette's href, one differs from the prototype instead.
  *
  * DIFFER FROM THE PALETTE:
@@ -54,6 +54,20 @@ import type { OutcomeState } from "@/components/ledger/claim-anatomy";
  *                  in the Ask pole's `owns` list, so the pole still lights.
  *                  The desk page keeps its route; it is simply not where a
  *                  phone reader should be dropped.
+ *   Watchlist      the palette sends this to /radar/watchlist, the desk. The
+ *                  mobile watchlist is /watch/watchlist, which is where the
+ *                  desk route now sends a phone anyway. IT IS NOT /watch.
+ *                  PR #790 split mobile Radar into four sections and the bare
+ *                  path kept Following, so /watch would land a reader who
+ *                  asked for their watchlist on the wrong section.
+ *   Company Intel  the palette sends this to /company, the desk directory,
+ *                  which draws no mobile treatment. /ask is the twin.
+ *
+ * THE LAST TWO ARE NOT DECORATION. `src/components/mobile/desk-redirect.tsx`
+ * now sends both desk routes to exactly these twins below `md`, so a row left
+ * pointing at the desk would still arrive, by way of a redirect it did not need
+ * to spend a navigation on. Pointing straight at the twin costs one hop less
+ * and keeps this table honest about where a phone reader ends up.
  *
  * DIFFERS FROM THE PROTOTYPE, AND KEEPS THE PALETTE'S HREF:
  *
@@ -63,6 +77,14 @@ import type { OutcomeState } from "@/components/ledger/claim-anatomy";
  *                  `command-palette.tsx` this row is character-identical
  *                  (/radar/calls?views=open); it is listed here because it is
  *                  a deviation from the design, not from the palette.
+ *
+ *                  IT IS DELIBERATELY NOT REPOINTED at /watch/calls, which
+ *                  exists and is the mobile section for the same rows. The
+ *                  href carries `?views=open`, and `src/app/watch/calls/page.tsx`
+ *                  takes no searchParams, so the swap would silently drop the
+ *                  filter this row is named after. /radar/calls is also not one
+ *                  of the routes `desk-redirect.tsx` sends anywhere, so
+ *                  nothing about this row loops. Left alone on purpose.
  */
 
 export type JumpRow = { label: string; href: string };
@@ -84,9 +106,9 @@ export const JUMP_GROUPS: JumpGroup[] = [
     rows: [
       { label: "Tracked Views", href: "/radar/calls?views=open" },
       { label: "Deal Flow", href: "/deal-flow" },
-      { label: "Watchlist", href: "/radar/watchlist" },
+      { label: "Watchlist", href: "/watch/watchlist" },
       { label: "Trends", href: "/trends-mobile" },
-      { label: "Company Intel", href: "/company" },
+      { label: "Company Intel", href: "/ask" },
     ],
   },
 ];
