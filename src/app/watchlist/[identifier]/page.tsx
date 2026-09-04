@@ -17,6 +17,11 @@ import { isBriefFresh } from "@/lib/watchlist-brief-ttl";
 import { clusterArticles, type ArticleCluster } from "@/lib/clustering-utils";
 import { MoreSourcesDisclosure } from "@/components/shared/more-sources-disclosure";
 import { useLiveMood } from "@/hooks/useLiveMood";
+import {
+  WatchlistDetailScreen,
+  type AlertRow,
+  type CoverageStory,
+} from "@/components/watchlist-detail/watchlist-detail-screen";
 
 function getSupabase() {
   return createBrowserClient(
@@ -174,6 +179,18 @@ export default function WatchlistIdentifierPage({
   const [alertsLoading, setAlertsLoading] = useState(true);
   const [alertType, setAlertType] = useState<"percent_change" | "price_above" | "price_below">("percent_change");
   const [alertThreshold, setAlertThreshold] = useState("");
+  /* THE WRITE'S OWN TWO STATES, and they are new.
+   *
+   * `handleAddAlert` adds the row optimistically and REMOVES IT AGAIN when the
+   * POST does not answer, saying nothing. On a desk that reads as a flicker; on
+   * a phone, where the control is the point of the screen, it reads as a tap
+   * the browser dropped. Neither state has a consumer in the desk tree below,
+   * so the desk renders exactly as it did.
+   *
+   * This is the WRITE, not the read. The read's own empty-versus-failed defect
+   * is reported in the PR body and deliberately not fixed here. */
+  const [alertSubmitting, setAlertSubmitting] = useState(false);
+  const [alertFailed, setAlertFailed] = useState(false);
 
   const handleBriefGenerated = async (text: string) => {
     setBriefGeneratedAt(new Date());
@@ -495,6 +512,8 @@ export default function WatchlistIdentifierPage({
     };
     setAlerts((prev) => [...prev, optimisticAlert]);
     setAlertThreshold("");
+    setAlertFailed(false);
+    setAlertSubmitting(true);
     try {
       const res = await fetch("/api/watchlist-alerts", {
         method: "POST",
@@ -506,9 +525,13 @@ export default function WatchlistIdentifierPage({
         setAlerts((prev) => prev.map((a) => a.id === optimisticAlert.id ? json.alert : a));
       } else {
         setAlerts((prev) => prev.filter((a) => a.id !== optimisticAlert.id));
+        setAlertFailed(true);
       }
     } catch {
       setAlerts((prev) => prev.filter((a) => a.id !== optimisticAlert.id));
+      setAlertFailed(true);
+    } finally {
+      setAlertSubmitting(false);
     }
   }, [decoded, alertType, alertThreshold]);
 
@@ -712,12 +735,84 @@ Constraints:
     setSelectedArticleIndex(null);
   }, [sortMode]);
 
+  /* ══════════════════════════════════════════════════════════════════
+     THE PHONE VIEW MODEL.
+     ══════════════════════════════════════════════════════════════════
+     Everything below maps state this component already holds onto the
+     props `WatchlistDetailScreen` takes. There is NO second read: the
+     phone screen and the desk tree are two renderings of one load, which
+     is why this is a mapping and not a loader.
+
+     `/company/[id]` had to gate its desk tree's MOUNT because that tree
+     fires six client fetches of its own inside `display: none`. This
+     route's reads all live here, above both trees, so there is nothing
+     for a gate to save and both trees are simply rendered, one of them
+     inside a `display: none` class.
+     ══════════════════════════════════════════════════════════════════ */
+  const articleById = useMemo(
+    () => new Map(articles.map((a) => [a.id, a] as const)),
+    [articles],
+  );
+
+  const phoneAlerts: AlertRow[] = useMemo(
+    () =>
+      alerts.map((a) => ({
+        id: a.id,
+        kindLabel:
+          a.alert_type === "percent_change"
+            ? "% move"
+            : a.alert_type === "price_above"
+              ? "Above $"
+              : "Below $",
+        valueLabel:
+          a.alert_type === "percent_change" ? `${a.threshold}%` : `$${a.threshold}`,
+        enabled: a.enabled,
+      })),
+    [alerts],
+  );
+
+  const phoneStories: CoverageStory[] = useMemo(
+    () =>
+      clusters.map((c) => ({
+        id: c.leadArticle.id,
+        title: c.leadArticle.title,
+        summary: c.leadArticle.summary,
+        source: c.leadArticle.source,
+        url: c.leadArticle.url,
+        when: c.leadArticle.published_at ? timeAgo(c.leadArticle.published_at) : null,
+        tags: [
+          ...(c.leadArticle.industry_verticals ?? []),
+          ...(c.leadArticle.activity_types ?? []),
+        ],
+        others: c.relatedArticles.map((r) => ({
+          id: r.id,
+          title: r.title,
+          source: r.source,
+          url: r.url,
+          when: r.published_at ? timeAgo(r.published_at) : null,
+        })),
+      })),
+    [clusters],
+  );
+
+  /* One gate, spelled once. Every phone control that a signed-out reader
+     cannot complete routes through this rather than restating the modal
+     copy at each call site. Returns true when the caller must stop. */
+  const stopIfSignedOut = (headline: string, message: string): boolean => {
+    if (user !== null) return false;
+    setSignInHeadline(headline);
+    setSignInMessage(message);
+    setShowSignIn(true);
+    return true;
+  };
+
   return (
     <AppShell
       pageTitle={decoded}
       mood={mood}
       moodHeadline={moodHeadline}
       moodDetails={moodDetails}
+      mobileFullBleed
     >
       <style>{`
   @media print {
@@ -725,8 +820,102 @@ Constraints:
     body { background: white !important; }
     #company-print-content { display: block !important; }
     .p-6.max-w-\\[1100px\\] { display: none !important; }
+    [data-watchlist-detail] { display: none !important; }
   }
 `}</style>
+
+      {/* ── Phone ────────────────────────────────────────────────────────
+          Gated in a CLASS and never in an inline style: an inline display
+          beats the class at every breakpoint, which is design-lint rule 10.
+
+          `h-full` is load bearing and is also a class. The screen root
+          carries `minHeight: 100%`, which resolves against this wrapper;
+          without a definite height here the percentage resolves to nothing,
+          a short screen ends at its content, and `#main-content`'s own
+          ground shows below it as a hard seam. The same measured comment
+          stands on `/watch`, `/ledger` and `/desk-record`. */}
+      <div className="md:hidden h-full">
+        <WatchlistDetailScreen
+          identifier={decoded}
+          displayName={storedDisplayName ?? LEGACY_TICKER_NAMES[decoded.toUpperCase()] ?? null}
+          kind={typeLabel}
+          reader={user === undefined ? "pending" : user === null ? "out" : "in"}
+          onSignIn={(headline, message) => {
+            setSignInHeadline(headline);
+            setSignInMessage(message);
+            setShowSignIn(true);
+          }}
+          quote={quote}
+          quoteRefreshing={quoteRefreshing}
+          onRefreshQuote={refreshQuote}
+          loading={loading}
+          storyCount={articles.length}
+          hasCachedBrief={!!cachedBriefText}
+          cachedBriefAge={
+            cachedBriefGeneratedAt ? timeAgo(cachedBriefGeneratedAt.toISOString()) : null
+          }
+          briefAge={briefGeneratedAt ? timeAgo(briefGeneratedAt.toISOString()) : null}
+          onOpenBrief={() => {
+            if (stopIfSignedOut(
+              "Sign in to read your brief",
+              `Track ${decoded} and get a research note grounded in recent coverage.`,
+            )) return;
+            if (!cachedBriefText) setBriefGeneratedAt(new Date());
+            setMemoOpen(true);
+          }}
+          onRedoBrief={() => {
+            if (stopIfSignedOut(
+              "Sign in to read your brief",
+              `Track ${decoded} and get a research note grounded in recent coverage.`,
+            )) return;
+            setCachedBriefText(null);
+            setCachedBriefGeneratedAt(null);
+            setMemoOpen(true);
+          }}
+          onExport={() => {
+            if (stopIfSignedOut(
+              "Sign in to export",
+              "Export research notes as PDF with a free Signalera account.",
+            )) return;
+            window.print();
+          }}
+          alertsShown={typeLabel === "ticker" && !!user}
+          alertsLoading={alertsLoading}
+          alerts={phoneAlerts}
+          alertsFull={alerts.length >= 5}
+          alertKind={alertType}
+          onAlertKind={setAlertType}
+          alertAmount={alertThreshold}
+          onAlertAmount={(next) => { setAlertFailed(false); setAlertThreshold(next); }}
+          alertSubmitting={alertSubmitting}
+          alertFailed={alertFailed}
+          onAddAlert={handleAddAlert}
+          onToggleAlert={handleToggleAlert}
+          onDeleteAlert={handleDeleteAlert}
+          stories={phoneStories}
+          storiesShown={user === null ? 5 : phoneStories.length}
+          sortMode={sortMode}
+          onSortMode={setSortMode}
+          updatedAgo={articles.length > 0 ? timeAgo(articles[0].published_at) : null}
+          onStoryMemo={(id) => {
+            const entry = articleById.get(id);
+            if (entry) setArticleMemoEntry(entry);
+          }}
+          noteOpen={notesOpen}
+          onNoteOpen={setNotesOpen}
+          noteLoading={noteLoading}
+          noteBlocked={noteUnauthenticated}
+          noteText={noteText}
+          onNoteText={setNoteText}
+          onNoteSave={() => handleNoteSave(noteText)}
+          noteSaved={noteSaved}
+        />
+      </div>
+
+      {/* ── Desk ─────────────────────────────────────────────────────────
+          Unchanged below `md` in every respect except that it is no longer
+          drawn there. Nothing inside this wrapper is edited by this unit. */}
+      <div className="hidden md:block">
       <div className="p-6 max-w-[1100px]">
         {/* Back button */}
         <button
@@ -1264,6 +1453,7 @@ Constraints:
             </div>
           </>
         )}
+      </div>
       </div>
 
       {/* Brief MemoModal */}
