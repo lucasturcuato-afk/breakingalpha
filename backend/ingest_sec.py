@@ -17,9 +17,10 @@ from typing import Optional
 
 from supabase import create_client
 
+from backend.edgar import shard_coverage
 from backend.edgar.cik_mapping import sync_cik_tickers
 from backend.edgar.submissions import (
-    get_poll_ciks,
+    plan_poll,
     fetch_recent_filings,
     filter_new_filings,
     build_document_url,
@@ -29,6 +30,7 @@ from backend.edgar.forms.form_8k import fetch_8k_content, summarize_8k
 from backend.edgar.forms.form_4 import fetch_form4_xml, parse_form4
 from backend.edgar.forms.form_periodic import record_periodic_filing
 from backend.edgar.constants import (
+    FILING_LOOKBACK_DAYS,
     FORMS_OF_INTEREST,
     MATERIAL_8K_ITEMS,
     RESUMMARIZE_LOOKBACK_DAYS,
@@ -67,22 +69,149 @@ def run(
         "filings_8k_resummarized": 0,
         "resummarize_failed": 0,
         "errors": 0,
+        # Shard coverage. shards_targeted counts what this run set out to
+        # cover; shards_covered counts what it actually finished and wrote to
+        # the ledger. They differ whenever a whole-CIK fetch failed, which a
+        # row-level error count cannot see.
+        "shards_targeted": 0,
+        "shards_covered": 0,
+        "shards_incomplete": [],
+        # Shards the per-run cap held short of full membership. Polled
+        # completely, recorded with truncated=true, and NOT full coverage.
+        "shards_truncated": [],
+        "shards_backlog": 0,
+        "shards_past_alert": [],
+        "catchup_slots": [],
+        "slot_source": None,
     }
 
     if sync_ciks_first:
         sync_result = sync_cik_tickers(sb)
         stats["cik_sync"] = sync_result
 
-    watchlist = get_poll_ciks(sb, scheduled_hour=scheduled_hour)
-    if max_ciks:
-        watchlist = watchlist[:max_ciks]
+    plan = plan_poll(sb, scheduled_hour=scheduled_hour)
+    stats["slot_source"] = plan.slot_source
+    stats["shards_backlog"] = len(plan.backlog)
+    stats["shards_past_alert"] = plan.stale
+    stats["catchup_slots"] = [g.slot for g in plan.groups if g.run_kind == "catchup"]
 
-    for entry in watchlist:
+    # --max-ciks is a testing cap over the flat list. It truncates shards
+    # arbitrarily, so coverage is not recorded when it is in play: a shard
+    # sliced in half is not a covered shard.
+    truncated = bool(max_ciks)
+    if truncated:
+        flat = plan.entries[:max_ciks]
+        logger.warning(
+            "[edgar] --max-ciks %d truncates the poll; shard coverage will NOT "
+            "be recorded for this run", max_ciks,
+        )
+        _poll_entries(sb, flat, dry_run, stats)
+    else:
+        # Hot first, then one shard at a time. Coverage is written as each
+        # shard finishes rather than once at the end, so a run that dies
+        # halfway keeps the shards it did complete and the next run picks up
+        # exactly the ones it did not.
+        _poll_entries(sb, plan.hot, dry_run, stats)
+        for group in plan.groups:
+            stats["shards_targeted"] += 1
+            polled_ok = _poll_entries(sb, group.entries, dry_run, stats)
+            selected = group.ciks
+            missed = selected - polled_ok
+            if missed:
+                # Assert completion against the diff, not against the error
+                # count. This is the shape that let a previous EDGAR backfill
+                # skip five whole CIKs behind a swallowed `except: continue`.
+                logger.error(
+                    "[edgar] shard %d of %d incomplete: %d of %d CIKs did not "
+                    "return filings (%s). Shard stays stale.",
+                    group.slot, group.shards, len(missed), len(selected),
+                    sorted(missed)[:10],
+                )
+                stats["shards_incomplete"].append(group.slot)
+                continue
+            if dry_run:
+                logger.info(
+                    "[edgar] DRY RUN shard %d of %d complete (%d CIKs), "
+                    "coverage not recorded", group.slot, group.shards, len(selected),
+                )
+                continue
+            if group.truncated:
+                stats["shards_truncated"].append(group.slot)
+            if shard_coverage.record_coverage(
+                sb,
+                shards=group.shards,
+                shard=group.slot,
+                covered_at=group.moment,
+                slot_source=plan.slot_source,
+                run_kind=group.run_kind,
+                ciks_in_shard=group.members,
+                ciks_selected=len(selected),
+                ciks_polled=len(selected & polled_ok),
+            ):
+                stats["shards_covered"] += 1
+            else:
+                stats["shards_incomplete"].append(group.slot)
+
+    # Self-heal: re-summarize 8-K rows whose summary is stuck NULL (bounded).
+    try:
+        resummarize_null_8k(sb, stats, dry_run=dry_run)
+    except Exception as e:
+        logger.error("[edgar] resummarize pass failed: %s", e, exc_info=True)
+        stats["errors"] += 1
+
+    completed_at = datetime.now(timezone.utc)
+    if not dry_run:
+        try:
+            sb.table("pipeline_runs").insert({
+                "brief_type": "edgar_ingestion",
+                "started_at": started_at.isoformat(),
+                "completed_at": completed_at.isoformat(),
+                "duration_s": (completed_at - started_at).total_seconds(),
+                "status": run_status(stats),
+                "selected_count": (
+                    stats["filings_8k_new"]
+                    + stats["filings_4_new"]
+                    + stats["filings_periodic_new"]
+                ),
+                "error_notes": str(stats),
+            }).execute()
+        except Exception as e:
+            logger.error("[edgar] pipeline_runs logging failed: %s", e)
+
+    logger.info("[edgar] complete: %s", stats)
+    if stats["shards_incomplete"]:
+        logger.error(
+            "[edgar] %d of %d targeted shard(s) NOT covered this run: %s",
+            len(stats["shards_incomplete"]), stats["shards_targeted"],
+            stats["shards_incomplete"],
+        )
+    if stats["shards_truncated"]:
+        logger.warning(
+            "[edgar] %d shard(s) recorded TRUNCATED (the per-run cap held them "
+            "short of full membership): %s",
+            len(stats["shards_truncated"]), stats["shards_truncated"],
+        )
+    return stats
+
+
+def _poll_entries(sb, entries, dry_run, stats) -> set:
+    """Poll a list of CIK entries. Returns the set of CIKs that answered.
+
+    "Answered" means fetch_recent_filings returned a list, empty or not. A CIK
+    that returned None (SEC 403, timeout, unparseable body) is NOT in the set,
+    which is what makes an invisible whole-CIK failure visible to the caller.
+    """
+    polled_ok: set = set()
+    for entry in entries:
         cik = entry["cik"]
-        ticker = entry["ticker"]
         stats["ciks_polled"] += 1
 
         filings = fetch_recent_filings(cik)
+        if filings is None:
+            # Whole-CIK fetch failure. Not a row-level error, so it never
+            # touched stats["errors"] and was invisible before this.
+            continue
+        polled_ok.add(cik)
         if not filings:
             continue
 
@@ -100,51 +229,50 @@ def run(
                     exc_info=True,
                 )
                 stats["errors"] += 1
+    return polled_ok
 
-    # Self-heal: re-summarize 8-K rows whose summary is stuck NULL (bounded).
-    try:
-        resummarize_null_8k(sb, stats, dry_run=dry_run)
-    except Exception as e:
-        logger.error("[edgar] resummarize pass failed: %s", e, exc_info=True)
-        stats["errors"] += 1
 
-    completed_at = datetime.now(timezone.utc)
-    if not dry_run:
-        try:
-            sb.table("pipeline_runs").insert({
-                "brief_type": "edgar_ingestion",
-                "started_at": started_at.isoformat(),
-                "completed_at": completed_at.isoformat(),
-                "duration_s": (completed_at - started_at).total_seconds(),
-                "status": "success" if stats["errors"] == 0 else "partial",
-                "selected_count": (
-                    stats["filings_8k_new"]
-                    + stats["filings_4_new"]
-                    + stats["filings_periodic_new"]
-                ),
-                "error_notes": str(stats),
-            }).execute()
-        except Exception as e:
-            logger.error("[edgar] pipeline_runs logging failed: %s", e)
+def run_status(stats: dict) -> str:
+    """pipeline_runs.status for a finished run. Pure, no I/O.
 
-    logger.info("[edgar] complete: %s", stats)
-    return stats
+    Extends the existing precedent rather than inventing one: the old rule was
+    'success' unless stats["errors"], and an incomplete shard now demotes the
+    run the same way. Before this, every run reported success while delivering
+    a fraction of the declared work, because delivering a fraction of the work
+    was not something the run could observe about itself.
+    """
+    if stats.get("errors"):
+        return "partial"
+    if stats.get("shards_incomplete"):
+        return "partial"
+    return "success"
+
+
+def should_alarm(stats: dict) -> bool:
+    """Whether this run should exit non-zero and turn the job red. Pure.
+
+    Deliberately NOT the same bar as `partial`. A single transient SEC 403
+    leaves one shard stale, which the next run retries on its own; turning the
+    job red for that would train everyone to ignore it. What cannot be left to
+    self-healing is a shard stale past the alert threshold, because filings
+    outside FILING_LOOKBACK_DAYS are dropped on ingest and no number of
+    catch-up runs brings them back. That is the condition that already cost
+    this pipeline data, and it is the one that pages.
+    """
+    if stats.get("errors"):
+        return True
+    if stats.get("shards_past_alert"):
+        return True
+    return False
 
 
 def _parse_ts(value) -> Optional[datetime]:
-    """Parse a Supabase timestamptz string to an aware datetime, or None."""
-    if not value:
-        return None
-    if isinstance(value, datetime):
-        return value
-    s = str(value).strip().replace(" ", "T")
-    # normalize a trailing "+00" offset to "+00:00" for fromisoformat
-    if len(s) >= 3 and s[-3] in "+-" and s[-2:].isdigit():
-        s = s + ":00"
-    try:
-        return datetime.fromisoformat(s)
-    except ValueError:
-        return None
+    """Parse a Supabase timestamptz string to an aware datetime, or None.
+
+    Delegates to the single definition in shard_coverage rather than keeping a
+    second copy of the same wire-format parse.
+    """
+    return shard_coverage.parse_supabase_ts(value)
 
 
 def _resummarize_eligible(
@@ -496,4 +624,15 @@ if __name__ == "__main__":
         max_ciks=args.max_ciks,
         scheduled_hour=args.scheduled_hour,
     )
-    sys.exit(0 if result.get("errors", 0) == 0 else 1)
+    if should_alarm(result):
+        stale = result.get("shards_past_alert") or []
+        if stale:
+            logger.error(
+                "[edgar] FAILING THE JOB: shard(s) stale past the alert "
+                "threshold and losing filings outside the %d day ingest "
+                "window: %s. A catch-up cannot recover what has already fallen "
+                "out of that window.",
+                FILING_LOOKBACK_DAYS, stale,
+            )
+        sys.exit(1)
+    sys.exit(0)
