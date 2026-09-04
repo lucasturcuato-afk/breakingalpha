@@ -132,7 +132,13 @@ export async function proxy(request: NextRequest) {
        than /share so a future /share/* route does not inherit public access
        by accident. */
     path.startsWith('/share/brief/') ||
-    path.startsWith('/legal/') || // ToS, Privacy, Support — must be publicly accessible
+    /* ToS, Privacy and Support must be publicly accessible. The trailing slash
+       was load-bearing and wrong the moment /legal became a page of its own:
+       `startsWith('/legal/')` misses the bare `/legal`, so the hub would have
+       redirected a signed-out reader to /auth, which is the page that links
+       into this tree. Both forms, explicitly. */
+    path === '/legal' ||
+    path.startsWith('/legal/') ||
     path.startsWith('/watchlist/') || // identifier detail pages; /watchlist (personal list) stays gated
     path.startsWith('/auth/callback') ||
     path.startsWith('/print/') || // Puppeteer-driven PDF render; the /print page itself enforces auth

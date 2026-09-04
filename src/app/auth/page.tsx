@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import { Mail, Lock, Eye, EyeOff, Check } from "lucide-react";
 import Link from "next/link";
 import { MobileAuth } from "@/components/auth/mobile-auth";
+import { LegalLink } from "@/components/auth/legal-link";
 
 type AuthMode = "signin" | "signup";
 
@@ -434,10 +435,13 @@ export default function AuthPage() {
             </div>
           )}
 
-          {/* Footer */}
+          {/* Footer. The two documents this sentence binds the reader to are
+              now openable from it; see `legal-link.tsx` for why the anchors
+              carry their own hit area. The sentence itself is untouched. */}
           <p className="text-center mt-6 font-sans text-[11px] text-text-faint">
-            By continuing, you agree to Signalera&apos;s Terms of Service and
-            Privacy Policy.
+            By continuing, you agree to Signalera&apos;s{" "}
+            <LegalLink href="/legal/terms">Terms of Service</LegalLink> and{" "}
+            <LegalLink href="/legal/privacy">Privacy Policy</LegalLink>.
           </p>
         </div>
       </div>

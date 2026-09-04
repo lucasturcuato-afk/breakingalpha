@@ -118,6 +118,27 @@ export function ListRowLink({
   );
 }
 
+/**
+ * A destination this app does not own: a `mailto:`, or anything else `next/link`
+ * has no business routing. Same anatomy as `ListRowLink`, plain anchor, and no
+ * chevron, because the chevron promises another screen of ours and a mail
+ * client is not one. The address goes in `sub` so the reader can see where the
+ * row leads before committing to it.
+ */
+export function ListRowAnchor({
+  href,
+  label,
+  sub,
+  topRule = true,
+  bottomRule = false,
+}: ListRowProps & { href: string }) {
+  return (
+    <a href={href} className={styles.bare} style={{ ...shell(topRule, bottomRule), textDecoration: "none" }}>
+      <Body label={label} sub={sub} />
+    </a>
+  );
+}
+
 /** An action with no destination. Still the whole row, still one tab stop. */
 export function ListRowButton({
   onClick,
