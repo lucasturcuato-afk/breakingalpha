@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, type ReactNode } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { createBrowserClient } from "@supabase/ssr";
@@ -18,6 +18,7 @@ import {
 } from "@/lib/track-record-live-score";
 import { useLiveMood } from "@/hooks/useLiveMood";
 import { componentBreakdown, SCORE_SCALE } from "@/lib/score-presentation";
+import { ThesisScreen, type ThesisStage, type TrackerReview, type TrackerThesis } from "@/components/tracker-mobile";
 
 function getSupabase() {
   return createBrowserClient(
@@ -64,6 +65,12 @@ export default function ThesisDetailPage() {
   const [loading, setLoading] = useState(true);
   const [thesis, setThesis] = useState<ThesisRow | null>(null);
   const [verdicts, setVerdicts] = useState<VerdictRow[]>([]);
+  /* A FAILED READ IS NOT A MISSING ROW, and before this flag the two were the
+     same rendering: the catch left `thesis` null and the screen said "Thesis
+     not found", so a dropped connection reported a deleted thesis. This is
+     read by the phone branch only; the desktop tree below is unchanged, and
+     the desktop's own conflation is reported rather than repaired here. */
+  const [loadFailed, setLoadFailed] = useState(false);
   const { mood, moodHeadline, moodDetails } = useLiveMood();
 
   useEffect(() => {
@@ -98,8 +105,15 @@ export default function ThesisDetailPage() {
         if (thesisRes.data)
           setThesis(neutralizeThesis(thesisRes.data as unknown as ThesisRow));
         setVerdicts((verdictsRes.data as VerdictRow[] | null) ?? []);
+        /* `.single()` does not throw. It answers with an error object, and
+           PGRST116 is the ONE code that means "the query ran and matched no
+           row"; every other code is a read that did not answer. Only the
+           second kind is a failure. */
+        const err = thesisRes.error ?? verdictsRes.error;
+        if (err && err.code !== "PGRST116") setLoadFailed(true);
       } catch (e) {
         console.error("Thesis detail load error:", e);
+        setLoadFailed(true);
       } finally {
         setLoading(false);
       }
@@ -131,33 +145,88 @@ export default function ThesisDetailPage() {
     );
   }, [thesis, verdicts]);
 
+  /* ── the phone's view model ─────────────────────────────────────────
+     Built from exactly the state the desktop tree reads. The screen runs no
+     query of its own, so the two renderings of this route cannot disagree
+     about what is on the row. */
+  const latestVerdict = verdicts[verdicts.length - 1] ?? null;
+  const signalBreakdown = (thesis?.signal_breakdown ?? {}) as Record<string, unknown>;
+  const mobileThesis: TrackerThesis | null =
+    thesis && live
+      ? {
+          id: thesis.id,
+          title: thesis.title ?? "Untitled thesis",
+          sector: thesis.sector,
+          ticker: thesis.ticker,
+          generatedAt: thesis.generated_at,
+          checkAfter: thesis.check_after,
+          live,
+          reviews: verdicts.map<TrackerReview>((v) => ({
+            id: v.id,
+            gradedAt: v.graded_at,
+            verdict: v.verdict,
+            notes: v.notes,
+          })),
+        }
+      : null;
+
+  /* FOUR STATES, and `error` is checked BEFORE `missing`. A read that did not
+     answer must never render as a row that is not there. */
+  const mobileStage: ThesisStage = loading
+    ? "loading"
+    : loadFailed
+      ? "error"
+      : mobileThesis
+        ? "ready"
+        : "missing";
+
+  const mobileBranch = (
+    /* Gated in CLASSES, never in an inline style: an inline `display` beats
+       the class at every breakpoint. */
+    <div className="md:hidden">
+      <ThesisScreen
+        stage={mobileStage}
+        data={{
+          thesis: mobileThesis,
+          rationale: thesis?.rationale ?? null,
+          catalyst: thesis?.catalyst_note || thesis?.catalyst || null,
+          bearCase: thesis?.bear_case ?? null,
+          priceChangePct:
+            typeof signalBreakdown.price_change_pct === "number"
+              ? signalBreakdown.price_change_pct
+              : null,
+          conviction: thesis?.conviction ?? null,
+          latestConfidence: latestVerdict?.confidence ?? null,
+          rawSentimentAlignment: latestVerdict?.weighted_sentiment_alignment ?? null,
+          rawSupportingRatio: latestVerdict?.supporting_vs_contradicting_ratio ?? null,
+        }}
+      />
+    </div>
+  );
+
+  /* The desktop tree, unchanged in content and in class list. It moved from
+     three early returns into one branch so the phone screen is written once
+     rather than three times. */
+  let desktop: ReactNode;
   if (loading) {
-    return (
-      <AppShell pageTitle="Radar" mood={mood} moodHeadline={moodHeadline} moodDetails={moodDetails}>
+    desktop = (
         <div className="p-6 max-w-[960px] space-y-4">
           <div className="skeleton-shimmer h-6 w-48 rounded" />
           <div className="skeleton-shimmer h-32 w-full rounded-xl" />
           <div className="skeleton-shimmer h-48 w-full rounded-xl" />
         </div>
-      </AppShell>
     );
-  }
-
-  if (!thesis) {
-    return (
-      <AppShell pageTitle="Radar" mood={mood} moodHeadline={moodHeadline} moodDetails={moodDetails}>
+  } else if (!thesis) {
+    desktop = (
         <div className="p-6 max-w-[960px]">
           <Link href="/radar/track-record" className="inline-flex items-center gap-1 text-text-muted hover:text-espresso text-[12px] mb-4">
             <ArrowLeft size={12} /> Back to Thesis Tracker
           </Link>
           <p className="text-text-secondary">Thesis not found.</p>
         </div>
-      </AppShell>
     );
-  }
-
-  return (
-    <AppShell pageTitle="Radar" mood={mood} moodHeadline={moodHeadline} moodDetails={moodDetails}>
+  } else {
+    desktop = (
       <div className="p-6 max-w-[960px] space-y-6">
         {/* Back link */}
         <Link href="/radar/track-record" className="inline-flex items-center gap-1 text-text-muted hover:text-espresso text-[12px]">
@@ -341,6 +410,23 @@ export default function ThesisDetailPage() {
           )}
         </section>
       </div>
+    );
+  }
+
+  return (
+    /* `mobileFullBleed` gates the desk's mood bar, topbar and footer out below
+       `md`. The phone screen opens on its own back bar; the footer's legal row
+       sat under the tab bar at every width. The tab bar stays. Desktop is
+       untouched at every width. */
+    <AppShell
+      pageTitle="Radar"
+      mood={mood}
+      moodHeadline={moodHeadline}
+      moodDetails={moodDetails}
+      mobileFullBleed
+    >
+      {mobileBranch}
+      <div className="hidden md:block">{desktop}</div>
     </AppShell>
   );
 }
