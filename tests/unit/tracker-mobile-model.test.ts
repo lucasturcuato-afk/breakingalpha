@@ -2,7 +2,7 @@
 // to lose in an edit and impossible to see in a screenshot.
 //
 // 1. NO RATE, ANYWHERE. A tracker of graded theses is the single surface in
-//    this product where a hit rate most wants to appear, and the desktop page
+//    this product where such a figure most wants to appear, and the desktop page
 //    already computes one (`supportRate`) for sort order. The guard below is
 //    lexical over the two mobile screens and the model, because a rate that
 //    reaches a reader arrives as a division written in a render, not as an
@@ -70,7 +70,7 @@ function thesis(over: Partial<TrackerThesis> = {}): TrackerThesis {
 
 /* ── 1. no rate ─────────────────────────────────────────────────────── */
 
-test("no rate, no accuracy and no percent formatting reaches the mobile tracker", () => {
+test("no ratio and no percent formatting reaches the mobile tracker", () => {
   const RATE = [
     /\baccuracy\b/i,
     /\bhit[_\s-]?rate\b/i,

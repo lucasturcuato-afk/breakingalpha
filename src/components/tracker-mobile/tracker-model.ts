@@ -87,7 +87,7 @@ export function leanTokens(
   const lean = verdictLean(verdict);
   /* AWAITING IS NOT DEVELOPING, and a card that says both is lying on one of
      its two lines. `verdictDisplayLabel` answers "Developing" for every
-     non-settled, non-leaning verdict, which is right for a thesis three
+     non-settled, non-leaning verdict, which fits a thesis three
      reviews in with nothing decided and wrong for one that has never been
      read: the mono line directly under it already says AWAITING FIRST REVIEW.
      `awaiting` is the fourth state in the closed set and the only one this

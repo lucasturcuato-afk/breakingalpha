@@ -44,7 +44,7 @@ import {
  *   a rate    Nothing on this screen divides a count by another count. The
  *             desktop's `supportRate` exists to order the sector table and is
  *             not passed to this component at all. A tracker of graded theses
- *             is exactly the surface a hit rate wants to appear on.
+ *             is exactly the surface such a figure most wants to appear on.
  *   a narrative
  *             The prototype gives every card a sentence of its own ("Four
  *             reviews. The last two read the auction timetable as removing the
