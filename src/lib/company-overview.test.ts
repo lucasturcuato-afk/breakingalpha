@@ -267,6 +267,16 @@ test("a row written for one variant does not satisfy the other variant's filter"
   );
   // What the database would do with the live variant's filter against that row.
   const liveFilter = overviewCacheFilter(live.name, overviewSourceHash(live));
+
+  // Assert the key EXISTS before comparing. Without this line the assertion
+  // below passes vacuously the moment the filter stops emitting a source_hash,
+  // which is the exact regression it is here to catch. Verified by mutation:
+  // deleting the equality from overviewCacheFilter leaves notEqual(hash,
+  // undefined) true, and this test stayed green until this line was added.
+  assert.ok(
+    Object.prototype.hasOwnProperty.call(liveFilter, "content->>source_hash"),
+    "the filter must carry a source_hash equality at all"
+  );
   assert.notEqual(
     row.content.source_hash,
     liveFilter["content->>source_hash"],
