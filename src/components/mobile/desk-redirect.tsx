@@ -5,16 +5,32 @@ import { usePathname, useRouter } from "next/navigation";
 import styles from "./desk-redirect.module.css";
 
 /**
- * Six desk screens, sent to their mobile twins below `md`.
+ * Five desk screens, sent to their mobile twins below `md`.
  *
  * ONE COMPONENT, MOUNTED ONCE, AND NO PAGE FILE TOUCHED. The obvious shape is a
- * width guard at the top of each of the six pages. That is six edits to six
- * files, it scatters the mapping across the tree so no reader can see the table,
- * and two of those six files cannot be edited at all: `/trends` is propose-only
- * and `/radar/watchlist` is being changed in parallel. Mounting one client
- * component in the root layout reaches all six routes without opening any of
- * them, and puts the whole mapping on one screen where a wrong target is
- * visible.
+ * width guard at the top of each page. That is one edit per route, it scatters
+ * the mapping across the tree so no reader can see the table, and two of those
+ * files cannot be edited at all: `/trends` is propose-only and
+ * `/radar/watchlist` is being changed in parallel. Mounting one client component
+ * in the root layout reaches every route without opening any of them, and puts
+ * the whole mapping on one screen where a wrong target is visible.
+ *
+ * IT WAS SIX, AND `/radar/following` IS DELIBERATELY EXEMPT. The bucket was six
+ * desk screens with no mobile treatment, and this route was one of them. It is
+ * not redirected, on the owner's ruling of 2026-09-03, and the reason is worth
+ * carrying next to the table so nobody restores it as an oversight.
+ *
+ * `/radar/following` is the ONLY surface in the app that writes a follow. No
+ * per-object follow toggle exists anywhere, and no mobile screen creates one, so
+ * redirecting it did not move a phone reader to a smaller version of the same
+ * capability, it removed the capability outright. It was also the least damaged
+ * route in the bucket: no horizontal overflow, no tab bar collision, its only
+ * defect at 390 is the shared desk chrome every route carries. So it needed the
+ * redirect least and it cost the most, and desk chrome at 390 beats no way to
+ * follow anything at all.
+ *
+ * The right repair is a mobile follow control, and when one ships this route
+ * joins the table. Until then it renders as it always has, at every width.
  *
  * THE TWO `/watch` TARGETS ARE THE EASY ONES TO GET WRONG, and an earlier survey
  * did. Before PR #790, mobile Radar was one route, `/watch`, carrying a
@@ -37,7 +53,7 @@ import styles from "./desk-redirect.module.css";
  * stylesheet does not apply, so the cover paints nothing and `#main-content` is
  * never hidden; the effect below asks `matchMedia` before it navigates, so no
  * navigation happens either. The component still renders one empty div on the
- * six routes, which is why it carries `aria-hidden`.
+ * five listed routes, which is why it carries `aria-hidden`.
  */
 
 /**
@@ -56,13 +72,15 @@ const PHONE_WIDTH = "(max-width: 767.98px)";
  *
  * Every value was opened and read on this branch before it was written here.
  * Keys are matched exactly, so nothing below a listed path is caught.
+ *
+ * `/radar/following` IS ABSENT ON PURPOSE and the header says why. Adding it
+ * back is a product decision, not a completeness fix.
  */
 const DESK_TO_TWIN: Readonly<Record<string, string>> = {
   "/morning-brief": "/ledger",
   "/trends": "/trends-mobile",
   "/radar/desk-record": "/desk-record",
   "/radar/watchlist": "/watch/watchlist",
-  "/radar/following": "/watch",
   "/company": "/ask",
 };
 

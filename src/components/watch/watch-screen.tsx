@@ -120,36 +120,39 @@ const SLACK_BODY = 8;
 const SLACK_TAIL = 1;
 
 /*
- * THE TWO DESK LINKS ARE GONE, AND THIS IS THE REASON THEY HAD TO GO.
+ * ONE DESK LINK IS GONE AND ONE SURVIVES, AND THE DIFFERENCE IS THE WHOLE POINT.
  *
- * They were `WATCHLIST_DESK = "/radar/watchlist"` and
- * `FOLLOWING_DESK = "/radar/following"`, drawn as the `action` on each tier's
- * empty state, and until this branch they were the honest answer: this screen
- * could not add anything, so it named the surface that could and went there.
+ * Both tiers used to carry an `action` on their empty state pointing at the desk
+ * that could do what this screen could not: `WATCHLIST_DESK = "/radar/watchlist"`
+ * and `FOLLOWING_DESK = "/radar/following"`. Until this branch both were the
+ * honest answer.
  *
- * `src/components/mobile/desk-redirect.tsx` now sends both of those desk routes
- * to this screen below `md`. That turns each link into a closed circle. The
+ * `src/components/mobile/desk-redirect.tsx` now sends `/radar/watchlist` to this
+ * screen below `md`. That turned the WATCHLIST link into a closed circle: the
  * reader taps "Open the watchlist desk", the desk route sends them to
  * `/watch/watchlist`, and they arrive back on the empty state they tapped out
- * of. Following is the identical shape through `/watch`. Two navigations, no
- * movement, and no way to tell that anything happened.
+ * of. Two navigations, no movement, no way to tell anything happened.
  *
- * WHAT REPLACES THEM IS NOT THE SAME ON BOTH TIERS, because the two tiers do
- * not have the same answer available.
+ *   watchlist  THE LINK IS GONE and `WatchAdd` replaces it. The circle is closed
+ *              by making the destination unnecessary rather than by pointing the
+ *              link somewhere else. The copy no longer says names are added "on
+ *              the desk", because they are added here.
+ *   following  THE LINK STAYS, UNCHANGED. `/radar/following` is exempt from the
+ *              redirect, so it is still a real route that still renders at every
+ *              width, and it is still the only surface in the app that writes a
+ *              follow. Nothing about it loops: it is not in the redirect map, so
+ *              tapping through lands on the desk and stays there.
  *
- *   watchlist  `WatchAdd` mounts the desk's own add widget here, so the empty
- *              state carries the control it used to send the reader away to
- *              find. The circle is closed by making the destination
- *              unnecessary.
- *   following  Nothing replaces it, and the copy stops promising one. A follow
- *              is written only by `/radar/following`, which is one of the six
- *              redirected routes, so below `md` there is no reachable surface
- *              that creates one. An action pointing anywhere would either loop
- *              or lie. The empty state says what is true and offers no control
- *              this screen does not have. The consequence is recorded in the PR
- *              body as a gap for a human to rule on, not smoothed over here.
+ * THIS WAS BRIEFLY WRITTEN THE OTHER WAY and the record matters, because the
+ * copy here changed twice. While `/radar/following` was still in the redirect
+ * map, this empty state lost its action and read "Follows are set up on a wider
+ * screen", which was the only truthful thing to say when the desk was about to
+ * become unreachable and nothing here could replace it. The owner's ruling of
+ * 2026-09-03 exempted that route precisely so the capability would survive, so
+ * the sentence that described its loss is wrong again and the original is
+ * restored verbatim.
  */
-
+const FOLLOWING_DESK = "/radar/following";
 /**
  * Small counts are spelled, matching the design's own prose. Above twelve the
  * numeral reads better and the design never draws one. Either way the word is
@@ -686,21 +689,16 @@ export function WatchScreen({
               <ThemeCluster key={cluster.id} cluster={cluster} first={i === 0} />
             ))}
             {followingEmpty ? (
-              /* NO ACTION, AND THE COPY NO LONGER NAMES A DESTINATION.
-                 It used to link to `/radar/following`, which below `md` is now
-                 redirected to this very screen, so the link was a circle. The
-                 obvious repair is to point it somewhere else, and there is
-                 nowhere: `/radar/following` is the only surface in the app that
-                 writes a follow, and it is one of the six redirected routes.
-
-                 So the sentence says what is true and stops there. It does not
-                 name the desk, because a phone reader cannot reach it; it does
-                 not offer a control, because this screen has none to offer; and
-                 it does not imply that following is coming. Adding a name to
-                 the watchlist is a different table and a different tier, and
-                 saying so here would read as an instruction that does not do
-                 what it says. */
-              <WatchNotice body="You follow nothing yet. Follows are set up on a wider screen." />
+              /* THE ACTION IS INTACT, and it is the one desk link on this
+                 screen that is still true. `/radar/following` is exempt from
+                 the redirect map, so this goes to the desk and stays there. It
+                 is also the only place in the app a follow can be created, so
+                 dropping it would take a phone reader's last route to the
+                 capability away for no gain. */
+              <WatchNotice
+                body="You follow nothing yet. Themes, companies and people are followed on the desk."
+                action={{ href: FOLLOWING_DESK, label: "Open the following desk" }}
+              />
             ) : null}
             <FollowingTail
               quiet={data.followsQuiet}

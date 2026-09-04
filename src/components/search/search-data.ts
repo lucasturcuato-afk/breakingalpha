@@ -83,7 +83,7 @@ import type { OutcomeState } from "@/components/ledger/claim-anatomy";
  *                  href carries `?views=open`, and `src/app/watch/calls/page.tsx`
  *                  takes no searchParams, so the swap would silently drop the
  *                  filter this row is named after. /radar/calls is also not one
- *                  of the six routes `desk-redirect.tsx` sends anywhere, so
+ *                  of the routes `desk-redirect.tsx` sends anywhere, so
  *                  nothing about this row loops. Left alone on purpose.
  */
 
