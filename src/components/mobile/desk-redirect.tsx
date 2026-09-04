@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
+import { PHONE_WIDTH, resolveTwinPath } from "./desk-redirect-map";
 import styles from "./desk-redirect.module.css";
 
 /**
@@ -12,42 +13,17 @@ import styles from "./desk-redirect.module.css";
  * the mapping across the tree so no reader can see the table, and two of those
  * files cannot be edited at all: `/trends` is propose-only and
  * `/radar/watchlist` is being changed in parallel. Mounting one client component
- * in the root layout reaches every route without opening any of them, and puts
- * the whole mapping on one screen where a wrong target is visible.
+ * in the root layout reaches every route without opening any of them.
  *
- * IT WAS SIX, AND `/radar/following` IS DELIBERATELY EXEMPT. The bucket was six
- * desk screens with no mobile treatment, and this route was one of them. It is
- * not redirected, on the owner's ruling of 2026-09-03, and the reason is worth
- * carrying next to the table so nobody restores it as an oversight.
+ * THE TABLE AND ITS RULES LIVE IN `desk-redirect-map.ts`, which imports nothing
+ * and is unit tested. Two things are settled there rather than here, and both
+ * are decisions rather than defaults: which routes redirect, including why
+ * `/radar/following` is exempt, and what happens to the query string. If you
+ * are adding a route, read that file first.
  *
- * `/radar/following` is the ONLY surface in the app that writes a follow. No
- * per-object follow toggle exists anywhere, and no mobile screen creates one, so
- * redirecting it did not move a phone reader to a smaller version of the same
- * capability, it removed the capability outright. It was also the least damaged
- * route in the bucket: no horizontal overflow, no tab bar collision, its only
- * defect at 390 is the shared desk chrome every route carries. So it needed the
- * redirect least and it cost the most, and desk chrome at 390 beats no way to
- * follow anything at all.
- *
- * The right repair is a mobile follow control, and when one ships this route
- * joins the table. Until then it renders as it always has, at every width.
- *
- * THE TWO `/watch` TARGETS ARE THE EASY ONES TO GET WRONG, and an earlier survey
- * did. Before PR #790, mobile Radar was one route, `/watch`, carrying a
- * watchlist tier and a following tier in a single scroll. PR #790 split it into
- * four sections, and `/watch` KEPT THE BARE PATH FOR FOLLOWING:
- * `src/app/watch/page.tsx` renders `segment="following"`, and the watchlist
- * moved to `src/app/watch/watchlist/page.tsx` with `segment="watchlist"`. Both
- * were read on this branch before the table below was written. Sending
- * `/radar/watchlist` to `/watch` would land a reader who asked for their
- * watchlist on Following, which is a wrong screen rather than a missing one and
- * would not look like a bug.
- *
- * EXACT PATHS ONLY, WHICH IS WHAT KEEPS `/company/[id]` ALIVE. The lookup is a
- * plain key match, never a prefix test. `/company` is the directory and it has
- * a twin at `/ask`; `/company/AAPL` is a company screen with its own mobile
- * treatment in `src/components/company/mobile/` and must not be redirected. A
- * prefix match would have taken every company page with it.
+ * IT WAS SIX. `/radar/following` is exempt on the owner's ruling of 2026-09-03,
+ * because it is the only surface in the app that writes a follow and it was the
+ * least damaged route in the bucket. The reasoning is recorded beside the map.
  *
  * DESKTOP IS UNTOUCHED BY CONSTRUCTION. Above `md` the media query in the
  * stylesheet does not apply, so the cover paints nothing and `#main-content` is
@@ -56,52 +32,49 @@ import styles from "./desk-redirect.module.css";
  * five listed routes, which is why it carries `aria-hidden`.
  */
 
-/**
- * The `md` breakpoint, as a media query.
- *
- * PAIRED WITH `desk-redirect.module.css`, which repeats this width, and the two
- * must not drift. A width where the stylesheet hides the desk screen but this
- * module declines to navigate is a blank page with no way off it. It is written
- * twice because a CSS module cannot read a TypeScript constant and this is the
- * boundary; the comment in each file names the other.
- */
-const PHONE_WIDTH = "(max-width: 767.98px)";
-
-/**
- * Desk route to mobile twin.
- *
- * Every value was opened and read on this branch before it was written here.
- * Keys are matched exactly, so nothing below a listed path is caught.
- *
- * `/radar/following` IS ABSENT ON PURPOSE and the header says why. Adding it
- * back is a product decision, not a completeness fix.
- */
-const DESK_TO_TWIN: Readonly<Record<string, string>> = {
-  "/morning-brief": "/ledger",
-  "/trends": "/trends-mobile",
-  "/radar/desk-record": "/desk-record",
-  "/radar/watchlist": "/watch/watchlist",
-  "/company": "/ask",
-};
-
 export function DeskRedirect() {
   const pathname = usePathname();
-  const router = useRouter();
-
-  const twin = pathname ? (DESK_TO_TWIN[pathname] ?? null) : null;
+  const twin = resolveTwinPath(pathname);
 
   useEffect(() => {
     if (twin === null) return;
 
     const mq = window.matchMedia(PHONE_WIDTH);
 
-    /* `replace`, never `push`. A desk route that redirects is not a place a
-       reader can stand, so leaving it in the history stack means the browser's
-       own back control lands on it and is immediately sent forward again: the
-       reader presses back and nothing moves. Replacing takes the desk route out
-       of the stack, so back reaches whatever they were actually on. */
+    /*
+     * `location.replace`, NOT `router.replace`, AND THIS IS A MEASURED FIX
+     * RATHER THAN A PREFERENCE.
+     *
+     * `router.replace` navigates without tearing down the document, so whatever
+     * held focus keeps holding it. On arrival nothing in this app has been
+     * clicked yet, so focus is still on the root skip link in `app-shell.tsx`,
+     * and Chrome's focus-visible heuristic treats a programmatic navigation as
+     * a non-pointer interaction. The skip link is `sr-only` until
+     * `:focus-visible` matches and `absolute top-2 left-2 z-50` once it does.
+     * So it inflates from 1x1 to 145x31 at the top left of the DESTINATION and
+     * paints over whatever is under it.
+     *
+     * Measured on this branch, arriving through the redirect at 320 and 390 in
+     * both themes: the box is 145x31 with `:focus-visible` true on all five
+     * destinations, against 1x1 and false on a cold load of the same screens.
+     * It covers the centre point of a real control on three of the five, which
+     * are exactly the three that draw a back or segment control in the top left
+     * corner; `/ledger` and `/ask` put their first control lower and to the
+     * right and are visually affected but not occluded. `elementFromPoint` at
+     * those covered centres answers the skip anchor, not the control.
+     *
+     * `location.replace` loads a fresh document, so focus starts at the body
+     * and the skip link is back to 1x1. It costs the client-side transition,
+     * which is a fair price here: the cover is already hiding the desk screen
+     * for the whole navigation, so the reader sees no difference, and the
+     * destination arrives server rendered rather than reconciled.
+     *
+     * The history entry is replaced either way, so back still skips the desk
+     * route rather than landing on one that immediately sends the reader
+     * forward again.
+     */
     const settle = () => {
-      if (mq.matches) router.replace(twin);
+      if (mq.matches) window.location.replace(twin);
     };
 
     settle();
@@ -109,11 +82,10 @@ export function DeskRedirect() {
     /* A window dragged narrower crosses the same line. The stylesheet is keyed
        on width alone, so once it applies the desk content is out of layout
        whether or not this module reacted; without this listener that reader is
-       left on a covered screen. Reacting keeps the two halves saying the same
-       thing at every width. */
+       left on a covered screen. */
     mq.addEventListener("change", settle);
     return () => mq.removeEventListener("change", settle);
-  }, [twin, router]);
+  }, [twin]);
 
   if (twin === null) return null;
 
