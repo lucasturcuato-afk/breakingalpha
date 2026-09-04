@@ -56,8 +56,8 @@ import type { OutcomeState } from "@/components/ledger/claim-anatomy";
  *                  phone reader should be dropped.
  *   Watchlist      the palette sends this to /radar/watchlist, the desk. The
  *                  mobile watchlist is /watch/watchlist, which is where the
- *                  desk route now sends a phone anyway. IT IS NOT /watch. PR
- *                  #790 split mobile Radar into four sections and the bare
+ *                  desk route now sends a phone anyway. IT IS NOT /watch.
+ *                  PR #790 split mobile Radar into four sections and the bare
  *                  path kept Following, so /watch would land a reader who
  *                  asked for their watchlist on the wrong section.
  *   Company Intel  the palette sends this to /company, the desk directory,

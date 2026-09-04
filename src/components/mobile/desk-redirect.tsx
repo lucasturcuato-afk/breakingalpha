@@ -18,7 +18,7 @@ import styles from "./desk-redirect.module.css";
  *
  * THE TWO `/watch` TARGETS ARE THE EASY ONES TO GET WRONG, and an earlier survey
  * did. Before PR #790, mobile Radar was one route, `/watch`, carrying a
- * watchlist tier and a following tier in a single scroll. #790 split it into
+ * watchlist tier and a following tier in a single scroll. PR #790 split it into
  * four sections, and `/watch` KEPT THE BARE PATH FOR FOLLOWING:
  * `src/app/watch/page.tsx` renders `segment="following"`, and the watchlist
  * moved to `src/app/watch/watchlist/page.tsx` with `segment="watchlist"`. Both
