@@ -651,6 +651,22 @@ export default async function CompanyDetailPage({
         }
         articleCount={developmentArticles.length + contextArticles.length}
       />
+      {/* THE FOURTH READER OF THE SAME POOL, and the one classifyBriefPool does
+          not reach. This listener is mounted unconditionally, outside both
+          trees, and hands the same `memoContent` to MemoModal. Two controls
+          dispatch at it: the desk header's Generate Memo button, and (since
+          #808) the mobile screen's memo control, so it is live at 390 as well.
+
+          It has no render branch, so the thin mode reaches it through
+          MEMO_MODE and the thin block in buildMemoSystemPrompt, which is a
+          PROMPT instruction and not a deterministic one. A deterministic answer
+          on this path would have to short-circuit inside /api/memo, which is
+          propose-only; the route diff is proposed in the PR, not applied.
+
+          The copy defect that dropped the sentence for a company whose own name
+          carries a banned token lived on THIS path, not on the render above:
+          the page writes the line straight into the DOM and never runs the
+          voice guard. See briefLineCompanyNames in company-intel.ts. */}
       <CompanyMemoModalListener
         companyName={canonical}
         memoContent={memoContent}

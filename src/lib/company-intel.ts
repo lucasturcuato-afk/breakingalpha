@@ -1250,13 +1250,29 @@ export function noCoverageBriefLine(companyName: string): string {
  * bullet, and with one or two headlines and no event there is nothing to attach
  * a probability to, so the model reaches for the hedge instead.
  *
- * Three is where the cached evidence starts saying the opposite. Read read-only
- * off the `outputs` table, every stored company brief whose Signal Quality line
- * reports "No direct events" sits at four context articles, and all of them
- * read as real analysis: a downgrade plus a financing-cost trend, a lawsuit plus
- * a supplier concentration. None of them hedges. Nothing stored sits at one or
- * two, so this threshold cuts exactly where the corpus stops vouching for the
- * long form and does not cut into the band that has evidence behind it.
+ * RIGHT THRESHOLD, WRONG REASONING. The paragraph that used to sit here said
+ * the stored corpus set this number: that every cached brief whose Signal
+ * Quality line reports "No direct events" sits at four context articles, that
+ * nothing stored sits at one or two, and that nothing sits at three. It is
+ * withdrawn rather than restated, because the read behind it matched one dash
+ * and one plural and therefore saw a partial set. Re-read read-only over the
+ * whole `outputs` table, accepting an em-dash as well as a hyphen and the
+ * singular "context article" as well as the plural, the matching set is larger,
+ * and it is not flat at four: matches sit at THREE and at ONE as well. Only the
+ * clause about two survives, and it survives because that bucket is empty.
+ *
+ * WHAT THE CORPUS CAN AND CANNOT DO. Scored through the shipped
+ * brief-voice-guard and compliance-language-filter, the two worst stored briefs
+ * in that set do sit below four: one at three context articles and one at one,
+ * both carrying an explicit rating word beside a named security, reader-directed
+ * exposure language in the institutional first person, and seven section labels
+ * that are not among the five this brief may emit. But both of those rows
+ * PREDATE BRIEF_VOICE_OVERRIDE (#389), and the only stored brief at one context
+ * article generated after that override is clean. Two rows at one, none at two.
+ * A corpus that small, and that far out of date, can corroborate a direction; it
+ * cannot choose a number, and this constant no longer claims that it did.
+ *
+ * So the number rests on the section requirements above and on nothing else.
  */
 export const THIN_CONTEXT_MAX = 2;
 
@@ -1280,6 +1296,17 @@ export type BriefPoolShape = "no-coverage" | "thin" | "normal";
  * Counts come from the caller, not from a re-derivation: the page classifies
  * once with `filterAndClassifyArticles` and partitions on `_isDevelopment`, and
  * both call sites pass lengths off that one partition.
+ *
+ * THERE IS A FOURTH READER AND IT DOES NOT CALL THIS.
+ * `CompanyMemoModalListener` is mounted unconditionally, outside both the
+ * mobile and the desktop tree, and hands the same `memoContent` to `MemoModal`.
+ * It is reached from the desk header's Generate Memo button and, since #808,
+ * from the mobile screen's memo control as well. That path has no render branch
+ * to take, so the thin mode reaches it through the MEMO_MODE block in
+ * `buildMemoSystemPrompt` instead: the prompt, not this predicate. Prompt
+ * compliance is not proved by these tests and is stated as unproven in the PR.
+ * A caller wanting a deterministic answer there needs /api/memo, which is
+ * propose-only.
  */
 export function classifyBriefPool(devCount: number, ctxCount: number): BriefPoolShape {
   if (devCount === 0 && ctxCount === 0) return "no-coverage";
@@ -1305,6 +1332,89 @@ export function thinCoverageBriefLine(companyName: string, contextCount: number)
   const noun = contextCount === 1 ? "article" : "articles";
   const pronoun = contextCount === 1 ? "it" : "any of them";
   return `Awaiting a direct event. The current pool has ${contextCount} ${noun} tagged to ${companyName} and no company-specific development in ${pronoun}.`;
+}
+
+/**
+ * WHERE THE COMPANY NAME SITS INSIDE OUR OWN ONE-LINE BRIEFS.
+ *
+ * THE DEFECT. Both lines above put the company name in the middle of a
+ * sentence, and the shipped compliance guards match reader-directed action
+ * words on word boundaries. Two rows in `companies` carry one of those words as
+ * a whole word in their own name: "Best Buy" and "Buy Buy Baby". "Buy Buy Baby"
+ * is in the thin band. So the brief this mode exists to produce read as a call
+ * to action to `brief-voice-guard`, which re-asked the model for a rewrite it
+ * could not give (the thin block orders the line reproduced character for
+ * character), then fell to its redaction path and DROPPED THE ENTIRE SENTENCE
+ * carrying the count and the name. What reached the reader was the first four
+ * words and nothing else. The guard caught no advice, because there was none.
+ *
+ * THE DISTINCTION IS BANNED-TOKEN-AS-ADVICE VERSUS BANNED-TOKEN-INSIDE-A-PROPER
+ * -NOUN, and nothing weaker. This does not soften a pattern, add a lookaround,
+ * or guess that a capitalised run is a name. It locates the exact span these two
+ * frames reserve for the company, and hands it to a caller that masks it before
+ * scanning. Every other character in the text is still scanned exactly as it
+ * was, and text that does not match one of these frames is untouched.
+ *
+ * THE PATTERNS ARE GENERATED BY THE BUILDERS, not written beside them. A
+ * hand-written copy of a sentence frame is the shape CLAUDE.md warns about: it
+ * is correct on the day it is written and silently wrong after the first copy
+ * edit, and the test guarding it stays green because it restates the same copy.
+ * Calling the builder with a sentinel makes a copy-edit to either line
+ * regenerate the matching pattern in the same commit, and the count arm is
+ * generated per count from 1 to THIN_CONTEXT_MAX, so raising the threshold
+ * cannot leave the recogniser behind.
+ */
+function escapeForRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * The stand-in the builders are called with so they reveal their own name slot.
+ * Wrapped in NUL, which cannot occur in a company name or in either frame, so
+ * `split` lands exactly on the interpolation point and the two halves are the
+ * literal frame with nothing of the sentinel left in them. Written as source
+ * escapes and never as raw bytes: a raw NUL in this file makes grep treat the
+ * whole file as binary and silently return no matches.
+ */
+const NAME_SENTINEL = "\u0000COMPANY\u0000";
+
+/**
+ * Turn one rendered sample into a pattern whose only free group is the name.
+ *
+ * THE CAPTURE IS NON-GREEDY AND STAYS THAT WAY. In the no-coverage frame the
+ * name slot is followed immediately by a period, so a name that ENDS in a period
+ * ("Visa Inc.") is captured without its own: the frame's terminator claims it
+ * first. That under-captures by one character, every token of the name is still
+ * inside the span, and no scan result changes. The thin frame's tail is a phrase
+ * rather than a period, so it captures such a name whole. Greedy would tidy the
+ * cosmetic case and open a real one: two frames in one string would capture
+ * everything between them and mask prose that is not a name. Under-masking a
+ * period is harmless; over-masking is a hole in a compliance guard.
+ */
+function nameSlotPattern(sample: string): RegExp {
+  const [before, after] = sample.split(NAME_SENTINEL);
+  return new RegExp(`${escapeForRegExp(before)}(.+?)${escapeForRegExp(after)}`, "g");
+}
+
+const BRIEF_LINE_NAME_SLOTS: RegExp[] = [
+  nameSlotPattern(noCoverageBriefLine(NAME_SENTINEL)),
+  ...Array.from({ length: THIN_CONTEXT_MAX }, (_, i) =>
+    nameSlotPattern(thinCoverageBriefLine(NAME_SENTINEL, i + 1)),
+  ),
+];
+
+/**
+ * Every company name this text names in the name slot of one of our own
+ * canonical one-line briefs. Empty for anything else, including a five-section
+ * brief that merely mentions a company, which is why this exempts nothing it
+ * has not proved.
+ */
+export function briefLineCompanyNames(text: string): string[] {
+  const found = new Set<string>();
+  for (const re of BRIEF_LINE_NAME_SLOTS) {
+    for (const m of (text ?? "").matchAll(re)) if (m[1]) found.add(m[1]);
+  }
+  return [...found];
 }
 
 export function buildMemoContent(

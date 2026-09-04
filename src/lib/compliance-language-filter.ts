@@ -134,6 +134,37 @@ const CATEGORY_ORDER: ComplianceCategory[] = [
 ];
 
 /**
+ * BANNED TOKEN AS ADVICE vs BANNED TOKEN INSIDE A PROPER NOUN.
+ *
+ * Two production company names carry a recommendation token as a whole word,
+ * and both of them are real rows: "Best Buy" and "Buy Buy Baby". Every lexicon
+ * here matches on word boundaries, so a sentence that does nothing but NAME one
+ * of those companies reads as a reader-directed call to action and the whole
+ * sentence is stripped. That is a copy defect, not a compliance win: the reader
+ * loses the sentence and the rule catches nothing.
+ *
+ * The fix is a span, not a softer pattern. A caller that knows a proper noun
+ * appears in the text passes it here; the name is replaced by an equal-length
+ * opaque run BEFORE the scan, so the tokens inside it cannot match and every
+ * other character in the sentence is scanned exactly as it was. Equal length
+ * matters: callers splice on match offsets taken from the masked string.
+ *
+ * Nothing is exempt by default. Absent `properNouns` this module behaves byte
+ * for byte as it did before, which is why the parameter is opt-in rather than a
+ * heuristic that tries to guess which capitalised run is a company.
+ */
+export function maskProperNouns(text: string, properNouns: readonly string[]): string {
+  let out = text;
+  for (const name of properNouns) {
+    if (!name || name.length === 0) continue;
+    // A word character, so masking never invents a word boundary the original
+    // text did not have. No lexicon pattern matches a run of "x".
+    out = out.split(name).join("x".repeat(name.length));
+  }
+  return out;
+}
+
+/**
  * Split text into sentences on terminal punctuation, keeping the punctuation.
  * Newlines are treated as soft breaks so bullet/paragraph text is scanned per
  * sentence too. Empty fragments are dropped.
@@ -153,12 +184,14 @@ export function splitSentences(text: string): string[] {
  */
 export function matchProhibited(
   sentence: string,
+  properNouns: readonly string[] = [],
 ): { category: ComplianceCategory; term: string } | null {
+  const scanned = properNouns.length > 0 ? maskProperNouns(sentence, properNouns) : sentence;
   for (const category of CATEGORY_ORDER) {
     for (const re of LEXICON[category]) {
       // Fresh lastIndex every test: patterns are global for scanText's matchAll.
       re.lastIndex = 0;
-      const m = re.exec(sentence);
+      const m = re.exec(scanned);
       if (m) {
         return { category, term: m[0].toLowerCase().replace(/\s+/g, " ").trim() };
       }
@@ -171,10 +204,13 @@ export function matchProhibited(
  * Scan-only: report every prohibited sentence without modifying the text. Use
  * when a caller wants to fail-closed (reject the whole output) rather than strip.
  */
-export function scanCompliance(text: string): ComplianceFinding[] {
+export function scanCompliance(
+  text: string,
+  properNouns: readonly string[] = [],
+): ComplianceFinding[] {
   const findings: ComplianceFinding[] = [];
   for (const sentence of splitSentences(text)) {
-    const hit = matchProhibited(sentence);
+    const hit = matchProhibited(sentence, properNouns);
     if (hit) findings.push({ sentence, category: hit.category, term: hit.term });
   }
   return findings;
@@ -186,14 +222,17 @@ export function scanCompliance(text: string): ComplianceFinding[] {
  * asked to stay descriptive, and whatever slips through is deleted here.
  * Never throws; a fully-prohibited input returns clean === "".
  */
-export function filterComplianceLanguage(text: string | null | undefined): ComplianceResult {
+export function filterComplianceLanguage(
+  text: string | null | undefined,
+  properNouns: readonly string[] = [],
+): ComplianceResult {
   const src = (text ?? "").trim();
   if (!src) return { clean: "", findings: [], blocked: false };
 
   const findings: ComplianceFinding[] = [];
   const kept: string[] = [];
   for (const sentence of splitSentences(src)) {
-    const hit = matchProhibited(sentence);
+    const hit = matchProhibited(sentence, properNouns);
     if (hit) {
       findings.push({ sentence, category: hit.category, term: hit.term });
     } else {

@@ -22,6 +22,9 @@
  * unit-testable with no network and no secrets.
  */
 
+import { briefLineCompanyNames } from "@/lib/company-intel";
+import { maskProperNouns } from "@/lib/compliance-language-filter";
+
 export interface VoiceViolations {
   /** Distinct first-person tokens found (lowercased), e.g. ["we", "our"]. */
   firstPerson: string[];
@@ -64,9 +67,36 @@ function collectMatches(text: string, patterns: RegExp[]): string[] {
   return [...hits];
 }
 
+/**
+ * A COMPANY'S OWN NAME IS NOT A RECOMMENDATION, and before this it was.
+ *
+ * `RECOMMENDATION_PATTERNS` matches "buy" and "sell" on word boundaries, which
+ * is right for prose and wrong for a proper noun. Two rows in `companies` carry
+ * one of those words as a whole word in their own name, "Best Buy" and
+ * "Buy Buy Baby", and the second of those sits in the thin band. The one-line
+ * thin brief about it therefore read as a call to action: one wasted re-ask the
+ * model could not satisfy (the thin block orders the line reproduced character
+ * for character), then the redaction path below DROPPED THE SENTENCE holding
+ * the count and the name, leaving the reader four words. No advice was caught,
+ * because there was none in it.
+ *
+ * THE EXEMPTION IS A SPAN, NOT A SOFTER PATTERN. `briefLineCompanyNames` reads
+ * the name out of the slot our own canonical one-line briefs reserve for it, and
+ * only out of that slot: text that does not match one of those two frames yields
+ * nothing and is scanned byte for byte as it was. No pattern is relaxed, no
+ * lookaround is added, and no capitalised run is guessed at. A five-section
+ * brief that merely mentions Best Buy is NOT covered by this and still trips the
+ * guard; that case wants the company name threaded in from the route, which is
+ * propose-only, so it is stated in the PR rather than done here.
+ */
+function maskOwnName(text: string): string {
+  const names = briefLineCompanyNames(text);
+  return names.length > 0 ? maskProperNouns(text, names) : text;
+}
+
 /** Pure detector. Scans the rendered brief text for both violation classes. */
 export function detectVoiceViolations(memo: string): VoiceViolations {
-  const text = memo ?? "";
+  const text = maskOwnName(memo ?? "");
   return {
     firstPerson: collectMatches(text, FIRST_PERSON_PATTERNS),
     recommendations: collectMatches(text, RECOMMENDATION_PATTERNS),
@@ -95,18 +125,38 @@ function redactRecommendations(text: string): string {
   const carriesRecommendation = (s: string): boolean =>
     RECOMMENDATION_PATTERNS.some((re) => new RegExp(re.source, "i").test(s));
 
+  /* Names resolved ONCE over the whole text, then applied per sentence, so a
+     frame that spans one sentence still protects the name where it appears in
+     another. See maskOwnName: an empty list leaves every scan below unchanged. */
+  const names = briefLineCompanyNames(text);
+  const scan = (s: string): string => (names.length > 0 ? maskProperNouns(s, names) : s);
+
   const lines = text.split("\n").map((line) => {
     if (!line.trim()) return line;
     // Split into sentences on terminal punctuation; drop only the offending ones.
+    // The DECISION reads the masked sentence; the sentence KEPT is the original.
     const sentences = line.split(/(?<=[.!?])\s+/);
-    return sentences.filter((s) => !carriesRecommendation(s)).join(" ");
+    return sentences.filter((s) => !carriesRecommendation(scan(s))).join(" ");
   });
 
   let out = lines.join("\n");
   // Final guarantee: neutralize any residual phrase not bounded by sentence
   // punctuation (e.g. inside a bullet with no terminal period, or a heading).
+  // Offsets are taken from the masked copy, which maskProperNouns keeps the same
+  // length as the original, and spliced into the original from the end so the
+  // earlier offsets stay valid.
   for (const re of RECOMMENDATION_PATTERNS) {
-    out = out.replace(new RegExp(re.source, "gi"), "[redacted]");
+    const pattern = new RegExp(re.source, "gi");
+    if (names.length === 0) {
+      out = out.replace(pattern, "[redacted]");
+      continue;
+    }
+    const spans = [...maskProperNouns(out, names).matchAll(pattern)].map(
+      (m) => [m.index, m.index + m[0].length] as const,
+    );
+    for (let i = spans.length - 1; i >= 0; i--) {
+      out = `${out.slice(0, spans[i][0])}[redacted]${out.slice(spans[i][1])}`;
+    }
   }
   return out.replace(/[ \t]{2,}/g, " ").replace(/\n{3,}/g, "\n\n").trim();
 }
