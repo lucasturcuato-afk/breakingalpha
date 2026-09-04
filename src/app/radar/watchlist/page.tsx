@@ -1487,7 +1487,7 @@ export default function WatchlistPage() {
                   type="button"
                   onClick={() => setAgeFilter(f)}
                   className={cn(
-                    "px-2.5 py-1 rounded-md font-sans text-[9px] cursor-pointer transition-colors border flex-shrink-0 whitespace-nowrap",
+                    "px-2.5 py-1 rounded-md font-sans text-[10px] cursor-pointer transition-colors border flex-shrink-0 whitespace-nowrap",
                     ageFilter === f
                       ? "border-gold bg-gold-muted text-gold font-semibold"
                       : "border-border-base bg-white dark:bg-elevated text-text-muted hover:text-text-primary",
@@ -1503,7 +1503,7 @@ export default function WatchlistPage() {
                   type="button"
                   onClick={() => setSortMode(mode)}
                   className={cn(
-                    "px-2.5 py-1 rounded-md font-sans text-[9px] cursor-pointer transition-colors border flex-shrink-0 whitespace-nowrap",
+                    "px-2.5 py-1 rounded-md font-sans text-[10px] cursor-pointer transition-colors border flex-shrink-0 whitespace-nowrap",
                     sortMode === mode
                       ? "border-gold bg-gold-muted text-gold font-semibold"
                       : "border-border-base bg-white dark:bg-elevated text-text-muted hover:text-text-primary",
@@ -1801,8 +1801,8 @@ export default function WatchlistPage() {
                           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                           padding: '12px 14px', borderRadius: '12px',
                           /* Tokens, not literals: the drawer's own surface is
-                             `--elevated` now, and a row painted #fff sat as a
-                             white slab inside a dark panel. */
+                             `--elevated` now, and a row painted a white
+                             literal sat as a slab inside a dark panel. */
                           border: selectedIdentifier === entry.identifier ? '1px solid var(--gold)' : '1px solid var(--border-base)',
                           background: selectedIdentifier === entry.identifier ? 'var(--parchment-mid)' : 'var(--elevated)',
                           boxSizing: 'border-box', minHeight: '44px',

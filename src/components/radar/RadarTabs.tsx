@@ -57,7 +57,7 @@ export function RadarTabs({
   return (
     <nav
       aria-label="Radar sections"
-      /* THE ROW SCROLLS RATHER THAN WRAPPING. Measured at 320 and 390: the
+      /* The row scrolls rather than wrapping. Measured at 320 and 390: the
          eyebrow plus four tabs need 356px, so "Desk record" broke onto two
          lines inside its own link and its right edge sat past the viewport
          with no way to reach it. `flex-nowrap` with `overflow-x-auto` keeps
