@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { LegalUpLink } from "@/components/legal/legal-up-link";
 
 export const metadata: Metadata = {
   title: "Terms of Service — Signalera",
@@ -8,6 +9,7 @@ export const metadata: Metadata = {
 export default function TermsOfServicePage() {
   return (
     <div className="max-w-3xl mx-auto px-6 py-12">
+      <LegalUpLink />
       <article className="prose prose-stone max-w-none font-sans text-text-primary">
         <h1 className="font-[family-name:var(--font-playfair-display)] text-espresso text-4xl font-bold mb-2">
           Terms of Service
