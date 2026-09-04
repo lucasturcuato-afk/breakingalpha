@@ -2,13 +2,13 @@ import { PreviewSettingsBatch, type PreviewScreen, type PreviewState } from "@/c
 
 /* Declared here rather than imported: a value exported from a "use client"
  * module reaches a server component as a client reference, not an array. */
-const SCREENS: readonly PreviewScreen[] = ["settings", "alerts", "saved", "learned", "share"];
-const STATES: readonly PreviewState[] = ["ready", "loading", "error", "empty", "saved"];
+const SCREENS: readonly PreviewScreen[] = ["settings", "preferences", "alerts", "saved", "learned", "share"];
+const STATES: readonly PreviewState[] = ["ready", "loading", "saving", "error", "empty", "saved"];
 
 /**
  * DESIGN PREVIEW HARNESS, NOT A LIVE SURFACE.
  *
- * Four of these five screens need a session, and Share needs a briefing row,
+ * Five of these six screens need a session, and Share needs a briefing row,
  * so none of their lifecycle states can be reached by reproducing their
  * conditions in an audit run. The runtime audit has to reach each one, and a
  * state that cannot be looked at is a state nobody checked.
@@ -19,6 +19,7 @@ const STATES: readonly PreviewState[] = ["ready", "loading", "error", "empty", "
  *
  *   /preview/settings-batch?screen=settings&state=ready
  *   /preview/settings-batch?screen=saved&state=error
+ *   /preview/settings-batch?screen=preferences&state=saving
  *
  * The screens are the real components, imported unmodified. Nothing here
  * branches inside one.

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { MobileSettingsScreen } from "@/components/settings/mobile-settings-screen";
+import { MobilePreferencesScreen } from "@/components/settings/mobile-preferences-screen";
 import { AlertsView } from "@/components/settings/mobile-alerts-screen";
 import { MobileLearnedScreen } from "@/components/settings/mobile-learned-screen";
 import { MobileSavedScreen, type SavedSortKey } from "@/components/saved/mobile-saved-screen";
@@ -15,14 +16,53 @@ import { MobileShareScreen } from "@/components/share/mobile-share-screen";
  * a rate.
  */
 
-export type PreviewScreen = "settings" | "alerts" | "saved" | "learned" | "share";
-export type PreviewState = "ready" | "loading" | "error" | "empty" | "saved";
+export type PreviewScreen = "settings" | "preferences" | "alerts" | "saved" | "learned" | "share";
+/* `saving` is new and it is the state a settings screen spends its riskiest
+   second in. Nothing could reach it here before: firing the save is the one
+   thing an audit of a writing screen must not do. */
+export type PreviewState = "ready" | "loading" | "saving" | "error" | "empty" | "saved";
 
 const SECTORS = [
   "Technology", "Healthcare & Biotech", "Energy & Oil/Gas", "Financial Services",
   "Consumer & Retail", "Industrials & Manufacturing", "Aerospace & Defense",
   "Real Estate", "Media & Telecom", "Materials & Mining", "Agriculture",
   "Geopolitics & Macro",
+];
+
+
+/* `/settings/preferences` carries its own option tables, and they are NOT the
+   hub's: it has ten sectors where the hub has twelve, and four groups the hub
+   has none of. Copied from `PreferencesForm` rather than shared, because a
+   harness that imports the live tables stops being able to show a drift
+   between them. */
+const PREF_SECTORS = [
+  "Technology", "Healthcare & Biotech", "Energy & Oil/Gas", "Financial Services",
+  "Consumer & Retail", "Industrials & Manufacturing", "Aerospace & Defense",
+  "Real Estate", "Media & Telecom", "Geopolitics & Macro",
+];
+
+const PREF_STRATEGIES = [
+  { id: "pe", label: "Private Equity" },
+  { id: "equity", label: "Public Equity" },
+  { id: "vc", label: "Venture" },
+  { id: "macro", label: "Macro" },
+  { id: "credit", label: "Credit" },
+];
+
+const PREF_HORIZONS = [
+  { id: "short", label: "Near-term" },
+  { id: "medium", label: "Mid-term" },
+  { id: "long", label: "Long-term" },
+];
+
+const PREF_WORKFLOWS = [
+  { id: "deep_dive", label: "Deep Research" },
+  { id: "screening", label: "Screening" },
+  { id: "monitoring", label: "Monitoring" },
+];
+
+const PREF_MARKET_CARDS = [
+  "SPY", "QQQ", "DIA", "VIX", "TNX", "DXY", "BTC", "ETH", "GOLD", "OIL", "SIGNALS",
 ];
 
 
@@ -75,6 +115,7 @@ function usePreviewFixture(): PreviewFixture | null {
 
 export function PreviewSettingsBatch({ screen, state }: { screen: PreviewScreen; state: PreviewState }) {
   if (screen === "settings") return <SettingsPreview state={state} />;
+  if (screen === "preferences") return <PreferencesPreview state={state} />;
   if (screen === "alerts") return <AlertsPreview />;
   if (screen === "saved") return <SavedPreview state={state} />;
   if (screen === "learned") return <LearnedPreview state={state} />;
@@ -113,6 +154,89 @@ function SettingsPreview({ state }: { state: PreviewState }) {
       onSignOut={() => {}}
       learnedEventCount={214}
       savedDealCount={4}
+    />
+  );
+}
+
+/**
+ * `/settings/preferences` at phone width, in every state it has.
+ *
+ * THIS IS THE ONLY WAY TO LOOK AT `saving`, `saved` AND A FAILED SAVE. All
+ * three are downstream of a PATCH that rewrites the signed-in profile, and an
+ * audit of a writing screen must never fire it. Here they are props.
+ *
+ * `loading` renders `ready` ON PURPOSE and that is not an oversight. The route
+ * is a server component: every value the form starts with arrives in the first
+ * paint, so there is no client read to wait on and no skeleton that could ever
+ * appear on the real screen. Drawing one here would put a state in the plate
+ * that production cannot reach.
+ */
+function PreferencesPreview({ state }: { state: PreviewState }) {
+  const empty = state === "empty";
+  const [firstName, setFirstName] = useState(empty ? "" : "Maya");
+  const [firm, setFirm] = useState(empty ? "" : "NYU Stern");
+  const [role, setRole] = useState<string | null>(empty ? null : "student_analyst");
+  const [strategy, setStrategy] = useState<string | null>(empty ? null : "pe");
+  const [sectors, setSectors] = useState<string[]>(empty ? [] : PREF_SECTORS.slice(0, 3));
+  const [horizon, setHorizon] = useState<string | null>(empty ? null : "long");
+  const [workflow, setWorkflow] = useState<string | null>(empty ? null : "deep_dive");
+  const [watchlist, setWatchlist] = useState<string[]>(empty ? [] : ["CEG", "NVO", "MSFT"]);
+  const [tickerInput, setTickerInput] = useState("");
+  const [cards, setCards] = useState<string[]>(empty ? [] : ["SPY", "VIX", "TNX", "SIGNALS"]);
+
+  function addTickers() {
+    const raw = tickerInput.trim().toUpperCase();
+    if (!raw) return;
+    setWatchlist((prev) => {
+      const next = [...prev];
+      for (const t of raw.split(/[\s,]+/).filter(Boolean)) if (!next.includes(t)) next.push(t);
+      return next;
+    });
+    setTickerInput("");
+  }
+
+  return (
+    <MobilePreferencesScreen
+      saving={state === "saving"}
+      saved={state === "saved"}
+      error={state === "error" ? "Save failed (503)." : null}
+      firstName={firstName}
+      firmOrSchool={firm}
+      role={role}
+      strategy={strategy}
+      sectors={sectors}
+      horizon={horizon}
+      workflow={workflow}
+      watchlist={watchlist}
+      tickerInput={tickerInput}
+      marketCards={cards}
+      strategyOptions={PREF_STRATEGIES}
+      sectorOptions={PREF_SECTORS}
+      horizonOptions={PREF_HORIZONS}
+      workflowOptions={PREF_WORKFLOWS}
+      marketCardOptions={PREF_MARKET_CARDS}
+      marketCardLimit={4}
+      onFirstName={setFirstName}
+      onFirmOrSchool={setFirm}
+      onRole={(v) => setRole((p) => (p === v ? null : v))}
+      onStrategy={(v) => setStrategy((p) => (p === v ? null : v))}
+      onToggleSector={(s) =>
+        setSectors((prev) => (prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]))
+      }
+      onHorizon={(v) => setHorizon((p) => (p === v ? null : v))}
+      onWorkflow={(v) => setWorkflow((p) => (p === v ? null : v))}
+      onTickerInput={setTickerInput}
+      onAddTickers={addTickers}
+      onRemoveTicker={(t) => setWatchlist((prev) => prev.filter((x) => x !== t))}
+      onToggleMarketCard={(sym) =>
+        setCards((prev) => {
+          if (prev.includes(sym)) return prev.filter((s) => s !== sym);
+          if (prev.length >= 4) return prev;
+          return [...prev, sym];
+        })
+      }
+      /* Inert. The harness never writes, which is the point of it. */
+      onSave={() => {}}
     />
   );
 }
