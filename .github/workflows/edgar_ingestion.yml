@@ -1,8 +1,15 @@
 name: EDGAR Ingestion (hourly)
 
 on:
-  schedule:
-    - cron: '0 * * * *'  # Hourly, on the hour
+  # No `schedule:` block. Scheduling is external, by workflow_dispatch, per the
+  # decision recorded in docs/HANDOFF.md for schedule.yml on 2026-04-13. The
+  # native scheduler silently under-delivers rather than failing, so a missing
+  # run looks identical to a healthy one.
+  #
+  # Dispatch also carries `scheduled_hour` below, which the native `schedule:`
+  # event cannot: its payload holds the cron EXPRESSION, not the intended hour.
+  # That matters here because the tail shard is derived from the hour, so a
+  # queue delay used to move which shard got polled.
   workflow_dispatch:
     inputs:
       dry_run:
