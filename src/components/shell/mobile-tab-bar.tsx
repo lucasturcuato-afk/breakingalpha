@@ -148,10 +148,12 @@ export const BROWSE_POLE_LABEL = "Browse";
 /**
  * The four poles, in the design's order.
  *
- * `owns` lists only routes whose pole is settled by the handoff's navigation
- * model. Routes whose pole is still an open question (/radar bare,
- * /radar/track-record, /radar/desk-record, /radar/theses) are deliberately
- * absent, so they light no pole rather than being assigned by guesswork.
+ * `owns` lists only routes whose pole is settled. Routes whose pole is still an
+ * open question (/radar bare, /radar/desk-record, /radar/theses) are
+ * deliberately absent, so they light no pole rather than being assigned by
+ * guesswork. `/radar/track-record` LEFT that list: it is settled on Ledger, and
+ * the reasoning is written at the entry itself rather than here, beside the
+ * `/radar/calls` string that made the same crossing first.
  */
 /* Exported for `tests/unit/ask-pole-href.test.ts`, which asserts the invariant
    the Ask entry's own comment states: a pole whose href is missing from its
@@ -189,6 +191,29 @@ export const POLES: Pole[] = [
       "/morning-brief",
       "/evening-wrap",
       "/radar/calls",
+      /* THE EVIDENCE TRACKER, AND THIS ENTRY IS A RULING. `/radar/track-record`
+         and its `[thesis_id]` child were among the four routes the note above
+         listed as an open question, so until now they lit no pole at all:
+         measured on a production build at 390 signed in, `aria-current` was
+         absent from all four poles on both routes, in both themes.
+
+         IT GOES ON LEDGER, NOT RADAR, and the route namespace is not what
+         decided it. `/radar/calls` two lines up is already a `/radar/*` route
+         on this pole, so the prefix has never been the boundary; the OBJECT is.
+         Radar is the reader's own names: `/watch`, `/radar/watchlist`,
+         `/radar/following`, all of which answer "what am I following". The
+         tracker answers "what did the desk claim, and what has the evidence
+         done to it since", which is the Ledger's question and the same object
+         family as `/radar/calls`, `/record`, `/claim`, `/entry` and `/review`.
+         The prototype files the screen under Ledger and draws its back control
+         reading "Ledger", so the design and the pole table agree here rather
+         than being reconciled by one of them.
+
+         THE PREFIX MATCH IS LOAD BEARING. `isActive` below matches a path
+         prefix as well as an exact path, so this one string lights the pole on
+         the parent AND on `/radar/track-record/<uuid>`. There is no separate
+         entry for the child and there must not be one. */
+      "/radar/track-record",
       /* Steps 4, 6 and 7. Objects opened out of the record, so they belong to
          the pole the record lives on. Listed before the screens exist because
          isActive reads `owns` alone: a route absent from every list lights no

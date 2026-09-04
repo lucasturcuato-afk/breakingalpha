@@ -21,6 +21,7 @@ import {
   type TerminalVerdict,
 } from "@/lib/track-record-live-score";
 import { useLiveMood } from "@/hooks/useLiveMood";
+import { TrackerScreen, isStale, type TrackerReview, type TrackerStage, type TrackerThesis } from "@/components/tracker-mobile";
 
 function getSupabase() {
   return createBrowserClient(
@@ -90,6 +91,11 @@ export default function TrackRecordPage() {
   const [overdueCount, setOverdueCount] = useState<number>(0);
   const [awaitingCount, setAwaitingCount] = useState<number>(0);
   const [loadError, setLoadError] = useState(false);
+  /* The reviews behind each thesis, keyed by thesis. The desktop tree only
+     ever needed the LATEST verdict per thesis; the phone card draws one dot
+     per review, so the whole run is kept. Same query, same rows, no second
+     read. */
+  const [reviewsById, setReviewsById] = useState<Record<string, TrackerReview[]>>({});
 
   // Banner mood comes from the shared SSOT hook so this page agrees with
   // the dashboard / live feed / etc. Without this, AppShell falls back to
@@ -132,10 +138,26 @@ export default function TrackRecordPage() {
 
         const rawVerdicts = (verdictsAllRes.data as RawVerdict[] | null) ?? [];
         const latestByThesis = new Map<string, RawVerdict>();
+        /* The rows arrive newest first, so the first one seen per thesis is
+           the latest and the accumulated list has to be flipped below to read
+           oldest first, which is the order the phone's dot rail draws. */
+        const runsByThesis: Record<string, TrackerReview[]> = {};
         for (const v of rawVerdicts) {
           if (!v.thesis_id) continue;
           if (!latestByThesis.has(v.thesis_id)) latestByThesis.set(v.thesis_id, v);
+          (runsByThesis[v.thesis_id] ??= []).push({
+            /* `thesis_verdicts.id` is not in this select and adding it would
+               widen a query the desktop does not need. The pair is unique per
+               row already: one grading run writes one verdict per thesis. */
+            id: `${v.thesis_id}:${v.graded_at}`,
+            gradedAt: v.graded_at,
+            verdict: v.verdict,
+            /* Notes are read on the detail screen, which selects them. The
+               card does not draw prose. */
+            notes: null,
+          });
         }
+        for (const key of Object.keys(runsByThesis)) runsByThesis[key].reverse();
 
         const scoredAll: ScoredThesis[] = thesesMeta.map((t) => {
           const latest = latestByThesis.get(t.id);
@@ -190,6 +212,7 @@ export default function TrackRecordPage() {
         }
 
         setScored(scoredAll);
+        setReviewsById(runsByThesis);
         setLastUpdated(rawVerdicts[0]?.graded_at ?? null);
         setOverdueCount(overdue);
         setAwaitingCount(awaiting);
@@ -318,6 +341,39 @@ export default function TrackRecordPage() {
     }).format(nextRun);
   }, []);
 
+  /* ── the phone's view model ─────────────────────────────────────────
+     Derived from exactly the state the desktop tree above reads, so the two
+     renderings of this route can never disagree about how many theses there
+     are or which way one leans. Nothing below runs a second query. */
+  const mobileTheses = useMemo<TrackerThesis[]>(
+    () =>
+      scored.map((t) => ({
+        id: t.id,
+        title: t.title,
+        sector: t.sector,
+        ticker: t.ticker,
+        generatedAt: t.generated_at,
+        checkAfter: t.check_after,
+        live: t.live,
+        reviews: reviewsById[t.id] ?? [],
+      })),
+    [scored, reviewsById],
+  );
+
+  /* FIVE STATES, AND `error` IS NOT `empty`. A read that threw sets
+     `loadError`, which is checked BEFORE the count, so a failed query can
+     never borrow the empty-pipeline sentence. That ordering is the whole
+     defence and it is the reason `loadError` exists at all. */
+  const mobileStage: TrackerStage = loading
+    ? "loading"
+    : loadError
+      ? "error"
+      : scored.length === 0
+        ? "empty"
+        : isStale(lastUpdated, new Date())
+          ? "stale"
+          : "ready";
+
   const showPipelineStatus = !loading && awaitingCount > 0;
   const showGradingHeader = !loading && totalCount > 0;
   // Empty means the queries succeeded and returned nothing. A failed load is a
@@ -325,13 +381,34 @@ export default function TrackRecordPage() {
   const isFirstPaintEmpty = !loading && !loadError && totalCount === 0;
 
   return (
+    /* `mobileFullBleed` gates the desk's mood bar, topbar and footer out below
+       `md`. The phone screen opens on its own back bar and its own masthead,
+       so those three are chrome stacked on a surface that already has a head,
+       and the footer's legal row sat UNDER the tab bar at every width. The tab
+       bar itself stays. Desktop is untouched at every width. */
     <AppShell
       pageTitle="Radar"
       mood={mood}
       moodHeadline={moodHeadline}
       moodDetails={moodDetails}
+      mobileFullBleed
     >
-      <div data-radar-page className="motion-page-enter p-6 space-y-6 max-w-[960px]">
+      {/* Gated in CLASSES, never in an inline style: an inline `display` beats
+          the class at every breakpoint, which is how the tab bar reached the
+          desk once already. */}
+      <div className="md:hidden">
+        <TrackerScreen
+          stage={mobileStage}
+          data={{
+            theses: mobileTheses,
+            awaitingCount,
+            overdueCount,
+            lastReviewedAt: lastUpdated,
+          }}
+        />
+      </div>
+
+      <div data-radar-page className="hidden md:block motion-page-enter p-6 space-y-6 max-w-[960px]">
         <RadarTabs active="calls" context="Evidence tracker" />
         <p className="-mt-2 mb-2 font-sans text-[12px] italic text-text-muted">
           Evidence leanings from nightly review, not graded verdicts; graded calls live in Calls.
