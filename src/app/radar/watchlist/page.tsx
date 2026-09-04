@@ -1754,7 +1754,14 @@ export default function WatchlistPage() {
             <button
               type="button"
               onClick={() => setMobileSheetOpen(false)}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-faint)', padding: '4px' }}
+              /* 44px square. `border-box` so the padding is inside the
+                 minimum rather than added to it. */
+              style={{
+                background: 'none', border: 'none', cursor: 'pointer',
+                color: 'var(--text-faint)', padding: '4px',
+                boxSizing: 'border-box', minWidth: '44px', minHeight: '44px',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}
               aria-label="Close"
             >
               ✕
