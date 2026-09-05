@@ -188,7 +188,12 @@ export default async function PreferencesPage() {
             )}
           </p>
 
-          {stored ? null : (
+          {/* Gated on `refreshFailed` as well as `stored`, and the mobile
+              screen carries the identical gate. This sentence opens "These
+              numbers were worked out from your recorded activity when this
+              page loaded", which is false when the activity read did not
+              happen. The failure line below states what actually occurred. */}
+          {stored || refreshFailed ? null : (
             <p className="font-sans text-[11px] text-text-muted mb-4" role="status">
               These numbers were worked out from your recorded activity when this
               page loaded, and they were not saved. Signalera has nowhere to keep
