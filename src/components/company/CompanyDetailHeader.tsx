@@ -44,9 +44,16 @@ function pillToneFor(t: ToneSummary): SentimentTone {
   return p === "positive" ? "BULLISH" : p === "negative" ? "BEARISH" : "MIXED";
 }
 
-function formatSubtitle(d: CompanyDetail): string {
+// Print an exchange only when we hold one. A ticker is not evidence of a
+// listing venue: this asserted NASDAQ on every ticker-bearing row, which is
+// wrong for every NYSE filer. Nothing populates CompanyDetail.exchange today
+// (getCompanyDetail.ts sets it to null and there is no exchange column), so
+// this reads as the bare sector until a real value lands, at which point it
+// starts printing without a further change here.
+export function formatSubtitle(d: CompanyDetail): string {
   const sector = d.sector ?? "--";
-  return d.ticker ? `NASDAQ · ${sector}` : sector;
+  const exchange = d.exchange?.trim();
+  return exchange ? `${exchange} · ${sector}` : sector;
 }
 
 export function CompanyDetailHeader({ detail, titleAs: Title = "h1" }: Props) {
