@@ -177,6 +177,13 @@ export default function WatchlistIdentifierPage({
   const [signInMessage, setSignInMessage] = useState("Create a free account to unlock full access.");
   const [alerts, setAlerts] = useState<PriceAlert[]>([]);
   const [alertsLoading, setAlertsLoading] = useState(true);
+  /* THE READ'S THIRD STATE. An empty `alerts` answered two different questions
+   * at once: the reader has set none, or the app could not look. Only the
+   * first is a statement about their own settings, and only the first may be
+   * rendered as one. The route now answers a failed query with a failure
+   * status instead of 200 and an empty list, so this is set from the response
+   * itself rather than guessed from an empty array. */
+  const [alertsReadFailed, setAlertsReadFailed] = useState(false);
   const [alertType, setAlertType] = useState<"percent_change" | "price_above" | "price_below">("percent_change");
   const [alertAmount, setAlertAmount] = useState("");
   /* THE WRITE'S OWN TWO STATES, and they are new.
@@ -187,8 +194,8 @@ export default function WatchlistIdentifierPage({
    * the browser dropped. Neither state has a consumer in the desk tree below,
    * so the desk renders exactly as it did.
    *
-   * This is the WRITE, not the read. The read's own empty-versus-failed defect
-   * is reported in the PR body and deliberately not fixed here. */
+   * This is the WRITE, not the read. The read's own empty-versus-failed
+   * defect is `alertsReadFailed` above. */
   const [alertSubmitting, setAlertSubmitting] = useState(false);
   const [alertFailed, setAlertFailed] = useState(false);
 
@@ -492,10 +499,17 @@ export default function WatchlistIdentifierPage({
   // Price alerts — load on mount, ticker-only
   useEffect(() => {
     if (isSector) { setAlertsLoading(false); return; }
+    /* `r.ok ? r.json() : { alerts: [] }` was the second layer of the same
+       swallow the route performed: a failure arrived here already dressed as
+       an empty list, and the trailing `.catch(() => {})` finished the job. A
+       non-ok status is now a failed read and says so. */
     fetch(`/api/watchlist-alerts?identifier=${encodeURIComponent(decoded)}`)
-      .then((r) => r.ok ? r.json() : { alerts: [] })
-      .then((d) => setAlerts(d.alerts ?? []))
-      .catch(() => {})
+      .then((r) => {
+        if (!r.ok) throw new Error(`alerts read answered ${r.status}`);
+        return r.json();
+      })
+      .then((d) => { setAlerts(d.alerts ?? []); setAlertsReadFailed(false); })
+      .catch(() => setAlertsReadFailed(true))
       .finally(() => setAlertsLoading(false));
   }, [decoded, isSector]);
 
@@ -881,6 +895,7 @@ Constraints:
           }}
           alertsShown={typeLabel === "ticker" && !!user}
           alertsLoading={alertsLoading}
+          alertsReadFailed={alertsReadFailed}
           alerts={phoneAlerts}
           alertsFull={alerts.length >= 5}
           alertKind={alertType}
@@ -1131,7 +1146,11 @@ Constraints:
               <div className="h-10 bg-parchment-mid border border-border-base rounded-xl animate-pulse" />
             ) : (
               <>
-                {alerts.length === 0 ? (
+                {alertsReadFailed ? (
+                  <p className="font-sans text-[12px] text-text-muted mb-3">
+                    Could not load your alerts. The read failed. Your alerts are unchanged.
+                  </p>
+                ) : alerts.length === 0 ? (
                   <p className="font-sans text-[12px] text-text-muted mb-3">
                     No alerts set. Add a price alert to get notified when this ticker moves.
                   </p>

@@ -58,7 +58,17 @@ export async function PATCH(
       .eq("id", id)
       .single();
 
-    if (lookupError || !existing) {
+    /* A FAILED READ IS NOT A MISSING ROW, and this one gated a WRITE. `.single()`
+       answers with an error object rather than throwing, and PGRST116 is the one
+       code that means the query ran and matched nothing. Every other code is a
+       read that did not answer, and answering that with 404 "Thesis not found"
+       tells the caller their thesis is gone when the lookup simply dropped. */
+    if (lookupError && lookupError.code !== "PGRST116") {
+      console.error("[theses PATCH] ownership lookup failed:", lookupError.message);
+      return Response.json({ error: "Could not verify this thesis" }, { status: 503 });
+    }
+
+    if (!existing) {
       return Response.json({ error: "Thesis not found" }, { status: 404 });
     }
 
