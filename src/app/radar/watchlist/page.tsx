@@ -49,6 +49,7 @@ import { withCompanyLine } from "@/lib/memo-company-line";
 import { WatchlistAddInput, type AddType } from "@/components/watchlist/WatchlistAddInput";
 import { buildArticleOrFilter } from "@/lib/watchlist-utils";
 import { filterImpreciseTitleMatches } from "@/lib/watchlist-title-precision";
+import { nameContainsTerm } from "@/lib/whole-token-match";
 import { trackClientEvent } from "@/lib/track-event";
 import { useLiveMood } from "@/hooks/useLiveMood";
 
@@ -418,16 +419,24 @@ async function fetchArticlesForEntry(entry: WatchlistEntry): Promise<ArticleRead
     entry.type,
   );
 
-  /* Retained deliberately. As a filter this is a no-op: for a company entry
-   * displayNameForSearch is null, so the only term is the identifier, the
-   * title arm is off below 6 characters, and every row already satisfied
-   * primary_company ILIKE '%identifier%'. It is NOT a no-op as control flow:
-   * it returns early and skips the GDELT fallback for short company names.
-   * Removing it would change that behaviour, which is not this PR's job. */
+  /* Retained for its control flow: it returns early and skips the GDELT
+   * fallback for short company names.
+   *
+   * It is NO LONGER a no-op as a filter, and the comment that used to sit here
+   * saying it was is the reason the defect survived. The claim was "every row
+   * already satisfied primary_company ILIKE '%identifier%'", which is true and
+   * is exactly the problem: this line repeated the query's own unanchored
+   * containment, so it agreed with it by construction. For an identifier under
+   * six characters that ILIKE arm is the ONLY arm (the title arm is off below
+   * six), so nothing anywhere in this path required a token boundary. An entry
+   * named "Ola" was served every row whose primary_company merely contains
+   * those three letters: Motorola Solutions, Coca-Cola, Nikola.
+   *
+   * nameContainsTerm is the same predicate companyCorroborates now uses, so the
+   * two checks on this page agree instead of one being anchored and one not. It
+   * only narrows: rows are already back from PostgREST. */
   if (entry.type === "company" && entry.identifier.length < 6) {
-    return ready(result.filter(a =>
-      a.primary_company?.toLowerCase().includes(entry.identifier.toLowerCase())
-    ));
+    return ready(result.filter(a => nameContainsTerm(a.primary_company, entry.identifier)));
   }
 
   /* The fallbacks below are where a ticker or a thinly-covered company gets

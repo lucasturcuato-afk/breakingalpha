@@ -21,6 +21,8 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { filterImpreciseByTerms } from "./watchlist-title-precision";
+
 export interface FollowRow {
   id: string;
   follow_type: "ticker" | "company" | "industry" | "activity" | "topic";
@@ -105,10 +107,26 @@ async function matchTaxonomy(
   return (data as FollowArticle[] | null) ?? [];
 }
 
+/**
+ * `precise` narrows the returned rows with the shared entity rule.
+ *
+ * OFF for the topic complement, ON for ticker and company follows. A topic
+ * follow's keywords are a phrase and its expansions, not a company name, so
+ * demanding that `primary_company` name the keyword would delete the whole
+ * point of the complement. A ticker or company follow IS a claim about an
+ * entity, and it was the one path that made that claim with nothing but
+ * `primary_company.ilike.%term%` behind it: a follow on "Ola" listed Motorola
+ * Solutions and Coca-Cola as developments. The watchlist surface already
+ * narrows its identical query; this one did not, which is the same fact
+ * computed twice with one side guarded.
+ *
+ * It can only remove rows PostgREST already returned.
+ */
 async function matchKeywords(
   sb: SupabaseClient,
   keywords: string[],
   days: number,
+  precise = false,
 ): Promise<FollowArticle[]> {
   const orFilter = keywordOrFilter(keywords);
   if (!orFilter) return [];
@@ -120,7 +138,8 @@ async function matchKeywords(
     .order("published_at", { ascending: false })
     .limit(PER_FOLLOW_LIMIT);
   if (error) throw new Error(`keyword match failed: ${error.message}`);
-  return (data as FollowArticle[] | null) ?? [];
+  const rows = (data as FollowArticle[] | null) ?? [];
+  return precise ? filterImpreciseByTerms(rows, keywords) : rows;
 }
 
 async function matchTopic(
@@ -191,7 +210,7 @@ export async function matchFollow(
         const keywords = follow.matched_keywords?.length
           ? follow.matched_keywords
           : [follow.display_name ?? follow.target];
-        return await matchKeywords(sb, keywords, days);
+        return await matchKeywords(sb, keywords, days, true);
       }
       case "topic":
         return await matchTopic(sb, follow, days);

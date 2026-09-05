@@ -72,6 +72,48 @@ _HARD_DROP_DESCRIPTION_PATTERNS = [
 _TICKER_SHAPED_NAME_RE = re.compile(r"^[A-Z]{1,3}$")
 _SOVEREIGNTY_DROP_KEYWORDS = frozenset({"country", "sovereign state", "nation state"})
 
+# (c) EVERY description keyword below is matched at a LEFT TOKEN BOUNDARY, not
+#     as a bare substring. This gate is the last thing standing between a
+#     Gemini-extracted surface form and entity_resolver._try_insert_canonical,
+#     which mints a companies row for whatever it is handed, so a keyword that
+#     fires INSIDE a word mints on evidence that is not there.
+#
+#     LEFT boundary only, and the asymmetry is the point. A trailing inflection
+#     preserves the meaning: "banking group" is evidence of a bank, "startups"
+#     of a startup, "financial institutions" of a financial institution, and all
+#     three are load-bearing across the live verdict cache. A LEADING attachment
+#     does not preserve it, and can invert it outright:
+#
+#         "incorporated" fires inside "UNincorporated community in ..."
+#         "bank"         fires inside "longterm BIObank study of 500,000 people"
+#
+#     Measured over the whole live wikidata_entity_cache (2026-09-05, every row
+#     read and the count asserted against the exact total), requiring a left
+#     boundary changes FIVE verdicts and no others. All five are True -> None,
+#     all five are entities that are not companies, and four are already
+#     `companies` rows with a null ticker and a null sec_cik:
+#         Mill Point   unincorporated community in pocahontas county
+#         Rockbridge   unincorporated community in hocking county, ohio
+#         NMI / MP     unincorporated territory of the us in the pacific
+#         UK Biobank   longterm biobank study of 500,000 people
+#     Nothing that is a company changes verdict. Re-measure before widening
+#     this to a full \b on both sides: a RIGHT boundary breaks the inflections
+#     above and, measured the same way, costs CIBC, BBVA, Bradesco, Silicon
+#     Valley Bank and Raiffeisen their keep.
+#
+#     The NAME-side list (_NO_RESULT_DROP_SUBSTRINGS) is deliberately NOT
+#     changed here; see the note above it.
+_LEFT_BOUNDARY_CACHE: dict = {}
+
+
+def _hits_at_token_start(keyword: str, description: str) -> bool:
+    """True when `keyword` occurs in `description` starting at a token boundary."""
+    pattern = _LEFT_BOUNDARY_CACHE.get(keyword)
+    if pattern is None:
+        pattern = re.compile(r"(?<![a-z0-9])" + re.escape(keyword))
+        _LEFT_BOUNDARY_CACHE[keyword] = pattern
+    return pattern.search(description) is not None
+
 # Descriptions that confirm the entity IS a company.
 _KEEP_DESCRIPTION_KEYWORDS = [
     "company", "corporation", "incorporated", "limited company",
@@ -84,6 +126,21 @@ _KEEP_DESCRIPTION_KEYWORDS = [
 
 # If Wikidata returns no result AND the name contains any of these substrings → drop.
 # These are heuristics for abstract phrases the model shouldn't have extracted.
+#
+# DELIBERATELY STILL SUBSTRINGS, and deliberately NOT changed by the token-
+# boundary work below. This list REJECTS, so an interior hit costs a company
+# that never mints; the description keywords ACCEPT, so an interior hit mints
+# one that should not exist. Only the second direction is this change's job.
+#
+# The debt is real and measured, so it is written down rather than quietly
+# fixed: over the live verdict cache, "bloc" fires inside "Block" and drops
+# every spelling of Block, Inc. and H&R Block; "drone" fires inside "Madrone"
+# and "DroneShield"; "currency" inside "currency board". Requiring a token
+# boundary here recovers those, and it also newly drops names such as "Party
+# Reflections" that the uneven space-padding in this list (" party", " stocks",
+# " stock ") happens to spare today. That is a WIDENING of what may mint and it
+# needs its own before/after count on the ingest corpus, not a ride on a
+# narrowing PR.
 _NO_RESULT_DROP_SUBSTRINGS = [
     "makers", "sector", "model for", "backed by", "drone", " card",
     " stocks", " stock ", " party", " forces", "military", "trust vehicle",
@@ -225,17 +282,17 @@ def _classify(description: str | None, name: str) -> bool | None:
 
     ticker_shaped = bool(_TICKER_SHAPED_NAME_RE.match((name or "").strip()))
     for kw in _HARD_DROP_DESCRIPTION_KEYWORDS:
-        if kw in description:
+        if _hits_at_token_start(kw, description):
             if ticker_shaped and kw in _SOVEREIGNTY_DROP_KEYWORDS:
                 continue  # ISO 3166 code collision on a ticker, not evidence
             return False
 
     for kw in _KEEP_DESCRIPTION_KEYWORDS:
-        if kw in description:
+        if _hits_at_token_start(kw, description):
             return True
 
     for kw in _SOFT_DROP_DESCRIPTION_KEYWORDS:
-        if kw in description:
+        if _hits_at_token_start(kw, description):
             return False
 
     return None  # Ambiguous
