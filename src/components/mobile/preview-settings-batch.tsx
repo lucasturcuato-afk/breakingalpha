@@ -20,7 +20,19 @@ export type PreviewScreen = "settings" | "preferences" | "alerts" | "saved" | "l
 /* `saving` is new and it is the state a settings screen spends its riskiest
    second in. Nothing could reach it here before: firing the save is the one
    thing an audit of a writing screen must not do. */
-export type PreviewState = "ready" | "loading" | "saving" | "error" | "empty" | "saved";
+/* `failed` is the READ that did not happen, and it is a separate member from
+   `error` on purpose. `error` is a SAVE that failed, which draws beside a live
+   Save control because a save is worth retrying from the form in front of you.
+   `failed` draws no form at all. Folding the two into one member would have
+   left the distinction this batch exists to make unlookable in the harness. */
+export type PreviewState =
+  | "ready"
+  | "loading"
+  | "saving"
+  | "error"
+  | "failed"
+  | "empty"
+  | "saved";
 
 const SECTORS = [
   "Technology", "Healthcare & Biotech", "Energy & Oil/Gas", "Financial Services",
@@ -132,6 +144,7 @@ function SettingsPreview({ state }: { state: PreviewState }) {
   return (
     <MobileSettingsScreen
       loading={state === "loading"}
+      loadFailed={state === "failed"}
       error={state === "error" ? "The profile could not be saved." : null}
       saving={false}
       saved={state === "saved"}
@@ -282,7 +295,7 @@ function LearnedPreview({ state }: { state: PreviewState }) {
          the sentence that contradicted itself, and the screen now renders
          nothing for a missing timestamp. */
       updatedAt={state === "empty" ? null : "Aug 13, 4:02 AM"}
-      refreshFailed={state === "error"}
+      refreshFailed={state === "error" || state === "failed"}
       /* False, because false is what production does. The two columns these
          weights would be stored in do not exist, so the harness would be
          drawing a state the product cannot reach if this were true. The plate

@@ -53,18 +53,22 @@ export function MobileLearnedScreen({
    */
   updatedAt: string | null;
   /**
-   * The route's weight refresh THREW. Narrow on purpose, and narrower than it
-   * looks: `updateInferredWeights` resolves normally on both a read error and
-   * a write error, and it deliberately suppresses even the warn when the error
-   * names either ghost column, so this cannot catch the failure that actually
-   * happens in production. That one is reported by `stored` instead.
+   * The route's weight refresh DID NOT PRODUCE NUMBERS, either because the
+   * `user_events` read failed or because the call threw.
    *
-   * This branch is left in place because an unexpected throw is still possible
-   * and silence would be worse, but its copy no longer says the numbers fell
-   * back to "the last stored values": nothing is stored, so that would have
-   * been a second false claim hiding inside a failure message. Widening the
-   * signal means unpicking the swallow in `src/lib/user-profile.ts`, which is
-   * PR #681's file, not this one's.
+   * This prop was written for a signal that could not reach it. It used to
+   * mean only "the call threw", and `updateInferredWeights` resolved normally
+   * on a read error, folding it into `{weights: {}, eventCount: 0}`, so the
+   * flag was false for every reader on every render and a failed read drew as
+   * a genuine zero. The library now reports its own read failure and the route
+   * passes it straight through, so the branch below is reachable for the
+   * failure that actually happens rather than only for an unexpected throw.
+   *
+   * Still narrow, and deliberately so. It does NOT cover the WRITE failure
+   * that happens in production today, where the two personalization columns do
+   * not exist: the numbers are real in that case, they are simply not kept.
+   * `stored` reports that one, and the copy here does not claim the numbers
+   * fell back to "the last stored values", because nothing is stored.
    */
   refreshFailed: boolean;
   /**

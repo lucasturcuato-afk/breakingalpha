@@ -14,6 +14,7 @@ import {
 } from "@/components/mobile";
 import styles from "@/components/mobile/mobile.module.css";
 import { FONT_DISPLAY, FONT_SANS } from "@/components/mobile/fonts";
+import { WatchNotice } from "@/components/watch/watch-notice";
 
 /**
  * Settings, at phone width. Grounded in `settings/profile/page.tsx`, whose
@@ -32,6 +33,16 @@ import { FONT_DISPLAY, FONT_SANS } from "@/components/mobile/fonts";
 
 export interface MobileSettingsScreenProps {
   loading: boolean;
+  /**
+   * The profile READ did not happen, as distinct from a SAVE that failed.
+   *
+   * `error` below is the save-side message and it sits beside a live Save
+   * control, because a save is worth retrying from the form the reader is
+   * looking at. This one is the opposite case: the fields hold nothing that
+   * came from the reader's stored profile, so the form is not drawn at all
+   * and there is no Save control to press over it.
+   */
+  loadFailed: boolean;
   error: string | null;
   saving: boolean;
   saved: boolean;
@@ -59,6 +70,7 @@ export interface MobileSettingsScreenProps {
 export function MobileSettingsScreen(props: MobileSettingsScreenProps) {
   const {
     loading,
+    loadFailed,
     error,
     saving,
     saved,
@@ -109,6 +121,16 @@ export function MobileSettingsScreen(props: MobileSettingsScreenProps) {
 
         {loading ? (
           <ProfileSkeleton />
+        ) : loadFailed ? (
+          /* Same block, same words, same retry as the desk half above it, and
+             for the same reason: the form is not mounted, so Save is not on
+             the screen to be pressed over blank fields. The rows below this
+             point still draw, so the reader keeps every way off the screen. */
+          <WatchNotice
+            heading="Could not load your preferences."
+            body="Nothing on this screen can be saved until they load. Saving now would write an empty form over what is already there."
+            action={{ href: "/settings/profile", label: "Try again" }}
+          />
         ) : (
           <>
             <div style={{ marginTop: "22px", display: "flex", flexDirection: "column", gap: "14px" }}>

@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getSupabaseWithUser } from "@/lib/supabase-server";
-import { getUserProfile, updateInferredWeights } from "@/lib/user-profile";
+import { readUserProfile, updateInferredWeights, DEFAULT_PROFILE } from "@/lib/user-profile";
+import { WatchNotice } from "@/components/watch/watch-notice";
 import { AppShell } from "@/components/shell";
 import { ResetLearnedPrefsButton } from "@/components/settings/ResetLearnedPrefsButton";
 import { BehavioralInsights } from "@/components/profile/BehavioralInsights";
@@ -12,13 +13,61 @@ export default async function PreferencesPage() {
   const { supabase, user } = await getSupabaseWithUser();
   if (!user) redirect("/auth");
 
-  const profile = await getUserProfile(supabase, user.id);
+  /* THIS CALLER MUST NOT DEFAULT, and it is one of only two that must not.
+   *
+   * Every field below seeds `PreferencesForm`, whose Save button PATCHes all
+   * of them back at `PreferencesForm.tsx:142`. `getUserProfile` yields
+   * `DEFAULT_PROFILE` on a failed read, so a reader whose profile did not load
+   * saw an empty name, no role, no sectors and an empty watchlist rendered as
+   * their stored values, and one press of Save wrote those blanks over what
+   * was there. That is destruction, not a misreport, which is why this call
+   * site takes the three-state read and the four indifferent ones do not. */
+  const profileRead = await readUserProfile(supabase, user.id);
 
-  // Refresh inferred weights on every visit so the display reflects the last
-  // 30 days of activity. If this fails (table missing), soft-fail to {}.
-  const { weights, eventCount } = await updateInferredWeights(supabase, user.id).catch(
-    () => ({ weights: profile.inferred_sector_weights, eventCount: 0 }),
-  );
+  if (profileRead.state === "failed") {
+    /* THE FORM IS NOT DRAWN AT ALL, which is the point rather than a shortcut.
+       The Save control lives inside `PreferencesForm`, so not mounting the
+       form is what makes Save unavailable; there is no disabled button to
+       mis-enable and no seeded field to press it over. Reuses `WatchNotice`,
+       the block this repo already draws for every failed read, and its
+       "Could not load your X." register. Retry is a real anchor, not a
+       button with a push: this is a server component and a fresh navigation
+       is exactly the retry. */
+    return (
+      <AppShell pageTitle="Preferences" mobileFullBleed>
+        <div className="mx-auto max-w-none px-4 py-6 md:max-w-3xl md:px-6 md:py-10">
+          <h1 className="font-display text-[22px] font-extrabold text-espresso md:text-[28px]">
+            Your preferences
+          </h1>
+          <WatchNotice
+            heading="Could not load your preferences."
+            body="Nothing on this screen can be saved until they load. Saving now would write an empty form over what is already there."
+            action={{ href: "/settings/preferences", label: "Try again" }}
+          />
+        </div>
+      </AppShell>
+    );
+  }
+
+  /* A missing row is a genuinely different answer and keeps its old
+     behaviour: a reader with no profile row yet gets an empty form to fill
+     in, and Save creates the row. Only `failed` blocks. */
+  const profile =
+    profileRead.state === "ok" ? profileRead.row : DEFAULT_PROFILE(user.id);
+
+  /* Refresh inferred weights on every visit so the display reflects the last
+     30 days of activity. `failed` is carried, not swallowed: this page renders
+     "Not enough data yet" on an empty weight map, and that sentence must not
+     stand for a read that did not happen. Same flag, same reason, as
+     `/settings/learned`. */
+  const { weights, eventCount, failed: refreshFailed } = await updateInferredWeights(
+    supabase,
+    user.id,
+  ).catch(() => ({
+    weights: profile.inferred_sector_weights,
+    eventCount: 0,
+    failed: true,
+  }));
 
   const sortedWeights = Object.entries(weights).sort((a, b) => b[1] - a[1]);
   /* THE THIRD CALLER, and the one the mobile screen links straight at.
@@ -38,7 +87,7 @@ export default async function PreferencesPage() {
   const storedAt = profile.inferred_weights_updated_at;
   /* `typeof === "string"`, not `!== null`, and the difference is the whole
      honesty of the screen. `stored` is false today only because
-     `DEFAULT_PROFILE` happens to set this key to null at `user-profile.ts:109`
+     `DEFAULT_PROFILE` happens to set this key to null at `user-profile.ts:119`
      and `getUserProfile` spreads `{...defaults, ...data}` over a `select("*")`
      row that simply lacks it. Drop that default and `storedAt` becomes
      `undefined`, `!== null` becomes true, and the ranking claim comes back
@@ -129,8 +178,14 @@ export default async function PreferencesPage() {
                 nothing is ordered by them. */}
             These are inferred from your activity and blend with your declared
             preferences above. 1.0 = neutral.
-            {stored ? " Higher = boosted in ranking." : ""} {eventCount} events
-            considered{updatedAt === null ? "." : <> &middot; last updated {updatedAt}.</>}
+            {stored ? " Higher = boosted in ranking." : ""}
+            {refreshFailed ? null : (
+              <>
+                {" "}
+                {eventCount} events considered
+                {updatedAt === null ? "." : <> &middot; last updated {updatedAt}.</>}
+              </>
+            )}
           </p>
 
           {stored ? null : (
@@ -141,7 +196,15 @@ export default async function PreferencesPage() {
             </p>
           )}
 
-          {sortedWeights.length === 0 ? (
+          {refreshFailed ? (
+            /* Word for word the sentence `/settings/learned` already draws for
+               this state, at `mobile-learned-screen.tsx:164`. One register,
+               one claim, and the two surfaces cannot disagree about it. */
+            <p className="font-sans text-[12px] text-text-muted" role="status">
+              These weights could not be worked out just now, so the numbers
+              above are incomplete. Nothing was changed.
+            </p>
+          ) : sortedWeights.length === 0 ? (
             <p className="font-sans text-[12px] text-text-muted italic">
               Not enough data yet. Interact with a few theses and come back.
             </p>

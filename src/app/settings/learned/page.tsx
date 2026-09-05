@@ -54,10 +54,18 @@ export default async function LearnedPage() {
 
   const profile = await getUserProfile(supabase, user.id);
 
-  const refreshed = await updateInferredWeights(supabase, user.id).then(
-    (r) => ({ ...r, failed: false }),
-    () => ({ weights: profile.inferred_sector_weights, eventCount: 0, failed: true }),
-  );
+  /* `failed` now comes FROM the call rather than being hard-coded false on
+     the resolve path. It used to read `(r) => ({...r, failed: false})`, and
+     `updateInferredWeights` swallowed a `user_events` read error into
+     `{weights: {}, eventCount: 0}` and RESOLVED, so the rejection handler
+     below never ran and `refreshFailed` could not be true for any reason. The
+     screen stated "Not enough data yet" on a read that did not happen.
+     The rejection handler stays, for a throw rather than a swallowed error. */
+  const refreshed = await updateInferredWeights(supabase, user.id).catch(() => ({
+    weights: profile.inferred_sector_weights,
+    eventCount: 0,
+    failed: true,
+  }));
   const { weights, eventCount, failed: refreshFailed } = refreshed;
 
   const sorted = Object.entries(weights)
@@ -91,7 +99,7 @@ export default async function LearnedPage() {
   const storedAt = profile.inferred_weights_updated_at;
   /* `typeof === "string"`, not `!== null`, and the difference is the whole
      honesty of the screen. `stored` is false today only because
-     `DEFAULT_PROFILE` happens to set this key to null at `user-profile.ts:109`
+     `DEFAULT_PROFILE` happens to set this key to null at `user-profile.ts:119`
      and `getUserProfile` spreads `{...defaults, ...data}` over a `select("*")`
      row that simply lacks it. Drop that default and `storedAt` becomes
      `undefined`, `!== null` becomes true, and the ranking claim comes back
