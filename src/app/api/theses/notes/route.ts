@@ -11,10 +11,13 @@ export async function GET(request: NextRequest) {
   if (!thesisId) return NextResponse.json({ note: null });
 
   try {
+    // Owner-scoped since sql/0039: RLS restricts to auth.uid() and the
+    // explicit filter keeps the query honest if the policy ever widens.
     const { data, error } = await supabase
       .from("thesis_notes")
       .select("content, updated_at")
       .eq("thesis_id", thesisId)
+      .eq("user_id", user.id)
       .maybeSingle();
 
     if (error) {
@@ -39,11 +42,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "thesis_id required" }, { status: 400 });
     }
 
+    // One note per (user, thesis): sql/0039 moved uniqueness off thesis_id
+    // alone, which would have made a note shared by every reader. user_id is
+    // written explicitly; the insert policy rejects any other value.
     const { data, error } = await supabase
       .from("thesis_notes")
       .upsert(
-        { thesis_id, content: content || "", updated_at: new Date().toISOString() },
-        { onConflict: "thesis_id" }
+        {
+          thesis_id,
+          user_id: user.id,
+          content: content || "",
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "user_id,thesis_id" }
       )
       .select("content, updated_at")
       .single();

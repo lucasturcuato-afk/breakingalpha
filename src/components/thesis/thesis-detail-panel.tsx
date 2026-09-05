@@ -205,11 +205,15 @@ export function ThesisDetailPanel({ thesis, articles, onArchive, onRegenerate, a
   const saveNote = useCallback(async () => {
     if (!thesis?.id) return;
     try {
-      await fetch("/api/theses/notes", {
+      const res = await fetch("/api/theses/notes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ thesis_id: thesis.id, content: noteText }),
       });
+      // fetch() resolves on a 500. Before this check the panel showed "Saved"
+      // for every note the server had just refused (thesis_notes had RLS on
+      // and no policy, so the refusal was unconditional; see sql/0039).
+      if (!res.ok) throw new Error(`save failed: ${res.status}`);
       setNoteSaved(true);
       setNoteFailed(false);
       setTimeout(() => setNoteSaved(false), 2000);

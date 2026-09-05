@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 import { getSupabaseWithUser } from "@/lib/supabase-server";
+import { getServiceSupabase } from "@/lib/supabase-service";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -148,10 +148,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Service role to bypass RLS on user_events.
-    const adminSupabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    );
+    const adminSupabase = getServiceSupabase();
 
     const { error } = await adminSupabase.from("user_events").insert(rows);
 

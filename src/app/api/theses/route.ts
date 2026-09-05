@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
-import { createClient } from "@supabase/supabase-js";
 import { getSupabaseWithUser } from "@/lib/supabase-server";
 import { mapThesisRow, dedupByTitleSector, thesisDedupKey, thesisFuzzyKey } from "@/lib/thesis-mapper";
 import { getUserProfile, sectorWeight } from "@/lib/user-profile";
 import { recordOutput } from "@/lib/outputs";
 import { THESIS_FRONTEND_PROMPT_VERSION } from "@/lib/output-constants";
 import { enforceThesisRecommendation, hasThesisViolation } from "@/lib/thesis-recommendation-guard";
+import { getServiceSupabase } from "@/lib/supabase-service";
 
 export const dynamic = "force-dynamic";
 
@@ -204,10 +204,7 @@ export async function POST() {
     const validIds = new Set<string>();
 
     // Service-role client for pipeline tables (not gated on user session/RLS)
-    const adminSupabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    );
+    const adminSupabase = getServiceSupabase();
 
     // 1. Pull the most recent run_id from trend_clusters within the last 48h
     const lookbackIso = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();

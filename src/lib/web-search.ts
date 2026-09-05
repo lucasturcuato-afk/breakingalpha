@@ -39,8 +39,13 @@ const EXA_ENDPOINT = "https://api.exa.ai/search";
 
 function getCacheClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !key) return null;
+  // Service role only: web_search_cache has RLS on and no policy, so an anon
+  // fallback would read empty and write nothing, silently. Missing key = no cache.
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) {
+    console.warn("[web-search] SUPABASE_SERVICE_ROLE_KEY unset; search cache disabled");
+    return null;
+  }
   try {
     return createClient(url, key);
   } catch {

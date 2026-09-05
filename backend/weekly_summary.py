@@ -30,6 +30,10 @@ from collections import defaultdict
 from datetime import timezone
 
 from supabase import create_client
+try:
+    from supabase_client import service_client  # cron context: cwd=backend/
+except ImportError:  # pragma: no cover - test/dev context: cwd=repo-root
+    from backend.supabase_client import service_client
 
 supabase = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_ANON_KEY"])
 
@@ -192,7 +196,7 @@ def print_weekly_summary(brief_type="morning", lookback_runs=10):
 
     try:
         resp = (
-            supabase.table("brief_quality_scores")
+            service_client().table("brief_quality_scores")
             .select(
                 "run_id, headline_pass, headline_word_count, "
                 "banned_phrase_hits, what_to_watch_banned_hits, "
@@ -207,7 +211,7 @@ def print_weekly_summary(brief_type="morning", lookback_runs=10):
 
     try:
         resp = (
-            supabase.table("selection_audit")
+            service_client().table("selection_audit")
             .select(
                 "run_id, candidate_count, selected_count, target_count, "
                 "score_10_not_selected, score_8_plus_not_selected, "

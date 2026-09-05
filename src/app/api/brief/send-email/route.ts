@@ -45,9 +45,9 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
  */
 function makeAdminClient(): SupabaseClient | null {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key =
-    process.env.SUPABASE_SERVICE_ROLE_KEY ||
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  // Service role only. No anon fallback: RLS rejects anon on these tables and
+  // the failure would surface as an opaque empty result or 500 (see supabase-service.ts).
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) return null;
   return createClient(url, key, { auth: { persistSession: false } });
 }
@@ -366,9 +366,9 @@ async function filterUnsubscribed(recipients: string[]): Promise<string[]> {
   if (recipients.length === 0) return [];
   try {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const key =
-      process.env.SUPABASE_SERVICE_ROLE_KEY ||
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    // Service role only. No anon fallback: RLS rejects anon on these tables and
+  // the failure would surface as an opaque empty result or 500 (see supabase-service.ts).
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
     if (!url || !key) return recipients;
     const admin = createClient(url, key, { auth: { persistSession: false } });
 
@@ -431,9 +431,9 @@ async function resolveUserIdForEmail(
 ): Promise<string> {
   try {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const key =
-      process.env.SUPABASE_SERVICE_ROLE_KEY ||
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    // Service role only. No anon fallback: RLS rejects anon on these tables and
+  // the failure would surface as an opaque empty result or 500 (see supabase-service.ts).
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
     if (!url || !key) return fallbackUserId;
     const admin = createClient(url, key, { auth: { persistSession: false } });
     const { data, error } = await admin.auth.admin.listUsers({ perPage: 1000 });

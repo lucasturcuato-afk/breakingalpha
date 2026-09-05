@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 import { getSupabaseWithUser } from "@/lib/supabase-server";
+import { getServiceSupabase } from "@/lib/supabase-service";
 
 export const dynamic = "force-dynamic";
 
@@ -16,10 +16,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "section_key and rating (-1 or 1) required" }, { status: 400 });
     }
 
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    );
+    const supabase = getServiceSupabase();
 
     // Upsert: one rating per user per section per briefing
     const { error } = await supabase
@@ -48,10 +45,7 @@ export async function GET() {
     const { user } = await getSupabaseWithUser();
     if (!user) return NextResponse.json({ ratings: {} });
 
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    );
+    const supabase = getServiceSupabase();
 
     const { data } = await supabase
       .from("brief_section_ratings")

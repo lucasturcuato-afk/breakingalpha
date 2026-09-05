@@ -52,6 +52,10 @@ from collections import Counter
 from datetime import datetime, timezone, timedelta
 
 from supabase import create_client
+try:
+    from supabase_client import service_client  # cron context: cwd=backend/
+except ImportError:  # pragma: no cover - test/dev context: cwd=repo-root
+    from backend.supabase_client import service_client
 from google import genai
 from google.genai import types
 
@@ -204,7 +208,7 @@ def print_summary(brief_type: str, run_id: str | None = None) -> None:
         quality = None
         try:
             resp = (
-                supabase.table("brief_quality_scores")
+                service_client().table("brief_quality_scores")
                 .select("headline_pass, banned_phrase_hits, soft_flags, status")
                 .eq("run_id", run_id)
                 .limit(1)
@@ -218,7 +222,7 @@ def print_summary(brief_type: str, run_id: str | None = None) -> None:
         selection = None
         try:
             resp = (
-                supabase.table("selection_audit")
+                service_client().table("selection_audit")
                 .select("score_10_not_selected, score_8_plus_not_selected, "
                         "mean_selected_score, sector_concentration_flag")
                 .eq("run_id", run_id)
@@ -410,7 +414,7 @@ def generate_weekly_digest(brief_type: str) -> dict:
         quality_rows: list[dict] = []
         try:
             resp = (
-                supabase.table("brief_quality_scores")
+                service_client().table("brief_quality_scores")
                 .select("headline_pass, banned_phrase_hits, soft_flags")
                 .eq("brief_type", brief_type)
                 .gte("created_at", cutoff)
@@ -449,7 +453,7 @@ def generate_weekly_digest(brief_type: str) -> dict:
         audit_rows: list[dict] = []
         try:
             resp = (
-                supabase.table("selection_audit")
+                service_client().table("selection_audit")
                 .select("mean_selected_score, score_10_not_selected, "
                         "sector_concentration_flag")
                 .eq("brief_type", brief_type)

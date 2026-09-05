@@ -20,6 +20,9 @@ surfaces it as RemoteProtocolError, and the in-flight write fails, marking
    failures: HTTP status errors (4xx/5xx) are never caught here.
 """
 
+import base64
+import functools
+import json
 import os
 import time
 
@@ -99,3 +102,84 @@ def execute_with_retry(thunk, *, attempts=3, backoff_s=1.0, what="supabase call"
             if i < attempts:
                 time.sleep(backoff_s)
     raise last
+
+
+@functools.lru_cache(maxsize=1)
+def service_client() -> Client:
+    """One service-role client per process, for READ sites that a module-level
+    anon-keyed client used to serve.
+
+    Those modules (summarize, weekly_summary, brief_feedback_loop, embedding_job,
+    thesis_generator, synthesize) read tables that have RLS enabled and no
+    policy, so under a genuine anon key the read returns [] with no error. In
+    production the secret bound to SUPABASE_ANON_KEY is the service JWT, which
+    is why the reads work there; locally it is a publishable key and they read
+    empty. Naming the intent at the call site removes the dependence on that
+    accident. Memoised so the call sites share one HTTP/1.1 session.
+    """
+    return get_service_client()
+
+
+def describe_key_role(key: str | None) -> str:
+    """The ROLE a Supabase key carries, never the key.
+
+    Legacy JWT keys carry a `role` claim (anon | service_role). New-style keys
+    are opaque with a prefix: sb_publishable_ (anon-equivalent) and sb_secret_
+    (service-equivalent). Anything else is 'unknown'. The output is safe to log.
+    """
+    if not key:
+        return "unset"
+    if key.startswith("sb_publishable_"):
+        return "publishable"
+    if key.startswith("sb_secret_"):
+        return "secret"
+    parts = key.split(".")
+    if len(parts) == 3:
+        try:
+            payload = parts[1] + "=" * (-len(parts[1]) % 4)
+            claims = json.loads(base64.urlsafe_b64decode(payload))
+            return str(claims.get("role") or "jwt-without-role")
+        except Exception:
+            return "unparseable-jwt"
+    return "unknown"
+
+
+#: Roles that bypass RLS. describe_key_role() output is compared against this.
+_SERVICE_ROLES = ("service_role", "secret")
+#: Roles that POSITIVELY do not: a key that reads as one of these in the
+#: service slot is refused. An unclassifiable key (a fake in tests, a future
+#: format) is logged as a warning instead: the pipeline must not die on a
+#: format this helper has not met.
+_NON_SERVICE_ROLES = ("anon", "publishable")
+
+
+def assert_key_roles(env: dict | None = None, log=print) -> dict:
+    """Startup assertion: log the role claim of each bound key and refuse to
+    run with a service key that is not service-shaped.
+
+    Logs claims only. Returns {env_var: role} for tests. Raises RuntimeError
+    when SUPABASE_SERVICE_ROLE_KEY positively carries an anon-class role,
+    which is the one configuration that would make every writer fail on the
+    first insert while looking configured. A key it cannot classify is
+    logged, never fatal. A service-shaped SUPABASE_ANON_KEY
+    is logged as a warning, not an error: it is how production runs today.
+    """
+    env = os.environ if env is None else env
+    roles = {
+        name: describe_key_role(env.get(name))
+        for name in ("SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_ANON_KEY")
+    }
+    log("[KEYS] " + ", ".join(f"{k}={v}" for k, v in roles.items()))
+    svc = roles["SUPABASE_SERVICE_ROLE_KEY"]
+    if svc in _NON_SERVICE_ROLES:
+        raise RuntimeError(
+            f"SUPABASE_SERVICE_ROLE_KEY carries role {svc!r}, not a service role; "
+            "every writer would be rejected by RLS. Refusing to start."
+        )
+    if svc not in _SERVICE_ROLES and svc != "unset":
+        log(f"[KEYS] warning: SUPABASE_SERVICE_ROLE_KEY role could not be classified ({svc}); "
+            "not refusing, but check it")
+    if roles["SUPABASE_ANON_KEY"] in _SERVICE_ROLES:
+        log("[KEYS] warning: SUPABASE_ANON_KEY carries a service role; the name is wrong, "
+            "the behaviour is service-role")
+    return roles

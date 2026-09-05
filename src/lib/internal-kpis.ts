@@ -5,7 +5,7 @@
 // the service-role client. The views are granted to service_role only and sit
 // behind requireAdmin() in app/internal/page.tsx. All ratios are computed in the
 // SQL views; this layer only fetches and coerces.
-import { createClient } from "@supabase/supabase-js";
+import { getServiceSupabase } from "@/lib/supabase-service";
 
 export type TimeWindow = "7d" | "30d";
 export type Segment = "All" | "USC" | "other";
@@ -95,10 +95,7 @@ export interface InstrumentationHealth {
 }
 
 function serviceClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-  );
+  return getServiceSupabase();
 }
 
 /** PostgREST serializes numeric/round() as strings; coerce defensively. */

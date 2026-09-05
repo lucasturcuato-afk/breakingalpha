@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 import { getSupabaseWithUser } from "@/lib/supabase-server";
 import { unwrapRows } from "@/lib/supabase-query";
+import { getServiceSupabase } from "@/lib/supabase-service";
 
 export const dynamic = "force-dynamic";
 
@@ -10,10 +10,7 @@ export async function GET() {
     const { supabase: authClient, user } = await getSupabaseWithUser();
     if (!user) return NextResponse.json({ alerts: [] });
 
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    );
+    const supabase = getServiceSupabase();
 
     // Get user's watchlist tickers
     const watchlist = unwrapRows<{ identifier: string }>(

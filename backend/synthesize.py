@@ -6,6 +6,10 @@ Generates a detailed analyst-style morning/evening briefing using Google Gemini.
 import os, json, re, uuid, time
 from datetime import datetime, timezone, timedelta, date
 from supabase import create_client
+try:
+    from supabase_client import service_client  # cron context: cwd=backend/
+except ImportError:  # pragma: no cover - test/dev context: cwd=repo-root
+    from backend.supabase_client import service_client
 from google import genai
 from google.genai import types
 
@@ -1207,7 +1211,7 @@ def _fetch_aggregate_engagement() -> str:
     """
     try:
         resp = (
-            supabase.table("user_signal_digest")
+            service_client().table("user_signal_digest")
             .select("top_sectors, top_tickers, engagement_level, event_count")
             .execute()
         )
