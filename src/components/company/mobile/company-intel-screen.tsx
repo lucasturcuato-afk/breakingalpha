@@ -26,6 +26,8 @@ import {
   spanWhenLastOfOdd,
 } from "./sections";
 import { FONT_DISPLAY, FONT_MONO, FONT_SANS } from "@/components/mobile/fonts";
+import { BackHeader } from "@/components/mobile";
+import { COMPANY_BACK_HREF, COMPANY_BACK_LABEL } from "../back-destination";
 
 /**
  * Company Intel, mobile. The prototype's `isCompany` screen.
@@ -224,54 +226,29 @@ export function CompanyIntelScreen({
         flexGrow: 1,
       }}
     >
-      <div
-        style={{
-          flex: "none",
-          minHeight: "48px",
-          display: "flex",
-          alignItems: "center",
-          padding: `0 ${PAD}`,
-          borderBottom: "1px solid var(--c-border)",
-        }}
-      >
-        {/* The design labels this "Ask" because the prototype reaches Company
-            Intel from the Ask browse screen. `/ask` does not exist on this
-            branch, and a control naming a destination that is not there is a
-            false statement about where it goes, so it steps back through
-            history and says so. Recorded in the PR body. */}
-        <button
-          type="button"
-          onClick={() => router.back()}
-          className={styles.bare}
-          style={{
-            minHeight: "44px",
-            display: "flex",
-            alignItems: "center",
-            gap: "6px",
-            font: `500 13px/1 ${FONT_SANS}`,
-            color: "var(--c-secondary)",
-          }}
-        >
-          {/* Drawn here rather than through the shared Chevron. That component
-              has no left direction and no 16px size, and adding either would be
-              the shared-component edit two other screens are already blocked
-              on. A wrapper beside it, never a branch inside it. */}
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-            aria-hidden="true"
-            style={{ flex: "none" }}
-          >
-            <path d="M15 6l-6 6 6 6" />
-          </svg>
-          Back
-        </button>
-      </div>
+      {/* THE HAND-ROLLED ROW IS GONE AND THE REASON IS NOT TIDINESS.
+          What stood here was a `<button onClick={() => router.back()}>` with
+          nothing behind it, and on this route that is the ejection PR 746
+          exists to stop. A company URL is the URL that gets pasted into Slack,
+          mail and a search result, so a COLD ENTRY here is the ordinary
+          arrival rather than the edge case: `router.back()` then either no-ops
+          on the first entry of the tab, leaving a dead control on a reader who
+          is already stuck, or steps out of Signalera entirely.
+
+          `BackHeader` asks `shouldStepBack(readAppHistory())` first, which is
+          "is a page of OURS behind this one" rather than "does A history
+          exist", and falls through to its own `href` when the answer is no.
+          The geometry is unchanged: both rows are 48px with a 1px rule, a 44px
+          link at `500 13px/1` sans in `--c-secondary`, a 6px gap and the same
+          16px chevron, and both pad at `var(--v3-pad)`, which is what `PAD`
+          already resolved to.
+
+          The design labels this "Ask" because the prototype reaches Company
+          Intel from the Ask browse screen. It says "Back" instead, and now
+          says it truthfully: a control that steps back is labelled Back, and a
+          control that promises a destination names it. `screen-chrome.tsx`
+          carries that ruling and the loop it came out of. */}
+      <BackHeader href={COMPANY_BACK_HREF} label={COMPANY_BACK_LABEL} historyAware />
 
       <div
         style={{

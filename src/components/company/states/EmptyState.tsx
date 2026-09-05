@@ -58,47 +58,39 @@
  *    behind us means the anchor navigates on its own, to a destination that is
  *    stated rather than guessed, and cmd-click keeps working.
  *
- *    THE HISTORY TEST IS THE SAME ONE PR 746 LANDS, deliberately duplicated for
- *    the length of one review. That PR puts `shouldStepBack` / `readAppHistory`
- *    in `src/components/mobile/history-back.ts` and makes `BackHeader`
- *    `historyAware`; neither is on `main` yet, and the two PRs are kept
- *    independent on purpose. Issue 755 tracks collapsing this control, the hit
- *    branch's `<button>`, and `BackHeader` into that one component once both
- *    have landed. Do not grow a private variant of it in the meantime.
+ *    THE PRIVATE `hasOurPageBehind()` IS GONE. It was a deliberate copy of the
+ *    rule PR 746 was landing in `src/components/mobile/history-back.ts`, taken
+ *    because that module was not on `main` yet and the two PRs were kept
+ *    independent on purpose. It is on `main` now, so the copy became the thing
+ *    this repo keeps paying for: two paths computing "is a page of ours behind
+ *    this one", written by two authors, with only one of them under a test. The
+ *    control below imports `shouldStepBack`, `readAppHistory` and
+ *    `isPlainLeftClick` and computes nothing of its own.
+ *
+ *    THE ANATOMY STAYS PRIVATE, and only the anatomy. This row pads at 16px so
+ *    the chevron lines up with the card edge under it; `BackHeader` pads at
+ *    `var(--v3-pad)`, which is 20px, and the hit branch's body pads to match.
+ *    Swapping the component here would move the chevron 4px off the card for no
+ *    reader-visible gain, so what is shared is the rule and the destination, not
+ *    the box. Issue 755 tracks collapsing the boxes.
  */
 
 import { useEffect, useRef, type MouseEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
+import {
+  isPlainLeftClick,
+  readAppHistory,
+  shouldStepBack,
+} from "@/components/mobile/history-back";
+
+import { CompanyBackLink } from "../CompanyBackLink";
+import { COMPANY_BACK_HREF, COMPANY_BACK_LABEL } from "../back-destination";
 import { EmptyStateCTA } from "./EmptyStateCTA";
 
 const SERIF = "var(--font-display), Georgia, serif";
 const SANS = "var(--font-inter), Inter, sans-serif";
-
-/** Where the control goes when nothing of ours is behind this page. The
- *  directory is where a reader who typed a name came from, and it is the one
- *  screen that can answer "then where IS this company". */
-const BACK_FALLBACK = "/company";
-
-/**
- * Is there a page of OURS behind this one?
- *
- * `history.length` is the tempting test and it is the wrong one: it counts
- * entries that existed before we did, so a reader who arrived from a foreign
- * origin reads as 2 and gets stepped off the site. `navigation.entries()` is,
- * by spec, the same-origin contiguous slice, so `currentEntry.index > 0` means
- * "ours, and not the first of ours". No Navigation API means no answer, and no
- * answer means the anchor's own `href` runs. Degrading to a stated destination
- * is the point.
- */
-function hasOurPageBehind(): boolean {
-  if (typeof window === "undefined") return false;
-  const index = (window as unknown as {
-    navigation?: { currentEntry?: { index?: number } | null };
-  }).navigation?.currentEntry?.index;
-  return typeof index === "number" && index > 0;
-}
 
 /* One object, two elements, so the type ramp cannot drift between the `h1` and
    the `h2` when only the tag is supposed to differ. NO `display` KEY HERE:
@@ -129,11 +121,12 @@ export function EmptyState({ canonical }: Props) {
   /* Modified and non-primary clicks belong to the browser: cmd-click and
      middle-click are a request for a NEW context, and a new context has no
      history of ours in it. Letting them through is what keeps the stated
-     destination honest in a new tab. */
+     destination honest in a new tab. The predicate is imported rather than
+     spelled here, for the reason the header gives. */
   function onBack(event: MouseEvent<HTMLAnchorElement>) {
-    if (event.defaultPrevented || event.button !== 0) return;
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-    if (!hasOurPageBehind()) return; // the anchor navigates to BACK_FALLBACK itself
+    if (!isPlainLeftClick(event)) return;
+    /* Nothing of ours behind us: the anchor navigates to COMPANY_BACK_HREF. */
+    if (!shouldStepBack(readAppHistory())) return;
     event.preventDefault();
     router.back();
   }
@@ -159,7 +152,7 @@ export function EmptyState({ canonical }: Props) {
         }}
       >
         <Link
-          href={BACK_FALLBACK}
+          href={COMPANY_BACK_HREF}
           data-testid="company-empty-state-back"
           onClick={onBack}
           className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold"
@@ -173,9 +166,11 @@ export function EmptyState({ canonical }: Props) {
             textDecoration: "none",
           }}
         >
-          {/* Drawn here rather than through the shared Chevron, for the reason
-              the hit branch draws its own: that component has no left direction
-              and no 16px size. */}
+          {/* Drawn here rather than through the shared Chevron: that component
+              has no left direction and no 16px size. This is the same 16px
+              path `BackHeader` draws, which is the anatomy issue 755 tracks
+              collapsing; the geometry note in the header is why it has not
+              been collapsed in this change. */}
           <svg
             width="16"
             height="16"
@@ -189,11 +184,26 @@ export function EmptyState({ canonical }: Props) {
           >
             <path d="M15 6l-6 6 6 6" />
           </svg>
-          Back
+          {COMPANY_BACK_LABEL}
         </Link>
       </div>
 
       <div className="p-4" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        {/* THE DESK GETS ONE TOO, and the reasoning that used to sit in this
+            file saying it should not is stale. It read: at `md` and above the
+            sidebar and topbar are back and the hit branch carries no back
+            control either, so neither does this one. The hit branch carries one
+            now. A sidebar can offer "Company Intel"; it cannot offer the
+            watchlist row or the search result the reader actually came from,
+            and this is the branch a shared link is most likely to land on.
+
+            WRAPPED RATHER THAN CLASSED. The width gate lives on this wrapper so
+            `CompanyBackLink` keeps its own `inline-flex` and nothing is fighting
+            it: two base-layer display utilities on one element resolve by
+            stylesheet order rather than by the order they are written in. */}
+        <div className="hidden md:block">
+          <CompanyBackLink />
+        </div>
         <section
           role="region"
           aria-labelledby="company-empty-state-headline"

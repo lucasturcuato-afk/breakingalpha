@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { LiveMoodShell } from "@/components/shell/live-mood-shell";
 import { getSupabaseWithUser } from "@/lib/supabase-server";
 import { CompanyDetailLayout } from "@/components/company/CompanyDetailLayout";
+import { CompanyBackLink } from "@/components/company/CompanyBackLink";
 import { CompanyDetailHeader } from "@/components/company/CompanyDetailHeader";
 import { EmptyState } from "@/components/company/states/EmptyState";
 import { CompanyAutoResolve } from "@/components/company/states/CompanyAutoResolve";
@@ -585,6 +586,13 @@ export default async function CompanyDetailPage({
   const desk = (
     <CompanyDetailLayout
       tabContent={tabContent}
+      /* THE WAY OFF THIS ROUTE, and until now there was none at `md` and above.
+         The desk tree drew a header, an alias ribbon, a KPI strip, seven tab
+         panels and a right rail, and no control that returns a reader to the
+         directory row, search result or watchlist entry they arrived from.
+         It sits INSIDE DesktopTreeGate, so it does not mount on a phone: below
+         `md` the mobile screen draws its own BackHeader. */
+      backSlot={<CompanyBackLink />}
       header={<CompanyDetailHeader detail={companyDetail} titleAs="h2" />}
       aliasRibbon={
         <CompanyAliasRibbon

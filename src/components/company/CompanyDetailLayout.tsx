@@ -35,6 +35,17 @@ import { CompanyDetailTabs } from "./CompanyDetailTabs";
 export interface CompanyDetailLayoutProps {
   /** Map of tab id to its content. Missing entries render an empty panel. */
   tabContent: Partial<Record<CompanyTabId, ReactNode>>;
+  /**
+   * The way off this route, drawn above the header.
+   *
+   * OPTIONAL, AND THAT IS NOT A HEDGE. This layout is a slot shell and every
+   * other slot on it is optional, so a required prop here would be the one
+   * inconsistency; the route that owns the surface passes
+   * `<CompanyBackLink />` and the prop exists so it does not have to render it
+   * outside this container, where it would sit on the shell's own ground with
+   * none of the padding the column supplies.
+   */
+  backSlot?: ReactNode;
   /** CompanyHeader (PR-B1). */
   header?: ReactNode;
   /** CompanyAliasRibbon (PR-B1). */
@@ -51,6 +62,7 @@ export interface CompanyDetailLayoutProps {
 
 export function CompanyDetailLayout({
   tabContent,
+  backSlot,
   header,
   aliasRibbon,
   kpiStrip,
@@ -101,6 +113,7 @@ export function CompanyDetailLayout({
         className ?? "",
       ].join(" ")}
     >
+      {backSlot}
       {header}
       {aliasRibbon}
       {kpiStrip}
