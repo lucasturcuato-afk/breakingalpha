@@ -6,6 +6,7 @@ import type { CSSProperties } from "react";
 import { EyebrowRule } from "@/components/mobile";
 import styles from "@/components/mobile/mobile.module.css";
 import { FONT_DISPLAY, FONT_MONO, FONT_SANS } from "@/components/mobile/fonts";
+import { LegalLink } from "@/components/auth/legal-link";
 
 /**
  * The public share brief, at phone width. The recipient has no session, so
@@ -324,6 +325,32 @@ export function MobileShareScreen({
           >
             Try Signalera, free
           </Link>
+          {/* The disclosure, and the way to the documents behind it.
+
+              WHAT CHANGED AND WHY. The two shipped clauses stay: this view is
+              read-only and it is unindexed, both of which this file already
+              said. What they never said is the fact that most bears on a
+              stranger reading this page, which is that the headline, the
+              summary and every analyst section above were written by a model.
+              The clause added for it is not new wording. It is
+              `components/shell/footer.tsx:53` verbatim, the sentence this app
+              already prints under its own content, so the register is the
+              product's rather than this file's invention.
+
+              THE CLAUSE THAT LEFT. "Informational only, never advice" is
+              covered by "Not investment advice", and the app-standard sentence
+              adds the instruction the shorter one lacks: verify before acting.
+              Nothing is disclosed here that was disclosed before and is not
+              disclosed now.
+
+              THE LINK. Measured signed out at 320 and 390 before this change,
+              this screen had three links, and all three were the wordmark or a
+              sign-up button. Zero paths to Terms or Privacy, on a page whose
+              whole purpose is to be opened by someone with no account. It
+              points at the hub rather than at one document, for the same
+              reason `/waitlist` does: the hub is Terms, Privacy and Support,
+              all three at 56px, and choosing one document here would strand
+              the other two. */}
           <p
             style={{
               margin: "14px 0 0",
@@ -332,7 +359,9 @@ export function MobileShareScreen({
               textWrap: "pretty",
             }}
           >
-            Shared read-only view. Not indexed by search engines. Informational only, never advice.
+            Shared read-only view. Not indexed by search engines. AI-generated content. Not
+            investment advice. Verify before acting.{" "}
+            <LegalLink href="/legal">Terms, privacy and support</LegalLink>
           </p>
         </div>
       </div>

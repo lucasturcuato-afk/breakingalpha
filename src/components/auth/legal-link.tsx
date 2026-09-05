@@ -2,14 +2,33 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 
 /**
- * The two anchors in the sign-in small print.
+ * The anchor that opens a legal document from a line of small print.
  *
  * WHY THIS EXISTS AT ALL. `/auth` renders "By continuing, you agree to
  * Signalera's Terms of Service and Privacy Policy." on both layouts, and on
- * both layouts it was plain text. Measured at 390 before this change, `/auth`
+ * both layouts it was plain text. Measured at 390 before that change, `/auth`
  * had zero visible links of any kind: the page asserted an agreement to two
  * documents a reader could not open from it. That is the defect, and it is the
  * whole reason for this component.
+ *
+ * IT NOW SERVES FOUR CALL SITES, NOT TWO, and the two new ones are the reason
+ * this paragraph exists. `/waitlist` and `/share/brief/[id]` are both reachable
+ * with no session, and measured signed out at 320, 390 and 1440 neither carried
+ * a single link into `/legal`: `/waitlist` had one mailto and a link home,
+ * `/share/brief/[id]` had a wordmark and two sign-up buttons. Both surfaces
+ * carry exactly the problem this component was written for, a line of small
+ * print naming things a reader cannot open, so both use it rather than growing
+ * a second way to do the same job.
+ *
+ * THE NEW CALL SITES POINT AT THE HUB AND SPELL OUT ITS THREE ROWS,
+ * "Terms, privacy and support", where `/auth` names one document each. That is
+ * a measurement, not a preference. This component grows the hit area on the
+ * block axis only, which is all `/auth` ever needed because "Terms of Service"
+ * is wide on its own. A one-word label is not: "Legal" measured 31.16 by 48 on
+ * `/waitlist`, clearing the floor on height and missing it on width by 13px.
+ * Inline padding here would fix that and would also pull the full stop after
+ * the second `/auth` anchor 9px left, under its own underline. So the label
+ * does the work, and the component stays exactly as `/auth` shipped it.
  *
  * WHY IT IS SHARED RATHER THAN WRITTEN TWICE. `src/app/auth/page.tsx` and
  * `src/components/auth/mobile-auth.tsx` draw the same sentence with different
