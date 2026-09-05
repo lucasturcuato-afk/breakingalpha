@@ -88,12 +88,19 @@ export async function GET() {
     const since = new Date(
       Date.now() - 30 * 24 * 60 * 60 * 1000,
     ).toISOString();
-    const { data: events } = await supabase
+    const { data: events, error: eventsError } = await supabase
       .from("user_events")
       .select("event_type, payload, created_at")
       .eq("user_id", user.id)
       .gte("created_at", since)
       .limit(1000);
+    /* THE CALLER CANNOT TELL ZEROS FROM SILENCE, so this route stops sending
+       them. `events` used to be read as `events ?? []`, and a fault therefore
+       produced an empty `sector_activity` and an empty `event_type_breakdown`
+       in a 200: byte for byte what a reader with no activity at all gets.
+       BehavioralInsights.tsx already draws its own failure state off a
+       non-200, so raising here is what makes that state reachable. */
+    if (eventsError) throw eventsError;
 
     const sectorActivity = new Map<string, SectorActivity>();
     const typeCounts: Record<string, number> = {};
@@ -160,9 +167,9 @@ export async function GET() {
 
     return NextResponse.json(body);
   } catch (err) {
-    console.error("[profile/insights] error:", err);
+    console.error("[profile/insights] read did not answer:", err);
     return NextResponse.json(
-      { error: "Failed to load insights" },
+      { error: "Could not load insights." },
       { status: 500 },
     );
   }

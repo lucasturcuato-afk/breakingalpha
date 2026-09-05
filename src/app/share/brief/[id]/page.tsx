@@ -58,17 +58,45 @@ const SECTION_TITLES: Record<string, string> = {
   closing_thoughts: "Closing Thoughts",
 };
 
-function safeParse(val: unknown): Record<string, unknown> | unknown[] | null {
-  if (val == null) return null;
-  if (typeof val === "object") return val as Record<string, unknown> | unknown[];
+/**
+ * A JSON column has THREE states, and the old shape of this function had two.
+ *
+ * It answered `null` both for a column that is genuinely empty and for a
+ * column whose contents could not be parsed, and every caller then wrote
+ * `?? {}`. So a malformed `sections` value made this page tell a stranger
+ * "This brief has no published sections. The link is valid; there is simply
+ * nothing on it yet." about a brief whose sections are present and unreadable.
+ *
+ * `ok: false` is now its own answer, and the page refuses to describe a
+ * document it could not read.
+ */
+type ParseResult =
+  | { ok: true; value: Record<string, unknown> | unknown[] | null }
+  | { ok: false };
+
+function safeParse(val: unknown): ParseResult {
+  if (val == null) return { ok: true, value: null };
+  if (typeof val === "object") {
+    return { ok: true, value: val as Record<string, unknown> | unknown[] };
+  }
   if (typeof val === "string") {
     try {
-      return JSON.parse(val);
+      return { ok: true, value: JSON.parse(val) };
     } catch {
-      return null;
+      return { ok: false };
     }
   }
-  return null;
+  // A number or a boolean sitting in a JSON column is not an empty document.
+  // It is a document this page cannot read, which is a different sentence.
+  return { ok: false };
+}
+
+/** Narrow a parsed column to a keyed object. A scalar is unreadable, not empty. */
+function asRecord(p: ParseResult): { ok: true; value: Record<string, unknown> } | { ok: false } {
+  if (!p.ok) return { ok: false };
+  if (p.value == null) return { ok: true, value: {} };
+  if (typeof p.value !== "object" || Array.isArray(p.value)) return { ok: false };
+  return { ok: true, value: p.value as Record<string, unknown> };
 }
 
 function formatDate(iso: string | null): string {
@@ -89,6 +117,57 @@ function sectionTitle(key: string): string {
   return (
     SECTION_TITLES[key] ||
     key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
+  );
+}
+
+/**
+ * The state this page never had.
+ *
+ * A stranger holding a link had exactly two outcomes before: the brief, or a
+ * 404. A read that faulted took the 404, so the most public surface in the
+ * product told people a document does not exist on the strength of no
+ * evidence at all. This is the third outcome, and it says what happened.
+ *
+ * Same chrome as the brief itself, deliberately: the wordmark, the sign-up
+ * anchor and the disclosure all still draw, because none of them depend on
+ * the read. Only the body changes. Copy is the register the rest of the app
+ * already uses for this ("Could not load", "This is a loading failure, not an
+ * empty feed", "Try again"), so a reader who hits it twice in two places
+ * reads the same sentence.
+ */
+function BriefUnavailable() {
+  return (
+    <div className="min-h-[100dvh] bg-parchment">
+      <header className="border-b border-border-base px-6 py-4 flex items-center justify-between bg-cream dark:bg-elevated">
+        <Link href="/" className="inline-flex items-center min-h-[44px]">
+          <Wordmark size="md" />
+        </Link>
+        <Link
+          href="/auth"
+          className="inline-flex items-center justify-center min-h-[44px] px-4 py-2 rounded-lg bg-gold text-[var(--c-ongold)] font-sans text-[12px] font-semibold hover:bg-gold-dark transition-colors"
+        >
+          Sign up, free
+        </Link>
+      </header>
+
+      <main className="px-6 py-16 max-w-[560px] mx-auto text-center">
+        <h1 className="font-display text-[22px] font-bold text-espresso leading-tight m-0">
+          This brief could not be read.
+        </h1>
+        <p className="font-sans text-[13px] leading-relaxed text-text-secondary mt-3 text-pretty">
+          The link is valid. This is a loading failure, not an empty brief. Try again in a
+          moment.
+        </p>
+      </main>
+
+      <footer className="border-t border-border-base px-6 py-8 text-center bg-cream dark:bg-elevated">
+        <p className="font-sans text-[11px] text-text-muted max-w-[560px] mx-auto text-pretty">
+          Shared read-only view. Not indexed by search engines. AI-generated content. Not
+          investment advice. Verify before acting.{" "}
+          <LegalLink href="/legal">Terms, privacy and support</LegalLink>
+        </p>
+      </footer>
+    </div>
   );
 }
 
@@ -114,17 +193,37 @@ export default async function PublicBriefPage({ params }: Props) {
     .eq("id", id)
     .maybeSingle();
 
-  if (error || !data) {
+  /* THREE STATES, THREE ANSWERS. This used to be one branch, `error || !data`,
+     which meant a read that FAULTED answered 404 to a stranger holding a link
+     to a brief that exists. `.maybeSingle()` separates the two cleanly: it
+     answers `{ data: null, error: null }` for a row that is genuinely not
+     there, and only ever populates `error` when the read did not answer. So
+     there is no code to discriminate here and no ambiguity to argue about. */
+  if (error) {
+    console.error("[share/brief] read did not answer:", error.message);
+    return <BriefUnavailable />;
+  }
+  if (!data) {
     return notFound();
   }
 
   const briefing = data as BriefingRow;
 
-  const sections = (safeParse(briefing.sections) as Record<string, unknown> | null) || {};
-  const sectorBreakdown =
-    (safeParse(briefing.sector_breakdown) as Record<string, unknown> | null) || {};
-  const topDealsRaw = safeParse(briefing.top_deals);
-  const topDeals: TopDeal[] = Array.isArray(topDealsRaw) ? (topDealsRaw as TopDeal[]) : [];
+  /* The content columns get the same treatment as the row itself. A column
+     that will not parse is not a brief with nothing on it. */
+  const sectionsParsed = asRecord(safeParse(briefing.sections));
+  const sectorParsed = asRecord(safeParse(briefing.sector_breakdown));
+  const dealsParsed = safeParse(briefing.top_deals);
+  if (!sectionsParsed.ok || !sectorParsed.ok || !dealsParsed.ok) {
+    console.error("[share/brief] content column could not be parsed:", briefing.id);
+    return <BriefUnavailable />;
+  }
+
+  const sections = sectionsParsed.value;
+  const sectorBreakdown = sectorParsed.value;
+  const topDeals: TopDeal[] = Array.isArray(dealsParsed.value)
+    ? (dealsParsed.value as TopDeal[])
+    : [];
 
   const sectionEntries = Object.entries(sections).filter(
     ([, v]) => typeof v === "string" && v.trim().length > 0,

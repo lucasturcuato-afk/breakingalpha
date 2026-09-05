@@ -11,12 +11,21 @@ export async function GET() {
   }
 
   try {
-    const { data: entries } = await supabase
+    const { data: entries, error: entriesError } = await supabase
       .from("watchlist")
       .select("identifier, type, display_name, sort_order, created_at")
       .eq("user_id", user.id)
       .order("sort_order", { ascending: true, nullsFirst: false })
       .order("created_at", { ascending: true });
+
+    /* A FILE THAT LOOKS COMPLETE AND IS NOT IS WORSE THAN A FAILED DOWNLOAD,
+       because the reader keeps it and cites it later. Both reads in this
+       route used to discard their error, so a fault produced a workbook with
+       a header row and nothing under it: byte for byte the same file this
+       route writes for a reader whose watchlist is genuinely empty. Nothing
+       downstream could tell those two apart, least of all the person holding
+       the spreadsheet. Now a fault writes no file at all. */
+    if (entriesError) throw entriesError;
 
     const date = new Date().toISOString().split("T")[0];
     const wb = XLSX.utils.book_new();
@@ -43,7 +52,7 @@ export async function GET() {
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
     const identifiers = entries.map((e) => e.identifier);
 
-    const { data: articles } = await supabase
+    const { data: articles, error: articlesError } = await supabase
       .from("watchlist_articles")
       .select("identifier, title, source, published_at, relevance_score, url, fetched_at")
       .in("identifier", identifiers)
@@ -51,6 +60,11 @@ export async function GET() {
       .order("identifier", { ascending: true })
       .order("published_at", { ascending: false })
       .limit(2000);
+
+    // Same rule as the entries read above: an Articles sheet that is empty
+    // because the read faulted must never ship as an Articles sheet that is
+    // empty because there is no coverage.
+    if (articlesError) throw articlesError;
 
     const entryMap: Record<string, { type: string; display_name: string | null }> = {};
     for (const e of entries) {
@@ -129,7 +143,10 @@ export async function GET() {
       },
     });
   } catch (e) {
-    console.error("[watchlist-xlsx GET] error:", e);
-    return new NextResponse("Internal error", { status: 500 });
+    console.error("[watchlist-xlsx GET] read did not answer:", e);
+    return new NextResponse(
+      "Could not read the watchlist. No file was written.",
+      { status: 500 },
+    );
   }
 }

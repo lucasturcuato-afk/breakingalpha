@@ -34,12 +34,19 @@ export default function WatchlistExportPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    /* The status is consulted BEFORE the body. A 500 whose body is not JSON
+       used to surface as a parser message in the failure slot, which reads
+       like a bug in the reader's browser rather than a read that did not
+       answer. The route's own sentence is preferred when it sent one. */
     fetch("/api/export/watchlist-pdf")
-      .then((r) => r.json())
-      .then((d) => {
-        if (d.error) throw new Error(d.error);
-        setData(d);
+      .then(async (r) => {
+        const d = await r.json().catch(() => null);
+        if (!r.ok || !d || d.error) {
+          throw new Error(d?.error ?? "Could not load the watchlist export.");
+        }
+        return d as ExportData;
       })
+      .then(setData)
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, []);
