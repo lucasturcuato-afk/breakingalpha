@@ -38,7 +38,7 @@ export interface MobileSettingsScreenProps {
    *
    * `error` below is the save-side message and it sits beside a live Save
    * control, because a save is worth retrying from the form the reader is
-   * looking at. This one is the opposite case: the fields hold nothing that
+   * looking at. This one is the opposite case: the fields carry nothing that
    * came from the reader's stored profile, so the form is not drawn at all
    * and there is no Save control to press over it.
    */

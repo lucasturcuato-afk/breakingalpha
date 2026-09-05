@@ -24,7 +24,7 @@ export default async function OnboardingPage() {
    * default carries `onboarding_completed: false`. So a failed read did not
    * just skip a redirect: it sent a reader who had ALREADY finished setup
    * into a blank seven-step wizard, and `handleFinish` at
-   * `OnboardingWizard.tsx:572` PATCHes every field it holds plus
+   * `OnboardingWizard.tsx:572` PATCHes every field it carries plus
    * `onboarding_completed: true`. The blanks land on top of the real profile.
    * Identical damage to `/settings/profile`, reached by a different door.
    *

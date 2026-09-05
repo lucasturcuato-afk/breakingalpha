@@ -8,7 +8,7 @@ import type { PostgrestSingleResponse } from "@supabase/postgrest-js";
  * PostgrestResponseFailure`, discriminated on `error`, and it narrows
  * correctly under this repo's `strict: true` even with the untyped client.
  * Where the response object can travel, use it directly; wrapping something
- * that already discriminates buys nothing. This type earns its place in
+ * that already discriminates gains nothing. This type earns its place in
  * exactly two places:
  *
  *   1. A library signature, where the response object cannot travel because

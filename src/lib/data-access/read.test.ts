@@ -118,7 +118,7 @@ test("rowOr: one line, and it defaults on BOTH missing and failed", () => {
 /* ── The type itself, checked by tsc rather than at run time ──
  *
  * These do nothing when the suite runs. They fail the BUILD if the union ever
- * stops holding, because an unused `@ts-expect-error` is itself a tsc error.
+ * stops being true, because an unused `@ts-expect-error` is itself a tsc error.
  * That makes them a real gate under `npx tsc --noEmit`. */
 
 test("the failure member has no data key, so `?? []` cannot compile", () => {
