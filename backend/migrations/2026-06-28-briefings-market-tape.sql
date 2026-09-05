@@ -1,4 +1,5 @@
--- UNAPPLIED, requires Noah. DO NOT APPLY autonomously.
+-- APPLIED (verified live 2026-09-05: briefings.market_tape exists). The first
+-- line read "UNAPPLIED, requires Noah" until then. Agents never apply DDL.
 --
 -- Persist the gen-time market tape on each briefing (v2 Gate 1 prerequisite).
 -- fetch_tape() is computed every run but discarded after building the prompt

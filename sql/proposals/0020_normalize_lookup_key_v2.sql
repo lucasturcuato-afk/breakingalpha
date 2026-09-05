@@ -1,7 +1,16 @@
 -- =====================================================================
 -- 0020_normalize_lookup_key_v2.sql
 --
---   *** PROPOSAL. NOT APPLIED. DO NOT RUN AS ONE SCRIPT. ***
+--   *** PROPOSAL. DO NOT RUN AS ONE SCRIPT. ***
+--   *** RUN AT LEAST ONCE (2026-09-05 note): the destructive phase has been
+--   *** executed. Evidence, read-only: articles_companies_repair, the ledger
+--   *** of the post-merge name repair, is populated, and that repair only
+--   *** exists because loser rows were deleted. norm_v2 itself is not
+--   *** visible through PostgREST, so its ledger was not read directly.
+--   *** Duplicates are re-accumulating under the v2 rule (dozens of clusters
+--   *** measured over the full companies table on 2026-09-05, a third with a
+--   *** member first seen in the prior two weeks), so this will run again.
+--   *** The header read "NOT APPLIED" until this note.
 --
 -- Companion doc: docs/normalize-lookup-key-v2-design.md
 --

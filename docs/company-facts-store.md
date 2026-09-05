@@ -161,11 +161,59 @@ implies `supabase db push` ordering, which this repo does not use. 0038 is
 the next free number across `sql/` and `sql/proposals/` together (they share
 one sequence). Nothing in this PR applies DDL.
 
+## Where the shipped design diverges from the 09-02 scope
+
+The scoping doc exists and was read in full: PIECE 2 of
+`docs/recon/2026-09-02-clustered-top-stories-and-fact-layer-scope.md`, on
+branch `docs/ingest-substrate-recon` (commit `ded7a5f7`, never merged to
+`main`, which is why a tree search of `main` does not find it). Each
+divergence below is against its sections 2.3, 2.4 and 2.7.
+
+| scoped (09-02) | shipped (0038) | judgment |
+| --- | --- | --- |
+| table `article_facts` | `company_facts` | naming only; the brief's name |
+| `fact_type` in figure, statement, guidance, cause, event, commentary | figure, guidance, commentary, stated_cause, event | "statement" folded into commentary, "cause" renamed. PR 2 says whether "statement" earns a type back |
+| `company_id references companies(id)`, nullability unstated | nullable, `ON DELETE SET NULL` | forced by the 21.7% of genuine prose rows with no company name anywhere |
+| `confidence` in reported, quoted, inferred | no column; attribution is `speaker IS NOT NULL` | correct: decision 9 bans model-emitted confidence, and "inferred" is a value the store must never hold |
+| `stated_cause text` column on a row | `stated_cause` is a fact_type | one shape instead of two; a cause is a stated claim like any other |
+| `period_start`, `period_end`, `period_type` | `period_text` verbatim, `period_end`, `period_type` | `period_start` dropped: a start date the text did not print is inference. `period_text` keeps what it did print |
+| `dedup_key` = `type|metric|round(value)|period_end`, token hash for statements | `claim_key` folds in company and unit, falls back to the text hash when the metric is unnamed, versioned prefix | needed for a plain-column UNIQUE with a nullable company, and so an unlabelled figure cannot corroborate a different one |
+| `UNIQUE (article_id, dedup_key)` only | plus `UNIQUE (id, article_id)` | the claim_evidence shape, for PR 4's composite FK |
+| provenance: `as_of`, `speaker`, `claim_text` copied at write | plus `article_published_at`, `source`, `publisher`, `publisher_domain`, `value_raw`, `extractor_version` | the store must stand on its own as a product; `value_raw` is what the number CHECK enforces |
+| no ledger | `company_facts_extractions` | scoped doc had no way to tell "processed, empty" from "never processed" |
+| view `article_facts_agreed` joining `articles`, `count(*)` as `n_sources`, `count(DISTINCT publisher)` as `n_publishers` | `company_facts_corroborated`, no join, `count(DISTINCT article_id)`, `publisher_domain` secondary | the scoped `n_publishers` would read 1 on 93.8% of rows; the join is unnecessary once provenance is copied |
+| "ship the base table and the four indexes first; add the view only once you can measure it with EXPLAIN ANALYZE on real volume" | view ships in the same file | divergence by instruction: decisions 3 and 4 put dedup in a read view. Section 6c of the SQL is the measurement the scope asked for |
+| four indexes: `(company_id, as_of)`, `(company_id, metric_key, as_of)` partial, `(article_id)`, `(as_of)` | `(company_id, as_of)` partial, `(fact_type, as_of)`, unattached partial, ledger; metric index optional in section 5 | `(article_id)` duplicates the UNIQUE; `(as_of)` alone had no reader, the extractor windows on `articles`; `(fact_type, as_of)` is the brief's second query shape and was not scoped |
+| prose cut: `content_type = 'full_text' OR summary adds >= 20 alnum chars over the title` | the brief's ">100 chars" rule, measured here | the scoped cut is echo-aware and the brief's is not. PR 2 should use the scoped cut, or ">100 AND not echo"; see the next section |
+| corpus ~59k, ~11k prose, ~800 facts/day, ~290k rows/year | full table is 3.4x that; genuine prose 18.7% of it | superseded by the 09-04 corpus doc and by this walk |
+
+Sections 2.5, 2.6 and 2.8 of the scope (where extraction runs, cost per
+call, the brief reader) are PR 2 and PR 3 material and are not diverged from
+here.
+
+## The prose filter is not 100% precision
+
+No file in this repo states that the ">100 characters" rule is 100%
+precision and 100% recall. The claim came from a prose-filter follow-up that
+is not committed on any ref; a search of every `.md`, `.py`, `.sql`, `.ts`
+and `.txt` file on `main` and on `docs/ingest-substrate-recon` for the
+phrase finds only this document. So there is nothing to correct in place,
+and the corrected figure lives here: measured over the full `articles` table
+on 2026-09-05, 25.7% of the rows the rule admits are a headline echo longer
+than 100 characters (a title plus a " - Publisher" suffix, stored before
+ingest's echo detector existed). Recall against genuine prose is not
+affected by that finding; precision is. The 09-02 scope's own cut (at least
+20 alphanumeric characters beyond the title) already excluded echoes, and
+PR 2 should extract under that cut, not the literal rule.
+
 ## Verified vs inferred
 
 | claim | status |
 | --- | --- |
 | the two numbers above, both definitions | verified, full table, keyset walk completed |
+| 09-02 scope doc exists on `docs/ingest-substrate-recon` | verified, `git show` on the ref |
+| duplicate company clusters still form under the v2 rule | verified, full `companies` table, 2026-09-05 |
+| the merge's destructive phase has run | inferred from a populated post-merge repair ledger; `norm_v2` is not visible through PostgREST |
 | echo share of the >100-char rule | verified, same walk, prefix-and-margin rule over normalised title/summary |
 | `financial_facts` is applied and populated | verified (its header still says NOT APPLIED; the header is stale) |
 | `articles` has no company id column; the link is `company_mentions` | verified from live column lists |

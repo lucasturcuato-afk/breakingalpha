@@ -1,4 +1,7 @@
 -- ############################################################################
+-- ##  APPLIED. Verified live 2026-09-05: dim_users, internal_kpi_summary,      ##
+-- ##  internal_kpi_loop_adoption and internal_kpi_retention_cohorts answer.  ##
+-- ##  The banner below is history. Filename kept: src/lib references it.     ##
 -- ##  UNAPPLIED. THIS MIGRATION HAS NOT BEEN RUN AGAINST ANY DATABASE.      ##
 -- ##                                                                        ##
 -- ##  Authored by an unattended agent run, which never applies migrations.  ##

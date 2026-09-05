@@ -1,6 +1,13 @@
 -- 0019_insider_transactions_read_policy.sql
 --
--- NOT APPLIED. Written for Noah to review and run. Do not let an agent run this.
+-- LIKELY APPLIED, not proven. The WHY block below records the state when this
+-- was written: RLS enabled, zero policies, so an anon read returned nothing.
+-- On 2026-09-05 an anon-key read of insider_transactions returns rows, which
+-- is exactly what this policy grants; the only other explanation is RLS
+-- having been switched off since, and PostgREST cannot tell the two apart.
+-- The two queries in the WHY block settle it in one run. The line here read
+-- "NOT APPLIED" until this note. Written for Noah to review and run. Do not
+-- let an agent run this.
 --
 -- WHY. insider_transactions has RLS ENABLED and ZERO policies:
 --
