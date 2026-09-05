@@ -141,6 +141,14 @@ traps is not exempt from being one.
   two distinct values before believing a both-themes claim.
 - `offsetParent` is null for `position: fixed`, so a probe built on it cannot
   see the tab bar. The bar is 58px of row plus a 1px border, height 59.
+- `git stash` IS NOT SAFE IN A WORKTREE. The stash stack belongs to the shared
+  `.git`, not to your worktree, so `git stash pop` takes whatever another
+  session pushed last. It happened here: a pop in one unit's worktree grabbed
+  a different session's entry. The pop conflicted, which is the only reason it
+  was noticed, git kept the entry, and `git reset --hard` reverted the partial
+  apply with nothing lost. Had it applied cleanly it would have silently mixed
+  two sessions' work into one diff. Commit to a scratch branch instead, or use
+  `git worktree add` for the thing you were about to stash for.
 - LAYOUT QUANTISES TO A 1/64px GRID AND THE CSSOM SERIALISES TO SIX
   SIGNIFICANT DIGITS, and those two facts disagree. A grid-exact
   `16.953125px` comes back out of `getComputedStyle` as `16.9531px`, one grid
