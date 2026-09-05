@@ -8,13 +8,17 @@
 -- function returns rows to the service role and ZERO rows, with no error,
 -- to anon and authenticated callers. Verified live 2026-09-05 with the same
 -- arguments: service role 1 row, anon 0 rows, an authenticated session 0
--- rows. Every follow match from a session or browser client therefore reads
--- as "nothing matched":
+-- rows. Only a TOPIC follow that carries an embedding reaches the RPC (the
+-- semantic leg of matchTopic in src/lib/radar-following.ts:134); for those
+-- the semantic leg silently contributes nothing and only keyword matches
+-- render:
 --   src/lib/radar-following.ts:135            the RPC call
 --   src/app/api/radar/following-feed/route.ts  Radar following feed (session)
---   src/app/radar/calls/page.tsx               calls page (browser client)
 --   src/lib/watch-data.ts via watch/page.tsx and watch/watchlist/page.tsx
---                                              both watch pages (session)
+--                                              the watch pages (session)
+-- NOT the calls page: src/app/radar/calls/page.tsx builds a synthetic
+-- company follow with embedding null and never calls the RPC (verified in
+-- the browser 2026-09-05 with a request capture: zero /rpc/ requests).
 --
 -- THE FIX. The same pattern as sql/0021_related_articles_rpc.sql: SECURITY
 -- DEFINER with search_path pinned. The function's return shape was read
@@ -101,8 +105,24 @@ END $$;
 --     FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
 --    WHERE n.nspname = 'public' AND p.proname = 'match_content_embeddings';
 
--- 2b. Behavioural proof from the app, per surface, signed in:
---     Radar following feed and both watch pages show matched articles under a
---     topic follow that has an embedding; the calls page shows related
---     stories. Before this file all four rendered their empty state with no
---     error in the console or the network tab.
+-- 2b. Behavioural proof in the editor, as a non-bypassing role. The editor
+--     runs as postgres, which bypasses RLS, so a bare call proves nothing;
+--     switch role inside a transaction. Before this file: 0. After: 1.
+--
+--   BEGIN;
+--   SET LOCAL ROLE anon;
+--   SELECT count(*)
+--     FROM public.match_content_embeddings(
+--            (SELECT embedding FROM public.content_embeddings
+--              WHERE content_type = 'article' LIMIT 1), 0.0, 1);
+--   ROLLBACK;
+--
+--     (the SELECT inside the call runs as anon too and returns no vector
+--     under RLS; if it does, that is the DEFINER path working, and either
+--     way the outer count is the number that matters.)
+--
+-- 2c. Behavioural proof from the app, signed in, under a topic follow that
+--     has an embedding: the Radar following feed and the watch following
+--     section show the semantic matches the service-role RPC returns for
+--     that embedding. Before this file they showed only keyword matches
+--     (measured 2026-09-05: the two semantic-only articles were absent).

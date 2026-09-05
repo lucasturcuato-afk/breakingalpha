@@ -30,6 +30,13 @@
 -- add instantly and nothing can violate them. If a row ever appears before
 -- this runs, section 0 stops you.
 --
+-- RUN TWICE: every statement in sections 1 and 2 is a no-op the second time.
+-- ADD COLUMN IF NOT EXISTS skips (NOTICE), DROP DEFAULT on a column with no
+-- default does nothing, the DROP loops find nothing, the guarded ADD
+-- CONSTRAINT sees its name and skips, COMMENT overwrites with itself, ENABLE
+-- RLS is idempotent, every policy is DROP IF EXISTS then CREATE, and GRANT is
+-- idempotent. The end state is identical and 3a/3b return the same rows.
+--
 -- Sections:
 --   0. VERIFY FIRST (read-only)
 --   1. column + uniqueness
@@ -100,8 +107,17 @@ BEGIN
   END LOOP;
 END $$;
 
-ALTER TABLE public.thesis_notes
-    ADD CONSTRAINT thesis_notes_user_thesis_uq UNIQUE (user_id, thesis_id);
+-- Guarded so a second run of this section is a no-op instead of failing on
+-- the constraint name (42710) and rolling the paste back.
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint
+                  WHERE conrelid = 'public.thesis_notes'::regclass
+                    AND conname = 'thesis_notes_user_thesis_uq') THEN
+    ALTER TABLE public.thesis_notes
+        ADD CONSTRAINT thesis_notes_user_thesis_uq UNIQUE (user_id, thesis_id);
+  END IF;
+END $$;
 
 COMMENT ON COLUMN public.thesis_notes.user_id IS
     'Owner. A note is one reader''s private annotation on a thesis; '
