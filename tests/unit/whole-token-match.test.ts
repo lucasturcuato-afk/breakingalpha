@@ -2,9 +2,10 @@
 // (src/lib/whole-token-match.ts).
 //
 // The contract locked here is ONE property, stated as a property and not as a
-// list of examples: an INTERIOR or TRAILING fragment of a company name never
-// names that company, at any length. Everything else in this file exists to
-// prove the property was not bought by breaking a match that has to work.
+// list of examples: a term never matches a name by starting in the MIDDLE of one
+// of that name's words. Everything else in this file exists to prove the
+// property was not bought by breaking a match that has to work, and to pin the
+// two places where the rule deliberately still says yes.
 //
 // Run: npx tsx --test tests/unit/whole-token-match.test.ts
 import { test } from "node:test";
@@ -13,7 +14,7 @@ import {
   nameContainsTerm,
   nameContainsAnyTerm,
   normalizeForTokenMatch,
-  TOKEN_PREFIX_MIN_LEN,
+  tokensForMatch,
 } from "../../src/lib/whole-token-match.ts";
 
 /* The seven names the audit put on the table, each paired with the longer
@@ -31,6 +32,19 @@ const INTERIOR_PAIRS: Array<[fragment: string, insideOf: string]> = [
   ["Ely", "Ardelyx"],
 ];
 
+/* Verbatim from the prod replay of the live desk query, 2026-09-05. Each is a
+ * row origin/main served to a real watchlist entry through an interior hit. */
+const PROD_INTERIOR_HITS: Array<[term: string, primaryCompany: string]> = [
+  ["GS", "PDD Holdings"],
+  ["GS", "Vertiv Holdings Co"],
+  ["GS", "Sirius XM Holdings"],
+  ["GS", "Arm Holdings PLC"],
+  ["PL", "Dentsply Sirona"],
+  ["PL", "Apple"],
+  ["PL", "AAPL"],
+  ["PL", "PYPL"],
+];
+
 test("an interior fragment never names the company it sits inside", () => {
   for (const [fragment, name] of INTERIOR_PAIRS) {
     // The old predicate, verbatim, so the fixture is proven to be a real
@@ -45,6 +59,13 @@ test("an interior fragment never names the company it sits inside", () => {
       false,
       `${fragment} must not name ${name}`,
     );
+  }
+});
+
+test("prod replay: every interior hit the live desk query served is refused", () => {
+  for (const [term, pc] of PROD_INTERIOR_HITS) {
+    assert.equal(pc.toLowerCase().includes(term.toLowerCase()), true, `${term} / ${pc}`);
+    assert.equal(nameContainsTerm(pc, term), false, `${term} must not name ${pc}`);
   }
 });
 
@@ -65,6 +86,7 @@ test("whole-token containment, in the middle and at the end of a name", () => {
   assert.equal(nameContainsTerm("Nasdaq, Inc.", "Nasdaq Inc"), true);
   assert.equal(nameContainsTerm("Bank of America", "America"), true);
   assert.equal(nameContainsTerm("Taiwan Semiconductor", "Semiconductor"), true);
+  assert.equal(nameContainsTerm("Goldman Sachs Group Inc", "Goldman Sachs"), true);
 });
 
 test("punctuation and separators are absorbed on both sides", () => {
@@ -72,59 +94,84 @@ test("punctuation and separators are absorbed on both sides", () => {
   assert.equal(nameContainsTerm("Coca-Cola", "Coca Cola"), true);
   assert.equal(nameContainsTerm("Nasdaq, Inc.", "nasdaq inc."), true);
   assert.equal(normalizeForTokenMatch("  Sei Investments Co.  "), "sei investments co");
+  assert.deepEqual(tokensForMatch("Parker-Hannifin Corp."), ["parker", "hannifin", "corp"]);
 });
 
 test("a SUB-TOKEN trailing fragment is refused as firmly as an interior one", () => {
   // "isa" ENDS the token "visa" and is 3 characters. Length is not what saves
-  // this; the token boundary is.
+  // this; the word boundary is.
   assert.equal("visa inc".includes("isa"), true);
   assert.equal(nameContainsTerm("Visa Inc", "isa"), false);
-  assert.equal(nameContainsTerm("Visanet", "Visa"), false);
+  assert.equal(nameContainsTerm("Coca-Cola", "ocacola"), false);
 });
 
-test("THE BOUNDARY OF THE RULE, stated rather than left to be discovered", () => {
-  // A WHOLE TOKEN of a longer name DOES match, and that is deliberate. "Cola"
-  // is a whole token of "Coca-Cola"; "Ola" is not. The rule draws its line at
-  // the token, not at the word count, which is the only line that can be drawn
-  // without a similarity threshold. This is what separates it from
-  // `.includes()`, and it is also the widest thing it still accepts.
-  assert.equal(nameContainsTerm("Coca-Cola", "Cola"), true);
-  assert.equal(nameContainsTerm("Coca-Cola", "Ola"), false);
-  // The practical bound on that width: every caller applies this to rows a
-  // query already returned for the SAME term, so a whole-token acceptance can
-  // only re-admit a row the ILIKE arm had already selected.
-  assert.equal(nameContainsTerm("Republic Services", "Services"), true);
-  assert.equal(nameContainsTerm("Republic Services", "LIC"), false);
+test("REGRESSION THE FIRST DRAFT CAUSED: a truncated symbol still reaches its name", () => {
+  // A six-character floor on the prefix rule looked principled and cost a GOOGL
+  // watchlist entry every Google article in the corpus, and a PL entry Planet
+  // Labs. Both are prefixes. Measured on the live desk query before shipping.
+  assert.equal(nameContainsTerm("Google", "GOOGL"), true);
+  assert.equal(nameContainsTerm("Google Cloud", "GOOGL"), true);
+  assert.equal(nameContainsTerm("Planet Labs", "PL"), true);
+  assert.equal(nameContainsTerm("Planet Labs PBC", "PL"), true);
+  // The same two-character term, one word later, is an interior hit and loses.
+  assert.equal(nameContainsTerm("Dentsply Sirona", "PL"), false);
 });
 
-test("concatenated brand forms resolve, and only from the left", () => {
-  // The one substring allowance, and it is a PREFIX of a token, never an
-  // interior of one.
+test("a token prefix resolves a shortened legal form and a concatenated brand", () => {
+  assert.equal(nameContainsTerm("Nasdaq Incorporated", "Nasdaq Inc"), true);
   assert.equal(nameContainsTerm("JPMorganChase", "JPMorgan"), true);
-  assert.equal(nameContainsTerm("ExxonMobil Corp", "ExxonMobil"), true);
   // Same length, but the term sits inside the token rather than starting it.
   assert.equal("jpmorganchase".includes("morganc"), true);
   assert.equal(nameContainsTerm("JPMorganChase", "morganc"), false);
 });
 
-test("the prefix allowance carries a length floor that every fragment fails", () => {
-  assert.equal(TOKEN_PREFIX_MIN_LEN, 6);
-  // 5 characters, a genuine left-anchored prefix, still refused.
-  assert.equal("nikola".startsWith("nikol"), true);
-  assert.equal(nameContainsTerm("Nikola", "nikol"), false);
-  for (const [fragment] of INTERIOR_PAIRS) {
-    assert.ok(
-      fragment.length < TOKEN_PREFIX_MIN_LEN,
-      `${fragment} is long enough to reach the prefix rule; the fixture needs re-checking`,
-    );
-  }
+test("only the LAST term token may be a prefix", () => {
+  // "serv" is the last token and may be a prefix.
+  assert.equal(nameContainsTerm("Republic Services Group", "Republic Serv"), true);
+  // "repub" is NOT the last token, so it must match "republic" exactly.
+  assert.equal(nameContainsTerm("Republic Services Group", "Repub Services"), false);
 });
 
-test("a multi-token term never reaches the prefix rule", () => {
-  // "coca cola" losing its separator is rule 1's job. A multi-token term that
-  // failed rule 1 differs by more than a separator, so it must not be rescued
-  // by a prefix test that was written for one concatenated word.
-  assert.equal(nameContainsTerm("Republic Services Group", "Republic Serv"), false);
+test("THE BOUNDARY OF THE RULE, stated rather than left to be discovered", () => {
+  // A WHOLE TOKEN of a longer name DOES match, and a PREFIX of one does too.
+  // "Cola" is a whole token of "Coca-Cola"; "Ola" starts inside that token.
+  // The rule draws its line at the word boundary, not at a word count or a
+  // length, which is the only line that can be drawn without a similarity
+  // threshold. This is also the widest thing it still accepts, and it accepts
+  // no more than origin/main did.
+  assert.equal(nameContainsTerm("Coca-Cola", "Cola"), true);
+  assert.equal(nameContainsTerm("Coca-Cola", "Ola"), false);
+  assert.equal(nameContainsTerm("Metalla Royalty", "META"), true); // prefix, unchanged
+  assert.equal(nameContainsTerm("Blue Moon Metals Inc.", "META"), true); // prefix, unchanged
+  assert.equal(nameContainsTerm("Accenture PLC", "PL"), true); // prefix, unchanged
+  // The practical bound: every caller applies this to rows a query already
+  // returned for the SAME term, so an acceptance can only re-admit a row the
+  // ILIKE arm had already selected.
+  assert.equal(nameContainsTerm("Republic Services", "Services"), true);
+  assert.equal(nameContainsTerm("Republic Services", "LIC"), false);
+});
+
+test("THE COST, NAMED. Three symbols that sit inside their own company's name", () => {
+  /* Measured by replaying the live desk query for every distinct watchlist
+   * entry (2026-09-05). These are the ONLY legitimate matches this rule
+   * rejects, and all three are the same shape: the entry's whole term list is
+   * the bare symbol, and the symbol starts in the middle of a word of its own
+   * company's name. There is no string rule that separates them from the
+   * symbols this rule correctly rejects -- "lly" inside "Lilly" is the same
+   * relation as "gs" inside "Holdings" and "on" inside "Sony". Separating them
+   * needs a RESOLVED company name on the watchlist row, not a wider predicate.
+   *
+   * Pinned here so the cost is visible and so a future widening has to argue
+   * with a failing test rather than with a comment. */
+  assert.equal(nameContainsTerm("Eli Lilly and Company", "LLY"), false);
+  assert.equal(nameContainsTerm("ConocoPhillips", "COP"), false);
+  assert.equal(nameContainsTerm("Robinhood Markets", "HOOD"), false);
+
+  // And the fix for each is on the term side, not here. Given the resolved
+  // name, every one of them matches.
+  assert.equal(nameContainsTerm("Eli Lilly and Company", "Eli Lilly"), true);
+  assert.equal(nameContainsTerm("ConocoPhillips", "Conoco"), true);
+  assert.equal(nameContainsTerm("Robinhood Markets", "Robinhood Markets"), true);
 });
 
 test("null, empty and whitespace-only inputs are false, never throws", () => {
@@ -134,6 +181,7 @@ test("null, empty and whitespace-only inputs are false, never throws", () => {
   assert.equal(nameContainsTerm("", "Ola"), false);
   assert.equal(nameContainsTerm("Ola", "   "), false);
   assert.equal(nameContainsTerm("!!!", "Ola"), false);
+  assert.equal(nameContainsTerm("Ola", "Ola Electric Mobility"), false); // term longer
 });
 
 test("nameContainsAnyTerm is an OR over the same rule", () => {
