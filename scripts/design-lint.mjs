@@ -44,7 +44,15 @@ const EXCLUDE_DIRS = new Set(['node_modules', '.next', 'design_handoff_signalera
  * em-dash literal, the outcome vocabulary and the rate shapes, and linting it
  * is fifteen errors against the checker itself. Kept to exact paths rather than
  * a directory so nothing else in the harness gets a free pass. */
-const EXCLUDE_FILES = new Set(['e2e/pressure/lib/rules.ts']);
+const EXCLUDE_FILES = new Set([
+  'e2e/pressure/lib/rules.ts',
+  /* Same reason again, for the unit test that drives rule 1 end to end. It
+   * carries the four substrings recovered from issue 866 as specimens, plus a
+   * banned word in a plain comment, in a plain identifier and in a rendered
+   * string. Linting it is a wall of errors against the file whose whole job is
+   * proving the rule still fires. */
+  'tests/unit/design-lint-banned.test.ts',
+]);
 
 /* ------------------------------------------------------------------ */
 /* Rule 1. Banned substrings.                                          */
@@ -53,6 +61,56 @@ const EXCLUDE_FILES = new Set(['e2e/pressure/lib/rules.ts']);
 /* because a compliance grep over source will hit them.                */
 /* ------------------------------------------------------------------ */
 const BANNED = ['buy', 'sell', 'hold', 'allocation', 'returns', 'performance'];
+
+/* IN A COMMENT, these are a WARN rather than an ERROR. Everywhere else, and
+ * every other banned word everywhere, is an ERROR.
+ *
+ * This is one word, and it is on the list because of a measurement rather than
+ * a taste. Widening rule 1 into comment prose on bf1ad927 adds 433 findings
+ * across src. 256 of them, 59 percent, are `returns`, and a sample of every
+ * sixth finding in file order found 45 of 73 to be the third-person verb in a
+ * doc comment: "the route returns a 401", "Returns null when there is no date".
+ * The repo already allowlists the `@returns` JSDoc tag for exactly this sense;
+ * the prose spelling of the same sentence is the same sense with the tag left
+ * off. Over the last 14 merges to main it would have fired 19 times, always on
+ * a newly documented function.
+ *
+ * A gate that fails a branch for documenting what a function gives back is a
+ * gate someone disables, and then the rule is enforced by nothing at all,
+ * which is where issue 866 started. So `returns` in a comment prints and does
+ * not block. What this does NOT claim is that the noun sense is separated from
+ * the verb sense: no lexical test here can do that, and pretending otherwise
+ * would be the same false confidence in a new place. A reader still has to
+ * read the warning.
+ *
+ * `hold` is the other high-count word, 123 of the 433, and it is deliberately
+ * NOT here. Three of the four substrings that reached merged commits in issue
+ * 866 were `hold` in comment prose, and all three were rewritten by hand in
+ * one word. That is the class the gate exists to catch. */
+const COMMENT_WARN_ONLY = new Set(['returns']);
+
+/* The line marker, for prose that has to quote the rule in order to state it.
+ *
+ * `src/lib/brief-voice-guard.ts`, `src/lib/compliance-language-filter.ts` and
+ * `src/lib/thesis-recommendation-guard.ts` document what they forbid, so their
+ * comments necessarily contain the forbidden words. `EXCLUDE_FILES` already
+ * grants exactly this to `e2e/pressure/lib/rules.ts`, but it switches off every
+ * rule in the file, which is far too blunt for a product module that still
+ * needs its geometry and its em-dashes checked.
+ *
+ * A marker downgrades that ONE line to WARN. Three properties keep it from
+ * becoming the narrow rule again by a different route:
+ *
+ *   1. It requires a reason after the colon. A bare marker matches nothing.
+ *   2. It never silences. The hit still prints, with the reason, exactly like
+ *      the allowlist WARNs above.
+ *   3. It works on COMMENT-ONLY lines and nowhere else. Rendered copy lives in
+ *      string literals on code lines, so no marker anyone writes can weaken
+ *      what rule 1 says about text a reader can see.
+ *
+ * Usage:  design-lint-allow: names the recommendation words it forbids
+ */
+const ALLOW_MARKER = /design-lint-allow\s*:\s*(\S[^\n]*)/;
 
 /* STORED DATABASE IDENTIFIERS. The one shape this list grants repeatedly, and
  * the reason it is still a list of literals rather than a pattern.
@@ -107,6 +165,36 @@ const STORED_IDENTIFIERS = [
   { id: 'thresholds_pct', why: 'stored metadata key, never rendered' },
 ];
 
+/* An innocent word standing as a whole SEGMENT of an identifier, not only as a
+ * whole word.
+ *
+ * `\bthreshold\b` is the anchoring every ordinary-English entry below used, and
+ * it is wrong for the way this codebase names things. There is no word boundary
+ * between `_` and `t`, so `match_threshold` never matched it, and none between
+ * `t` and `T`, so neither did `viewportThreshold`. Measured on bf1ad927, that
+ * one anchoring choice produced 15 of the 278 rule-1 errors in src:
+ * match_threshold, similarity_threshold, strong_threshold, mild_threshold,
+ * viewport_threshold, threshold_scale, thresholdNum, plus russellPct and
+ * pillRussell on the index name. Every one is a word already ruled innocent,
+ * failing only because of how it was typed. That is the shape of false positive
+ * that gets a gate switched off.
+ *
+ * A segment boundary is the start of the line, a non-letter, or a camelCase
+ * hump. Nothing lower case may follow the word and its allowed tail, so
+ * `threshold` still does not license `thresholdx`, and the capitalised spelling
+ * is required at a hump so a hump is a real boundary rather than any letter.
+ *
+ * This WIDENS an exemption, so the self-test pins the other side of it:
+ * `shareholder_count`, `holdings_value` and `buyback_ratio` are specimens that
+ * MUST still fail, and none of them contains any word listed here. */
+function segment(word, tail = 's?') {
+  const cap = word[0].toUpperCase() + word.slice(1);
+  const upper = word.toUpperCase();
+  return new RegExp(
+    `(?:(?:^|[^A-Za-z])(?:${word}|${cap}|${upper})|(?<=[a-z0-9])${cap})(?:${tail})(?![a-z])`,
+  );
+}
+
 /* Substring bans collide with ordinary English and with the platform API.
  * Each exception below is a deliberate ruling. Anything not listed is an
  * error. Keep this list short and argue for every addition. */
@@ -126,18 +214,20 @@ const BANNED_ALLOW = [
   // Anchored on word boundaries here so an entry can never widen into a prefix
   // match by the way it was typed.
   ...STORED_IDENTIFIERS.map(({ id, why }) => ({ pattern: new RegExp(`\\b${id}\\b`), why })),
-  // Ordinary words that contain a banned substring and carry no claim.
-  { pattern: /\bthreshold(s)?\b/i, why: 'contains hold, no claim about a position' },
-  { pattern: /\bhousehold(s)?\b/i, why: 'contains hold' },
-  { pattern: /\bstakeholder(s)?\b/i, why: 'contains hold' },
-  { pattern: /\bplaceholder(s)?\b/i, why: 'contains hold, DOM attribute' },
-  { pattern: /\bwithhold(s|ing)?\b/i, why: 'contains hold, used in the reportable_min_n pattern' },
+  /* Ordinary words that contain a banned substring and carry no claim. Anchored
+     with segment() rather than \b, so the same ruling covers the word as an
+     identifier segment. See the note above segment() for what that fixed. */
+  { pattern: segment('threshold'), why: 'contains hold, no claim about a position' },
+  { pattern: segment('household'), why: 'contains hold' },
+  { pattern: segment('stakeholder'), why: 'contains hold' },
+  { pattern: segment('placeholder'), why: 'contains hold, DOM attribute' },
+  { pattern: segment('withhold', '(?:s|ing)?'), why: 'contains hold, used in the reportable_min_n pattern' },
   /* The Russell 2000. An index name, and the only one of the four the Evening
      Wrap's scorecard draws that collides with the substring list. It names
      something the desk quotes, not something anyone is told to do, and the
      label is not ours to rename: the design draws RUSSELL and so does
      `SCORECARD_SYMBOLS` in `src/app/evening-wrap/page.tsx`. */
-  { pattern: /\bRussell\b/i, why: 'contains sell, index name, no claim' },
+  { pattern: segment('russell', ''), why: 'contains sell, index name, no claim' },
 ];
 
 /* performance.now() is specifically called out in github.md as having been
@@ -410,15 +500,24 @@ function isAllowlisted(lineText) {
 
 /* Which lines are ENTIRELY a comment.
  *
- * Rule 1 is a substring ban, and a substring ban run over prose fires on
- * prose. Across this programme it fired about a dozen times on comments and
- * every single one was someone explaining code: a sentence about a loader, a
- * sentence naming a DOM attribute, twice on a message correcting a comment by
- * quoting the sentence being corrected. It has never once caught a real
- * violation inside a comment, because a comment is not a rendered string and
- * is not an identifier. So comment-only lines are exempt from RULE 1 ONLY.
- * Every other rule still reads every line, em-dashes and the rate shapes very
- * much included; those are about what is written, not about where.
+ * WHAT THIS USED TO DO, and why it changed. Rule 1 skipped comment-only lines
+ * outright, on the reasoning that a substring ban run over prose fires on
+ * prose and that it had never once caught a real violation inside a comment.
+ * The second half of that turned out to be false. Issue 866: four banned
+ * substrings reached merged commits on fix/user-profile-read-failures inside
+ * comment prose, design-lint reported zero, and the author's own grep is what
+ * found them. They are `it holds plus`, `the fields hold nothing`, `stops
+ * holding` and `buys nothing`, all four rewritten by hand in 6a61327c. The
+ * house rule in CLAUDE.md is unconditional and names comments explicitly, so a
+ * rule that exempts every comment is not a narrower reading of it, it is a
+ * different rule that reads as the same one. That is worse than an absent
+ * gate, because a believed-enforced rule stops people checking.
+ *
+ * So comment-only lines are now LINTED by rule 1. This function no longer
+ * decides whether to look; it decides the SEVERITY, via COMMENT_WARN_ONLY, and
+ * it gates the line marker. Every other rule still reads every line, em-dashes
+ * and the rate shapes very much included; those are about what is written, not
+ * about where.
  *
  * ENTIRELY is the whole point. `const x = "performance"; // named by design`
  * is code with a comment stapled to it, and the ban still applies to it. A
@@ -475,16 +574,29 @@ function commentOnlyLines(text) {
 }
 
 /* Rule 1, as a function so the self-test can hold specimens against it. It
- * lived inline in lintFile, where nothing could reach it. */
+ * lived inline in lintFile, where nothing could reach it.
+ *
+ * Every hit carries `comment`, `warnOnly` and `marked`. The caller decides
+ * severity from those; nothing here is dropped, so a filtered count can never
+ * be quieter than the truth. */
 function bannedSubstringHits(text) {
   const commentOnly = commentOnlyLines(text);
   const out = [];
   text.split('\n').forEach((raw, i) => {
-    if (commentOnly[i]) return;
+    const comment = commentOnly[i];
+    const marked = comment ? ALLOW_MARKER.exec(raw) : null;
     const lower = raw.toLowerCase();
     for (const word of BANNED) {
       if (!lower.includes(word)) continue;
-      out.push({ line: i + 1, word, raw, allow: isAllowlisted(raw) });
+      out.push({
+        line: i + 1,
+        word,
+        raw,
+        allow: isAllowlisted(raw),
+        comment,
+        warnOnly: comment && COMMENT_WARN_ONLY.has(word),
+        marked: marked ? marked[1].trim() : null,
+      });
     }
   });
   return out;
@@ -496,13 +608,20 @@ function lintFile(file) {
   const isCss = extname(file) === '.css';
   const isTokens = /tokens(\.reference)?\.css$/.test(file);
 
-  // 1. banned substrings. Skips whole-line comments; see bannedSubstringHits.
+  /* 1. banned substrings. Comments included; see bannedSubstringHits and the
+     COMMENT_WARN_ONLY note. Four ways a hit can land, three of which print
+     without failing, and none of which is silent. */
   for (const hit of bannedSubstringHits(text)) {
     if (hit.allow) {
       add('WARN', file, hit.line, 'banned-allowlisted', `"${hit.word}" via ${hit.allow.why}`);
+    } else if (hit.marked) {
+      add('WARN', file, hit.line, 'banned-marked', `"${hit.word}" marked: ${hit.marked.slice(0, 70)}`);
+    } else if (hit.warnOnly) {
+      add('WARN', file, hit.line, 'banned-in-comment',
+          `"${hit.word}" in a comment: ${hit.raw.trim().slice(0, 80)}`);
     } else {
       add('ERROR', file, hit.line, 'banned-substring',
-          `"${hit.word}" in: ${hit.raw.trim().slice(0, 90)}`);
+          `"${hit.word}"${hit.comment ? ' in a comment' : ''}: ${hit.raw.trim().slice(0, 90)}`);
     }
   }
 
@@ -784,15 +903,31 @@ function lintFixtureRules(file, text) {
  */
 const SELFTEST = [
   {
-    /* Both halves, deliberately. A change that only proved comments are
-     * skipped would be indistinguishable from switching the rule off, and the
-     * rule is load-bearing: `npm run design:rates` runs this same file. So the
-     * bad list carries the shapes that MUST still fire, including a banned
-     * word sitting beside a comment on the same line and one hidden inside a
-     * string that looks like a comment. */
+    /* Both halves, deliberately. A change that only proved the exemptions work
+     * would be indistinguishable from switching the rule off, and the rule is
+     * load-bearing: `npm run design:rates` runs this same file. So the bad list
+     * carries the shapes that MUST fire and the good list the shapes that must
+     * not, and neither is allowed to be empty. */
     rule: 'banned-substring',
-    run: (t) => bannedSubstringHits(t).filter(h => !h.allow).length,
+    run: (t) => bannedSubstringHits(t)
+      .filter(h => !h.allow && !h.marked && !h.warnOnly).length,
     bad: [
+      /* THE FOUR FROM ISSUE 866, recovered verbatim from 6a61327c on
+         fix/user-profile-read-failures. All four sat in comment prose, all four
+         reached merged commits, and design-lint reported zero on every one of
+         them. They are the ground truth for this widening: if the rule below
+         ever stops flagging these four, it has regressed to the version that
+         let them through. Reproduced as the pre-fix text, not the fix. */
+      '  /**\n   * `OnboardingWizard.tsx:572` PATCHes every field it holds plus\n   */',
+      '  /**\n   * the opposite case: the fields hold nothing that came from the reader\n   */',
+      '/**\n * stops holding, because an unused `@ts-expect-error` is itself a tsc error.\n */',
+      '/**\n * that already discriminates buys nothing. This type earns its place\n */',
+      /* The plainest possible shapes of the same thing: a banned word in an
+         ordinary comment and in an ordinary identifier, with nothing else on
+         the line to lean on. */
+      '// the section is drawn before the allocation is known',
+      'const performanceOfTheGrid = 1;',
+      /* Code shapes that already worked and must keep working. */
       'const label = "performance";',
       'const label = "performance"; // named by the design, not by us',
       'const shareholder = row.owner;',
@@ -803,31 +938,67 @@ const SELFTEST = [
       '/* opens and closes */ const holder = 1;',
       /* The block ends mid-line and code follows it. */
       '/**\n * prose about performance\n */ const holder = 1;',
+      /* Interior lines of a block are comment lines, and now they are linted
+         like every other line. Previously in the good list. */
+      '/**\n * used to hold a mirror\n * buy and sell read as prose here\n */',
+      '{/* performance of the section, stated in prose */}',
+      '  /**\n   * allocation of the grid, described\n   */',
       /* THE BOUNDARY ON `STORED_IDENTIFIERS`, pinned rather than argued.
          Every granted entry is a snake_case identifier with a banned substring
          glued inside a longer segment, and the tempting generalisation is a
          pattern for exactly that shape. These three have the same shape and are
          real hits, so the shape is not the rule and the list stays literal.
-         A pattern added here that made any of them pass would be a hole. */
+         A pattern added here that made any of them pass would be a hole.
+         segment() below widens the ordinary-English exemptions to identifier
+         segments, and these three are what proves it did not widen into this. */
       'const n = row.shareholder_count;',
       'const v = row.holdings_value;',
       'const r = row.buyback_ratio;',
+      /* The marker is comment-only. On a code line it grants nothing, so it can
+         never be used to quiet a rendered string. */
+      'const label = "performance"; // design-lint-allow: not a real reason',
+      /* A marker with no reason after the colon is not a marker. */
+      '// the fields hold nothing  design-lint-allow:',
     ],
     good: [
-      '// the loader returns a value before the effect settles',
-      '// used to hold a mirror up to the section above',
-      '/* performance is the word this sentence is explaining */',
-      /* Interior lines of a block carry no marker of their own. */
-      '/**\n * used to hold a mirror\n * the loader returns\n * buy and sell read as prose here\n */',
-      /* JSX, which this repo writes constantly. */
-      '{/* performance of the section, stated in prose */}',
-      '        {/* buy and sell, in a section marker */}',
-      /* Indented continuation of a JSDoc block. */
-      '  /**\n   * allocation of the grid, described\n   */',
-      /* The other side of the same boundary: every granted stored identifier
-         still passes, so the entries are proved live rather than assumed. */
+      /* The ordinary-English allowlist, now as whole words AND as identifier
+         segments. Every one of these was an ERROR on bf1ad927 except the first
+         two, and each is a word already ruled innocent failing on how it was
+         typed. */
+      'const t = { match_threshold: 0.25 };',
+      'const s = viewportThreshold;',
+      'const n = thresholdNum + threshold_scale;',
+      'const p = <input placeholder="Search" />;',
+      'const w = withholding;',
+      'const r = pillRussell + russellPct;',
+      'const R = SCORECARD_SYMBOLS.RUSSELL;',
+      /* Every granted stored identifier still passes, so the entries are proved
+         live rather than assumed. */
       'const eq = facts.stockholders_equity;',
-      'const t = meta.thresholds_pct;',
+      'const t2 = meta.thresholds_pct;',
+      /* `returns` in a comment is the WARN tier, not an error. Its own entry
+         below proves it is still detected rather than dropped. */
+      '// the loader returns a value before the effect settles',
+      '/**\n * Returns null when there is no date to speak about.\n */',
+      /* The marker, on a comment line, with a reason. */
+      '/**\n * language ("we recommend", "buy", "sell")  design-lint-allow: names the words it forbids\n */',
+    ],
+  },
+  {
+    /* The WARN tier is a real detection, not a drop. If this ever returns zero
+     * the words stopped being seen at all, which reads in a terminal exactly
+     * like prose that happened to be clean. */
+    rule: 'banned-in-comment',
+    run: (t) => bannedSubstringHits(t).filter(h => h.warnOnly && !h.allow && !h.marked).length,
+    bad: [
+      '// the loader returns a value before the effect settles',
+      '/**\n * Returns null when there is no date to speak about.\n */',
+    ],
+    good: [
+      /* A code line is never the WARN tier, whatever the word. */
+      'const x = returnsValue;',
+      /* `hold` in a comment is deliberately NOT in COMMENT_WARN_ONLY. */
+      '// the fields hold nothing that came from the reader',
     ],
   },
   {
@@ -1017,9 +1188,11 @@ function listArg(flag) {
  * zero findings, which reads in a terminal and in a PR body as a clean slice.
  * That is the one failure mode a filter must not have. */
 const KNOWN_RULES = new Set([
-  'aggregate-rate', 'all-caps', 'banned-allowlisted', 'banned-substring',
-  'bare-vh', 'coloured-left-border', 'em-dash', 'frosted-glass', 'gradient',
-  'hardcoded-hex', 'outcome-vocabulary', 'token-role', 'unreadable',
+  'aggregate-rate', 'all-caps', 'banned-allowlisted', 'banned-in-comment',
+  'banned-marked', 'banned-substring', 'bare-vh', 'coloured-left-border',
+  'em-dash', 'fixture-default', 'fixture-in-client-bundle', 'frosted-glass',
+  'gradient', 'hardcoded-hex', 'outcome-vocabulary', 'radius-scale',
+  'responsive-inline-conflict', 'token-role', 'type-floor', 'unreadable',
 ]);
 
 const onlyRules = listArg('--only');
