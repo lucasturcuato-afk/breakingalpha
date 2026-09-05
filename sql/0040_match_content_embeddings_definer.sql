@@ -106,20 +106,19 @@ END $$;
 --    WHERE n.nspname = 'public' AND p.proname = 'match_content_embeddings';
 
 -- 2b. Behavioural proof in the editor, as a non-bypassing role. The editor
---     runs as postgres, which bypasses RLS, so a bare call proves nothing;
---     switch role inside a transaction. Before this file: 0. After: 1.
+--     runs as postgres, which bypasses RLS, so a bare call proves nothing.
+--     Capture a query vector BEFORE switching role (anon cannot read one
+--     under RLS), then call as anon. Before this file: 0. After: 1.
 --
 --   BEGIN;
+--   CREATE TEMP TABLE _q ON COMMIT DROP AS
+--     SELECT embedding FROM public.content_embeddings
+--      WHERE content_type = 'article' LIMIT 1;
+--   GRANT SELECT ON _q TO anon;
 --   SET LOCAL ROLE anon;
---   SELECT count(*)
---     FROM public.match_content_embeddings(
---            (SELECT embedding FROM public.content_embeddings
---              WHERE content_type = 'article' LIMIT 1), 0.0, 1);
+--   SELECT count(*) AS rows_as_anon
+--     FROM public.match_content_embeddings((SELECT embedding FROM _q), 0.0, 1);
 --   ROLLBACK;
---
---     (the SELECT inside the call runs as anon too and returns no vector
---     under RLS; if it does, that is the DEFINER path working, and either
---     way the outer count is the number that matters.)
 --
 -- 2c. Behavioural proof from the app, signed in, under a topic follow that
 --     has an embedding: the Radar following feed and the watch following
