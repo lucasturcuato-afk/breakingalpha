@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { CANONICAL, canonicalize, getCompanyVariants } from "@/lib/company-intel";
 import { compareCikFirst } from "@/lib/company-cik-preference";
+import { escapeLikePattern } from "@/lib/like-escape";
 
 /**
  * Query-time alias canonical-rollup synthesizer (PR-B0, resolves Critical Finding C4).
@@ -66,12 +67,10 @@ export function slugToCompanyName(slug: string): string {
   return decoded.replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-// Escape LIKE metacharacters so `ilike` performs a case-insensitive EXACT
-// match: backslash first (the default LIKE escape char), then % and _.
-// Without this, a name containing % or _ would wildcard-match other rows.
-function escapeLikePattern(value: string): string {
-  return value.replace(/[\\%_]/g, (c) => `\\${c}`);
-}
+// escapeLikePattern moved to src/lib/like-escape.ts (imported above) when
+// src/lib/company-conflict.ts needed the same rule. One definition, not two:
+// a recovery path that escapes differently from the read path it recovers into
+// would silently find nothing.
 
 /**
  * THE COMPARISON KEY BOTH SIDES OF THE NAME MATCH GO THROUGH.

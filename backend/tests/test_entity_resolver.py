@@ -66,6 +66,22 @@ class _FakeQuery:
         self.filters.append((column, tuple(values)))
         return self
 
+    # company_conflict's probe ladder uses ilike / is_ / limit. Tagged filter
+    # names ("ilike:name") so a test can tell an exact-name probe from a
+    # case-insensitive one; an untagged (column, value) pair stays an .eq(),
+    # which every pre-existing assertion in this file relies on.
+    def ilike(self, column, pattern):
+        self.filters.append((f"ilike:{column}", pattern))
+        return self
+
+    def is_(self, column, value):
+        self.filters.append((f"is:{column}", value))
+        return self
+
+    def limit(self, n):
+        self.limit_n = n
+        return self
+
     def execute(self):
         # Record the call BEFORE resolving the response so tests can
         # observe attempts even when the mock raises (e.g., simulated
@@ -96,15 +112,45 @@ class FakeSupabase:
         self.calls = []
         # responses keyed by (table, op); each entry is a list popped FIFO.
         self._responses = {}
-        # If True, the next companies.insert raises a unique-violation.
-        self._raise_unique_on_companies_insert = False
+        # How many further companies.insert calls raise a unique-violation.
+        self._raise_unique_on_companies_insert = 0
 
     def queue(self, table, op, data, *, filters=None):
-        key = (table, op)
-        self._responses.setdefault(key, []).append(data)
+        """Queue one canned response.
 
-    def raise_unique_on_companies_insert(self):
-        self._raise_unique_on_companies_insert = True
+        `filters`, when given, is a list of (column, value) pairs the call must
+        carry for this entry to be used. Without it the entry matches any call,
+        which is what every pre-existing test in this file expects. The probe
+        ladder in company_conflict issues several companies-SELECTs in a row
+        that differ only in their filters, so FIFO alone cannot address them.
+        """
+        key = (table, op)
+        self._responses.setdefault(key, []).append((filters, data))
+
+    def raise_unique_on_companies_insert(self, index_name=None, times=1):
+        """Arm the next `times` companies.insert calls to raise a unique
+        violation.
+
+        `index_name` names the index in the message the way Postgres does, so a
+        test can drive company_conflict's index hint. Default None keeps the
+        original bare message, which is the shape a client that loses the index
+        name produces.
+        """
+        self._raise_unique_on_companies_insert = times
+        self._unique_index_name = index_name
+
+    def _unique_exc(self):
+        name = getattr(self, "_unique_index_name", None)
+        if name:
+            exc = Exception(
+                f'duplicate key value violates unique constraint "{name}"'
+            )
+            exc.code = "23505"
+            exc.message = (
+                f'duplicate key value violates unique constraint "{name}"'
+            )
+            return exc
+        return Exception("duplicate key value violates unique constraint")
 
     def _next_response(self, *, table, op, filters):
         if (
@@ -112,11 +158,13 @@ class FakeSupabase:
             and op == "insert"
             and self._raise_unique_on_companies_insert
         ):
-            self._raise_unique_on_companies_insert = False
-            raise Exception("duplicate key value violates unique constraint")
+            self._raise_unique_on_companies_insert -= 1
+            raise self._unique_exc()
         queue = self._responses.get((table, op), [])
-        if queue:
-            return queue.pop(0)
+        for i, (want_filters, data) in enumerate(queue):
+            if want_filters is None or list(want_filters) == list(filters):
+                queue.pop(i)
+                return data
         # Default empty for inserts/updates without a queued response.
         return [] if op in ("select", "insert") else None
 
@@ -301,6 +349,76 @@ class RegisterEntityTests(unittest.TestCase):
         # No alias INSERT on the recovery path; the winner already
         # wrote the alias row.
         self.assertEqual(len(sb.calls_to("aliases", "insert")), 0)
+
+    def test_retry_cap_recovers_a_name_the_exact_name_select_could_not_see(self):
+        """The lost-race path that used to raise while the row existed.
+
+        Three attempts all lose to companies_name_norm_unique, which is
+        UNIQUE(lower(btrim(name))) and therefore names a row spelled
+        "ExxonMobil" when we tried to insert "EXXONMOBIL". The old recovery was
+        `.eq("name", "EXXONMOBIL")`, which returns zero rows against that
+        winner, and resolve_entity raised. It now resolves through the probe
+        ladder in company_conflict.
+
+        This is not only a hot-race path. A canonical whose alias INSERT failed
+        is permanently invisible to step 2, so every call for that name landed
+        here and threw.
+        """
+        sb = FakeSupabase()
+        for _ in range(3):
+            sb.queue("aliases", "select", [])
+        sb.raise_unique_on_companies_insert(
+            index_name="companies_name_norm_unique", times=3
+        )
+        # The exact-name probe is NOT queued: the fake returns [] for an
+        # unmatched select, which is what the real table does for this needle.
+        sb.queue(
+            "companies",
+            "select",
+            [{"id": "winner-id", "name": "ExxonMobil"}],
+            filters=[("ilike:name", "EXXONMOBIL"), ("is:sec_cik", "null")],
+        )
+
+        result = resolve_entity("EXXONMOBIL", sb)
+
+        self.assertEqual(result["canonical_id"], "winner-id")
+        # alias_id is None: the canonical resolved, the specific alias row did
+        # not, and the recovery deliberately writes nothing.
+        self.assertIsNone(result["alias_id"])
+        self.assertEqual(len(sb.calls_to("companies", "insert")), 3)
+        self.assertEqual(len(sb.calls_to("companies", "update")), 0)
+        self.assertEqual(len(sb.calls_to("aliases", "insert")), 0)
+
+    def test_retry_cap_raises_when_no_probe_finds_the_row(self):
+        """A recovery that finds nothing must be loud.
+
+        Returning a canonical of None here would be read as "no such company"
+        by _resolve_company_entity in ingest.py, which is the silent wrong
+        answer the whole change exists to prevent.
+        """
+        from backend.company_conflict import CompanyConflictUnresolved
+
+        sb = FakeSupabase()
+        for _ in range(3):
+            sb.queue("aliases", "select", [])
+        sb.raise_unique_on_companies_insert(
+            index_name="companies_name_norm_unique", times=3
+        )
+        with self.assertRaises(CompanyConflictUnresolved):
+            resolve_entity("Nowhere Corp", sb)
+
+    def test_a_non_unique_insert_error_still_propagates(self):
+        """The old classifier matched the substring "conflict", broad enough to
+        turn a serialization failure into a benign race. SQLSTATE decides."""
+        sb = FakeSupabase()
+        sb.queue("aliases", "select", [])
+        exc = Exception("could not serialize access due to conflict")
+        exc.code = "40001"
+        sb._raise_unique_on_companies_insert = 1
+        sb._unique_exc = lambda: exc
+        with self.assertRaises(Exception) as ctx:
+            resolve_entity("Serializable Co", sb)
+        self.assertIs(ctx.exception, exc)
 
     # Normalization parity -----------------------------------------------
     def test_normalization_parity(self):

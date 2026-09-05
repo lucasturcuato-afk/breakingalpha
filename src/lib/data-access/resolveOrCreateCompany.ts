@@ -2,6 +2,10 @@ import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import {
+  isUniqueViolation,
+  resolveConflictingCompany,
+} from "@/lib/company-conflict";
 import { resolveAlias, type ResolverRow } from "@/lib/data-access/aliasResolver";
 import { namesAgree } from "@/lib/name-agreement";
 import { normalizeLookupKey } from "@/lib/normalize-lookup-key";
@@ -167,11 +171,17 @@ async function registerAlias(
 
 export async function resolveOrCreateCompany(
   rawQuery: string,
+  // Injection seam, for tests only. Production callers pass nothing and get the
+  // service-role singleton. Added because the 23505 recovery below cannot be
+  // proven any other way: the branch only runs when a real unique index fires,
+  // and the previous version of it was wrong for two of the three indexes on
+  // this table with nothing red to say so.
+  deps: { svc?: SupabaseClient } = {},
 ): Promise<ResolveOutcome> {
   const query = rawQuery.trim();
   if (!query) return { status: "not_found", company: null, created: false };
 
-  const svc = getServiceSupabase();
+  const svc = deps.svc ?? getServiceSupabase();
 
   // (0) Ticker fast-path: dotted/plain tickers (BRK.B, SHELL.AS) that
   // resolveAlias's strict /^[A-Z]{1,5}$/ regex routes to the name branch. A
@@ -235,8 +245,18 @@ export async function resolveOrCreateCompany(
     return { status: "exists", company: lite(byName.canonical), created: false };
   }
 
-  // (4) Genuinely new: insert ONE row via service-role. UNIQUE(name) is the
-  // synchronization primitive; on a race (23505) re-select by name.
+  // (4) Genuinely new: insert ONE row via service-role. A unique index is the
+  // synchronization primitive; on a lost race (23505) resolve the winner.
+  //
+  // NOT `.eq("name", name)`. companies has THREE unique indexes and that probe
+  // serves exactly one of them. This row is inserted with sec_cik NULL, so it
+  // sits inside companies_name_norm_unique (UNIQUE lower(btrim(name)) WHERE
+  // sec_cik IS NULL); a conflict there names a row spelled differently in case
+  // or whitespace, the exact-name select returned nothing, maybeSingle handed
+  // back null, and this function answered `not_found` for a company that
+  // exists. See src/lib/company-conflict.ts for the index enumeration and for
+  // what happens when the winning row is itself a duplicate (it is resolved to,
+  // never merged away from).
   const { data: inserted, error } = await svc
     .from("companies")
     .insert({ name, ticker: symbol, mention_count: 0 })
@@ -246,17 +266,13 @@ export async function resolveOrCreateCompany(
   let company: CompanyLite | null = inserted ? lite(inserted as CompanyLite) : null;
   let raced = false;
   if (error) {
-    if (error.code === "23505") {
-      raced = true;
-      const { data: existing } = await svc
-        .from("companies")
-        .select("id, name, ticker")
-        .eq("name", name)
-        .maybeSingle();
-      company = existing ? lite(existing as CompanyLite) : null;
-    } else {
-      throw error;
-    }
+    if (!isUniqueViolation(error)) throw error;
+    raced = true;
+    // Throws CompanyConflictUnresolvedError if no probe finds the row. That is
+    // deliberate: the route above turns a throw into a logged 500, whereas a
+    // `not_found` here is an EmptyState with nothing written anywhere. A wrong
+    // silent answer is worse than the loud one it replaced.
+    company = lite(await resolveConflictingCompany(svc, { name, error }));
   }
   if (!company) return { status: "not_found", company: null, created: false };
 

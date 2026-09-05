@@ -60,6 +60,17 @@ try:
 except ImportError:
     from backend.edgar.name_agreement import names_agree  # test/dev context: cwd=repo-root
 
+try:
+    from company_conflict import (  # cron context: cwd=backend/
+        is_unique_violation,
+        resolve_conflicting_company,
+    )
+except ImportError:
+    from backend.company_conflict import (  # test/dev context: cwd=repo-root
+        is_unique_violation,
+        resolve_conflicting_company,
+    )
+
 
 # Cap recursion in the rare hot-race case where two workers keep
 # colliding. Three attempts is extremely conservative; in practice the
@@ -183,7 +194,7 @@ def resolve_entity(
     # name. If the SELECT finds a row (race winner), we recurse to
     # re-enter at step 2 so the new alias / resolution_log writes happen
     # against the winning canonical. _MAX_RACE_RETRIES caps the loop.
-    new_canonical_id = _try_insert_canonical(
+    new_canonical_id, conflict_exc = _try_insert_canonical(
         supabase=supabase,
         name=surface_form,
         themes=themes,
@@ -195,29 +206,36 @@ def resolve_entity(
         # alias-lookup and our INSERT. Re-enter at step 2 against the
         # winning row.
         if _attempt + 1 >= _MAX_RACE_RETRIES:
-            # If we keep racing past the retry cap, fall back to a
-            # straight SELECT by name and return whatever's there
-            # without further alias/log writes. This is defensive and
-            # extremely unlikely; documented for completeness.
-            existing = (
-                supabase.table("companies")
-                .select("id")
-                .eq("name", surface_form)
-                .execute()
-                .data
-                or []
+            # Past the retry cap, resolve the conflicting row through the
+            # full probe ladder in company_conflict.
+            #
+            # This used to be `.eq("name", surface_form)`, which is correct for
+            # exactly ONE of the three unique indexes on companies. A 23505 from
+            # companies_name_norm_unique (UNIQUE lower(btrim(name)) WHERE
+            # sec_cik IS NULL) names a row spelled differently in case or
+            # surrounding whitespace, so the exact-name SELECT missed it and we
+            # raised while the row was sitting there. See the module docstring
+            # of company_conflict.py for the full index enumeration.
+            #
+            # Reaching here is NOT only a hot race. It is also the standing
+            # outcome for an ORPHANED canonical: a companies row whose alias
+            # INSERT failed (see this module's own header note). Step 2 is an
+            # alias lookup, so it can never see such a row, and every call for
+            # that name previously burned three INSERTs and then threw. It now
+            # resolves.
+            #
+            # alias_id is None here: we resolved the canonical but not a
+            # specific alias row, so this mention is not tallied against
+            # aliases.mention_count this run. Deliberate, and the reason the
+            # recovery is left out of the alias write path entirely: it performs
+            # ZERO writes, so it cannot deepen an existing duplicate.
+            row = resolve_conflicting_company(
+                supabase=supabase,
+                name=surface_form,
+                exc=conflict_exc,
+                select="id, name",
             )
-            if existing:
-                # Defensive race path: we resolved the canonical but not the
-                # specific alias row -> alias_id None (its per-mention count is
-                # skipped this run; extremely rare, flagged).
-                return {"canonical_id": existing[0]["id"], "alias_id": None}
-            # If even the SELECT misses, raise so the caller sees it
-            # rather than silently returning None.
-            raise RuntimeError(
-                f"resolve_entity: could not resolve or insert {surface_form!r} "
-                f"after {_MAX_RACE_RETRIES} race retries"
-            )
+            return {"canonical_id": row["id"], "alias_id": None}
         return resolve_entity(
             surface_form=surface_form,
             supabase=supabase,
@@ -368,13 +386,17 @@ def _try_insert_canonical(
     name: str,
     themes: list,
     sentiment: Optional[str],
-) -> Optional[str]:
+) -> tuple:
     """
     Attempt to INSERT a new canonical companies row.
 
-    Returns the new id on success, or None if the row already exists
-    (race lost). The companies table has UNIQUE(name); supabase-py
-    surfaces that as an exception we catch here.
+    Returns (new_id, None) on success, or (None, exc) if the row already
+    exists (race lost). supabase-py raises postgrest APIError with .code set
+    to the SQLSTATE; the exception is handed back rather than swallowed so
+    the caller's recovery can read WHICH unique index fired. companies has
+    three of them and they need different probes, so "a duplicate happened"
+    is not enough information to recover from. (None, None) is the
+    empty-response-without-exception case.
 
     Raw SQL intent (single statement; not expressible in supabase-py):
         INSERT INTO companies (name, key_themes, sentiment_trend, mention_count)
@@ -433,18 +455,24 @@ def _try_insert_canonical(
                             pass  # don't block mint on cik population failure
                 except Exception:
                     pass  # don't block on ticker lookup failure
-            return new_id
+            return new_id, None
         # Empty response without exception: treat as race-lost so the
-        # caller falls back to SELECT-by-name and re-enters step 2.
-        return None
+        # caller re-enters step 2. No exception to hand back.
+        return None, None
     except Exception as ex:
-        # Unique-violation on companies.name: race lost. Any other error
-        # we re-raise so it is not silently swallowed (matches the
-        # convention in backend/ingest.py where unexpected errors print
-        # and propagate via the outer try in upsert_company).
-        msg = str(ex).lower()
-        if "duplicate" in msg or "unique" in msg or "conflict" in msg or "23505" in msg:
-            return None
+        # Unique violation: race lost, hand the exception back so the caller
+        # can read the index name off it. Any other error we re-raise so it is
+        # not silently swallowed (matches the convention in backend/ingest.py
+        # where unexpected errors print and propagate via the outer try in
+        # upsert_company).
+        #
+        # The test used to be a substring scan that included "conflict", which
+        # is broad enough to reclassify unrelated failures as races and return
+        # a benign None for them. is_unique_violation reads the SQLSTATE first
+        # and only falls back to substrings for test doubles that raise a bare
+        # Exception.
+        if is_unique_violation(ex):
+            return None, ex
         raise
 
 
