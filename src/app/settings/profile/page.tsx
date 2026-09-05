@@ -13,6 +13,8 @@ import { useLiveMood } from "@/hooks/useLiveMood";
 import { useTheme } from "@/components/providers/theme-provider";
 import { USER_ROLES } from "@/lib/user-roles";
 import { MobileSettingsScreen } from "@/components/settings/mobile-settings-screen";
+import { WatchNotice } from "@/components/watch/watch-notice";
+import { fromSingle } from "@/lib/data-access/read";
 import type { ReactNode } from "react";
 
 /* ── Role options ──
@@ -66,6 +68,16 @@ export default function ProfileSettingsPage() {
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  /* THE THIRD SITE, AND THE REASON IT IS IN THIS PR.
+   *
+   * This screen NEVER CALLS `getUserProfile`. It reads Supabase inline, five
+   * lines below, so fixing the shared function does not reach it. It handled
+   * PGRST116 correctly and then, on a real database error, ran
+   * `setLoading(false); return;` and left every field at its empty initial
+   * value. `handleSave` PATCHes exactly those blanks, `onboarding_completed:
+   * true` included. Same screen family, same damage, different door, and it
+   * must not survive a fix that appears to cover it. */
+  const [loadFailed, setLoadFailed] = useState(false);
 
   // Fetch current profile on mount — query Supabase directly (bypasses API route)
   useEffect(() => {
@@ -74,32 +86,42 @@ export default function ProfileSettingsPage() {
         const supabase = getSupabase();
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) {
+          setLoadFailed(true);
           setLoading(false);
           return;
         }
 
-        const { data: profile, error: dbError } = await supabase
-          .from("user_profiles")
-          .select("*")
-          .eq("id", user.id)
-          .single();
+        /* `fromSingle` carries the PGRST116 discrimination this block already
+           had by hand, so a first-visit reader with no row yet still gets an
+           empty form to fill in and only a genuine failure blocks. */
+        const read = fromSingle<Record<string, unknown>>(
+          await supabase.from("user_profiles").select("*").eq("id", user.id).single(),
+        );
 
-        if (dbError && dbError.code !== "PGRST116") {
-          console.error("Profile load error:", dbError.message);
+        if (read.state === "failed") {
+          console.error("Profile load error:", read.message);
+          setLoadFailed(true);
           setLoading(false);
           return;
         }
 
-        if (profile) {
-          setFirstName(profile.first_name ?? "");
-          setFirmOrSchool(profile.firm_or_school ?? "");
-          setRole(profile.role ?? null);
-          setSectors(profile.sectors ?? []);
-          setRiskAppetite(profile.risk_appetite ?? null);
-          setWatchlistInput((profile.watchlist_tickers ?? []).join(", "));
+        if (read.state === "ok") {
+          const profile = read.row;
+          setFirstName((profile.first_name as string | null) ?? "");
+          setFirmOrSchool((profile.firm_or_school as string | null) ?? "");
+          setRole((profile.role as string | null) ?? null);
+          setSectors((profile.sectors as string[] | null) ?? []);
+          setRiskAppetite((profile.risk_appetite as string | null) ?? null);
+          setWatchlistInput(
+            ((profile.watchlist_tickers as string[] | null) ?? []).join(", "),
+          );
         }
-      } catch {
-        // Soft-fail — leave defaults
+      } catch (e) {
+        /* No longer a silent soft-fail. A throw here is a read that did not
+           happen, which is the same answer as a failed one, and leaving the
+           empty defaults in place is what let Save write over stored data. */
+        console.error("Profile load error:", e instanceof Error ? e.message : e);
+        setLoadFailed(true);
       } finally {
         setLoading(false);
       }
@@ -191,6 +213,7 @@ export default function ProfileSettingsPage() {
           onToggleSector={toggleSector}
           onWatchlistInput={(v) => { setWatchlistInput(v); setSaved(false); }}
           onSave={handleSave}
+          loadFailed={loadFailed}
           theme={theme}
           onToggleTheme={toggleTheme}
           onSignOut={handleSignOut}
@@ -217,6 +240,17 @@ export default function ProfileSettingsPage() {
               <div key={i} className="h-10 rounded-lg bg-parchment-mid animate-pulse" />
             ))}
           </div>
+        ) : loadFailed ? (
+          /* The form is not mounted, so the Save control does not exist. A
+             disabled button would still be a button announcing that saving is
+             a thing this screen can do from a read that did not happen. Same
+             block and same register as `/settings/preferences`; the retry is a
+             reload because the read runs in an effect on mount. */
+          <WatchNotice
+            heading="Could not load your preferences."
+            body="Nothing on this screen can be saved until they load. Saving now would write an empty form over what is already there."
+            action={{ href: "/settings/profile", label: "Try again" }}
+          />
         ) : (
           <div className="space-y-8">
             {/* Name & Firm */}

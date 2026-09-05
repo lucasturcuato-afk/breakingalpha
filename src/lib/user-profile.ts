@@ -14,6 +14,8 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseWithUser } from "./supabase-server";
+import { fromSingle, fromList, rowOr } from "./data-access/read";
+import type { Read } from "./data-access/read";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -93,7 +95,15 @@ const NEGATIVE_EVENTS: UserEventType[] = [
   "watchlist_removed",
 ];
 
-const DEFAULT_PROFILE = (id: string): UserProfile => ({
+/**
+ * The neutral profile a soft-failing caller falls back to.
+ *
+ * Exported because a caller that must distinguish `missing` from `failed`
+ * still wants this exact shape for `missing`: a reader with no row yet gets an
+ * empty form to fill in, which is correct. Only `failed` is the one that must
+ * not reach a form.
+ */
+export const DEFAULT_PROFILE = (id: string): UserProfile => ({
   id,
   first_name: null,
   role: null,
@@ -115,39 +125,78 @@ const DEFAULT_PROFILE = (id: string): UserProfile => ({
 // Read / write
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * The profile read, with the failure kept.
+ *
+ * THE SPLIT ACROSS THE CALLERS IS THE DESIGN, not an accident to be tidied
+ * away. Measured on this tree, `getUserProfile` has six call sites in six
+ * files, and they divide cleanly:
+ *
+ *   MUST NOT DEFAULT, because the value seeds a form whose Save writes every
+ *   field back:
+ *     - `src/app/settings/preferences/page.tsx`  seeds `PreferencesForm`
+ *     - `src/app/onboarding/page.tsx`            seeds `OnboardingWizard`
+ *
+ *   DEFAULT IS THE GENUINELY RIGHT SOFT-FAIL, because the profile only tunes
+ *   an answer that is worth giving unpersonalized:
+ *     - `src/app/api/intelligence/route.ts`      prompt context
+ *     - `src/app/api/theses/route.ts`            sort order
+ *     - `src/app/api/profile/insights/route.ts`  narrative bullets
+ *     - `src/app/settings/learned/page.tsx`      read-only display
+ *
+ * The four in the second group keep calling `getUserProfile` and their diff is
+ * zero lines. Only a caller that must not default reaches for this function.
+ */
+export async function readUserProfile(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<Read<UserProfile>> {
+  const read = fromSingle<Record<string, unknown>>(
+    await supabase.from("user_profiles").select("*").eq("id", userId).maybeSingle(),
+  );
+
+  if (read.state === "failed") {
+    console.warn("[user-profile] readUserProfile:", read.message);
+    return read;
+  }
+  if (read.state === "missing") return read;
+
+  // Fill in any columns the schema might be missing (pre-migration) with
+  // defaults so consumers never have to null-check.
+  const data = read.row;
+  const defaults = DEFAULT_PROFILE(userId);
+  return {
+    state: "ok",
+    row: {
+      ...defaults,
+      ...data,
+      sectors: Array.isArray(data.sectors) ? data.sectors : [],
+      watchlist_tickers: Array.isArray(data.watchlist_tickers)
+        ? data.watchlist_tickers
+        : [],
+      inferred_sector_weights:
+        typeof data.inferred_sector_weights === "object" &&
+        data.inferred_sector_weights !== null
+          ? (data.inferred_sector_weights as Record<string, number>)
+          : {},
+    },
+  };
+}
+
+/**
+ * The soft-failing read, unchanged in behaviour and unchanged at every call
+ * site that wants it: a failed read and an absent row both yield the default
+ * profile, exactly as before.
+ *
+ * It is one line over `readUserProfile` on purpose. The indifferent caller
+ * pays nothing for the distinction it does not need, so nobody has a reason to
+ * route around the type.
+ */
 export async function getUserProfile(
   supabase: SupabaseClient,
   userId: string,
 ): Promise<UserProfile> {
-  const { data, error } = await supabase
-    .from("user_profiles")
-    .select("*")
-    .eq("id", userId)
-    .maybeSingle();
-
-  if (error) {
-    console.warn("[user-profile] getUserProfile:", error.message);
-    return DEFAULT_PROFILE(userId);
-  }
-
-  if (!data) return DEFAULT_PROFILE(userId);
-
-  // Fill in any columns the schema might be missing (pre-migration) with
-  // defaults so consumers never have to null-check.
-  const defaults = DEFAULT_PROFILE(userId);
-  return {
-    ...defaults,
-    ...data,
-    sectors: Array.isArray(data.sectors) ? data.sectors : [],
-    watchlist_tickers: Array.isArray(data.watchlist_tickers)
-      ? data.watchlist_tickers
-      : [],
-    inferred_sector_weights:
-      typeof data.inferred_sector_weights === "object" &&
-      data.inferred_sector_weights !== null
-        ? (data.inferred_sector_weights as Record<string, number>)
-        : {},
-  };
+  return rowOr(await readUserProfile(supabase, userId), DEFAULT_PROFILE(userId));
 }
 
 const UPSERT_WHITELIST = [
@@ -316,27 +365,52 @@ export async function updateInferredWeights(
    * written, so a swallowed error cannot be reported as a successful store.
    */
   updatedAt: string | null;
+  /**
+   * True when the `user_events` read did not happen, so `weights` and
+   * `eventCount` are not a derivation of anything.
+   *
+   * Additive and non-breaking: every existing consumer destructures the three
+   * keys above and ignores this one. It exists because the read failure used
+   * to be swallowed into `{weights: {}, eventCount: 0}` and RESOLVE, so a
+   * caller's rejection handler never ran and a failed read reached the screen
+   * as a genuine zero. `/settings/learned` then stated "Not enough data yet"
+   * on a read that did not happen.
+   *
+   * Same principle as `updatedAt` above, one step earlier in the call: a
+   * swallowed error must not be reportable as a successful anything.
+   */
+  failed: boolean;
 }> {
   const since = new Date(
     Date.now() - lookbackDays * 24 * 60 * 60 * 1000,
   ).toISOString();
 
-  const { data: events, error } = await supabase
-    .from("user_events")
-    .select("event_type, payload, created_at")
-    .eq("user_id", userId)
-    .gte("created_at", since);
-
-  if (error) {
-    console.warn("[user-profile] updateInferredWeights read:", error.message);
-    return { weights: {}, eventCount: 0, updatedAt: null };
-  }
-
-  const weights: Record<string, number> = {};
-  for (const ev of (events ?? []) as {
+  /* The RESPONSE goes into the adapter, not a `{data, error}` pair rebuilt
+     around it. `PostgrestSingleResponse` already discriminates; the adapter's
+     job is to map that discrimination onto a shape whose failure member has no
+     `data` key, so the `events ?? []` below cannot reappear on the wrong side
+     of the branch. */
+  const eventRead = fromList<{
     event_type: UserEventType;
     payload: Record<string, unknown> | null;
-  }[]) {
+    created_at: string;
+  }>(
+    await supabase
+      .from("user_events")
+      .select("event_type, payload, created_at")
+      .eq("user_id", userId)
+      .gte("created_at", since),
+  );
+
+  if (eventRead.state === "failed") {
+    console.warn("[user-profile] updateInferredWeights read:", eventRead.message);
+    return { weights: {}, eventCount: 0, updatedAt: null, failed: true };
+  }
+
+  const events = eventRead.rows;
+
+  const weights: Record<string, number> = {};
+  for (const ev of events) {
     const payload = ev.payload ?? {};
     const sector =
       typeof payload.sector === "string" && payload.sector.trim().length > 0
@@ -382,8 +456,9 @@ export async function updateInferredWeights(
    * that is every call, because neither column exists yet. */
   return {
     weights,
-    eventCount: events?.length ?? 0,
+    eventCount: events.length,
     updatedAt: writeErr ? null : now,
+    failed: false,
   };
 }
 

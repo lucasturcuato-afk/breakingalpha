@@ -53,18 +53,22 @@ export function MobileLearnedScreen({
    */
   updatedAt: string | null;
   /**
-   * The route's weight refresh THREW. Narrow on purpose, and narrower than it
-   * looks: `updateInferredWeights` resolves normally on both a read error and
-   * a write error, and it deliberately suppresses even the warn when the error
-   * names either ghost column, so this cannot catch the failure that actually
-   * happens in production. That one is reported by `stored` instead.
+   * The route's weight refresh DID NOT PRODUCE NUMBERS, either because the
+   * `user_events` read failed or because the call threw.
    *
-   * This branch is left in place because an unexpected throw is still possible
-   * and silence would be worse, but its copy no longer says the numbers fell
-   * back to "the last stored values": nothing is stored, so that would have
-   * been a second false claim hiding inside a failure message. Widening the
-   * signal means unpicking the swallow in `src/lib/user-profile.ts`, which is
-   * PR #681's file, not this one's.
+   * This prop was written for a signal that could not reach it. It used to
+   * mean only "the call threw", and `updateInferredWeights` resolved normally
+   * on a read error, folding it into `{weights: {}, eventCount: 0}`, so the
+   * flag was false for every reader on every render and a failed read drew as
+   * a genuine zero. The library now reports its own read failure and the route
+   * passes it straight through, so the branch below is reachable for the
+   * failure that actually happens rather than only for an unexpected throw.
+   *
+   * Still narrow, and deliberately so. It does NOT cover the WRITE failure
+   * that happens in production today, where the two personalization columns do
+   * not exist: the numbers are real in that case, they are simply not kept.
+   * `stored` reports that one, and the copy here does not claim the numbers
+   * fell back to "the last stored values", because nothing is stored.
    */
   refreshFailed: boolean;
   /**
@@ -130,11 +134,25 @@ export function MobileLearnedScreen({
                 `stored` is false, so the clause is gated rather than printed as
                 a fact. Same rule that took "Published 6:45" off Alerts. */}
             These are inferred from your activity and blend with your declared preferences. 1.0 =
-            neutral.{stored ? " Higher = boosted in ranking." : ""} {eventCount} events considered
-            {updatedAt === null ? "." : <> &middot; last updated {updatedAt}.</>}
+            neutral.{stored ? " Higher = boosted in ranking." : ""}
+            {/* The COUNT is a claim about a read that happened. On a failed
+                one it read "0 events considered", which is the same sentence a
+                reader with no activity gets and is exactly the confusion this
+                unit exists to end. It is dropped, not zeroed. */}
+            {refreshFailed ? null : (
+              <>
+                {" "}
+                {eventCount} events considered
+                {updatedAt === null ? "." : <> &middot; last updated {updatedAt}.</>}
+              </>
+            )}
           </p>
 
-          {stored ? null : (
+          {/* Also gated: this sentence opens "These numbers were worked out
+              from your recorded activity when this page loaded", which is
+              false when the activity read did not happen. The failure line
+              below says what actually occurred. */}
+          {stored || refreshFailed ? null : (
             <p
               role="status"
               style={{
@@ -166,7 +184,14 @@ export function MobileLearnedScreen({
             </p>
           ) : null}
 
-          {weights.length === 0 ? (
+          {/* GATED ON `refreshFailed`, and this is the whole rule of the unit
+              rather than a tidy-up. With the flag now reachable, a failed read
+              arrives here as an empty weight list, and an ungated empty state
+              would draw "Not enough data yet" UNDER a sentence saying the
+              weights could not be worked out: the failure stated and the empty
+              claim standing anyway, in the same block. Measured at 390 before
+              this gate, both sentences were in the DOM at once. */}
+          {refreshFailed ? null : weights.length === 0 ? (
             <p
               style={{
                 margin: "14px 0 0",

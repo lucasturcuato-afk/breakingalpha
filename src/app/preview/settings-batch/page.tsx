@@ -3,7 +3,7 @@ import { PreviewSettingsBatch, type PreviewScreen, type PreviewState } from "@/c
 /* Declared here rather than imported: a value exported from a "use client"
  * module reaches a server component as a client reference, not an array. */
 const SCREENS: readonly PreviewScreen[] = ["settings", "preferences", "alerts", "saved", "learned", "share"];
-const STATES: readonly PreviewState[] = ["ready", "loading", "saving", "error", "empty", "saved"];
+const STATES: readonly PreviewState[] = ["ready", "loading", "saving", "error", "failed", "empty", "saved"];
 
 /**
  * DESIGN PREVIEW HARNESS, NOT A LIVE SURFACE.
