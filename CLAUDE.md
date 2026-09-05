@@ -141,6 +141,33 @@ traps is not exempt from being one.
   two distinct values before believing a both-themes claim.
 - `offsetParent` is null for `position: fixed`, so a probe built on it cannot
   see the tab bar. The bar is 58px of row plus a 1px border, height 59.
+- LAYOUT QUANTISES TO A 1/64px GRID AND THE CSSOM SERIALISES TO SIX
+  SIGNIFICANT DIGITS, and those two facts disagree. A grid-exact
+  `16.953125px` comes back out of `getComputedStyle` as `16.9531px`, one grid
+  step LOW. Build a layout correction on that reading and the result lands a
+  step short, every time, deterministically. It held nine cells at exactly
+  -0.01px through two rounds of fixing on the tone-series block before it was
+  found, and -0.01 is exactly the magnitude a reasonable person writes off as
+  a rounding artefact rather than chasing. It is not one. When a value must be
+  grid-exact, do not correct from a serialised length: measure where the
+  element actually lands and correct from that.
+- MEASURING LIVE DATA TWICE IS MEASURING TWO DIFFERENT CORPORA. Two companies
+  changed section state between snapshots taken minutes apart inside a single
+  sweep, which silently turns an A/B into a comparison of different things,
+  and the diff then reads as a regression you introduced. Run both sides back
+  to back and compare the state of each row as a drift check, not only the
+  numbers. Any measurement on a live corpus taken minutes apart has this
+  hazard.
+- `page.url()` read after `waitForLoadState("networkidle")` can return the
+  PRE-NAVIGATION path on a `next/link` navigation that actually succeeded. The
+  client router settles the network before it settles the URL, so the read is
+  taken in the window where the new page is already fetched and the address has
+  not moved. It fails as a FALSE NEGATIVE: a working link scores as unreachable,
+  which is the direction that invents a defect rather than hiding one. It cost a
+  full first pass on `/settings/learned` and `/settings/alerts`, both scored
+  unreachable before the harness was corrected. `waitForURL` is the only true
+  reading. Same family as the hit-test versus real-tap distinction: the cheap
+  probe answers a question adjacent to the one asked.
 - Playwright's `newPage()` starts on `about:blank`, so `goto` pushes and
   `history.length` is 2. `location.replace()` is the way to a genuine cold
   entry AND IT ONLY WORKS ON A PAGE THAT HAS NEVER NAVIGATED. It replaces the
