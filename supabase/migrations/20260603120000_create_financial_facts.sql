@@ -4,10 +4,13 @@
 -- backend/edgar/xbrl_facts.py; validation gate: backend/edgar/xbrl_validation.py;
 -- job: backend/ingest_xbrl_facts.py.
 --
--- !!! PROPOSED / NOT APPLIED !!!
--- Written for review only. As of 2026-06-03 NOT applied to the project (repo
--- convention: Noah applies committed migrations via Studio/CLI). The ingest
--- job fails closed with a clear error until this exists; only --dry-run works.
+-- APPLIED AND POPULATED. Verified live 2026-09-05: public.financial_facts
+-- answers with all 25 columns and holds rows (its company_id column is on
+-- sql/proposals/0020b's merge repoint list at 1.44M rows). The header that
+-- stood here from 2026-06-03 said "PROPOSED / NOT APPLIED"; that was true when
+-- written and was never updated after Noah applied it. Repo convention is
+-- unchanged: Noah applies committed migrations via Studio/CLI, agents never
+-- do.
 --
 -- Design notes:
 --   * Long/narrow so new line items never require a schema change.

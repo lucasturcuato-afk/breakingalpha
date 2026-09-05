@@ -11,6 +11,7 @@
 -- Shape: a JSON array of article id strings in render order, e.g.
 --   ["<uuid>", "<uuid>", ...]  (up to 8).
 --
--- NOT YET APPLIED. Hand to Noah to apply; prod is safe before and after.
+-- APPLIED (verified live 2026-09-05: briefings.story_rail_ids exists). The
+-- line here read "NOT YET APPLIED" until then. Prod is safe before and after.
 
 ALTER TABLE briefings ADD COLUMN IF NOT EXISTS story_rail_ids jsonb;

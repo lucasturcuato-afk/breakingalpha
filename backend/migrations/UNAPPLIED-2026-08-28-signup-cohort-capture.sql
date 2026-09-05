@@ -1,4 +1,6 @@
 -- ############################################################################
+-- ##  APPLIED. Verified live 2026-09-05: waitlist.cohort_source and             ##
+-- ##  beta_allowlist.cohort_source exist. The banner below is history.       ##
 -- ##  UNAPPLIED. THIS MIGRATION HAS NOT BEEN RUN AGAINST ANY DATABASE.      ##
 -- ##                                                                        ##
 -- ##  It was authored by an unattended agent run, which never applies       ##

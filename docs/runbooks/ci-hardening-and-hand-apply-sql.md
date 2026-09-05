@@ -576,3 +576,59 @@ implying they will ever be fixed.**
 ### Verdict
 
 **Zero tests may leave quarantine. `known_failures.txt` stays at 13 lines.**
+
+---
+
+## 7. Merging companies once `sql/0038_company_facts.sql` is applied
+
+`company_facts.company_id` is a real foreign key with `ON DELETE SET NULL`
+(the `financial_facts` shape, and nullable on purpose: see
+`docs/company-facts-store.md`). That means a company merge that deletes the
+absorbed rows without repointing this table first does not fail. It quietly
+moves every fact of every loser into the unattached pile, where nothing
+counts it and the brief stops seeing it.
+
+There is no merge tool. Merges are hand-applied SQL: `sql/proposals/0020b`
+section 4 is the destructive phase, a PL/pgSQL function that repoints each
+dependent table by hand and then runs `DELETE FROM public.companies`. Its
+dependent list is enumerated, not discovered, so a new dependent table is
+invisible to it until someone adds a block. Verified 2026-09-05 that
+duplicates are still accumulating under the v2 rule (dozens of clusters, a
+third of them with a member first seen in the previous two weeks), so another
+merge run is a matter of time.
+
+The block, already present in `0020b` section 4 and guarded on
+`to_regclass` so it is a no-op until 0038 lands:
+
+```sql
+IF to_regclass('public.company_facts') IS NOT NULL THEN
+  EXECUTE $cf$
+    INSERT INTO norm_v2.moved_row (new_key, table_name, row_id, from_company_id, to_company_id)
+    SELECT $1, 'company_facts', f.id::text, f.company_id, $2
+      FROM public.company_facts f WHERE f.company_id = ANY($3)
+  $cf$ USING p_new_key, survivor, losers;
+  EXECUTE $cf$
+    UPDATE public.company_facts SET company_id = $1 WHERE company_id = ANY($2)
+  $cf$ USING survivor, losers;
+  GET DIAGNOSTICS n = ROW_COUNT;
+  moved := moved || jsonb_build_object('company_facts', n);
+END IF;
+```
+
+Rules for any future merge script, enforced by
+`backend/tests/test_company_merge_repoints_facts.py`:
+
+- Any `.sql` under `sql/` or `sql/proposals/` that deletes from
+  `public.companies` must also repoint `company_facts.company_id` in the
+  same file. The test fails otherwise. `0020` itself is allowlisted because
+  `0020b` supersedes its phase 6; do not add to that list, add the block.
+- Repoint BEFORE the `DELETE`. After it, `SET NULL` has already fired and
+  the journal has nothing to record.
+- Run the section 5 verify afterwards. `no_orphan_company_facts` must be `t`.
+- A merge run before 0038 is applied needs nothing extra. The guard makes
+  the block a no-op.
+
+Also verified 2026-09-05, for the record: `0020b`'s destructive phase has
+run at least once. `articles_companies_repair`, the ledger of the
+post-merge name repair (`tools/repair_articles_companies.py`), is populated,
+and that repair only exists because loser rows were deleted.

@@ -1,7 +1,16 @@
 -- =====================================================================
 -- 0020b_norm_v2_revised_phases.sql
 --
---   *** PROPOSAL. NOT APPLIED. DO NOT RUN AS ONE SCRIPT. ***
+--   *** PROPOSAL. DO NOT RUN AS ONE SCRIPT. ***
+--   *** RUN AT LEAST ONCE (2026-09-05 note): the destructive phase has been
+--   *** executed. Evidence, read-only: articles_companies_repair, the ledger
+--   *** of the post-merge name repair, is populated, and that repair only
+--   *** exists because loser rows were deleted. norm_v2 itself is not
+--   *** visible through PostgREST, so its ledger was not read directly.
+--   *** Duplicates are re-accumulating under the v2 rule (dozens of clusters
+--   *** measured over the full companies table on 2026-09-05, a third with a
+--   *** member first seen in the prior two weeks), so this will run again.
+--   *** The header read "NOT APPLIED" until this note.
 --
 -- SUPERSEDES phases 1, 4 and 6 of sql/proposals/0020_normalize_lookup_key_v2.sql.
 -- Phases 2 (snapshot), 3 (quarantine), 5 (review), 7 (re-key) and 8 (rollback)
@@ -853,6 +862,28 @@ BEGIN
   GET DIAGNOSTICS n = ROW_COUNT;
   moved := moved || jsonb_build_object('financial_facts', n);
 
+  -- company_facts (sql/0038). Added 2026-09-05, BEFORE the table is applied,
+  -- so the next merge cannot forget it: its FK is ON DELETE SET NULL, so a
+  -- merge that skipped this step would drop every fact of every loser into
+  -- the unattached pile with no error and no count. Guarded on to_regclass
+  -- and run through EXECUTE so this function still compiles and runs on a
+  -- database where 0038 has not been applied yet. Journaled: the table is
+  -- small (one row per stated claim), so rollback stays exact.
+  -- backend/tests/test_company_merge_repoints_facts.py fails if any merge
+  -- script that deletes from public.companies lacks this block.
+  IF to_regclass('public.company_facts') IS NOT NULL THEN
+    EXECUTE $cf$
+      INSERT INTO norm_v2.moved_row (new_key, table_name, row_id, from_company_id, to_company_id)
+      SELECT $1, 'company_facts', f.id::text, f.company_id, $2
+        FROM public.company_facts f WHERE f.company_id = ANY($3)
+    $cf$ USING p_new_key, survivor, losers;
+    EXECUTE $cf$
+      UPDATE public.company_facts SET company_id = $1 WHERE company_id = ANY($2)
+    $cf$ USING survivor, losers;
+    GET DIAGNOSTICS n = ROW_COUNT;
+    moved := moved || jsonb_build_object('company_facts', n);
+  END IF;
+
   UPDATE public.insider_transactions SET company_id = survivor WHERE company_id = ANY(losers);
   GET DIAGNOSTICS n = ROW_COUNT;
   moved := moved || jsonb_build_object('insider_transactions', n);
@@ -1061,6 +1092,13 @@ $$;
 --                  WHERE f.company_id IS NOT NULL
 --                    AND NOT EXISTS (SELECT 1 FROM public.companies c
 --                                     WHERE c.id = f.company_id))    AS no_orphan_facts,
+--     -- company_facts (sql/0038): once applied, no fact may point at a
+--     -- deleted company. Returns t trivially while the table does not exist.
+--     (to_regclass('public.company_facts') IS NULL OR NOT EXISTS (
+--        SELECT 1 FROM public.company_facts cf
+--         WHERE cf.company_id IS NOT NULL
+--           AND NOT EXISTS (SELECT 1 FROM public.companies c
+--                            WHERE c.id = cf.company_id)))     AS no_orphan_company_facts,
 --     -- candidate_canonical_ids is JSONB, not uuid[]: unnest() does not apply.
 --     NOT EXISTS (SELECT 1 FROM public.resolution_log l,
 --                      jsonb_array_elements_text(l.candidate_canonical_ids) e(v)
@@ -1093,7 +1131,8 @@ $$;
 --     FROM norm_v2.moved_row j
 --    WHERE j.table_name = 'company_mentions' AND j.new_key = '<key>'
 --      AND m.id::text = j.row_id;
---   -- repeat for sec_filings and insider_transactions, then restore the
+--   -- repeat for sec_filings, insider_transactions and company_facts (the
+--   -- last is journaled too, table_name = 'company_facts'), then restore the
 --   -- company rows per 0020 phase 8a/8b.
 --
 -- ROLLBACK ORDERING: RUN 8b BEFORE 8a. Same companies_sec_cik_unique that

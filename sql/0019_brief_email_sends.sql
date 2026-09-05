@@ -11,7 +11,9 @@
 -- duplicate. backend/brief_email_send.py treats a failed ledger read as "send"
 -- precisely because this constraint exists.
 --
--- NOT APPLIED. Noah applies migrations. Nothing in the send path assumes this
+-- APPLIED (verified live 2026-09-05: the table exists and is readable; it held
+-- no rows at the time of the check). Noah applies migrations. Nothing in the
+-- send path assumes this
 -- table exists: a missing table degrades to a logged warning and an empty
 -- already-sent set, so the feature is safe to merge before the migration runs
 -- (with EMAIL_DIGEST_MODE off, which is the default).

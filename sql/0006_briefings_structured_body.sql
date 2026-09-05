@@ -6,8 +6,9 @@
 --
 -- The synthesis pipeline tries to insert these columns first and falls back to
 -- the base row if they do not exist — so briefings keep shipping even before
--- this migration is applied. Apply it so the new fields persist and the
--- LeadHero component can render the three-part layout.
+-- this migration is applied. It IS applied (verified live 2026-09-05:
+-- briefings.lead_paragraph exists), so the fields persist and the LeadHero
+-- component renders the three-part layout.
 --
 -- All three columns are optional; older rows will simply have NULL values and
 -- the renderer falls back to `summary` unchanged.
