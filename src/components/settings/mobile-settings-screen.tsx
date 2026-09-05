@@ -10,6 +10,7 @@ import {
   Screen,
   ScreenBody,
   SectionRule,
+  TabBarClearance,
 } from "@/components/mobile";
 import styles from "@/components/mobile/mobile.module.css";
 import { FONT_DISPLAY, FONT_SANS } from "@/components/mobile/fonts";
@@ -390,6 +391,36 @@ export function MobileSettingsScreen(props: MobileSettingsScreenProps) {
           Signalera is informational only and is never investment advice.
         </p>
       </ScreenBody>
+      {/* THE INFORMATIONAL LINE ABOVE HAS NEVER BEEN VISIBLE AT PHONE WIDTH,
+          and this element is the whole fix. Measured on a production build of
+          `0e51dd3f` at maximum scroll, both themes: at 390 the line ran 802.80
+          to 820.39 against a bar top of 785, so all 17.59px of it sat behind
+          the bar; at 320 it wrapped to two lines and 34.80 of its 35.19px sat
+          behind. `document.elementFromPoint` at its centre answered with the
+          Radar pole at every one of 320, 375, 390 and 430.
+
+          NOT CAUSED BY THE `Legal` ROW. The obvious theory was that the row
+          added hours earlier pushed the line under. It did not: identical
+          coordinates come back on a build without that row, and the rows and
+          the `bottomRule` above are untouched here.
+
+          WHY AN ELEMENT AND NOT A PADDING. `#main-content` carries
+          `padding-bottom: 59px` from `app-shell.tsx:178`, and on this route
+          that padding contributes exactly zero: measured at 390, the scroller
+          reports scrollHeight 1853 against a screen root that is itself
+          1853.39 tall, which is Chrome dropping a scroll container's bottom
+          padding once its content overflows. `ScreenBody` has
+          `overflow-y: auto` but never scrolls (scrollHeight and clientHeight
+          agree exactly), so `#main-content` is the only scroller and the
+          extent has to come from real content.
+
+          A `padding-bottom` on this screen root would in fact also add extent,
+          measured, so the reason this is the shared element is ownership and
+          not geometry: `@/components/mobile/tab-bar-clearance` is the single
+          owner of the clearance rule, and a local padding here would be the
+          fifth hand-rolled shape of the thing that module exists to stop.
+          Last child of the root, as its three settings siblings already do. */}
+      <TabBarClearance />
     </Screen>
   );
 }
