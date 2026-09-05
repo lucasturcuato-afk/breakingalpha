@@ -53,6 +53,7 @@
  */
 
 import { getCompanySearchTerms } from "./watchlist-utils";
+import { nameContainsAnyTerm } from "./whole-token-match";
 
 /**
  * Words that, immediately after a matched term, mark the match as a venue or
@@ -129,17 +130,34 @@ export function titleMentionIsGenuine(title: string, term: string): boolean {
   return false;
 }
 
-/** True when primary_company corroborates any of the search terms. */
+/**
+ * True when primary_company corroborates any of the search terms.
+ *
+ * WHOLE-TOKEN, NOT SUBSTRING, and that is the whole point of this function
+ * having been rewritten. It used to read
+ *
+ *     return t.length > 0 && pc.includes(t);
+ *
+ * which accepts an INTERIOR fragment. Corroboration SHORT-CIRCUITS the filter
+ * below, so every row this said yes to skipped `titleMentionIsGenuine`
+ * entirely: the anchored half of the pair could not run on the rows the
+ * unanchored half had already waved through. The two functions answer the same
+ * question about the same row and only one of them was guarded.
+ *
+ * What the unanchored version accepted, from the live corpus: term "Ola" ->
+ * primary_company "Motorola Solutions" and "Coca-Cola"; term "LIC" ->
+ * "Republic Services" and "Publicis"; term "ABC" -> "Labcorp". Those rows
+ * reached the reader's watchlist as corroborated, which is the strongest
+ * verdict this module can give a row.
+ *
+ * See src/lib/whole-token-match.ts for the rule and for why concatenated brand
+ * forms still resolve.
+ */
 export function companyCorroborates(
   primaryCompany: string | null | undefined,
   terms: string[],
 ): boolean {
-  const pc = (primaryCompany || "").toLowerCase();
-  if (!pc) return false;
-  return terms.some((term) => {
-    const t = term.trim().toLowerCase();
-    return t.length > 0 && pc.includes(t);
-  });
+  return nameContainsAnyTerm(primaryCompany, terms);
 }
 
 /**
@@ -163,6 +181,32 @@ type TitleAndCompany = {
 };
 
 /**
+ * THE RULE ITSELF, against an explicit term list.
+ *
+ * Exported because a THIRD surface computes the same fact from the same
+ * columns: `src/lib/radar-following.ts` issues the identical
+ * `primary_company.ilike.%term%` (+ `title.ilike.%term%` above six characters)
+ * for ticker and company follows and had no in-memory check of any kind. Two
+ * implementations of "does this row belong to this company" is how the anchored
+ * and unanchored halves drifted apart in the first place, so there is one.
+ *
+ * radar-following derives its terms from `follows.matched_keywords` rather than
+ * from `getCompanySearchTerms`, which is why the term list is a parameter here
+ * and computed by the caller.
+ */
+export function filterImpreciseByTerms<T extends TitleAndCompany>(
+  rows: T[],
+  terms: string[],
+): T[] {
+  if (terms.length === 0) return rows;
+  return rows.filter((row) => {
+    if (companyCorroborates(row.primary_company, terms)) return true;
+    const title = row.title || "";
+    return terms.some((term) => titleMentionIsGenuine(title, term));
+  });
+}
+
+/**
  * Drop rows that reached the result set only through an imprecise title match.
  *
  * `sector` entries are returned untouched: their filter is jsonb containment
@@ -179,13 +223,5 @@ export function filterImpreciseTitleMatches<T extends TitleAndCompany>(
   type: string,
 ): T[] {
   if (type === "sector") return rows;
-
-  const terms = searchTermsForEntry(identifier, displayName, type);
-  if (terms.length === 0) return rows;
-
-  return rows.filter((row) => {
-    if (companyCorroborates(row.primary_company, terms)) return true;
-    const title = row.title || "";
-    return terms.some((term) => titleMentionIsGenuine(title, term));
-  });
+  return filterImpreciseByTerms(rows, searchTermsForEntry(identifier, displayName, type));
 }
