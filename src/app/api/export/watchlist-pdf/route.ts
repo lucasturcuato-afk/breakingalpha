@@ -39,6 +39,15 @@ export async function GET() {
       supabase.from("watchlist_articles").select("identifier, title, source, published_at, relevance_score").in("identifier", identifiers).order("identifier", { ascending: true }).order("relevance_score", { ascending: false }).limit(Math.min(identifiers.length * 5, 300)),
     ]);
 
+    /* THE THREE SIDE READS GET THE SAME RULE AS THE ENTRIES READ ABOVE, which
+       already threw on its error. They did not, so a fault in any of them
+       produced a report that renders complete: every entry present, every
+       Recent Coverage block silently absent, and no way for the reader to
+       tell that from a watchlist with no coverage. This is a document people
+       print and keep, so a partial answer is refused rather than shipped. */
+    const sideReadError = briefsRes.error ?? notesRes.error ?? articlesRes.error;
+    if (sideReadError) throw sideReadError;
+
     const briefsByIdent: Record<string, { brief_text: string; generated_at: string }> = {};
     for (const b of briefsRes.data ?? []) {
       briefsByIdent[b.identifier] = b;
@@ -67,7 +76,10 @@ export async function GET() {
 
     return NextResponse.json({ entries: result, exportedAt: new Date().toISOString() });
   } catch (e) {
-    console.error("[watchlist-pdf GET] error:", e);
-    return NextResponse.json({ error: "Internal error" }, { status: 500 });
+    console.error("[watchlist-pdf GET] read did not answer:", e);
+    return NextResponse.json(
+      { error: "Could not load the watchlist export." },
+      { status: 500 },
+    );
   }
 }

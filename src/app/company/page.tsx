@@ -236,6 +236,12 @@ export default function CompanyIntelPage() {
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [companies, setCompanies] = useState<CompanyRow[]>([]);
   const [loading, setLoading] = useState(true);
+  /* A 500 from /api/companies used to draw "No companies indexed yet", which
+     is a claim about the corpus made on the strength of no answer at all.
+     This carries the third state so the empty branch can stop speaking for
+     the failed one. `reloadNonce` gives the reader a way back. */
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [reloadNonce, setReloadNonce] = useState(0);
   const [selectedVerticals, setSelectedVerticals] = useState<string[]>([]);
   const [verticalMatchMode, setVerticalMatchMode] = useState<"any" | "all">("any");
   const [isSignedOut, setIsSignedOut] = useState(false);
@@ -305,11 +311,17 @@ export default function CompanyIntelPage() {
     (async () => {
       try {
         const res = await fetch("/api/companies?limit=500");
+        if (!res.ok) throw new Error(`companies read answered ${res.status}`);
         const json = (await res.json()) as { companies?: ApiCompany[]; error?: string };
-        if (!cancelled) setCompanies(dedupeAndMapApiCompanies(json.companies ?? []));
+        if (json.error) throw new Error(json.error);
+        if (!cancelled) {
+          setLoadFailed(false);
+          setCompanies(dedupeAndMapApiCompanies(json.companies ?? []));
+        }
       } catch (e) {
         if (!cancelled) {
-          console.error("Failed to load companies:", e);
+          console.error("Companies read did not answer:", e);
+          setLoadFailed(true);
           setCompanies([]);
         }
       } finally {
@@ -317,7 +329,7 @@ export default function CompanyIntelPage() {
       }
     })();
     return () => { cancelled = true; };
-  }, [debouncedSearch]);
+  }, [debouncedSearch, reloadNonce]);
 
   // Server-side search when query >= 2 chars. The 200ms debounce above already
   // throttles network calls; this effect just maps debouncedSearch -> fetch.
@@ -328,9 +340,12 @@ export default function CompanyIntelPage() {
     (async () => {
       try {
         const res = await fetch(`/api/companies?q=${encodeURIComponent(trimmed)}&limit=50`);
+        if (!res.ok) throw new Error(`companies search answered ${res.status}`);
         const json = (await res.json()) as { companies?: ApiCompany[]; error?: string };
+        if (json.error) throw new Error(json.error);
         if (!cancelled) {
           const mapped = dedupeAndMapApiCompanies(json.companies ?? []);
+          setLoadFailed(false);
           setCompanies(mapped);
           /* THE TYPED STRING, AND WHETHER IT RESOLVED. Emitted here rather than
              only on Enter, because Enter only would never record the reader who
@@ -354,7 +369,8 @@ export default function CompanyIntelPage() {
         }
       } catch (e) {
         if (!cancelled) {
-          console.error("Failed to search companies:", e);
+          console.error("Companies search did not answer:", e);
+          setLoadFailed(true);
           setCompanies([]);
         }
       }
@@ -716,6 +732,31 @@ export default function CompanyIntelPage() {
         {/* Directory table */}
         {loading ? (
           <DirectoryTableSkeleton />
+        ) : loadFailed ? (
+          /* Outranks the empty branch below. "No companies indexed yet" and
+             "No companies match your filters" are both statements about the
+             corpus, and the corpus is not what failed. Same ordering, same
+             register and same "Try again" affordance the watchlist and the
+             following feed already use for this state. */
+          <div>
+            <EmptyState
+              icon={<Building2 size={32} />}
+              title="Directory unavailable"
+              description="The list could not be read. This is a loading failure, not an empty directory."
+              action={
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLoading(true);
+                    setReloadNonce((n) => n + 1);
+                  }}
+                  className="inline-flex items-center justify-center min-h-[44px] px-4 rounded-lg border border-border-base bg-white font-sans text-[11px] font-bold text-text-muted hover:text-text-primary cursor-pointer"
+                >
+                  Try again
+                </button>
+              }
+            />
+          </div>
         ) : visibleRows.length === 0 ? (
           <div>
             <EmptyState
