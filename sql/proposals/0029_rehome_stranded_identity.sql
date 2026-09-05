@@ -113,43 +113,48 @@ COMMIT;
 -- =====================================================================
 -- BLOCK 01  -- THE JOURNAL. Idempotent. Creates nothing that exists.
 --
--- WHY THIS SHAPE, AND WHY IT IS NOT EXACTLY THE MERGE'S SHAPE.
+-- WHY A SEPARATE TABLE, AND NOT norm_v2.moved_row.
 --
--- `norm_v2.moved_row` DOES NOT EXIST IN PROD. It is named only inside a
--- comment in sql/proposals/0020_normalize_lookup_key_v2.sql (phase 8d), a
--- file whose own header says "PROPOSAL. NOT APPLIED", as the four-column
--- signature `moved_row(table_name, row_id, from_company_id, to_company_id)`
--- that phase 6 WOULD have to write for rollback to be exact. There is no
--- table, no schema, and no prior row to match. PostgREST exposes only
--- `public` and `graphql_public`, so this file cannot prove `norm_v2` is
--- absent, only that nothing has ever created it in this repo; CREATE ... IF
--- NOT EXISTS below is written so that either answer is safe.
+-- CORRECTION, 2026-09-05. An earlier version of this block asserted that
+-- `norm_v2.moved_row` DOES NOT EXIST IN PROD, and created it. THAT WAS
+-- WRONG. It exists, it holds the norm_v2 merge journal, and it is in
+-- active use. Its definition is sql/proposals/0020b_norm_v2_revised_phases.sql
+-- lines 232 to 240, a file whose own header says PROPOSAL and which was
+-- applied anyway. Its live shape is seven columns:
 --
--- The merge's four columns are kept VERBATIM as the spine so one reversal
--- procedure covers both operations. They are kept even though this operation
--- never populates from_company_id / to_company_id, because a reversal
--- procedure that has to handle two different column sets is two procedures.
+--   id bigserial PRIMARY KEY, new_key text NOT NULL, table_name text NOT NULL,
+--   row_id text NOT NULL, from_company_id uuid NOT NULL,
+--   to_company_id uuid NOT NULL, moved_at timestamptz NOT NULL DEFAULT now()
 --
--- What is ADDED, and why the merge shape alone is not enough: a merge moves a
--- dependent row BETWEEN companies, so from/to company ids fully describe it.
--- This operation moves NO ROW. It changes two columns ON a companies row. The
--- four columns cannot express that, so `before` / `after` jsonb carry the
--- column values. The dispatch for a reversal is then one rule:
---     to_company_id IS NOT NULL  -> repoint the dependent (merge)
---     to_company_id IS NULL      -> restore `before` onto row_id (this file)
+-- with indexes moved_row_pkey, moved_row_new_key_idx and
+-- moved_row_table_id_idx. There is no `op`, `before`, `after` or `note`
+-- column, so this file's inserts could never have run against it, and the
+-- earlier partial index on (table_name, row_id, op) could not be created
+-- at all.
+--
+-- THE TWO OPERATIONS ARE GENUINELY DIFFERENT, WHICH IS WHY TWO TABLES IS
+-- THE CORRECT SHAPE RATHER THAN A COMPROMISE. The merge MOVES A DEPENDENT
+-- ROW BETWEEN TWO COMPANIES, so from_company_id and to_company_id are both
+-- NOT NULL and fully describe it. THIS OPERATION MOVES NO ROW. It changes
+-- two columns ON one companies row, so both of those endpoints would be
+-- NULL and three of the merge's NOT NULL constraints would have to be
+-- relaxed to admit it. Relaxing them weakens the merge's own reversal path
+-- for the sake of an operation that is not a merge.
+--
+-- THE ONE-REVERSAL-PROCEDURE JUSTIFICATION IS WITHDRAWN. Two operations
+-- with disjoint column sets need two procedures, and pretending otherwise
+-- costs the merge its guarantees.
+--
+-- norm_v2.moved_row IS NOT READ, NOT WRITTEN AND NOT ALTERED BY THIS FILE.
 -- =====================================================================
 BEGIN;
 
 CREATE SCHEMA IF NOT EXISTS norm_v2;
 
-CREATE TABLE IF NOT EXISTS norm_v2.moved_row (
+CREATE TABLE IF NOT EXISTS norm_v2.stamped_identity (
   id               bigserial PRIMARY KEY,
-  -- the merge's four, verbatim
   table_name       text        NOT NULL,
   row_id           uuid        NOT NULL,
-  from_company_id  uuid,
-  to_company_id    uuid,
-  -- what an identity stamp needs and a repoint does not
   op               text        NOT NULL,
   before           jsonb,
   after            jsonb,
@@ -158,19 +163,21 @@ CREATE TABLE IF NOT EXISTS norm_v2.moved_row (
   ran_by           text        NOT NULL DEFAULT current_user
 );
 
-COMMENT ON TABLE norm_v2.moved_row IS
-  'Reversal journal. One row per mutation. Two ops share it so one reversal '
-  'procedure covers both: op=''repoint'' (the 0020 merge moving a dependent '
-  'between companies, uses from/to_company_id) and op=''stamp_identity'' '
-  '(0029 re-homing sec_cik + ticker onto a companies row, uses before/after). '
-  'Dispatch on to_company_id IS NULL.';
+COMMENT ON TABLE norm_v2.stamped_identity IS
+  'Reversal journal for identity stamps: sec_cik and ticker written onto an '
+  'existing companies row that carried neither. One row per mutation. '
+  'Reversal is: restore `before` onto row_id. DELIBERATELY SEPARATE from '
+  'norm_v2.moved_row, which journals the norm_v2 merge repointing a dependent '
+  'row BETWEEN companies and whose from_company_id / to_company_id are both '
+  'NOT NULL. This operation moves no row, so those columns have nothing to '
+  'hold. Two operations, two journals, two reversal procedures.';
 
--- One journal row per (op, row, table). Makes a re-applied block a no-op in
+-- One journal row per (table, row, op). Makes a re-applied block a no-op in
 -- the journal too, instead of writing a second row whose `before` is the
 -- ALREADY-STAMPED state, which would make the rollback restore the wrong
 -- thing. This is the failure the index exists to prevent.
-CREATE UNIQUE INDEX IF NOT EXISTS moved_row_stamp_once
-    ON norm_v2.moved_row (table_name, row_id, op)
+CREATE UNIQUE INDEX IF NOT EXISTS stamped_identity_stamp_once
+    ON norm_v2.stamped_identity (table_name, row_id, op)
  WHERE op = 'stamp_identity';
 
 COMMIT;
@@ -234,7 +241,7 @@ BEGIN
     RAISE EXCEPTION 'BLOCK 02: ticker % already on % other row(s). REFUSING.', v_ticker, v_dupe;
   END IF;
 
-  INSERT INTO norm_v2.moved_row (table_name, row_id, op, before, after, note)
+  INSERT INTO norm_v2.stamped_identity (table_name, row_id, op, before, after, note)
   VALUES ('public.companies', v_id, 'stamp_identity',
           jsonb_build_object('ticker', r.ticker, 'sec_cik', r.sec_cik),
           jsonb_build_object('ticker', v_ticker, 'sec_cik', v_cik),
@@ -265,11 +272,11 @@ COMMIT;
 -- UPDATE public.companies c
 --    SET ticker  = (j.before->>'ticker'),
 --        sec_cik = (j.before->>'sec_cik')::bigint
---   FROM norm_v2.moved_row j
+--   FROM norm_v2.stamped_identity j
 --  WHERE j.table_name = 'public.companies' AND j.op = 'stamp_identity'
 --    AND j.row_id = '1e3d53ae-f9f3-4ab8-a1c5-3c118d9280d8'::uuid AND c.id = j.row_id
 --    AND c.ticker = (j.after->>'ticker') AND c.sec_cik = (j.after->>'sec_cik')::bigint;
--- DELETE FROM norm_v2.moved_row
+-- DELETE FROM norm_v2.stamped_identity
 --  WHERE table_name = 'public.companies' AND op = 'stamp_identity' AND row_id = '1e3d53ae-f9f3-4ab8-a1c5-3c118d9280d8'::uuid;
 -- COMMIT;
 
@@ -332,7 +339,7 @@ BEGIN
     RAISE EXCEPTION 'BLOCK 03: ticker % already on % other row(s). REFUSING.', v_ticker, v_dupe;
   END IF;
 
-  INSERT INTO norm_v2.moved_row (table_name, row_id, op, before, after, note)
+  INSERT INTO norm_v2.stamped_identity (table_name, row_id, op, before, after, note)
   VALUES ('public.companies', v_id, 'stamp_identity',
           jsonb_build_object('ticker', r.ticker, 'sec_cik', r.sec_cik),
           jsonb_build_object('ticker', v_ticker, 'sec_cik', v_cik),
@@ -363,11 +370,11 @@ COMMIT;
 -- UPDATE public.companies c
 --    SET ticker  = (j.before->>'ticker'),
 --        sec_cik = (j.before->>'sec_cik')::bigint
---   FROM norm_v2.moved_row j
+--   FROM norm_v2.stamped_identity j
 --  WHERE j.table_name = 'public.companies' AND j.op = 'stamp_identity'
 --    AND j.row_id = '7361687b-ee93-4cef-b71d-7bf76fc634ca'::uuid AND c.id = j.row_id
 --    AND c.ticker = (j.after->>'ticker') AND c.sec_cik = (j.after->>'sec_cik')::bigint;
--- DELETE FROM norm_v2.moved_row
+-- DELETE FROM norm_v2.stamped_identity
 --  WHERE table_name = 'public.companies' AND op = 'stamp_identity' AND row_id = '7361687b-ee93-4cef-b71d-7bf76fc634ca'::uuid;
 -- COMMIT;
 
@@ -429,7 +436,7 @@ BEGIN
     RAISE EXCEPTION 'BLOCK 04: ticker % already on % other row(s). REFUSING.', v_ticker, v_dupe;
   END IF;
 
-  INSERT INTO norm_v2.moved_row (table_name, row_id, op, before, after, note)
+  INSERT INTO norm_v2.stamped_identity (table_name, row_id, op, before, after, note)
   VALUES ('public.companies', v_id, 'stamp_identity',
           jsonb_build_object('ticker', r.ticker, 'sec_cik', r.sec_cik),
           jsonb_build_object('ticker', v_ticker, 'sec_cik', v_cik),
@@ -460,11 +467,11 @@ COMMIT;
 -- UPDATE public.companies c
 --    SET ticker  = (j.before->>'ticker'),
 --        sec_cik = (j.before->>'sec_cik')::bigint
---   FROM norm_v2.moved_row j
+--   FROM norm_v2.stamped_identity j
 --  WHERE j.table_name = 'public.companies' AND j.op = 'stamp_identity'
 --    AND j.row_id = 'a0e35816-7939-4d7e-98f6-67240695af86'::uuid AND c.id = j.row_id
 --    AND c.ticker = (j.after->>'ticker') AND c.sec_cik = (j.after->>'sec_cik')::bigint;
--- DELETE FROM norm_v2.moved_row
+-- DELETE FROM norm_v2.stamped_identity
 --  WHERE table_name = 'public.companies' AND op = 'stamp_identity' AND row_id = 'a0e35816-7939-4d7e-98f6-67240695af86'::uuid;
 -- COMMIT;
 
@@ -527,7 +534,7 @@ BEGIN
     RAISE EXCEPTION 'BLOCK 05: ticker % already on % other row(s). REFUSING.', v_ticker, v_dupe;
   END IF;
 
-  INSERT INTO norm_v2.moved_row (table_name, row_id, op, before, after, note)
+  INSERT INTO norm_v2.stamped_identity (table_name, row_id, op, before, after, note)
   VALUES ('public.companies', v_id, 'stamp_identity',
           jsonb_build_object('ticker', r.ticker, 'sec_cik', r.sec_cik),
           jsonb_build_object('ticker', v_ticker, 'sec_cik', v_cik),
@@ -558,11 +565,11 @@ COMMIT;
 -- UPDATE public.companies c
 --    SET ticker  = (j.before->>'ticker'),
 --        sec_cik = (j.before->>'sec_cik')::bigint
---   FROM norm_v2.moved_row j
+--   FROM norm_v2.stamped_identity j
 --  WHERE j.table_name = 'public.companies' AND j.op = 'stamp_identity'
 --    AND j.row_id = 'd99e526f-da24-4a6c-bfd6-d2abe302a1d9'::uuid AND c.id = j.row_id
 --    AND c.ticker = (j.after->>'ticker') AND c.sec_cik = (j.after->>'sec_cik')::bigint;
--- DELETE FROM norm_v2.moved_row
+-- DELETE FROM norm_v2.stamped_identity
 --  WHERE table_name = 'public.companies' AND op = 'stamp_identity' AND row_id = 'd99e526f-da24-4a6c-bfd6-d2abe302a1d9'::uuid;
 -- COMMIT;
 
@@ -624,7 +631,7 @@ BEGIN
     RAISE EXCEPTION 'BLOCK 06: ticker % already on % other row(s). REFUSING.', v_ticker, v_dupe;
   END IF;
 
-  INSERT INTO norm_v2.moved_row (table_name, row_id, op, before, after, note)
+  INSERT INTO norm_v2.stamped_identity (table_name, row_id, op, before, after, note)
   VALUES ('public.companies', v_id, 'stamp_identity',
           jsonb_build_object('ticker', r.ticker, 'sec_cik', r.sec_cik),
           jsonb_build_object('ticker', v_ticker, 'sec_cik', v_cik),
@@ -655,11 +662,11 @@ COMMIT;
 -- UPDATE public.companies c
 --    SET ticker  = (j.before->>'ticker'),
 --        sec_cik = (j.before->>'sec_cik')::bigint
---   FROM norm_v2.moved_row j
+--   FROM norm_v2.stamped_identity j
 --  WHERE j.table_name = 'public.companies' AND j.op = 'stamp_identity'
 --    AND j.row_id = '86418122-85a6-4f9a-a6d1-6e7dab5684fd'::uuid AND c.id = j.row_id
 --    AND c.ticker = (j.after->>'ticker') AND c.sec_cik = (j.after->>'sec_cik')::bigint;
--- DELETE FROM norm_v2.moved_row
+-- DELETE FROM norm_v2.stamped_identity
 --  WHERE table_name = 'public.companies' AND op = 'stamp_identity' AND row_id = '86418122-85a6-4f9a-a6d1-6e7dab5684fd'::uuid;
 -- COMMIT;
 
@@ -721,7 +728,7 @@ BEGIN
     RAISE EXCEPTION 'BLOCK 07: ticker % already on % other row(s). REFUSING.', v_ticker, v_dupe;
   END IF;
 
-  INSERT INTO norm_v2.moved_row (table_name, row_id, op, before, after, note)
+  INSERT INTO norm_v2.stamped_identity (table_name, row_id, op, before, after, note)
   VALUES ('public.companies', v_id, 'stamp_identity',
           jsonb_build_object('ticker', r.ticker, 'sec_cik', r.sec_cik),
           jsonb_build_object('ticker', v_ticker, 'sec_cik', v_cik),
@@ -752,11 +759,11 @@ COMMIT;
 -- UPDATE public.companies c
 --    SET ticker  = (j.before->>'ticker'),
 --        sec_cik = (j.before->>'sec_cik')::bigint
---   FROM norm_v2.moved_row j
+--   FROM norm_v2.stamped_identity j
 --  WHERE j.table_name = 'public.companies' AND j.op = 'stamp_identity'
 --    AND j.row_id = 'fd1351a0-d811-48a5-9f3c-fd01b1dde8ab'::uuid AND c.id = j.row_id
 --    AND c.ticker = (j.after->>'ticker') AND c.sec_cik = (j.after->>'sec_cik')::bigint;
--- DELETE FROM norm_v2.moved_row
+-- DELETE FROM norm_v2.stamped_identity
 --  WHERE table_name = 'public.companies' AND op = 'stamp_identity' AND row_id = 'fd1351a0-d811-48a5-9f3c-fd01b1dde8ab'::uuid;
 -- COMMIT;
 
@@ -818,7 +825,7 @@ BEGIN
     RAISE EXCEPTION 'BLOCK 08: ticker % already on % other row(s). REFUSING.', v_ticker, v_dupe;
   END IF;
 
-  INSERT INTO norm_v2.moved_row (table_name, row_id, op, before, after, note)
+  INSERT INTO norm_v2.stamped_identity (table_name, row_id, op, before, after, note)
   VALUES ('public.companies', v_id, 'stamp_identity',
           jsonb_build_object('ticker', r.ticker, 'sec_cik', r.sec_cik),
           jsonb_build_object('ticker', v_ticker, 'sec_cik', v_cik),
@@ -849,11 +856,11 @@ COMMIT;
 -- UPDATE public.companies c
 --    SET ticker  = (j.before->>'ticker'),
 --        sec_cik = (j.before->>'sec_cik')::bigint
---   FROM norm_v2.moved_row j
+--   FROM norm_v2.stamped_identity j
 --  WHERE j.table_name = 'public.companies' AND j.op = 'stamp_identity'
 --    AND j.row_id = '79966435-d6b9-4fc8-9db9-33f45b58b9c9'::uuid AND c.id = j.row_id
 --    AND c.ticker = (j.after->>'ticker') AND c.sec_cik = (j.after->>'sec_cik')::bigint;
--- DELETE FROM norm_v2.moved_row
+-- DELETE FROM norm_v2.stamped_identity
 --  WHERE table_name = 'public.companies' AND op = 'stamp_identity' AND row_id = '79966435-d6b9-4fc8-9db9-33f45b58b9c9'::uuid;
 -- COMMIT;
 
@@ -915,7 +922,7 @@ BEGIN
     RAISE EXCEPTION 'BLOCK 09: ticker % already on % other row(s). REFUSING.', v_ticker, v_dupe;
   END IF;
 
-  INSERT INTO norm_v2.moved_row (table_name, row_id, op, before, after, note)
+  INSERT INTO norm_v2.stamped_identity (table_name, row_id, op, before, after, note)
   VALUES ('public.companies', v_id, 'stamp_identity',
           jsonb_build_object('ticker', r.ticker, 'sec_cik', r.sec_cik),
           jsonb_build_object('ticker', v_ticker, 'sec_cik', v_cik),
@@ -946,11 +953,11 @@ COMMIT;
 -- UPDATE public.companies c
 --    SET ticker  = (j.before->>'ticker'),
 --        sec_cik = (j.before->>'sec_cik')::bigint
---   FROM norm_v2.moved_row j
+--   FROM norm_v2.stamped_identity j
 --  WHERE j.table_name = 'public.companies' AND j.op = 'stamp_identity'
 --    AND j.row_id = '3778ec3b-adf7-4547-b0a8-9898ee18692d'::uuid AND c.id = j.row_id
 --    AND c.ticker = (j.after->>'ticker') AND c.sec_cik = (j.after->>'sec_cik')::bigint;
--- DELETE FROM norm_v2.moved_row
+-- DELETE FROM norm_v2.stamped_identity
 --  WHERE table_name = 'public.companies' AND op = 'stamp_identity' AND row_id = '3778ec3b-adf7-4547-b0a8-9898ee18692d'::uuid;
 -- COMMIT;
 
@@ -1012,7 +1019,7 @@ BEGIN
     RAISE EXCEPTION 'BLOCK 10: ticker % already on % other row(s). REFUSING.', v_ticker, v_dupe;
   END IF;
 
-  INSERT INTO norm_v2.moved_row (table_name, row_id, op, before, after, note)
+  INSERT INTO norm_v2.stamped_identity (table_name, row_id, op, before, after, note)
   VALUES ('public.companies', v_id, 'stamp_identity',
           jsonb_build_object('ticker', r.ticker, 'sec_cik', r.sec_cik),
           jsonb_build_object('ticker', v_ticker, 'sec_cik', v_cik),
@@ -1043,11 +1050,11 @@ COMMIT;
 -- UPDATE public.companies c
 --    SET ticker  = (j.before->>'ticker'),
 --        sec_cik = (j.before->>'sec_cik')::bigint
---   FROM norm_v2.moved_row j
+--   FROM norm_v2.stamped_identity j
 --  WHERE j.table_name = 'public.companies' AND j.op = 'stamp_identity'
 --    AND j.row_id = 'e2fc418e-e6bd-42e0-a5d9-9e863fa98740'::uuid AND c.id = j.row_id
 --    AND c.ticker = (j.after->>'ticker') AND c.sec_cik = (j.after->>'sec_cik')::bigint;
--- DELETE FROM norm_v2.moved_row
+-- DELETE FROM norm_v2.stamped_identity
 --  WHERE table_name = 'public.companies' AND op = 'stamp_identity' AND row_id = 'e2fc418e-e6bd-42e0-a5d9-9e863fa98740'::uuid;
 -- COMMIT;
 
@@ -1109,7 +1116,7 @@ BEGIN
     RAISE EXCEPTION 'BLOCK 11: ticker % already on % other row(s). REFUSING.', v_ticker, v_dupe;
   END IF;
 
-  INSERT INTO norm_v2.moved_row (table_name, row_id, op, before, after, note)
+  INSERT INTO norm_v2.stamped_identity (table_name, row_id, op, before, after, note)
   VALUES ('public.companies', v_id, 'stamp_identity',
           jsonb_build_object('ticker', r.ticker, 'sec_cik', r.sec_cik),
           jsonb_build_object('ticker', v_ticker, 'sec_cik', v_cik),
@@ -1140,11 +1147,11 @@ COMMIT;
 -- UPDATE public.companies c
 --    SET ticker  = (j.before->>'ticker'),
 --        sec_cik = (j.before->>'sec_cik')::bigint
---   FROM norm_v2.moved_row j
+--   FROM norm_v2.stamped_identity j
 --  WHERE j.table_name = 'public.companies' AND j.op = 'stamp_identity'
 --    AND j.row_id = '95d22579-53d8-476f-83c4-5db780830a0d'::uuid AND c.id = j.row_id
 --    AND c.ticker = (j.after->>'ticker') AND c.sec_cik = (j.after->>'sec_cik')::bigint;
--- DELETE FROM norm_v2.moved_row
+-- DELETE FROM norm_v2.stamped_identity
 --  WHERE table_name = 'public.companies' AND op = 'stamp_identity' AND row_id = '95d22579-53d8-476f-83c4-5db780830a0d'::uuid;
 -- COMMIT;
 
@@ -1206,7 +1213,7 @@ BEGIN
     RAISE EXCEPTION 'BLOCK 12: ticker % already on % other row(s). REFUSING.', v_ticker, v_dupe;
   END IF;
 
-  INSERT INTO norm_v2.moved_row (table_name, row_id, op, before, after, note)
+  INSERT INTO norm_v2.stamped_identity (table_name, row_id, op, before, after, note)
   VALUES ('public.companies', v_id, 'stamp_identity',
           jsonb_build_object('ticker', r.ticker, 'sec_cik', r.sec_cik),
           jsonb_build_object('ticker', v_ticker, 'sec_cik', v_cik),
@@ -1237,11 +1244,11 @@ COMMIT;
 -- UPDATE public.companies c
 --    SET ticker  = (j.before->>'ticker'),
 --        sec_cik = (j.before->>'sec_cik')::bigint
---   FROM norm_v2.moved_row j
+--   FROM norm_v2.stamped_identity j
 --  WHERE j.table_name = 'public.companies' AND j.op = 'stamp_identity'
 --    AND j.row_id = '6b648f58-a4ab-4e2c-8174-1c801ff683c7'::uuid AND c.id = j.row_id
 --    AND c.ticker = (j.after->>'ticker') AND c.sec_cik = (j.after->>'sec_cik')::bigint;
--- DELETE FROM norm_v2.moved_row
+-- DELETE FROM norm_v2.stamped_identity
 --  WHERE table_name = 'public.companies' AND op = 'stamp_identity' AND row_id = '6b648f58-a4ab-4e2c-8174-1c801ff683c7'::uuid;
 -- COMMIT;
 
@@ -1303,7 +1310,7 @@ BEGIN
     RAISE EXCEPTION 'BLOCK 13: ticker % already on % other row(s). REFUSING.', v_ticker, v_dupe;
   END IF;
 
-  INSERT INTO norm_v2.moved_row (table_name, row_id, op, before, after, note)
+  INSERT INTO norm_v2.stamped_identity (table_name, row_id, op, before, after, note)
   VALUES ('public.companies', v_id, 'stamp_identity',
           jsonb_build_object('ticker', r.ticker, 'sec_cik', r.sec_cik),
           jsonb_build_object('ticker', v_ticker, 'sec_cik', v_cik),
@@ -1334,11 +1341,11 @@ COMMIT;
 -- UPDATE public.companies c
 --    SET ticker  = (j.before->>'ticker'),
 --        sec_cik = (j.before->>'sec_cik')::bigint
---   FROM norm_v2.moved_row j
+--   FROM norm_v2.stamped_identity j
 --  WHERE j.table_name = 'public.companies' AND j.op = 'stamp_identity'
 --    AND j.row_id = '8b2aa808-1675-4ac0-a7e8-2812321d068a'::uuid AND c.id = j.row_id
 --    AND c.ticker = (j.after->>'ticker') AND c.sec_cik = (j.after->>'sec_cik')::bigint;
--- DELETE FROM norm_v2.moved_row
+-- DELETE FROM norm_v2.stamped_identity
 --  WHERE table_name = 'public.companies' AND op = 'stamp_identity' AND row_id = '8b2aa808-1675-4ac0-a7e8-2812321d068a'::uuid;
 -- COMMIT;
 
@@ -1400,7 +1407,7 @@ BEGIN
     RAISE EXCEPTION 'BLOCK 14: ticker % already on % other row(s). REFUSING.', v_ticker, v_dupe;
   END IF;
 
-  INSERT INTO norm_v2.moved_row (table_name, row_id, op, before, after, note)
+  INSERT INTO norm_v2.stamped_identity (table_name, row_id, op, before, after, note)
   VALUES ('public.companies', v_id, 'stamp_identity',
           jsonb_build_object('ticker', r.ticker, 'sec_cik', r.sec_cik),
           jsonb_build_object('ticker', v_ticker, 'sec_cik', v_cik),
@@ -1431,11 +1438,11 @@ COMMIT;
 -- UPDATE public.companies c
 --    SET ticker  = (j.before->>'ticker'),
 --        sec_cik = (j.before->>'sec_cik')::bigint
---   FROM norm_v2.moved_row j
+--   FROM norm_v2.stamped_identity j
 --  WHERE j.table_name = 'public.companies' AND j.op = 'stamp_identity'
 --    AND j.row_id = '12a3866a-b5da-4ed9-874f-9ed6e6b29932'::uuid AND c.id = j.row_id
 --    AND c.ticker = (j.after->>'ticker') AND c.sec_cik = (j.after->>'sec_cik')::bigint;
--- DELETE FROM norm_v2.moved_row
+-- DELETE FROM norm_v2.stamped_identity
 --  WHERE table_name = 'public.companies' AND op = 'stamp_identity' AND row_id = '12a3866a-b5da-4ed9-874f-9ed6e6b29932'::uuid;
 -- COMMIT;
 
@@ -1497,7 +1504,7 @@ BEGIN
     RAISE EXCEPTION 'BLOCK 15: ticker % already on % other row(s). REFUSING.', v_ticker, v_dupe;
   END IF;
 
-  INSERT INTO norm_v2.moved_row (table_name, row_id, op, before, after, note)
+  INSERT INTO norm_v2.stamped_identity (table_name, row_id, op, before, after, note)
   VALUES ('public.companies', v_id, 'stamp_identity',
           jsonb_build_object('ticker', r.ticker, 'sec_cik', r.sec_cik),
           jsonb_build_object('ticker', v_ticker, 'sec_cik', v_cik),
@@ -1528,11 +1535,11 @@ COMMIT;
 -- UPDATE public.companies c
 --    SET ticker  = (j.before->>'ticker'),
 --        sec_cik = (j.before->>'sec_cik')::bigint
---   FROM norm_v2.moved_row j
+--   FROM norm_v2.stamped_identity j
 --  WHERE j.table_name = 'public.companies' AND j.op = 'stamp_identity'
 --    AND j.row_id = 'd8487ec2-464b-4796-89f2-8cc345949e66'::uuid AND c.id = j.row_id
 --    AND c.ticker = (j.after->>'ticker') AND c.sec_cik = (j.after->>'sec_cik')::bigint;
--- DELETE FROM norm_v2.moved_row
+-- DELETE FROM norm_v2.stamped_identity
 --  WHERE table_name = 'public.companies' AND op = 'stamp_identity' AND row_id = 'd8487ec2-464b-4796-89f2-8cc345949e66'::uuid;
 -- COMMIT;
 
@@ -1594,7 +1601,7 @@ BEGIN
     RAISE EXCEPTION 'BLOCK 16: ticker % already on % other row(s). REFUSING.', v_ticker, v_dupe;
   END IF;
 
-  INSERT INTO norm_v2.moved_row (table_name, row_id, op, before, after, note)
+  INSERT INTO norm_v2.stamped_identity (table_name, row_id, op, before, after, note)
   VALUES ('public.companies', v_id, 'stamp_identity',
           jsonb_build_object('ticker', r.ticker, 'sec_cik', r.sec_cik),
           jsonb_build_object('ticker', v_ticker, 'sec_cik', v_cik),
@@ -1625,11 +1632,11 @@ COMMIT;
 -- UPDATE public.companies c
 --    SET ticker  = (j.before->>'ticker'),
 --        sec_cik = (j.before->>'sec_cik')::bigint
---   FROM norm_v2.moved_row j
+--   FROM norm_v2.stamped_identity j
 --  WHERE j.table_name = 'public.companies' AND j.op = 'stamp_identity'
 --    AND j.row_id = '99b68749-3deb-46c5-8fa0-908589c9f51a'::uuid AND c.id = j.row_id
 --    AND c.ticker = (j.after->>'ticker') AND c.sec_cik = (j.after->>'sec_cik')::bigint;
--- DELETE FROM norm_v2.moved_row
+-- DELETE FROM norm_v2.stamped_identity
 --  WHERE table_name = 'public.companies' AND op = 'stamp_identity' AND row_id = '99b68749-3deb-46c5-8fa0-908589c9f51a'::uuid;
 -- COMMIT;
 
@@ -1691,7 +1698,7 @@ BEGIN
     RAISE EXCEPTION 'BLOCK 17: ticker % already on % other row(s). REFUSING.', v_ticker, v_dupe;
   END IF;
 
-  INSERT INTO norm_v2.moved_row (table_name, row_id, op, before, after, note)
+  INSERT INTO norm_v2.stamped_identity (table_name, row_id, op, before, after, note)
   VALUES ('public.companies', v_id, 'stamp_identity',
           jsonb_build_object('ticker', r.ticker, 'sec_cik', r.sec_cik),
           jsonb_build_object('ticker', v_ticker, 'sec_cik', v_cik),
@@ -1722,11 +1729,11 @@ COMMIT;
 -- UPDATE public.companies c
 --    SET ticker  = (j.before->>'ticker'),
 --        sec_cik = (j.before->>'sec_cik')::bigint
---   FROM norm_v2.moved_row j
+--   FROM norm_v2.stamped_identity j
 --  WHERE j.table_name = 'public.companies' AND j.op = 'stamp_identity'
 --    AND j.row_id = 'f1637f00-e16b-4b3d-8848-2f0bc13e89ab'::uuid AND c.id = j.row_id
 --    AND c.ticker = (j.after->>'ticker') AND c.sec_cik = (j.after->>'sec_cik')::bigint;
--- DELETE FROM norm_v2.moved_row
+-- DELETE FROM norm_v2.stamped_identity
 --  WHERE table_name = 'public.companies' AND op = 'stamp_identity' AND row_id = 'f1637f00-e16b-4b3d-8848-2f0bc13e89ab'::uuid;
 -- COMMIT;
 
@@ -1788,7 +1795,7 @@ BEGIN
     RAISE EXCEPTION 'BLOCK 18: ticker % already on % other row(s). REFUSING.', v_ticker, v_dupe;
   END IF;
 
-  INSERT INTO norm_v2.moved_row (table_name, row_id, op, before, after, note)
+  INSERT INTO norm_v2.stamped_identity (table_name, row_id, op, before, after, note)
   VALUES ('public.companies', v_id, 'stamp_identity',
           jsonb_build_object('ticker', r.ticker, 'sec_cik', r.sec_cik),
           jsonb_build_object('ticker', v_ticker, 'sec_cik', v_cik),
@@ -1819,11 +1826,11 @@ COMMIT;
 -- UPDATE public.companies c
 --    SET ticker  = (j.before->>'ticker'),
 --        sec_cik = (j.before->>'sec_cik')::bigint
---   FROM norm_v2.moved_row j
+--   FROM norm_v2.stamped_identity j
 --  WHERE j.table_name = 'public.companies' AND j.op = 'stamp_identity'
 --    AND j.row_id = '8372a5b6-06dd-45d8-867c-7c2cc3e53026'::uuid AND c.id = j.row_id
 --    AND c.ticker = (j.after->>'ticker') AND c.sec_cik = (j.after->>'sec_cik')::bigint;
--- DELETE FROM norm_v2.moved_row
+-- DELETE FROM norm_v2.stamped_identity
 --  WHERE table_name = 'public.companies' AND op = 'stamp_identity' AND row_id = '8372a5b6-06dd-45d8-867c-7c2cc3e53026'::uuid;
 -- COMMIT;
 
@@ -1885,7 +1892,7 @@ BEGIN
     RAISE EXCEPTION 'BLOCK 19: ticker % already on % other row(s). REFUSING.', v_ticker, v_dupe;
   END IF;
 
-  INSERT INTO norm_v2.moved_row (table_name, row_id, op, before, after, note)
+  INSERT INTO norm_v2.stamped_identity (table_name, row_id, op, before, after, note)
   VALUES ('public.companies', v_id, 'stamp_identity',
           jsonb_build_object('ticker', r.ticker, 'sec_cik', r.sec_cik),
           jsonb_build_object('ticker', v_ticker, 'sec_cik', v_cik),
@@ -1916,11 +1923,11 @@ COMMIT;
 -- UPDATE public.companies c
 --    SET ticker  = (j.before->>'ticker'),
 --        sec_cik = (j.before->>'sec_cik')::bigint
---   FROM norm_v2.moved_row j
+--   FROM norm_v2.stamped_identity j
 --  WHERE j.table_name = 'public.companies' AND j.op = 'stamp_identity'
 --    AND j.row_id = 'ca8c816c-06a7-49ab-9b1a-69d54219b654'::uuid AND c.id = j.row_id
 --    AND c.ticker = (j.after->>'ticker') AND c.sec_cik = (j.after->>'sec_cik')::bigint;
--- DELETE FROM norm_v2.moved_row
+-- DELETE FROM norm_v2.stamped_identity
 --  WHERE table_name = 'public.companies' AND op = 'stamp_identity' AND row_id = 'ca8c816c-06a7-49ab-9b1a-69d54219b654'::uuid;
 -- COMMIT;
 
@@ -1982,7 +1989,7 @@ BEGIN
     RAISE EXCEPTION 'BLOCK 20: ticker % already on % other row(s). REFUSING.', v_ticker, v_dupe;
   END IF;
 
-  INSERT INTO norm_v2.moved_row (table_name, row_id, op, before, after, note)
+  INSERT INTO norm_v2.stamped_identity (table_name, row_id, op, before, after, note)
   VALUES ('public.companies', v_id, 'stamp_identity',
           jsonb_build_object('ticker', r.ticker, 'sec_cik', r.sec_cik),
           jsonb_build_object('ticker', v_ticker, 'sec_cik', v_cik),
@@ -2013,11 +2020,11 @@ COMMIT;
 -- UPDATE public.companies c
 --    SET ticker  = (j.before->>'ticker'),
 --        sec_cik = (j.before->>'sec_cik')::bigint
---   FROM norm_v2.moved_row j
+--   FROM norm_v2.stamped_identity j
 --  WHERE j.table_name = 'public.companies' AND j.op = 'stamp_identity'
 --    AND j.row_id = 'ac87b972-93e9-4419-b485-4d66034ff77f'::uuid AND c.id = j.row_id
 --    AND c.ticker = (j.after->>'ticker') AND c.sec_cik = (j.after->>'sec_cik')::bigint;
--- DELETE FROM norm_v2.moved_row
+-- DELETE FROM norm_v2.stamped_identity
 --  WHERE table_name = 'public.companies' AND op = 'stamp_identity' AND row_id = 'ac87b972-93e9-4419-b485-4d66034ff77f'::uuid;
 -- COMMIT;
 
@@ -2079,7 +2086,7 @@ BEGIN
     RAISE EXCEPTION 'BLOCK 21: ticker % already on % other row(s). REFUSING.', v_ticker, v_dupe;
   END IF;
 
-  INSERT INTO norm_v2.moved_row (table_name, row_id, op, before, after, note)
+  INSERT INTO norm_v2.stamped_identity (table_name, row_id, op, before, after, note)
   VALUES ('public.companies', v_id, 'stamp_identity',
           jsonb_build_object('ticker', r.ticker, 'sec_cik', r.sec_cik),
           jsonb_build_object('ticker', v_ticker, 'sec_cik', v_cik),
@@ -2110,11 +2117,11 @@ COMMIT;
 -- UPDATE public.companies c
 --    SET ticker  = (j.before->>'ticker'),
 --        sec_cik = (j.before->>'sec_cik')::bigint
---   FROM norm_v2.moved_row j
+--   FROM norm_v2.stamped_identity j
 --  WHERE j.table_name = 'public.companies' AND j.op = 'stamp_identity'
 --    AND j.row_id = '66079770-60ca-44ef-aaa2-b1491708c4fe'::uuid AND c.id = j.row_id
 --    AND c.ticker = (j.after->>'ticker') AND c.sec_cik = (j.after->>'sec_cik')::bigint;
--- DELETE FROM norm_v2.moved_row
+-- DELETE FROM norm_v2.stamped_identity
 --  WHERE table_name = 'public.companies' AND op = 'stamp_identity' AND row_id = '66079770-60ca-44ef-aaa2-b1491708c4fe'::uuid;
 -- COMMIT;
 
@@ -2136,7 +2143,7 @@ SELECT c.name, c.ticker, c.sec_cik, c.mention_count,
        (SELECT count(*) FROM public.financial_facts f WHERE f.cik = c.sec_cik) AS facts_visible,
        (SELECT count(*) FROM public.sec_filings s     WHERE s.cik = c.sec_cik) AS filings_visible
   FROM public.companies c
-  JOIN norm_v2.moved_row j
+  JOIN norm_v2.stamped_identity j
     ON j.row_id = c.id AND j.table_name = 'public.companies' AND j.op = 'stamp_identity'
  ORDER BY c.mention_count DESC NULLS LAST;
 
@@ -2164,7 +2171,7 @@ COMMIT;
 -- UPDATE public.companies c
 --    SET ticker  = (j.before->>'ticker'),
 --        sec_cik = (j.before->>'sec_cik')::bigint
---   FROM norm_v2.moved_row j
+--   FROM norm_v2.stamped_identity j
 --  WHERE j.table_name = 'public.companies'
 --    AND j.op = 'stamp_identity'
 --    AND c.id = j.row_id
@@ -2174,12 +2181,12 @@ COMMIT;
 -- -- Read this BEFORE the delete. Any row listed here was NOT reversed
 -- -- because something else wrote it after the stamp. Expect zero rows.
 -- SELECT j.row_id, c.name, c.ticker, c.sec_cik, j.after
---   FROM norm_v2.moved_row j JOIN public.companies c ON c.id = j.row_id
+--   FROM norm_v2.stamped_identity j JOIN public.companies c ON c.id = j.row_id
 --  WHERE j.table_name = 'public.companies' AND j.op = 'stamp_identity'
 --    AND (c.ticker IS DISTINCT FROM (j.before->>'ticker')
 --      OR c.sec_cik IS DISTINCT FROM (j.before->>'sec_cik')::bigint);
 --
--- DELETE FROM norm_v2.moved_row
+-- DELETE FROM norm_v2.stamped_identity
 --  WHERE table_name = 'public.companies' AND op = 'stamp_identity';
 --
 -- COMMIT;
