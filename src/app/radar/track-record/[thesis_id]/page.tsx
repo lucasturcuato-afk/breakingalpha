@@ -68,8 +68,9 @@ export default function ThesisDetailPage() {
   /* A FAILED READ IS NOT A MISSING ROW, and before this flag the two were the
      same rendering: the catch left `thesis` null and the screen said "Thesis
      not found", so a dropped connection reported a deleted thesis. This is
-     read by the phone branch only; the desktop tree below is unchanged, and
-     the desktop's own conflation is reported rather than repaired here. */
+     read by BOTH branches: the phone screen's four-state stage below, and the
+     desktop tree's own error branch, which used to test only `!thesis` and so
+     printed "Thesis not found" for a thesis that exists. */
   const [loadFailed, setLoadFailed] = useState(false);
   const { mood, moodHeadline, moodDetails } = useLiveMood();
 
@@ -214,6 +215,18 @@ export default function ThesisDetailPage() {
           <div className="skeleton-shimmer h-6 w-48 rounded" />
           <div className="skeleton-shimmer h-32 w-full rounded-xl" />
           <div className="skeleton-shimmer h-48 w-full rounded-xl" />
+        </div>
+    );
+  } else if (loadFailed) {
+    /* CHECKED BEFORE `!thesis`, and it reuses the flag the phone stage reuses.
+       A read that did not answer must never render as a row that is not
+       there. The copy is the register `ThesisError` already uses. */
+    desktop = (
+        <div className="p-6 max-w-[960px]">
+          <Link href="/radar/track-record" className="inline-flex items-center gap-1 text-text-muted hover:text-espresso text-[12px] mb-4">
+            <ArrowLeft size={12} /> Back to Thesis Tracker
+          </Link>
+          <p className="text-text-secondary">Could not load this thesis. The read failed. The thesis and its reviews are unchanged.</p>
         </div>
     );
   } else if (!thesis) {

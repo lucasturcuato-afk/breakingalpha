@@ -140,6 +140,10 @@ export interface WatchlistDetailScreenProps {
   /* Alerts */
   alertsShown: boolean;
   alertsLoading: boolean;
+  /* A FAILED READ IS NOT AN EMPTY LIST. `alerts` empty means the reader has
+     set none; this means the app could not look. Only the first is a claim
+     about their own settings. */
+  alertsReadFailed: boolean;
   alerts: AlertRow[];
   alertsFull: boolean;
   alertKind: AlertKind;
@@ -320,6 +324,7 @@ export function WatchlistDetailScreen(props: WatchlistDetailScreenProps) {
     onExport,
     alertsShown,
     alertsLoading,
+    alertsReadFailed,
     alerts,
     alertsFull,
     alertKind,
@@ -571,7 +576,9 @@ export function WatchlistDetailScreen(props: WatchlistDetailScreenProps) {
               </>
             ) : (
               <>
-                {alerts.length === 0 ? (
+                {alertsReadFailed ? (
+                  <Line>Could not load your alerts. The read failed. Your alerts are unchanged.</Line>
+                ) : alerts.length === 0 ? (
                   <Line>Nothing set. An alert tells you when {identifier} moves the way you name below.</Line>
                 ) : (
                   <div style={{ marginTop: "12px", display: "flex", flexDirection: "column", gap: "8px" }}>

@@ -21,14 +21,18 @@ export async function GET(request: NextRequest) {
       .eq("identifier", identifier.trim())
       .order("created_at", { ascending: true });
 
+    /* A FAILED READ IS NOT AN EMPTY LIST. Answering 200 with `{alerts: []}`
+       here made the screen say "Nothing set", which is a claim about the
+       reader's own settings and is false when the query never answered. The
+       failure now travels as a failure and the client labels it as one. */
     if (error) {
       console.warn("[watchlist-alerts GET] query failed:", error.message);
-      return NextResponse.json({ alerts: [] });
+      return NextResponse.json({ error: "alerts_read_failed" }, { status: 503 });
     }
     return NextResponse.json({ alerts: data ?? [] });
   } catch (e) {
     console.error("[watchlist-alerts GET] error:", e);
-    return NextResponse.json({ alerts: [] });
+    return NextResponse.json({ error: "alerts_read_failed" }, { status: 503 });
   }
 }
 
