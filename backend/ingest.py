@@ -65,6 +65,12 @@ socket.setdefaulttimeout(30)
 RSS_USER_AGENT = "BreakingAlpha pipeline (noahhanning03@gmail.com)"
 RSS_FETCH_TIMEOUT_SEC = 20
 
+#: Blunt upper bound on entries read from ONE feed response. Not a tuning knob:
+#: it stops a feed that dumps its archive from blowing memory and the dedup
+#: probe. The real per-feed ceiling is ENTRY_CAP_DEFAULT, applied after dedup.
+#: Largest feed measured 2026-09-04: 100 entries.
+RSS_READ_CEILING = 300
+
 supabase = get_service_client()
 gemini_client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
 from models import GEMINI_MODEL
@@ -379,6 +385,41 @@ RSS_FEEDS = {
     "CNBC Business":    "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=10001147",  # 30 / 87% / 136ch / 0.25s
     "The Globe and Mail": "https://www.theglobeandmail.com/arc/outboundfeeds/rss/category/business/",           # 100 / 58% / 106ch / 0.28s
     "Business Insider": "https://markets.businessinsider.com/rss/news",                       # 10 / 90% / 294ch / 1.07s
+
+    # ── Round 2, added 2026-09-03 (same method: ranked by volume x median
+    # relevance from the gnews publisher table, then fetched before shipping;
+    # the ranked table is regenerable with backend/tools/rss_feed_targets.py).
+    #
+    # Probed 2026-09-03: entries / prose rate / median description chars.
+    # Rejected THIS round, with evidence, so they are not re-litigated:
+    #   TradingView (tradingview.com/feed parses fine at 100% prose, but the
+    #     channel is "TradingView Ideas" -- user-generated chart chatter, not
+    #     the news section the gnews rows come from),
+    #   Ad-hoc-news.de (feed works, 85% prose, but German-language content;
+    #     the positive-English language gate would drop nearly all of it),
+    #   Eastern Progress (feed 404; a Kentucky college paper carrying
+    #     median-relevance-7 finance content is a scraper site, not a source),
+    #   Barron's (now FOUR dead URL shapes across two rounds),
+    #   MarketScreener (three shapes: 404, 404, parses-but-zero-entries),
+    #   Reuters (four shapes across two rounds, all dead; W2-D backlog stays
+    #     open), Stock Titan (re-probed: 100 entries, 0% prose, again),
+    #   Pluang (no feed at any cheap shape).
+    "TIKR":             "https://tikr.com/rss",                                               # 50 / 76% / 127ch
+    "WSJ World":        "https://feeds.content.dowjones.io/public/rss/RSSWorldNews",          # 73 / 86% / 120ch
+    "WSJ Tech":         "https://feeds.content.dowjones.io/public/rss/RSSWSJD",               # 40 / 82% / 123ch
+    "CNBC Earnings":    "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=15839135",  # 30 / 67% / 121ch
+    "CNBC Technology":  "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=19854910",  # 30 / 80% / 120ch
+    "Fortune":          "https://fortune.com/feed/",                                          # 10 / 60% / 141ch
+    # Added in the 25-publisher sweep (browser-UA retry round). Rejected in that
+    # same sweep with evidence: GuruFocus (feed works but 4,050 entries at 10%
+    # prose, medRel 3 -- a quant-screen firehose), The Motley Fool (42% prose
+    # but medRel 2), StockStory (100% prose but medRel 2, templated recaps --
+    # the one a human might overrule), Reuters (now NINE dead URL shapes across
+    # three rounds, both UAs), Barron's (6 shapes), MarketScreener (5),
+    # TipRanks / Moomoo / Quiver / simplywall.st / StocksToTrade / TradingKey /
+    # timothysykes / TechStock2 / Eastern Progress / Pluang / AD HOC NEWS /
+    # finance.biggo (no feed at any shape, either UA).
+    "TheStreet":        "https://www.thestreet.com/.rss/full/",                               # 50 / 46% / medRel 6
 }
 
 #: NO LONGER DRIVES content_type. It used to, and that was the bug: it labelled
@@ -396,38 +437,40 @@ FULL_TEXT_SOURCES = {"SEC 8-K", "SEC 10-Q", "Federal Reserve"}
 # "is a press wire" classification are separate facts.
 WIRE_SOURCES = {"PR Newswire", "GlobeNewswire"}
 
-#: Entries read per feed per run. Every article costs one Gemini filter call, so
-#: this is the volume AND cost knob for the named-RSS leg.
+#: Per-feed BURST CEILING on entries carried into the Gemini filter each run.
 #:
-#: 8 was chosen when every named feed was low-volume: measured 2026-08-20..09-02
-#: the original 18 delivered 5.3 articles/day each (~2.7/run), so the cap almost
-#: never bound. It is a real constraint for a deep feed: probed 2026-09-02, WSJ
-#: Business returns 79 fresh entries per fetch and Investors Business Daily 100,
-#: so at 8 we were reading a tenth of what they offer.
-ENTRY_CAP_DEFAULT = 8
+#: THIS IS NOT A SUPPLY LIMIT. Since 2026-09-04 the cap is applied AFTER dedup
+#: (see apply_entry_caps), so it bounds how many GENUINELY NEW articles one feed
+#: may contribute to one run -- protection against a feed that suddenly dumps
+#: its whole archive, not a throttle on normal volume.
+#:
+#: WHY THE MOVE. The cap used to slice raw feed entries, so already-stored
+#: duplicates consumed cap slots. Measured 2026-09-04 mid-day: WSJ Business
+#: offered 85 entries of which only 49 were new, Investors Business Daily 100
+#: of which 74, and CNBC Business 30 of which 8. At a raw cap of 40, CNBC was
+#: spending 40 slots to reach 8 new articles. Dedup already runs before the
+#: filter (run_ingestion, "dedup-before-filter"), so duplicates never cost a
+#: filter call -- they only cost cap. Capping after dedup is therefore free
+#: yield at identical cost.
+#:
+#: HOW TO TUNE IT LATER. Watch whether a feed hits the ceiling CONSISTENTLY.
+#: `capped` in ingest_run_stats.rss_feed_stats records how many new articles a
+#: cap discarded; a feed that is regularly non-zero there is BINDING (the cap is
+#: costing real articles and should rise), while a feed that never caps is being
+#: PROTECTED (the ceiling is doing its job and the number is irrelevant). Do not
+#: retune from the cap value alone -- it says nothing on its own.
+#:
+#: 40 across the board. A per-feed number set from one day's yield goes stale as
+#: publishers change cadence; a uniform ceiling does not, and after dedup the
+#: marginal cost per stored article is flat ($0.0012-$0.0021 at every cap level
+#: measured), so there is no per-feed optimum to capture.
+ENTRY_CAP_DEFAULT = 40
 
-#: Per-feed overrides. A feed belongs here when it (a) reliably offers far more
-#: than ENTRY_CAP_DEFAULT fresh entries and (b) carries a real description on
-#: most of them, so the extra filter spend buys extractable prose rather than
-#: headlines. Each entry records the probe that justifies it.
-ENTRY_CAP_OVERRIDES: dict[str, int] = {
-    # Press wires. Unchanged at 40 — this is the value the binary
-    # `40 if source in WIRE_SOURCES else 8` rule gave them, moved verbatim.
-    "PR Newswire":   40,
-    "GlobeNewswire": 40,
-    # Raised 8 -> 40 on 2026-09-03. Prose is the binding constraint on the fact
-    # layer, and at 8 these six contributed ~32 stored articles/day; at 40 they
-    # contribute roughly four times that for ~$6/month in filter spend. The
-    # number after each is fresh entries available per fetch, so a cap above the
-    # supply would buy nothing: three of these six are supply-limited, not
-    # cap-limited, and that is fine — 40 is a ceiling, not a target.
-    "WSJ Business":             40,   # 79 fresh available
-    "WSJ Markets":              40,   # 60
-    "Investors Business Daily": 40,   # 100
-    "The Globe and Mail":       40,   # 99
-    "CNBC Business":            40,   # 22  (supply-limited)
-    "Business Insider":         40,   # 10  (supply-limited)
-}
+#: Retained for feeds that should deliberately differ from the default. Empty
+#: today: 40 is uniform. Add an entry only with the measurement that justifies
+#: it, and prefer raising ENTRY_CAP_DEFAULT if the answer is the same for every
+#: feed.
+ENTRY_CAP_OVERRIDES: dict[str, int] = {}
 
 # Google News per-ticker RSS
 GNEWS_PREFIX = "https://news.google.com/rss/search?hl=en-US&gl=US&ceid=US:en&q="
@@ -2049,11 +2092,14 @@ def fetch_all_articles():
             # upstream cannot block the pipeline forever (run #98 root cause).
             raw = _fetch_feed_bytes(url)
             feed = feedparser.parse(raw)
-            # Per-feed cap; see ENTRY_CAP_OVERRIDES for why each one is what
-            # it is. Every entry read here becomes one Gemini filter call, so
-            # this line is the cost knob for the whole named-RSS leg.
-            entry_cap = ENTRY_CAP_OVERRIDES.get(source, ENTRY_CAP_DEFAULT)
-            for e in feed.entries[:entry_cap]:
+            # NO per-feed cap here any more. The cap moved AFTER dedup
+            # (apply_entry_caps, called from run_ingestion) so that
+            # already-stored duplicates stop consuming cap slots. What remains
+            # here is a blunt safety ceiling: it exists only so a feed that
+            # returns its entire archive in one response cannot blow memory or
+            # the dedup probe. It is deliberately far above any real feed --
+            # the largest measured on 2026-09-04 was 100 entries.
+            for e in feed.entries[:RSS_READ_CEILING]:
                 feed_total += 1
                 # Missing date stays NULL: never now-stamp a date-less item, or a
                 # stale story masquerades as fresh (articles has no created_at; the
@@ -2106,7 +2152,7 @@ def fetch_all_articles():
         # fetched - fresh == stale; carried explicitly so run_ingestion can
         # persist it without re-deriving.
         source_fetch_stats[source] = {"fetched": feed_total, "fresh": feed_added,
-                                      "stale": skipped_stale}
+                                      "stale": skipped_stale, "capped": 0}
         rss_added += feed_added
     print(f"  RSS total: {rss_added} articles from {len(RSS_FEEDS)} feeds in {time.time() - rss_t0:.2f}s")
     print(f"  RSS total: skipped {total_skipped_stale} stale articles across all feeds "
@@ -3082,6 +3128,49 @@ def _load_store_dedup_sets(candidate_urls=None):
     return existing_urls, recent_titles
 
 
+def apply_entry_caps(articles, caps=None, default_cap=None, stats=None):
+    """Cap each named RSS feed's contribution AFTER dedup, preserving order.
+
+    Takes the post-dedup pool and keeps at most `cap` articles per RSS_FEEDS
+    source, in feed order (RSS feeds are newest-first, so the survivors are the
+    freshest). Anything whose `source` is not an RSS_FEEDS key is passed through
+    untouched -- Google News has its own GNEWS_ENTRY_CAP at fetch, and NewsAPI
+    and Finnhub are bounded by their own request parameters.
+
+    WHY AFTER DEDUP. Capping raw feed entries let already-stored duplicates
+    consume cap slots. Dedup runs before the Gemini filter either way, so a
+    duplicate never cost a filter call -- it only cost the slot. Measured
+    2026-09-04, at a raw cap of 40 CNBC Business reached 8 new articles with 40
+    slots. Same cost, more yield.
+
+    `stats` (source_fetch_stats) is updated in place when given, adding a
+    `capped` count per feed: how many NEW articles the ceiling discarded. That
+    number is the tuning signal -- consistently non-zero means the cap is
+    binding rather than protecting -- and it is what reaches
+    ingest_run_stats.rss_feed_stats.
+    """
+    caps = ENTRY_CAP_OVERRIDES if caps is None else caps
+    default_cap = ENTRY_CAP_DEFAULT if default_cap is None else default_cap
+
+    kept, seen = [], {}
+    for a in articles:
+        source = a.get("source")
+        if source not in RSS_FEEDS:
+            kept.append(a)
+            continue
+        cap = caps.get(source, default_cap)
+        n = seen.get(source, 0)
+        if n < cap:
+            seen[source] = n + 1
+            kept.append(a)
+        elif stats is not None:
+            entry = stats.setdefault(
+                source, {"fetched": 0, "fresh": 0, "stale": 0, "capped": 0}
+            )
+            entry["capped"] = entry.get("capped", 0) + 1
+    return kept
+
+
 def partition_unseen_articles(articles, existing_urls, recent_titles):
     """Split a fetched pool into (fresh, skipped_count) against the store's dedup
     key, so dedup-before-filter only sends genuinely-new articles to the Gemini
@@ -3515,6 +3604,18 @@ def run_ingestion():
         f"  [3/4] dedup-before-filter: {prefilter_skipped} already-in-DB skipped, "
         f"{len(fresh)} genuinely-new to filter (of {len(articles)})"
     )
+    # Burst ceiling, applied HERE rather than at fetch so duplicates do not
+    # consume cap slots. Every article past this point costs a Gemini filter
+    # call, so this is the last place the run can bound its own spend.
+    _precap = len(fresh)
+    fresh = apply_entry_caps(fresh, stats=source_fetch_stats)
+    if _precap != len(fresh):
+        _capped = {s: v["capped"] for s, v in source_fetch_stats.items() if v.get("capped")}
+        print(
+            f"  [3/4] entry caps (post-dedup, default {ENTRY_CAP_DEFAULT}): "
+            f"{_precap - len(fresh)} new article(s) held back -> {_capped}. "
+            "A feed that appears here consistently is BINDING, not protected."
+        )
 
     # SEC deterministic bypass: route SEC-sourced filings around the Gemini
     # filter and assign their decision fields from the structured EDGAR title +
