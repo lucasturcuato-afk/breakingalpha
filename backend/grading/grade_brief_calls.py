@@ -65,6 +65,7 @@ from backend.grading.benchmarks import (  # noqa: F401
 from backend.grading.price_attribution import PriceAttributionGrader
 from backend.grading.resolver import Outcome, default_resolver
 from backend.verdict_vocabulary import VERDICT_WORD, verdict_word
+from backend.call_horizons import HORIZON_CUTOVER_DATE
 
 
 #: Whether the grading loop may call an LLM at all.
@@ -271,6 +272,50 @@ def call_to_graded_input(call: dict, mode: str) -> dict:
     }
 
 
+def missing_horizon_report(rows: list[dict], cutover: str) -> dict:
+    """Classify calls with resolve_on NULL into legacy and new.
+
+    legacy: brief_date before ``cutover`` (migration 0014 had not landed, the
+            horizon was never captured, nothing to grade against). Counted and
+            printed every run so the exclusion is a number, not silence.
+    new:    brief_date on or after ``cutover``. The write path always sets
+            resolve_on now, so any such row came from a path that dropped it
+            (synthesize.py's missing-column fallback, or an unparseable
+            brief_date). That is a defect and main() fails on it.
+
+    Pure: takes rows, returns counts and ids. No IO.
+    """
+    legacy = [r for r in rows if str(r.get("brief_date") or "")[:10] < cutover]
+    new = [r for r in rows if str(r.get("brief_date") or "")[:10] >= cutover]
+    return {
+        "legacy": len(legacy),
+        "new": len(new),
+        "new_ids": [r.get("id") for r in new],
+        "new_brief_dates": sorted({str(r.get("brief_date") or "")[:10] for r in new}),
+    }
+
+
+def fetch_missing_horizons(sb) -> list[dict]:
+    """Every call with resolve_on NULL: id and brief_date only. Small by
+    construction (a few hundred legacy rows) and bounded at the PostgREST cap,
+    which is asserted rather than trusted."""
+    resp = (
+        sb.table("morning_brief_calls")
+        .select("id, brief_date", count="exact")
+        .is_("resolve_on", "null")
+        .order("id")
+        .limit(1000)
+        .execute()
+    )
+    rows = resp.data or []
+    if resp.count is not None and resp.count != len(rows):
+        raise RuntimeError(
+            f"morning_brief_calls: {resp.count} rows have resolve_on NULL but only "
+            f"{len(rows)} were returned (PostgREST cap); refusing to report a short count"
+        )
+    return rows
+
+
 def fetch_due_calls(sb, today: str, mode: str) -> list[dict]:
     """
     The calls this run should grade, before the already-graded filter.
@@ -333,6 +378,25 @@ def main() -> None:
     # selected in either mode.
     calls = fetch_due_calls(sb, today, mode)
     print(f"[grade] horizon mode: {mode} ({len(calls)} candidate calls)")
+
+    # The rows the due-scan can never select, said out loud every run. Legacy
+    # rows (written before migration 0014) are a count; a NULL written since
+    # is a defect in the write path and fails the run. This is the fourth
+    # silent skip found in one week; the skip stays, the silence does not.
+    missing = missing_horizon_report(fetch_missing_horizons(sb), HORIZON_CUTOVER_DATE)
+    print(
+        f"[grade] excluded: {missing['legacy']} call(s) with resolve_on NULL from before "
+        f"{HORIZON_CUTOVER_DATE} (legacy, horizon never captured, not gradeable)"
+    )
+    if missing["new"]:
+        print(
+            f"::error::{missing['new']} call(s) written on or after {HORIZON_CUTOVER_DATE} "
+            f"have resolve_on NULL and will never be graded: brief_date(s) "
+            f"{', '.join(missing['new_brief_dates'])}, ids {missing['new_ids'][:10]}. "
+            "The write path (synthesize.extract_and_persist_claims) must set resolve_on "
+            "on every row; find which path dropped it before the next run."
+        )
+        raise SystemExit(3)
 
     # Filter out already-graded calls (idempotent re-runs).
     if calls:
