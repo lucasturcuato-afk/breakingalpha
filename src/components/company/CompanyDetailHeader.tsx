@@ -44,7 +44,7 @@ function pillToneFor(t: ToneSummary): SentimentTone {
   return p === "positive" ? "BULLISH" : p === "negative" ? "BEARISH" : "MIXED";
 }
 
-// Print an exchange only when we hold one. A ticker is not evidence of a
+// Print an exchange only when the row carries one. A ticker is not evidence of a
 // listing venue: this asserted NASDAQ on every ticker-bearing row, which is
 // wrong for every NYSE filer. Nothing populates CompanyDetail.exchange today
 // (getCompanyDetail.ts sets it to null and there is no exchange column), so

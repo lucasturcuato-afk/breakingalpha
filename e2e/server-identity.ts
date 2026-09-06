@@ -99,7 +99,10 @@ export async function assertServerIsThisCheckout(
     );
   }
   if (!res.ok) {
-    throw new Error(`WRONG OR BROKEN SERVER on ${baseURL}: /api/e2e-identity answered ${res.status}. ${RUNBOOK}`);
+    throw new Error(
+      `UNEXPECTED ANSWER from ${baseURL}: /api/e2e-identity answered HTTP ${res.status}, not 200 or 404. ` +
+        `Either the server is broken or it is not this checkout. ${RUNBOOK}`,
+    );
   }
   const got = (await res.json()) as ServerIdentity;
   const problems: string[] = [];
