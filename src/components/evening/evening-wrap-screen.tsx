@@ -20,6 +20,7 @@ import { useIsMobileViewport } from "./use-mobile-viewport";
  * its text rendered in a generic fallback. See `./fonts.ts`; the nodes that
  * still do are all inside `src/components/ledger`. */
 import { FONT_DISPLAY, FONT_MONO, FONT_SANS } from "@/components/mobile/fonts";
+import { TabBarClearance } from "@/components/mobile/tab-bar-clearance";
 import type {
   EveningMover,
   EveningReviewedCall,
@@ -36,13 +37,26 @@ import type {
  * either handoff document. The prototype's `sc-if` branches need a runtime that
  * does not resolve over `file://`, which is what the harness is for.
  *
- * NO TAB BAR, ON PURPOSE. The prototype gates the nav on
- * `showNav: ['dash','ledger','watch','ask'].includes(s.screen)` at line 3460,
- * and `evening` is not in that list, so this surface renders full screen with
- * no bottom bar and no pole lit. That is DECISIONS.md open item O2, recorded as
- * a design bug and deliberately unresolved. This screen reproduces it rather
- * than inventing a bar for it. The single in-surface exit is the `Ledger` link
- * in the masthead, which is therefore a real anchor and not a no-op.
+ * IT HAS A TAB BAR NOW, and this screen does not draw one. The prototype gates
+ * the nav on `showNav: ['dash','ledger','watch','ask'].includes(s.screen)` at
+ * line 3460, and `evening` is not in that list, so the design renders this
+ * surface full screen with no bottom bar and no pole lit. That is DECISIONS.md
+ * open item O2, recorded as a design bug, and the page above this file stops
+ * reproducing it: `/evening-wrap` mounts `AppShell` with `mobileFullBleed`, the
+ * same way `/ledger` and `/record` do, and the shell draws the bar. Measured
+ * before that change at 320 and 390 signed in, both themes: the four poles were
+ * in the tree at 0 by 0 and `document.elementFromPoint` at every pole centre
+ * answered with the ticker strip, so the reader's only exit was browser back.
+ *
+ * WHAT THIS FILE OWES THE BAR is the clearance under it, and exactly one of
+ * them. `TabBarClearance` is the single owner of that rule and is consumed
+ * rather than reimplemented; see its own header for the six times this repo
+ * paid for four copies of it. It is the last child of `WrapFrame`, which is now
+ * the only root any branch of this screen renders, so there is one clearance on
+ * every state and no branch can drift out of carrying it.
+ *
+ * The masthead's `Ledger` link stays. It is a real anchor and it is no longer
+ * the single exit from the surface.
  */
 
 export type WrapStage = "ready" | "loading" | "none" | "error" | "stale";
@@ -116,11 +130,14 @@ export function EveningWrapScreen({
   if (stage === "error") return <WrapFrame><WrapError /></WrapFrame>;
   if (data === null) return <WrapFrame><WrapSkeleton /></WrapFrame>;
 
+  /* THE READY BRANCH USED TO REPEAT THE FRAME, element for element, and it does
+     not any more. `WrapFrame` was already the root of the other three branches
+     and the two were identical, so the clearance would have had to be written
+     twice to reach every state and a later branch would have been one edit away
+     from shipping without it. One root, one clearance, counted at runtime
+     through `data-tabbar-clearance`. */
   return (
-    <div data-parity="evening" style={{ backgroundColor: "var(--c-bg)", minHeight: "100%" }}>
-      {/* Built once, in src/components/ledger, and imported here. The barrel
-          says so in a comment: the design carries one ticker, not two. */}
-      <Tape />
+    <WrapFrame>
       {bannerShown && data.sectors.length > 0 ? (
         <PersonalizationBanner data={data} onDismiss={() => setBannerShown(false)} />
       ) : null}
@@ -242,10 +259,14 @@ export function EveningWrapScreen({
               </p>
             </>
           ) : null}
+          {/* The design's own 24px of tail gap, kept. It is spacing between the
+              last block and whatever is under it, not clearance, and the
+              clearance below is a separate element with a separate owner.
+              `/record` carries the same pair for the same reason. */}
           <div style={{ height: "calc(24px + env(safe-area-inset-bottom))" }} />
         </div>
       ) : null}
-    </div>
+    </WrapFrame>
   );
 }
 
@@ -289,6 +310,15 @@ function WrapFrame({ children }: { children: ReactNode }) {
     <div data-parity="evening" style={{ backgroundColor: "var(--c-bg)", minHeight: "100%" }}>
       <Tape />
       {children}
+      {/* LAST CHILD OF THE SCREEN ROOT, never of an inner block, and never a
+          number written here. `#main-content` already carries the bottom
+          padding, and Chrome drops a scroll container's bottom padding once its
+          content overflows, so the padding alone leaves the last row of this
+          screen level with the bar's top edge. Measured on this route at 390
+          before this element existed: the last drawn row bottomed out at 793.5
+          against a viewport of 844, and with the bar mounted its top edge sits
+          at 785. */}
+      <TabBarClearance />
     </div>
   );
 }
@@ -341,6 +371,14 @@ function PersonalizationBanner({ data, onDismiss }: { data: EveningWrapData; onD
             {s}
           </span>
         ))}
+        {/* 44 IN BOTH AXES, and only the vertical one was ever there. The
+            block padding already grew a 12px line box to 44 tall inside
+            `content-box`, and the negative block margin keeps the row where the
+            design drew it. The inline axis was left at the width of the words:
+            measured at 320 and at 390, in both themes, before and after the tab
+            bar landed, this control drew 35.9 by 44. Six pixels of inline
+            padding against a 35.9px text box measures 47.9, and the matching
+            negative inline margin means nothing beside it moves. */}
         <Link
           href="/settings/preferences"
           className={motion.bare}
@@ -349,8 +387,8 @@ function PersonalizationBanner({ data, onDismiss }: { data: EveningWrapData; onD
             display: "inline-flex",
             alignItems: "center",
             minHeight: "12px",
-            padding: "16px 0",
-            margin: "-16px 0",
+            padding: "16px 6px",
+            margin: "-16px -6px",
             font: `500 11px/1 ${FONT_SANS}`,
             color: "var(--c-secondary)",
             whiteSpace: "nowrap",
