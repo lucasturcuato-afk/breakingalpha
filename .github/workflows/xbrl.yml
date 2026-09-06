@@ -33,3 +33,26 @@ jobs:
           PYTHONPATH=. python3 -m backend.ingest_xbrl_facts \
             ${{ inputs.dry_run && '--dry-run' || '' }} \
             ${{ inputs.max_ciks != '' && format('--max-ciks {0}', inputs.max_ciks) || '' }}
+
+      # This job writes financial_facts, and the CIK it writes under comes from
+      # companies.sec_cik. So this is the job whose success used to mean the
+      # least: ingest_xbrl_facts stamps pipeline_runs with
+      # "success" if stats["errors"] == 0, and `errors` counts caught
+      # exceptions. It says nothing about whether the CIKs it just wrote under
+      # still have a claiming companies row. They can all be stranded and this
+      # step will still be green.
+      #
+      # The reconciliation runs here so that a green run STATES its verdict
+      # instead of implying one. It does not gate the ingest. Failing the
+      # ingest on a standing backlog would leave this job red for as long as
+      # the backlog takes to clear, and a permanently red daily job gets muted
+      # within a week (see backend/tests/known_failures.txt for the last time
+      # that happened here). The red/green signal for this condition lives in
+      # edgar-cik-reconcile.yml, whose only purpose is this condition.
+      - name: Reconcile the CIK universe (report only, never gates the ingest)
+        if: always()
+        continue-on-error: true
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: python tools/edgar_cik_reconcile.py --quiet || true
