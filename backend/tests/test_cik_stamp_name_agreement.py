@@ -373,8 +373,24 @@ class BoundedSubsetRule(unittest.TestCase):
         )
 
     def test_still_accepts_a_leading_subset_however_much_is_added(self):
-        # Position carries the claim when the bound cannot.
-        self.assertTrue(names_agree("Grocery Outlet", "Grocery Outlet Holding Corp.")[0])
+        # Position carries the claim when the bound cannot. Both pairs add TWO
+        # identity tokens, so MAX_HEAD_PREFIX_EXTRA alone rejects them and only
+        # the leading test lets them through. Taken from live registrant names.
+        #
+        # An earlier version of this test used a pair whose token sets turned
+        # out to be EQUAL once 'holding' and 'corp' were stripped as weak and
+        # legal forms, so it passed on the equality branch and never reached
+        # the subset branch at all. It asserted True about code it never ran.
+        for ours, authority in [
+            ("Check Point", "CHECK POINT SOFTWARE TECHNOLOGIES LTD"),
+            ("Kratos Defense", "KRATOS DEFENSE & SECURITY SOLUTIONS, INC."),
+        ]:
+            agrees, why = names_agree(ours, authority)
+            self.assertTrue(agrees, f"{ours}/{authority}")
+            self.assertTrue(
+                why.startswith("subset"),
+                f"{ours}/{authority} accepted by {why!r}, not the subset branch",
+            )
 
     def test_still_accepts_a_bounded_subset_that_does_not_lead(self):
         # One extra identity token is inside the bound regardless of position.

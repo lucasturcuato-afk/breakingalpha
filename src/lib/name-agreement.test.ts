@@ -157,7 +157,22 @@ test("bounded subset rejects a non-leading subset that adds more than one token"
 });
 
 test("bounded subset still accepts a leading subset however much is added", () => {
-  assert.equal(agrees("Grocery Outlet", "Grocery Outlet Holding Corp."), true);
+  // Both pairs add TWO identity tokens, so MAX_HEAD_PREFIX_EXTRA alone rejects
+  // them and only the leading test lets them through. Live registrant names.
+  // An earlier version used a pair whose token sets were EQUAL once the weak
+  // and legal forms were stripped, so it passed on the equality branch and
+  // never reached the subset branch it claimed to cover.
+  for (const [ours, authority] of [
+    ["Check Point", "CHECK POINT SOFTWARE TECHNOLOGIES LTD"],
+    ["Kratos Defense", "KRATOS DEFENSE & SECURITY SOLUTIONS, INC."],
+  ]) {
+    const { agrees: ok, reason } = namesAgree(ours, authority);
+    assert.equal(ok, true, `${ours}/${authority}`);
+    assert.ok(
+      reason.startsWith("subset"),
+      `${ours}/${authority} accepted by ${reason}, not the subset branch`,
+    );
+  }
 });
 
 test("bounded subset still accepts a bounded subset that does not lead", () => {
