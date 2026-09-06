@@ -1,9 +1,10 @@
-"""resolve_on NULL is counted every grading run, and a NEW one fails the run.
+"""resolve_on NULL is accounted for by what the row says, every grading run.
 
 Why: 305 of 446 calls carried resolve_on NULL on 2026-09-06 and the due-scan
-skipped them without a word. The legacy rows (before migration 0014, 2026-07-25)
-are by design ungradeable, so they stay excluded, but as a printed count. A
-NULL written since is a write-path defect and must stop the run.
+skipped them without a word. sql/0041 marks the 220 whose horizon was never
+captured as grading_status = 'ungradable' with the reason on the row; the
+grader counts those per reason. A gradeable row with resolve_on NULL is a
+write-path defect and fails the run naming the fix. No date logic.
 
 These pin the pure classifier and the predicate that decides whether the
 writer may ever strip resolve_on. No IO.
@@ -16,41 +17,50 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from backend.call_horizons import HORIZON_CUTOVER_DATE, is_missing_column_error  # noqa: E402
-from backend.grading.grade_brief_calls import missing_horizon_report  # noqa: E402
+from backend.call_horizons import is_missing_column_error  # noqa: E402
+from backend.grading.grade_brief_calls import FIX_FILE, missing_horizon_report  # noqa: E402
 
 
 class TestMissingHorizonReport:
-    def test_legacy_rows_are_counted_not_flagged(self):
-        rows = [{"id": "a", "brief_date": "2026-05-01"}, {"id": "b", "brief_date": "2026-07-22"}]
-        r = missing_horizon_report(rows, HORIZON_CUTOVER_DATE)
-        assert r == {"legacy": 2, "new": 0, "new_ids": [], "new_brief_dates": []}
-
-    def test_a_null_on_or_after_the_cutover_is_new(self):
+    def test_rows_that_say_ungradable_are_counted_by_reason(self):
         rows = [
-            {"id": "a", "brief_date": "2026-07-22"},
-            {"id": "b", "brief_date": HORIZON_CUTOVER_DATE},
-            {"id": "c", "brief_date": "2026-09-06T13:00:00+00:00"},
+            {"id": "a", "brief_date": "2026-05-01", "grading_status": "ungradable", "ungradable_reason": "horizon_never_captured"},
+            {"id": "b", "brief_date": "2026-07-22", "grading_status": "ungradable", "ungradable_reason": "horizon_never_captured"},
+            {"id": "c", "brief_date": "2026-06-01", "grading_status": "ungradable", "ungradable_reason": None},
         ]
-        r = missing_horizon_report(rows, HORIZON_CUTOVER_DATE)
-        assert r["legacy"] == 1 and r["new"] == 2
-        assert r["new_ids"] == ["b", "c"]
-        assert r["new_brief_dates"] == [HORIZON_CUTOVER_DATE, "2026-09-06"]
+        r = missing_horizon_report(rows)
+        assert r["ungradable"] == 3 and r["defects"] == 0
+        assert r["by_reason"] == {"horizon_never_captured": 2, "unstated": 1}
+
+    def test_a_gradeable_row_with_no_resolve_on_is_a_defect_whatever_its_date(self):
+        rows = [
+            {"id": "old", "brief_date": "2026-05-01", "grading_status": "gradeable"},
+            {"id": "new", "brief_date": "2026-09-06T13:00:00+00:00", "grading_status": "gradeable"},
+        ]
+        r = missing_horizon_report(rows)
+        assert r["defects"] == 2 and r["defect_ids"] == ["old", "new"]
+        assert r["defect_brief_dates"] == ["2026-05-01", "2026-09-06"]
+
+    def test_a_row_without_the_column_is_treated_as_a_defect(self):
+        """Before sql/0041 the column does not exist and the read itself fails
+        with a missing-column error (handled in main). A row that somehow
+        lacks the key still counts as a defect: absence of the marker is not
+        permission to skip."""
+        assert missing_horizon_report([{"id": "x", "brief_date": "2026-08-01"}])["defects"] == 1
 
     def test_empty_input(self):
-        assert missing_horizon_report([], HORIZON_CUTOVER_DATE)["new"] == 0
+        r = missing_horizon_report([])
+        assert r == {"ungradable": 0, "by_reason": {}, "defects": 0, "defect_ids": [], "defect_brief_dates": []}
 
-    def test_the_cutover_matches_the_measured_boundary(self):
-        """Measured 2026-09-06: last NULL brief_date 2026-07-22, first set
-        2026-07-27. The constant must sit strictly between them."""
-        assert "2026-07-22" < HORIZON_CUTOVER_DATE <= "2026-07-27"
+    def test_the_fix_named_in_the_failure_exists(self):
+        assert (Path(__file__).resolve().parents[2] / FIX_FILE).is_file()
 
 
 class TestMissingColumnPredicate:
     @pytest.mark.parametrize("msg", [
         "{'message': \"Could not find the 'resolve_on' column of 'morning_brief_calls' in the schema cache\", 'code': 'PGRST204'}",
         "column morning_brief_calls.resolve_on does not exist",
-        "{'code': '42703', 'message': 'column \"is_lead\" does not exist'}",
+        "{'code': '42703', 'message': 'column \"grading_status\" does not exist'}",
     ])
     def test_schema_gap_is_recognised(self, msg):
         assert is_missing_column_error(Exception(msg))

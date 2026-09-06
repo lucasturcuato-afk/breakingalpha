@@ -62,13 +62,6 @@ DEFAULT_HORIZON = HORIZON_SESSION
 #: it; it is a guardrail so a future map edit cannot ship a 2-year window.
 MAX_HORIZON_DAYS = 90
 
-#: The day resolve_on started being written (migration sql/0014, PR #507,
-#: 2026-07-25). Measured on the full morning_brief_calls table 2026-09-06: the
-#: last row with resolve_on NULL has brief_date 2026-07-22, the first with it
-#: set has 2026-07-27, and no row since is NULL. A NULL on or after this date
-#: is therefore a write-path defect, never a legacy row; the grader treats it
-#: as an error (grade_brief_calls.missing_horizon_report).
-HORIZON_CUTOVER_DATE = "2026-07-25"
 
 VALID_HORIZON_TYPES = frozenset(HORIZON_DAYS)
 

@@ -65,7 +65,7 @@ from backend.grading.benchmarks import (  # noqa: F401
 from backend.grading.price_attribution import PriceAttributionGrader
 from backend.grading.resolver import Outcome, default_resolver
 from backend.verdict_vocabulary import VERDICT_WORD, verdict_word
-from backend.call_horizons import HORIZON_CUTOVER_DATE
+from backend.call_horizons import is_missing_column_error
 
 
 #: Whether the grading loop may call an LLM at all.
@@ -272,36 +272,46 @@ def call_to_graded_input(call: dict, mode: str) -> dict:
     }
 
 
-def missing_horizon_report(rows: list[dict], cutover: str) -> dict:
-    """Classify calls with resolve_on NULL into legacy and new.
+UNGRADABLE = "ungradable"
+GRADEABLE = "gradeable"
+FIX_FILE = "sql/0041_backfill_resolve_on_graded_legacy.sql"
 
-    legacy: brief_date before ``cutover`` (migration 0014 had not landed, the
-            horizon was never captured, nothing to grade against). Counted and
-            printed every run so the exclusion is a number, not silence.
-    new:    brief_date on or after ``cutover``. The write path always sets
-            resolve_on now, so any such row came from a path that dropped it
-            (synthesize.py's missing-column fallback, or an unparseable
-            brief_date). That is a defect and main() fails on it.
 
-    Pure: takes rows, returns counts and ids. No IO.
+def missing_horizon_report(rows: list[dict]) -> dict:
+    """Classify calls with resolve_on NULL by what the row SAYS about itself.
+
+    ungradable: grading_status = 'ungradable'. The row states it cannot be
+                graded and carries the reason (sql/0041 marks the legacy calls
+                whose horizon was never captured). Counted per reason and
+                printed every run, never selected.
+    defect:     grading_status = 'gradeable' with no resolve_on. The write
+                path always sets resolve_on on a gradeable row, so this came
+                from a path that dropped it. main() fails on it, naming the
+                ids and the fix.
+
+    No date logic: the row is the authority. Pure, no IO.
     """
-    legacy = [r for r in rows if str(r.get("brief_date") or "")[:10] < cutover]
-    new = [r for r in rows if str(r.get("brief_date") or "")[:10] >= cutover]
+    ungradable = [r for r in rows if r.get("grading_status") == UNGRADABLE]
+    defects = [r for r in rows if r.get("grading_status") != UNGRADABLE]
+    by_reason: dict[str, int] = {}
+    for r in ungradable:
+        key = str(r.get("ungradable_reason") or "unstated")
+        by_reason[key] = by_reason.get(key, 0) + 1
     return {
-        "legacy": len(legacy),
-        "new": len(new),
-        "new_ids": [r.get("id") for r in new],
-        "new_brief_dates": sorted({str(r.get("brief_date") or "")[:10] for r in new}),
+        "ungradable": len(ungradable),
+        "by_reason": by_reason,
+        "defects": len(defects),
+        "defect_ids": [r.get("id") for r in defects],
+        "defect_brief_dates": sorted({str(r.get("brief_date") or "")[:10] for r in defects}),
     }
 
 
 def fetch_missing_horizons(sb) -> list[dict]:
-    """Every call with resolve_on NULL: id and brief_date only. Small by
-    construction (a few hundred legacy rows) and bounded at the PostgREST cap,
-    which is asserted rather than trusted."""
+    """Every call with resolve_on NULL, with what it says about itself. Small
+    by construction and bounded at the PostgREST cap, which is asserted."""
     resp = (
         sb.table("morning_brief_calls")
-        .select("id, brief_date", count="exact")
+        .select("id, brief_date, grading_status, ungradable_reason", count="exact")
         .is_("resolve_on", "null")
         .order("id")
         .limit(1000)
@@ -325,7 +335,7 @@ def fetch_due_calls(sb, today: str, mode: str) -> list[dict]:
     """
     q = sb.table("morning_brief_calls").select("*")
     if mode == HORIZON_MODE_ACTIVE:
-        q = q.not_.is_("resolve_on", "null").lte("resolve_on", today)
+        q = q.not_.is_("resolve_on", "null").lte("resolve_on", today).eq("grading_status", GRADEABLE)
     else:
         q = q.eq("brief_date", today)
     return q.execute().data or []
@@ -379,22 +389,32 @@ def main() -> None:
     calls = fetch_due_calls(sb, today, mode)
     print(f"[grade] horizon mode: {mode} ({len(calls)} candidate calls)")
 
-    # The rows the due-scan can never select, said out loud every run. Legacy
-    # rows (written before migration 0014) are a count; a NULL written since
-    # is a defect in the write path and fails the run. This is the fourth
-    # silent skip found in one week; the skip stays, the silence does not.
-    missing = missing_horizon_report(fetch_missing_horizons(sb), HORIZON_CUTOVER_DATE)
-    print(
-        f"[grade] excluded: {missing['legacy']} call(s) with resolve_on NULL from before "
-        f"{HORIZON_CUTOVER_DATE} (legacy, horizon never captured, not gradeable)"
-    )
-    if missing["new"]:
+    # The rows the due-scan can never select, said out loud every run. A row
+    # that says ungradable is counted by reason. A gradeable row with no
+    # resolve_on is a write-path defect and fails the run. This is the fourth
+    # silent skip found in one week; the skip stays where the row states it,
+    # the silence does not. No date logic: the row is the authority.
+    try:
+        missing = missing_horizon_report(fetch_missing_horizons(sb))
+    except Exception as e:
+        if is_missing_column_error(e):
+            print(
+                "::error::morning_brief_calls has no grading_status column, so the "
+                f"grader cannot tell a legacy call from a defect. Apply {FIX_FILE} "
+                "before this grader version runs."
+            )
+            raise SystemExit(3)
+        raise
+    reasons = ", ".join(f"{k}: {v}" for k, v in sorted(missing["by_reason"].items())) or "none"
+    print(f"[grade] skipped: {missing['ungradable']} call(s) marked ungradable ({reasons})")
+    if missing["defects"]:
         print(
-            f"::error::{missing['new']} call(s) written on or after {HORIZON_CUTOVER_DATE} "
-            f"have resolve_on NULL and will never be graded: brief_date(s) "
-            f"{', '.join(missing['new_brief_dates'])}, ids {missing['new_ids'][:10]}. "
-            "The write path (synthesize.extract_and_persist_claims) must set resolve_on "
-            "on every row; find which path dropped it before the next run."
+            f"::error::{missing['defects']} gradeable call(s) have resolve_on NULL and can never "
+            f"be graded: brief_date(s) {', '.join(missing['defect_brief_dates'])}, ids "
+            f"{missing['defect_ids'][:10]}. Every gradeable row must carry resolve_on "
+            "(synthesize.extract_and_persist_claims). If these are legacy calls, apply "
+            f"{FIX_FILE}, which marks them ungradable with the reason; otherwise find the "
+            "write path that dropped it before the next run."
         )
         raise SystemExit(3)
 
