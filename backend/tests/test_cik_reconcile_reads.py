@@ -180,6 +180,59 @@ class TestTruncationIsDetected(unittest.TestCase):
             TOOL.assert_scan_is_whole(sb, "financial_facts", [])
 
 
+class TruncatingScan(FakeSupabase):
+    """Its keyset probes stop early; its endpoint reads do not.
+
+    That combination is the whole hazard. The scan comes back sorted,
+    non-empty and plausible, and only a read taken a different way can say it
+    is short.
+    """
+
+    def __init__(self, tables, table, stop_after):
+        super().__init__(tables)
+        self.stop_table, self.stop_after = table, stop_after
+
+    def select(self, cols, count=None):
+        q = super().select(cols, count)
+        if self._t != self.stop_table:
+            return q
+        real_gt = q.gt
+
+        def gt(col, val):
+            if val >= self.stop_after:
+                q.rows = []
+            return real_gt(col, val)
+
+        q.gt = gt
+        return q
+
+
+class TestReadProdActuallyRunsTheCanary(unittest.TestCase):
+    """Found by mutation. Deleting `assert_scan_is_whole(sb, "financial_facts",
+    ...)` from read_prod left every test green, because the suite exercised the
+    canary in isolation and never asserted that the caller reaches for it. An
+    assertion helper nothing calls is documentation with an exit code.
+    """
+
+    def test_a_truncated_financial_facts_scan_fails_the_whole_read(self):
+        sb = TruncatingScan(
+            {"financial_facts": FACTS, "sec_filings": FILINGS,
+             "companies": COMPANIES, "cik_tickers": []},
+            "financial_facts", 200,
+        )
+        with self.assertRaisesRegex(TOOL.CouldNotRun, "truncated"):
+            TOOL.read_prod(sb, log=lambda *a, **k: None)
+
+    def test_a_truncated_sec_filings_scan_fails_the_whole_read(self):
+        sb = TruncatingScan(
+            {"financial_facts": FACTS, "sec_filings": FILINGS,
+             "companies": COMPANIES, "cik_tickers": []},
+            "sec_filings", 100,
+        )
+        with self.assertRaisesRegex(TOOL.CouldNotRun, "truncated"):
+            TOOL.read_prod(sb, log=lambda *a, **k: None)
+
+
 class TestReadProd(unittest.TestCase):
     def test_a_short_companies_pagination_is_caught_against_count_exact(self):
         class ShortPage(FakeSupabase):
