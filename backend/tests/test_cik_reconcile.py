@@ -283,16 +283,29 @@ class TestTheExemptionListCannotRot(unittest.TestCase):
 
 
 class TestAReadFailureIsNeverACleanVerdict(unittest.TestCase):
+    """Every guard here is pinned by MESSAGE, not by exception type.
+
+    Found by mutation. Deleting the empty-companies guard left
+    `assertRaises(ReconcileInputError)` green, because with no companies rows
+    the fixture's own CIK becomes unclaimed and trips the MISSING-COUNT guard
+    instead. The test passed while the thing it names was gone. Asserting on
+    the type alone lets any sibling guard stand in for the one under test.
+    """
+
     def test_empty_companies_raises_rather_than_reporting_clean(self):
-        with self.assertRaises(ReconcileInputError):
+        with self.assertRaisesRegex(ReconcileInputError, "companies came back empty"):
             run(companies=[])
 
     def test_empty_fact_universe_raises_rather_than_reporting_clean(self):
-        with self.assertRaises(ReconcileInputError):
+        with self.assertRaisesRegex(
+            ReconcileInputError, "no financial_facts CIKs were read"
+        ):
             run(fact_ciks=set())
 
     def test_an_unclaimed_fact_owner_without_a_count_raises(self):
-        with self.assertRaises(ReconcileInputError):
+        with self.assertRaisesRegex(
+            ReconcileInputError, "no exact fact count was supplied"
+        ):
             run(fact_ciks={320193, 5981}, fact_counts={}, filing_counts={5981: 9},
                 fact_pointers={5981: []})
 
