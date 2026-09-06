@@ -2,12 +2,26 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { formatSubtitle } from "./CompanyDetailHeader";
+import { computeAttention } from "@/lib/attention";
+import type { ToneSummary } from "@/lib/tone";
 import type { CompanyDetail } from "@/lib/data-access/getCompanyDetail";
+
+const EMPTY_TONE: ToneSummary = {
+  sufficient: false,
+  score: null,
+  level: null,
+  levelLabel: "",
+  evidence: { total: 0, positive: 0, neutral: 0, negative: 0 },
+  direction: null,
+  priorLevel: null,
+  priorLevelLabel: null,
+};
 
 // Minimal CompanyDetail. Only ticker, exchange and sector reach formatSubtitle;
 // the rest is structural so the fixture type-checks against the real interface.
 function detail(over: Partial<CompanyDetail>): CompanyDetail {
   return {
+    companyId: "00000000-0000-0000-0000-000000000000",
     canonical: "Test Co",
     display: "Test Co",
     ticker: null,
@@ -19,9 +33,11 @@ function detail(over: Partial<CompanyDetail>): CompanyDetail {
     mentions: 0,
     mentions7d: [],
     sentiment7d: [],
-    tone: { level: null, direction: null, evidence: null } as CompanyDetail["tone"],
-    attention: {} as CompanyDetail["attention"],
+    tone: EMPTY_TONE,
+    attention: computeAttention(0, 0),
     articles: [],
+    articlesTruncated: false,
+    articleWindowDays: 14,
     themes: [],
     memo: null,
     isPrivate: false,
