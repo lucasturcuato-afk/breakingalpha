@@ -139,8 +139,46 @@ def assert_scan_is_whole(sb, table: str, scanned: list[int], col: str = "cik") -
         )
 
 
+def paginate_by_range(sb, table: str, cols: str, order_col: str, page: int = 1000):
+    """Range pagination, for a table with NO unique column to keyset on.
+
+    Returns (rows, exact_count). The caller decides what a short read means.
+
+    `cik_tickers` is the case. It has no id, `cik` repeats once per share class
+    (a SPAC contributes its common, its units and its warrants under one CIK),
+    and `ticker` is not unique either. Keyset pagination needs a unique
+    ordering column, and given a non-unique one `col=gt.<last>` SKIPS every row
+    that ties with the last row of a page. Measured against prod on 2026-09-06:
+    keyset on `cik` returned 8 rows fewer than `count=exact`, silently, and
+    keyset on `ticker` happened to return the full set only because its
+    duplicates did not land on a page boundary. A read that is correct by luck
+    is not correct.
+
+    Range pagination has its own hazard, rows shifting under concurrent writes,
+    but `cik_tickers` is written only by the daily SEC sync and the count
+    assertion above catches the outcome either way.
+    """
+    rows: list[dict] = []
+    start = 0
+    while True:
+        got = (
+            sb.table(table).select(cols).order(order_col)
+            .range(start, start + page - 1).execute().data or []
+        )
+        rows.extend(got)
+        if len(got) < page:
+            break
+        start += page
+    total = sb.table(table).select(order_col, count="exact").limit(1).execute().count
+    return rows, total
+
+
 def paginate(sb, table: str, cols: str, order_col: str = "id", page: int = 1000) -> list[dict]:
-    """Keyset pagination on a unique column. A bare .execute() caps at 1000."""
+    """Keyset pagination on a UNIQUE column. A bare .execute() caps at 1000.
+
+    The column must be unique. See paginate_by_range for why, and for the table
+    in this file that cannot use this function.
+    """
     rows: list[dict] = []
     last = None
     while True:
@@ -217,10 +255,25 @@ def read_prod(sb, *, log=print) -> dict:
     log(f"  measured {len(unclaimed)} unclaimed and {len(reverse)} fact-less CIKs "
         f"({time.time()-t0:.0f}s)")
 
-    registrants = {
-        int(r["cik"]): r
-        for r in paginate(sb, "cik_tickers", "cik,ticker,company_name", order_col="cik")
-    }
+    # cik_tickers is a LOOKUP, not a source of the verdict. Which CIKs are
+    # stranded does not depend on it at all; it only supplies the SEC
+    # registrant name that the receiver search needs. So a short read here
+    # degrades receiver nominations to "no-identity" rather than corrupting an
+    # answer, and warning is the proportionate response. Failing the whole run
+    # on a lookup table would add a flake surface to a check whose value
+    # depends on being believed.
+    ct_rows, ct_total = paginate_by_range(
+        sb, "cik_tickers", "cik,ticker,company_name", "cik"
+    )
+    read_warnings: list[str] = []
+    if ct_total is not None and len(ct_rows) != ct_total:
+        read_warnings.append(
+            f"cik_tickers read {len(ct_rows)} of {ct_total} rows. Receiver "
+            f"nominations for any CIK in the missing rows will read as "
+            f"'no-identity' rather than being searched. The stranded-CIK "
+            f"verdict itself does not use this table and is unaffected."
+        )
+    registrants = {int(r["cik"]): r for r in ct_rows}
 
     return {
         "fact_ciks": fact_ciks,
@@ -230,6 +283,7 @@ def read_prod(sb, *, log=print) -> dict:
         "companies": companies,
         "fact_pointers": pointers,
         "registrants": registrants,
+        "read_warnings": read_warnings,
         "read_seconds": round(time.time() - t0, 1),
     }
 
@@ -276,7 +330,7 @@ def load_expectations(path: str = EXPECTATIONS) -> dict:
 
 
 def _to_report(raw: dict, expectations: dict) -> dict:
-    return classify(
+    report = classify(
         fact_ciks=set(raw["fact_ciks"]),
         filing_ciks=set(raw["filing_ciks"]),
         fact_counts={int(k): v for k, v in raw["fact_counts"].items()},
@@ -286,6 +340,11 @@ def _to_report(raw: dict, expectations: dict) -> dict:
         registrants={int(k): v for k, v in raw["registrants"].items()},
         expectations=expectations,
     )
+    # Surfaced in the report rather than only in the run log, because a
+    # degraded read that is visible only to whoever scrolls the log is the
+    # same shape of silence this check exists to remove.
+    report["warnings"] = list(raw.get("read_warnings") or []) + report["warnings"]
+    return report
 
 
 def main(argv=None) -> int:

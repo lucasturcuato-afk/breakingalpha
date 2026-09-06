@@ -41,6 +41,7 @@ class FakeQuery:
         self.table, self.rows, self.log = table, rows, log
         self.count_mode = count_mode
         self._order, self._desc, self._limit = None, False, None
+        self._range = None
         self._gt = None
         self._eq = {}
         self._not_in = None
@@ -48,6 +49,10 @@ class FakeQuery:
 
     def order(self, col, desc=False):
         self._order, self._desc = col, desc
+        return self
+
+    def range(self, start, end):
+        self._range = (start, end)
         return self
 
     def limit(self, n):
@@ -74,7 +79,7 @@ class FakeQuery:
         self.log.append(
             {"table": self.table, "order": self._order, "desc": self._desc,
              "limit": self._limit, "gt": self._gt, "eq": dict(self._eq),
-             "not_in": self._not_in is not None}
+             "range": self._range, "not_in": self._not_in is not None}
         )
         rows = list(self.rows)
         for col, val in self._eq.items():
@@ -88,7 +93,9 @@ class FakeQuery:
         if self._order:
             rows.sort(key=lambda r: r[self._order], reverse=self._desc)
         total = len(rows)
-        if self._limit is not None:
+        if self._range is not None:
+            rows = rows[self._range[0]: self._range[1] + 1]
+        elif self._limit is not None:
             rows = rows[: self._limit]
         return type("Resp", (), {"data": rows, "count": total if self.count_mode else None})()
 
@@ -251,6 +258,73 @@ class TestReadProd(unittest.TestCase):
         raw = TOOL.read_prod(fake(), log=lambda *a, **k: None)
         self.assertEqual(raw["fact_ciks"], [100, 200, 300, 400])
         self.assertEqual(raw["filing_ciks"], [100, 200, 500])
+
+
+#: One CIK, three tickers. A SPAC contributes its common, its units and its
+#: warrants under a single CIK, and cik_tickers has no unique column at all.
+#: Measured on prod 2026-09-06: a large minority of CIKs there carry more than
+#: one ticker row.
+SHARE_CLASSES = [
+    {"cik": 1, "ticker": "AAC", "company_name": "Ares Acquisition Corp III"},
+    {"cik": 1, "ticker": "AAC-UN", "company_name": "Ares Acquisition Corp III"},
+    {"cik": 1, "ticker": "AAC-WT", "company_name": "Ares Acquisition Corp III"},
+    {"cik": 2, "ticker": "ZZZ", "company_name": "Zed"},
+]
+
+
+class TestANonUniqueKeysetKeySkipsRows(unittest.TestCase):
+    """The trap this whole feature is about, sitting inside the check itself.
+
+    Keyset pagination needs a UNIQUE ordering column. Given a non-unique one,
+    `col=gt.<last>` skips every row that ties with the last row of a page, and
+    the short read looks exactly like a complete one. Found against prod:
+    paginating cik_tickers by `cik` came back short of count=exact, and
+    paginating it by `ticker` returned the full set only because its duplicates
+    did not happen to land on a page boundary. Correct by luck is not correct.
+    """
+
+    def test_keyset_on_a_non_unique_column_loses_the_tied_rows(self):
+        sb = FakeSupabase({"cik_tickers": SHARE_CLASSES})
+        got = TOOL.paginate(sb, "cik_tickers", "cik,ticker,company_name",
+                            order_col="cik", page=1)
+        self.assertLess(len(got), len(SHARE_CLASSES))
+
+    def test_range_pagination_reads_them_all_and_reports_the_true_total(self):
+        sb = FakeSupabase({"cik_tickers": SHARE_CLASSES})
+        rows, total = TOOL.paginate_by_range(
+            sb, "cik_tickers", "cik,ticker,company_name", "cik", page=2
+        )
+        self.assertEqual(len(rows), len(SHARE_CLASSES))
+        self.assertEqual(total, len(SHARE_CLASSES))
+
+    def test_read_prod_uses_range_for_cik_tickers_not_keyset(self):
+        sb = FakeSupabase({"financial_facts": FACTS, "sec_filings": FILINGS,
+                           "companies": COMPANIES, "cik_tickers": SHARE_CLASSES})
+        raw = TOOL.read_prod(sb, log=lambda *a, **k: None)
+        ct_ops = [op for op in sb.log if op["table"] == "cik_tickers"]
+        self.assertTrue(ct_ops)
+        self.assertTrue(any(op["range"] is not None for op in ct_ops))
+        self.assertFalse(any(op["gt"] is not None for op in ct_ops))
+        self.assertEqual(raw["read_warnings"], [])
+
+    def test_a_short_lookup_read_warns_and_does_not_fail_the_verdict(self):
+        """cik_tickers only supplies registrant NAMES. Which CIKs are stranded
+        does not depend on it, so a short read degrades receiver nominations
+        and must not turn the whole check red. Flake on a lookup table is how a
+        check stops being believed."""
+
+        class ShortLookup(FakeSupabase):
+            def select(self, cols, count=None):
+                q = super().select(cols, count)
+                if self._t == "cik_tickers" and count is None:
+                    q.rows = q.rows[:1]
+                return q
+
+        sb = ShortLookup({"financial_facts": FACTS, "sec_filings": FILINGS,
+                          "companies": COMPANIES, "cik_tickers": SHARE_CLASSES})
+        raw = TOOL.read_prod(sb, log=lambda *a, **k: None)
+        self.assertTrue(raw["read_warnings"])
+        self.assertIn("cik_tickers read", raw["read_warnings"][0])
 
 
 class TestExitCodes(unittest.TestCase):
