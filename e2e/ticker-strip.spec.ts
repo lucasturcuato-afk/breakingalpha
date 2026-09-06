@@ -29,10 +29,12 @@ test.describe("Ticker Strip", () => {
     await page.waitForTimeout(5_000);
 
     // Should show either up or down arrow indicators — use .first() for animation duplicates
-    const upArrow = page.locator("text=▲").first();
-    const downArrow = page.locator("text=▼").first();
+    // One locator for either glyph: `.or()` of two `.first()`s resolves to
+    // every arrow on the strip and trips strict mode.
+    const upArrow = page.locator("text=▲");
+    const downArrow = page.locator("text=▼");
 
-    await expect(upArrow.or(downArrow)).toBeVisible({ timeout: 5_000 });
+    await expect(upArrow.or(downArrow).first()).toBeVisible({ timeout: 5_000 });
   });
 
   test("strip has scrolling animation", async ({ page }) => {

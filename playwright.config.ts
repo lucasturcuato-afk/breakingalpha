@@ -35,7 +35,11 @@ const chromiumProject = {
     storageState: AUTH_FILE,
   },
   dependencies: ["setup"],
-  testIgnore: /(auth-smoke|prod-smoke-5route)\.spec\.ts/,
+  // e2e/pressure has its own config (pressure.config.ts), its own target (a
+  // production build on 3370 started with VERCEL_ENV=preview) and its own
+  // auth file. Picked up by this project it fails 25 ways on connection and
+  // storage-state errors before measuring anything. `npm run test:pressure`.
+  testIgnore: /(auth-smoke|prod-smoke-5route)\.spec\.ts|[\/\\]pressure[\/\\]/,
 };
 const smokeProdProject = {
   name: "smoke-prod",
@@ -52,7 +56,9 @@ export default defineConfig({
   reporter: "html",
   timeout: 30_000,
   use: {
-    baseURL: "http://localhost:3000",
+    // E2E_LOCAL_URL points the local gate at a dev server you started from
+    // THIS checkout on another port (pair it with E2E_REUSE_SERVER=1).
+    baseURL: process.env.E2E_LOCAL_URL ?? "http://localhost:3000",
     trace: "on-first-retry",
     screenshot: "only-on-failure",
   },
@@ -63,8 +69,16 @@ export default defineConfig({
     ? undefined
     : {
         command: "npm run dev",
-        url: "http://localhost:3000",
-        reuseExistingServer: !process.env.CI,
+        url: process.env.E2E_LOCAL_URL ?? "http://localhost:3000",
+        // NEVER reuse a server this run did not start unless told to. On
+        // 2026-09-05 a dev server from another worktree, started three weeks
+        // earlier, was sitting on :3000; Playwright reused it and 60 of 85
+        // failures were 404s and stale selectors against that checkout, not
+        // this one. With reuse off, an occupied port fails the run at startup
+        // with Playwright's own "port is already used" message, which names
+        // the problem. E2E_REUSE_SERVER=1 opts back in for a server you started
+        // yourself from THIS checkout.
+        reuseExistingServer: !!process.env.E2E_REUSE_SERVER,
         timeout: 60_000,
       },
 });

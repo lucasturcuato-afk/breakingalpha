@@ -17,8 +17,10 @@
  *     without it), which is a hydration mismatch dressed up as a test target.
  */
 import { chromium, type Browser, type BrowserContext, type Page } from "@playwright/test";
+import fs from "fs";
 import path from "path";
 import { config as dotenvConfig } from "dotenv";
+import { assertServerIsThisCheckout } from "../../server-identity";
 
 dotenvConfig({ path: path.resolve(__dirname, "../../../.env.local") });
 
@@ -168,7 +170,62 @@ export async function installGuards(
   return state;
 }
 
+const HOW_TO_START = [
+  "The pressure suite measures a LOCAL PRODUCTION BUILD on " + BASE + " and starts",
+  "no server of its own. Start one first, from this checkout:",
+  "",
+  "    npm run build",
+  "    VERCEL_ENV=preview npx next start -p 3370",
+  "",
+  "then run the specs in order, 00-environment first:",
+  "",
+  "    npm run test:pressure",
+  "",
+  "See docs/runbooks/e2e-suites.md.",
+].join("\n");
+
+/**
+ * The server prerequisite, checked ONCE before any browser is launched, so a
+ * missing server reads as this sentence and not as net::ERR_CONNECTION_REFUSED
+ * deep inside a goto. Runs in every spec because every spec launches.
+ */
+export async function assertServerUp(): Promise<void> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 5_000);
+  try {
+    const res = await fetch(BASE + "/", { redirect: "manual", signal: ctrl.signal });
+    if (res.status >= 500) throw new Error(`answered ${res.status}`);
+  } catch (e) {
+    throw new Error(
+      `PRESSURE PREREQUISITE MISSING: nothing answers on ${BASE} (${(e as Error).message}).\n\n${HOW_TO_START}`,
+    );
+  } finally {
+    clearTimeout(timer);
+  }
+  /* Something answers. Now: is it THIS checkout, and is it a production
+     build? A dev server or another worktree's build measures the wrong
+     thing and must be an error, not a walk that quietly reports it. */
+  await assertServerIsThisCheckout(BASE, { expectNodeEnv: "production", cwd: path.resolve(__dirname, "../../..") });
+}
+
+/**
+ * The session prerequisite. Every spec after 00-environment reads the storage
+ * state that 00 writes; without it Playwright throws "Error reading storage
+ * state" from inside newContext, twelve times. Name the missing step instead.
+ */
+export function assertAuthState(file: string): void {
+  if (!fs.existsSync(file)) {
+    throw new Error(
+      `PRESSURE PREREQUISITE MISSING: ${path.relative(process.cwd(), file)} does not exist.\n` +
+        "It is written by e2e/pressure/00-environment.spec.ts (a real sign-in as the e2e\n" +
+        "account). Run that spec first, or run the whole suite in file order:\n\n" +
+        "    npm run test:pressure\n",
+    );
+  }
+}
+
 export async function launch(): Promise<Browser> {
+  await assertServerUp();
   return chromium.launch();
 }
 
@@ -181,6 +238,7 @@ export async function launch(): Promise<Browser> {
  * `assertEmulation` below proves it landed rather than assuming it.
  */
 export async function phoneContext(browser: Browser, theme: Theme, storageState?: string): Promise<BrowserContext> {
+  if (storageState) assertAuthState(storageState);
   const ctx = await browser.newContext({
     viewport: { width: 390, height: 844 },
     deviceScaleFactor: 3,

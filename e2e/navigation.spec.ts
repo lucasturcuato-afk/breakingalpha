@@ -12,10 +12,14 @@ test.describe("Shell & Navigation", () => {
     await expect(sidebar.getByRole("link", { name: "Evening Wrap", exact: true })).toBeVisible();
     await expect(sidebar.getByRole("link", { name: "Live Feed" })).toBeVisible();
 
-    // Research nav items
-    await expect(sidebar.getByRole("link", { name: "Thesis Board" })).toBeVisible();
+    // Research nav items. Thesis Board and Watchlist are no longer sidebar
+    // entries: both live under Radar (/thesis-board and /watchlist redirect
+    // to /radar/calls and /radar/watchlist). Asserting the old links was a
+    // stale selector, not a missing feature.
+    await expect(sidebar.getByRole("link", { name: /^Radar/ })).toBeVisible();
     await expect(sidebar.getByRole("link", { name: "Deal Flow" })).toBeVisible();
-    await expect(sidebar.getByRole("link", { name: "Watchlist", exact: true })).toBeVisible();
+    await expect(sidebar.getByRole("link", { name: "Company Intel" })).toBeVisible();
+    await expect(sidebar.getByRole("link", { name: "Trends" })).toBeVisible();
   });
 
   test("sidebar navigation works for each page", async ({ page }) => {
@@ -32,9 +36,9 @@ test.describe("Shell & Navigation", () => {
     const sidebar = page.locator("aside, nav").first();
     const routes = [
       { name: "Live Feed", url: "/live-feed", exact: false },
-      { name: "Thesis Board", url: "/thesis-board", exact: false },
+      { name: /^Radar/, url: "/radar", exact: false },
       { name: "Deal Flow", url: "/deal-flow", exact: false },
-      { name: "Watchlist", url: "/watchlist", exact: true },
+      { name: "Trends", url: "/trends", exact: true },
       { name: "Evening Wrap", url: "/evening-wrap", exact: true },
     ];
 
@@ -46,7 +50,9 @@ test.describe("Shell & Navigation", () => {
         await page.waitForTimeout(500);
       }
       await sidebar.getByRole("link", { name: route.name, exact: route.exact }).click();
-      await page.waitForURL(`**${route.url}`, { timeout: 10_000 });
+      // The local gate runs on a dev server; the first hit of a route compiles
+      // it, which can exceed 10s. 30s is the compile budget, not a product SLA.
+      await page.waitForURL(`**${route.url}`, { timeout: 30_000 });
       await expect(page).toHaveURL(new RegExp(route.url));
 
       // No crash
@@ -83,8 +89,13 @@ test.describe("Shell & Navigation", () => {
     const sidebar = page.locator("aside");
     await expect(sidebar).toBeVisible({ timeout: 5_000 });
 
-    // Should show user name or initials (not just "User")
-    const settingsLink = page.getByRole("link", { name: /Settings/i });
-    await expect(settingsLink).toBeVisible();
+    // The Settings link is hover-revealed by design (sidebar.tsx: "hidden by
+    // default, fade in on hover or keyboard focus" so the row width goes to
+    // the user name). Hover the user card, then expect it.
+    const card = sidebar.locator("div.group").filter({ has: page.locator('[data-tour="settings-link-desktop"]') }).first();
+    await expect(card).toBeVisible({ timeout: 5_000 });
+    await card.hover();
+    const settingsLink = page.getByRole("link", { name: /^Settings$/ });
+    await expect(settingsLink).toBeVisible({ timeout: 3_000 });
   });
 });

@@ -1,3 +1,4 @@
+import { withEmptyWatchlist } from "./fixtures";
 import { test, expect, type Page } from "@playwright/test";
 
 /**
@@ -157,6 +158,9 @@ test.describe("Watch, signed in", () => {
   test("an empty watchlist is a read answering empty, and names a destination", async ({
     page,
   }) => {
+    // The e2e account is not guaranteed empty; make it so for this test and
+    // restore its rows afterwards (e2e/fixtures.ts).
+    await withEmptyWatchlist(page, async () => {
     await page.goto("/watch");
     const screen = page.locator('[data-parity="watch"]');
     await expect(screen).toBeVisible({ timeout: 20_000 });
@@ -169,6 +173,7 @@ test.describe("Watch, signed in", () => {
     await expect(desk).toHaveAttribute("href", "/radar/watchlist");
     const box = await desk.boundingBox();
     expect(box!.height).toBeGreaterThanOrEqual(44);
+    });
   });
 
   test("nothing is reported as unread when nothing faulted", async ({ page }) => {
@@ -288,7 +293,8 @@ test.describe("Watch, sample content", () => {
   test("the mobile layout is absent above the breakpoint", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto("/watch");
-    await expect(page.getByText("Watch is a mobile surface.")).toBeVisible({ timeout: 20_000 });
+    // The desktop notice was reworded when Radar became the desk's four tabs.
+    await expect(page.getByText(/Radar is four sections on a phone/)).toBeVisible({ timeout: 20_000 });
     await expect(page.locator('[data-parity="watch"]')).toBeHidden();
   });
 });

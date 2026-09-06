@@ -11,13 +11,15 @@ test.describe("Dashboard", () => {
     });
 
     // Date and market status line
-    await expect(page.getByText(/Markets (Open|Closed)|Session (open|closed)/).first()).toBeVisible();
+    // Market status now reads "Markets steady", "Markets up" etc. in the top bar.
+    await expect(page.getByText(/Markets (steady|up|down|open|closed)/i).first()).toBeVisible({ timeout: 10_000 });
 
     // Stat cards should be present
     await expect(page.getByText("S&P 500").first()).toBeVisible();
-    await expect(page.getByText("VIX Fear Index").first()).toBeVisible();
-    await expect(page.getByText("10Y Yield").first()).toBeVisible();
-    await expect(page.getByText("Signals Today").first()).toBeVisible();
+    // The stat tiles were replaced by the desk's sections; assert the
+    // sections the dashboard draws today.
+    await expect(page.getByRole("heading", { name: "Top Stories" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Your calls" })).toBeVisible();
   });
 
   test("AI signal bar renders with CTA", async ({ page }) => {
@@ -25,9 +27,12 @@ test.describe("Dashboard", () => {
 
     await expect(page.getByText("Signalera AI").first()).toBeVisible({ timeout: 10_000 });
     // CTA link should exist — scope to main content area, pick first match
-    const cta = page.locator("main a[href='/morning-brief'], main a[href='/evening-wrap']").first();
-    const altCta = page.getByRole("link", { name: /Get (morning|evening)|Read full brief/ }).first();
-    await expect(cta.or(altCta)).toBeVisible();
+    // `.or()` of two `.first()` locators still resolves to every match of
+    // either, and the dashboard links to both briefs, so it tripped strict
+    // mode. Take the first of the union instead.
+    const cta = page.locator("main a[href='/morning-brief'], main a[href='/evening-wrap']");
+    const altCta = page.getByRole("link", { name: /Get (morning|evening)|Read full brief/ });
+    await expect(cta.or(altCta).first()).toBeVisible();
   });
 
   test("stories section loads or shows empty state", async ({ page }) => {
@@ -60,7 +65,9 @@ test.describe("Dashboard", () => {
 
     // Right panel widget headings are h3 elements
     await expect(page.getByRole("heading", { name: /Daily Briefs/i })).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByRole("heading", { name: /Active Theses/i })).toBeVisible();
+    // The right rail draws the account's record and follows, not a theses widget.
+    await expect(page.getByRole("heading", { name: /Signalera.s record/ })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Following" })).toBeVisible();
     await expect(page.getByRole("heading", { name: /Watchlist/i })).toBeVisible();
   });
 });
