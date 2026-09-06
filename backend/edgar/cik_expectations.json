@@ -1,0 +1,189 @@
+{
+  "_readme": [
+    "Reviewed exemptions for backend/edgar/cik_reconcile.py. JSON has no comments,",
+    "so this key carries the rules.",
+    "",
+    "WHY A LIST AT ALL. Two of the four buckets have a legitimate population.",
+    "A CIK can correctly have no companies row (an ETF, a trust, a holdco shell,",
+    "a predecessor CIK of a merged registrant), and a companies row can correctly",
+    "carry a CIK that owns no us-gaap facts (a foreign private issuer filing 20-F",
+    "or 40-F under IFRS, a closed-end fund, a listing that files nothing with SEC).",
+    "Reporting those alongside real orphans is how a check gets muted, and a muted",
+    "check is worse than no check because it also carries the belief that someone",
+    "is watching.",
+    "",
+    "WHY IT IS NOT A BARE LIST OF NUMBERS. Every entry carries the evidence that",
+    "justified it and the date it was established. An exemption you cannot audit is",
+    "indistinguishable from a bug someone silenced. `forms` is what SEC's own",
+    "submissions index reported for that CIK on `reviewed_on`.",
+    "",
+    "WHY IT CANNOT ROT. classify() audits this file against live data every run and",
+    "reports any entry that no longer describes a live condition, so an exemption",
+    "cannot outlive the situation it excused. Delete a spent entry the run it is",
+    "reported; do not leave it 'just in case'.",
+    "",
+    "TO MAKE THE CHECK FIRE ON SOMETHING HERE: delete its object. That is the whole",
+    "procedure, and it is deliberately one line, because the cost of a wrong",
+    "exemption must stay lower than the cost of arguing about it."
+  ],
+
+  "no_company_row": [
+    {
+      "cik": 1067839,
+      "cik_tickers_name": "INVESCO QQQ TRUST, SERIES 1",
+      "reason": "Unit investment trust, not an operating company. SEC entityType is 'investment' and it files only fund forms, so there is no issuer for a companies row to represent and no us-gaap financial statements to store.",
+      "forms": ["24F-2NT", "485BPOS", "N-CSRS", "NPORT-P"],
+      "reviewed_on": "2026-09-06"
+    }
+  ],
+
+  "no_facts": [
+    {
+      "cik": 16868,
+      "our_name": "Canadian National Railway",
+      "reason": "40-F filer under the Canadian MJDS. Reports under IFRS, publishes no us-gaap XBRL company facts, so financial_facts can never hold rows for it.",
+      "forms": ["40-F", "40-F/A", "6-K", "6-K/A"],
+      "reviewed_on": "2026-09-06"
+    },
+    {
+      "cik": 904851,
+      "our_name": "YPF",
+      "reason": "20-F filer, foreign private issuer reporting under IFRS. No us-gaap XBRL.",
+      "forms": ["20-F", "6-K", "6-K/A"],
+      "reviewed_on": "2026-09-06"
+    },
+    {
+      "cik": 946770,
+      "our_name": "Deutsche Telekom AG",
+      "reason": "20-F filer, foreign private issuer reporting under IFRS. No us-gaap XBRL.",
+      "forms": ["20-F", "20-F/A", "6-K", "6-K/A"],
+      "reviewed_on": "2026-09-06"
+    },
+    {
+      "cik": 1108329,
+      "our_name": "PetroChina",
+      "reason": "20-F filer, foreign private issuer reporting under IFRS. No us-gaap XBRL.",
+      "forms": ["20-F", "20-F/A", "6-K", "6-K/A"],
+      "reviewed_on": "2026-09-06"
+    },
+    {
+      "cik": 1126113,
+      "our_name": "Telenor",
+      "reason": "20-F filer, foreign private issuer reporting under IFRS. No us-gaap XBRL.",
+      "forms": ["20-F", "20-F/A", "6-K"],
+      "reviewed_on": "2026-09-06"
+    },
+    {
+      "cik": 1203464,
+      "our_name": "IAG",
+      "reason": "IAMGOLD Corp, 40-F filer under the Canadian MJDS reporting under IFRS. No us-gaap XBRL.",
+      "forms": ["40-F", "40-F/A", "6-K", "6-K/A"],
+      "reviewed_on": "2026-09-06"
+    },
+    {
+      "cik": 1293135,
+      "our_name": "Vermilion Energy",
+      "reason": "40-F filer under the Canadian MJDS reporting under IFRS. No us-gaap XBRL.",
+      "forms": ["40-F", "40-F/A", "6-K", "6-K/A"],
+      "reviewed_on": "2026-09-06"
+    },
+    {
+      "cik": 1309167,
+      "our_name": "Aecon Group Inc.",
+      "reason": "Carries a CIK because SEC lists the OTC ticker, but files no periodic report with SEC at all. There is nothing to ingest.",
+      "forms": [],
+      "reviewed_on": "2026-09-06"
+    },
+    {
+      "cik": 1370418,
+      "our_name": "Standard Life",
+      "reason": "Carries a CIK because SEC lists the OTC ADR ticker, but files no periodic report with SEC at all. There is nothing to ingest.",
+      "forms": [],
+      "reviewed_on": "2026-09-06"
+    },
+    {
+      "cik": 1437424,
+      "our_name": "Poet Technologies",
+      "reason": "20-F filer, foreign private issuer. No us-gaap XBRL.",
+      "forms": ["20-F", "20-F/A", "6-K", "6-K/A"],
+      "reviewed_on": "2026-09-06"
+    },
+    {
+      "cik": 1445214,
+      "our_name": "Soitec",
+      "reason": "Carries a CIK because SEC lists the OTC ADR ticker, but files no periodic report with SEC at all. There is nothing to ingest.",
+      "forms": [],
+      "reviewed_on": "2026-09-06"
+    },
+    {
+      "cik": 1470419,
+      "our_name": "EasyJet",
+      "reason": "Carries a CIK because SEC lists the OTC ADR ticker, but files no periodic report with SEC at all. There is nothing to ingest.",
+      "forms": [],
+      "reviewed_on": "2026-09-06"
+    },
+    {
+      "cik": 1671541,
+      "our_name": "DroneShield",
+      "reason": "Carries a CIK because SEC lists the OTC ticker, but files no periodic report with SEC at all. There is nothing to ingest.",
+      "forms": [],
+      "reviewed_on": "2026-09-06"
+    },
+    {
+      "cik": 1784930,
+      "our_name": "Mako",
+      "reason": "Mako Mining Corp, 40-F filer under the Canadian MJDS. No us-gaap XBRL.",
+      "forms": ["40-F", "6-K"],
+      "reviewed_on": "2026-09-06"
+    },
+    {
+      "cik": 1845840,
+      "our_name": "Telesat",
+      "reason": "20-F filer, foreign private issuer. No us-gaap XBRL.",
+      "forms": ["20-F", "6-K"],
+      "reviewed_on": "2026-09-06"
+    },
+    {
+      "cik": 1898416,
+      "our_name": "Alvotech",
+      "reason": "20-F filer, foreign private issuer reporting under IFRS. No us-gaap XBRL.",
+      "forms": ["20-F", "6-K", "6-K/A"],
+      "reviewed_on": "2026-09-06"
+    },
+    {
+      "cik": 1898643,
+      "our_name": "Mobilicom",
+      "reason": "20-F filer, foreign private issuer. No us-gaap XBRL.",
+      "forms": ["20-F", "6-K", "6-K/A"],
+      "reviewed_on": "2026-09-06"
+    },
+    {
+      "cik": 2002660,
+      "our_name": "Pershing Square USA",
+      "reason": "Closed-end fund. Files N-2, N-CSRS and NPORT-P, not 10-K or 10-Q, so it publishes no us-gaap XBRL financial statements.",
+      "forms": ["N-2", "N-2/A", "N-CSRS", "NPORT-P"],
+      "reviewed_on": "2026-09-06"
+    },
+    {
+      "cik": 2076975,
+      "our_name": "Braiin",
+      "reason": "Foreign private issuer, 6-K only so far. No annual report and no us-gaap XBRL.",
+      "forms": ["6-K"],
+      "reviewed_on": "2026-09-06"
+    },
+    {
+      "cik": 2080845,
+      "our_name": "PayPay Corp.",
+      "reason": "20-F filer, foreign private issuer. No us-gaap XBRL.",
+      "forms": ["20-F", "6-K"],
+      "reviewed_on": "2026-09-06"
+    },
+    {
+      "cik": 2097725,
+      "our_name": "AIR Global",
+      "reason": "20-F filer, foreign private issuer. No us-gaap XBRL.",
+      "forms": ["20-F", "6-K"],
+      "reviewed_on": "2026-09-06"
+    }
+  ]
+}

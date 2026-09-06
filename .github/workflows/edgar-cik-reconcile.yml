@@ -1,0 +1,184 @@
+name: EDGAR CIK reconciliation
+
+# WHAT THIS IS FOR.
+#
+# `companies.sec_cik` is the only thing that makes SEC data reachable. It is
+# the poll list for the daily XBRL refresh (edgar/submissions.get_xbrl_ciks)
+# and it is the join key the Financials tab reads on
+# (src/lib/financial-facts.ts, .eq("cik", res.cik), no company_id fallback).
+# Clear it from a row and the facts stored under that CIK become unreachable
+# by every product surface AND drop out of the refresh universe, silently, with
+# no error anywhere. Nothing in the pipeline notices, because nothing asks.
+#
+# This job asks. Every day, both directions.
+#
+# WHY IT IS NOT A STEP INSIDE THE INGEST JOB. It is one there too, as a
+# report-only step in xbrl.yml, so a green ingest run states its own
+# reconciliation verdict instead of implying one. But the RED/GREEN signal for
+# this condition needs its own job. A mixed-purpose job's red state does not
+# say which of its purposes failed, and the failure being closed here is
+# exactly a job that was green about the wrong question.
+
+on:
+  # PRIMARY TRIGGER. Point cron-job.org at this workflow_dispatch, the same way
+  # schedule.yml is driven, per the decision in docs/HANDOFF.md (2026-04-13).
+  workflow_dispatch:
+
+  # BACKSTOP ONLY, and named as one rather than relied on. HANDOFF.md records
+  # twice that GitHub's native scheduler silently skips runs and disables
+  # itself after 60 days of repo inactivity. That behaviour is the reason
+  # edgar_ingestion.yml has no `schedule:` block at all.
+  #
+  # It is still worth having HERE, and the reason is specific rather than
+  # careless. A skipped run of an INGEST job loses data for that window. A
+  # skipped run of a CHECK loses nothing: the condition it looks for is a
+  # standing state of the database, not an event, so the next run that does
+  # fire sees the identical finding. Under-delivery costs latency here, not
+  # coverage. Two independent triggers plus the xbrl.yml step have to all go
+  # quiet at once before the check goes unnoticed.
+  #
+  # 11:30 UTC, deliberately AFTER xbrl.yml's 10:00 so it reads the day's writes.
+  schedule:
+    - cron: '30 11 * * *'
+
+# WITHOUT THIS BLOCK, github.rest.issues.create THROWS "Resource not accessible
+# by integration" AND THE ALERT SILENTLY NO-OPS. That is not hypothetical; it
+# is written up at .github/workflows/schedule.yml lines 12-20 after it happened
+# to the issue-creating alerts there.
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: edgar-cik-reconcile
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - run: pip install -r backend/requirements.txt
+
+      - name: Reconcile the CIK universe (SELECT only)
+        id: run
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          # `set +e` is load-bearing and must not be tidied away. Actions runs
+          # `run:` under `bash -e`, so without it the first nonzero exit aborts
+          # the step and the report is never written. The exit code IS the
+          # verdict and has three meanings, 0 clean / 1 findings / 2 could not
+          # run, and the alert step needs all three plus the report body.
+          set +e
+          set -uo pipefail
+          python tools/edgar_cik_reconcile.py \
+            --json reconcile.json > reconcile.md
+          rc=$?
+          echo "rc=${rc}" >> "$GITHUB_OUTPUT"
+          # To the log only. The tool writes $GITHUB_STEP_SUMMARY itself, on
+          # every path including the could-not-run one, so appending here as
+          # well would print the whole report twice.
+          cat reconcile.md
+          exit 0
+
+      - name: Open, update or close the tracking issue
+        # `always()` on purpose. An `if: failure()` gate would mean the alert
+        # only fires when a step CRASHED, and this whole class of defect
+        # produces a clean exit while the data is wrong. The condition is read
+        # out of the database, exactly as schedule.yml's pulse-off alert is.
+        if: always()
+        uses: actions/github-script@v7
+        env:
+          RC: ${{ steps.run.outputs.rc }}
+        with:
+          script: |
+            const fs = require('fs');
+            const rc = process.env.RC;
+            const TITLE = 'EDGAR CIK reconciliation: CIKs with no claiming company row';
+            const LABELS = ['edgar-cik', 'data-integrity', 'automated'];
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+
+            let report;
+            try {
+              report = fs.readFileSync('reconcile.md', 'utf8');
+            } catch (e) {
+              report = 'The reconciliation produced no report file at all.';
+            }
+
+            // rc is unset only if the run step itself never completed, which is
+            // the could-not-run case wearing a different hat. Treat it as 2.
+            const code = (rc === '0' || rc === '1' || rc === '2') ? rc : '2';
+            const body = [
+              code === '2'
+                ? 'The reconciliation COULD NOT RUN. That is a failure, not a pass: nothing was verified.'
+                : 'Automatically maintained by `.github/workflows/edgar-cik-reconcile.yml`. Edited in place on every run, so this issue always shows the CURRENT state, not the state when it was opened.',
+              '',
+              report,
+              '',
+              `Last checked: ${new Date().toISOString()} in ${runUrl}`,
+              '',
+              'To stop this firing on a CIK that is legitimately unclaimed or legitimately has no us-gaap facts, add a reviewed entry to `backend/edgar/cik_expectations.json`. Entries carry a reason and a date, and the check reports them back as spent once they stop describing a live condition.',
+            ].join('\n');
+
+            // listForRepo, not the search API. Search is eventually consistent
+            // and rate-limited separately, so a freshly opened issue can be
+            // invisible to it for a minute. Missing the existing issue would
+            // open a duplicate every day, which is how an alert becomes noise.
+            const all = await github.paginate(github.rest.issues.listForRepo, {
+              owner: context.repo.owner, repo: context.repo.repo,
+              state: 'all', labels: 'edgar-cik', per_page: 100,
+            });
+            const existing = all.find(i => i.title === TITLE && !i.pull_request);
+
+            if (code === '0') {
+              if (existing && existing.state === 'open') {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner, repo: context.repo.repo,
+                  issue_number: existing.number,
+                  body: `Reconciliation is clean as of ${new Date().toISOString()}. Closing.\n\n${runUrl}`,
+                });
+                await github.rest.issues.update({
+                  owner: context.repo.owner, repo: context.repo.repo,
+                  issue_number: existing.number, state: 'closed',
+                });
+              }
+              return;
+            }
+
+            if (!existing) {
+              await github.rest.issues.create({
+                owner: context.repo.owner, repo: context.repo.repo,
+                title: TITLE, body, labels: LABELS,
+              });
+              return;
+            }
+
+            // ONE issue, edited in place. A new issue per run trains people to
+            // close them unread, which is the same outcome as no alert.
+            await github.rest.issues.update({
+              owner: context.repo.owner, repo: context.repo.repo,
+              issue_number: existing.number, body, state: 'open',
+            });
+            if (existing.state === 'closed') {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: existing.number,
+                body: `Reopened: the condition is present again.\n\n${runUrl}`,
+              });
+            }
+
+      - name: Fail the run on findings or on a read that could not be trusted
+        if: always()
+        run: |
+          rc="${{ steps.run.outputs.rc }}"
+          case "${rc}" in
+            0) echo "Reconciliation clean." ;;
+            1) echo "::error::EDGAR CIK reconciliation found CIKs with no claiming companies row. See the job summary and the tracking issue."; exit 1 ;;
+            *) echo "::error::EDGAR CIK reconciliation COULD NOT RUN (exit '${rc}'). This is a failure, not a pass: nothing was verified."; exit 1 ;;
+          esac
