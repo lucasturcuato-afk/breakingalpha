@@ -20,6 +20,7 @@ import { chromium, type Browser, type BrowserContext, type Page } from "@playwri
 import fs from "fs";
 import path from "path";
 import { config as dotenvConfig } from "dotenv";
+import { assertServerIsThisCheckout } from "../../server-identity";
 
 dotenvConfig({ path: path.resolve(__dirname, "../../../.env.local") });
 
@@ -201,6 +202,10 @@ export async function assertServerUp(): Promise<void> {
   } finally {
     clearTimeout(timer);
   }
+  /* Something answers. Now: is it THIS checkout, and is it a production
+     build? A dev server or another worktree's build measures the wrong
+     thing and must be an error, not a walk that quietly reports it. */
+  await assertServerIsThisCheckout(BASE, { expectNodeEnv: "production", cwd: path.resolve(__dirname, "../../..") });
 }
 
 /**
