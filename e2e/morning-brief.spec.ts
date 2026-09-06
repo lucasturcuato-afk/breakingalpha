@@ -38,7 +38,7 @@ test.describe("Morning Brief", () => {
     if (await sectionHeader.isVisible().catch(() => false)) {
       // Export and Share buttons should be present
       await expect(page.getByText(/Export Brief/).first()).toBeVisible();
-      await expect(page.locator("main").getByText(/Share/).first()).toBeVisible();
+      await expect(page.getByRole("button", { name: /^Share$/ }).first()).toBeVisible();
     }
   });
 
@@ -63,7 +63,7 @@ test.describe("Morning Brief", () => {
     await page.goto("/morning-brief");
     await page.waitForTimeout(5_000);
 
-    const shareBtn = page.locator("main").getByText(/Share/).first();
+    const shareBtn = page.getByRole("button", { name: /^Share$/ }).first();
     if (await shareBtn.isVisible().catch(() => false)) {
       await shareBtn.click();
       await expect(page.getByText("Link copied")).toBeVisible({ timeout: 3_000 });

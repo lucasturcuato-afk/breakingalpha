@@ -95,6 +95,18 @@ test.use({ viewport: { width: 1440, height: 900 } });
 /** Wait for a surface to have drawn at least one untracked footer. */
 async function waitForUntracked(page: Page, path: string) {
   await page.goto(path);
+  // The gate can only be exercised on a call. Briefs carry calls only when
+  // the pipeline wrote some for the day (none on a weekend, for instance),
+  // and a test cannot seed pipeline output. Say so, instead of timing out
+  // 20s per test and reporting the product broken.
+  await page.locator("main").waitFor({ timeout: 20_000 });
+  await page.waitForLoadState("networkidle").catch(() => undefined);
+  const calls = await page.locator('[id^="call-"]').count();
+  test.skip(
+    calls === 0,
+    `${path} carries no calls in today's brief, so there is no commit control to gate. ` +
+      "This is pipeline state, not account state; rerun on a day the brief has calls.",
+  );
   await expect(
     page.locator('[data-testid="track-state-untracked"]:visible').first(),
   ).toBeVisible({ timeout: 20_000 });
