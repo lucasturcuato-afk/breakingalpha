@@ -82,8 +82,10 @@ npm run build
 VERCEL_ENV=preview npx next start -p 3370
 ```
 
-3. The e2e credentials in `.env.local`, as above. `00-environment` signs in
-   for real and saves the state the later specs load.
+3. The e2e credentials in `.env.local`, as above, plus
+   `E2E_IDENTITY_SECRET` (section 3): the production build answers the
+   identity check only with it. `00-environment` signs in for real and
+   saves the state the later specs load.
 
 4. Then, in a second terminal:
 
@@ -129,6 +131,24 @@ WRONG SERVER on http://localhost:3000: it is not this checkout.
 A server too old to have the endpoint answers 404 and is refused for that
 reason. There is no flag to skip this check. If you mean to test another
 checkout, run the suite from that checkout.
+
+**The endpoint is not public in production.** A dev server answers anyone.
+A production build answers only a request carrying
+`x-e2e-identity: <E2E_IDENTITY_SECRET>` and answers a bodiless 404 to
+everything else, so on Vercel, where the variable is unset, the route is
+invisible. This is a shared-secret gate rather than a NODE_ENV gate because
+the pressure suite's target IS a production build. Put one line in
+`.env.local` before starting the 3370 server:
+
+```
+E2E_IDENTITY_SECRET=<any long random string>
+```
+
+`next start` and both Playwright configs read `.env.local`, so the server
+and the runner get the value from the same line and nothing else has to be
+passed. The local gate's dev server needs no secret. A 404 from the runner
+now names both possibilities: an older build, or a production build started
+without the secret the runner is sending.
 
 Reproduced on 2026-09-05 against the stale server that caused the bad run:
 it answered 404 on the endpoint and the runner refused it; a dev server

@@ -16,12 +16,19 @@
  *             worktrees), else null. Public repository, so the sha is public.
  *   node_env  so a runner expecting a production build can tell a dev server.
  *
- * No auth: the proxy leaves /api/ to its routes, and this one must answer a
- * signed-out runner. No database, no secrets, no environment values beyond
- * the three fields. Never add anything here that identifies a person.
+ * WHO MAY ASK. A dev server (NODE_ENV=development) answers anyone: it is
+ * never public. A production build answers only a request carrying
+ * `x-e2e-identity: <E2E_IDENTITY_SECRET>`, and answers 404, with no body,
+ * to everything else, so on Vercel, where the variable is not set, the
+ * route does not exist as far as the public is concerned. The pressure suite
+ * targets a production build, which is why the gate is a shared secret and
+ * not NODE_ENV: the runner and the server read the same `.env.local`, so the
+ * secret reaches both sides from one line. Compared in constant time.
+ *
+ * No database, no session. Never add anything here that identifies a person.
  */
 import { NextResponse } from "next/server";
-import { createHash } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
 import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 
@@ -75,7 +82,25 @@ export function gitHead(cwd: string): string | null {
   }
 }
 
-export async function GET() {
+export const IDENTITY_HEADER = "x-e2e-identity";
+
+/** True when the request may be answered. See WHO MAY ASK above. */
+export function identityRequestAllowed(
+  nodeEnv: string | undefined,
+  secret: string | undefined,
+  presented: string | null,
+): boolean {
+  if (nodeEnv !== "production") return true;
+  if (!secret || !presented) return false;
+  const a = Buffer.from(secret);
+  const b = Buffer.from(presented);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+export async function GET(request: Request) {
+  if (!identityRequestAllowed(process.env.NODE_ENV, process.env.E2E_IDENTITY_SECRET, request.headers.get(IDENTITY_HEADER))) {
+    return new NextResponse(null, { status: 404 });
+  }
   const cwd = process.cwd();
   return NextResponse.json(
     {

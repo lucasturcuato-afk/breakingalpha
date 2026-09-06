@@ -77,17 +77,25 @@ export async function assertServerIsThisCheckout(
   const timer = setTimeout(() => ctrl.abort(), 8_000);
   let res: Response;
   try {
-    res = await fetch(url, { signal: ctrl.signal, redirect: "manual", headers: { accept: "application/json" } });
+    // A production build answers only with the shared secret; a dev server
+    // answers regardless. Both sides read E2E_IDENTITY_SECRET from .env.local.
+    const headers: Record<string, string> = { accept: "application/json" };
+    const secret = process.env.E2E_IDENTITY_SECRET;
+    if (secret) headers["x-e2e-identity"] = secret;
+    res = await fetch(url, { signal: ctrl.signal, redirect: "manual", headers });
   } catch (e) {
     throw new Error(`WRONG OR MISSING SERVER: ${url} did not answer (${(e as Error).message}). ${RUNBOOK}`);
   } finally {
     clearTimeout(timer);
   }
   if (res.status === 404) {
+    const secretNote = process.env.E2E_IDENTITY_SECRET
+      ? "E2E_IDENTITY_SECRET is set here; if the server is a production build it must have been started with the same value"
+      : "E2E_IDENTITY_SECRET is not set here; a production build answers 404 without it";
     throw new Error(
-      `WRONG SERVER on ${baseURL}: it has no /api/e2e-identity, so it is a build older than this checkout ` +
-        `(this checkout is ${want.commit ?? "unknown"} at cwd hash ${want.cwd_hash}). Stop that server and ` +
-        `start one from here. ${RUNBOOK}`,
+      `WRONG SERVER on ${baseURL}: /api/e2e-identity answered 404. Either the server is a build older than ` +
+        `this checkout, or it is a production build refusing the request (${secretNote}). ` +
+        `This checkout is ${want.commit ?? "unknown"} at cwd hash ${want.cwd_hash}. ${RUNBOOK}`,
     );
   }
   if (!res.ok) {
