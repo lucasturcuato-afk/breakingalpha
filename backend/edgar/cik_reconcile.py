@@ -68,11 +68,18 @@ from backend.edgar.name_agreement import names_agree, normalize_tokens
 # same number.
 # ---------------------------------------------------------------------------
 
-#: Facts exist. They carry a company_id. That row is still alive and its
-#: sec_cik is NULL and its name DISAGREES with the SEC registrant.
-#: This is the signature of a deliberate identity clear that was never
-#: followed by a re-home. The pointer is a record of the OLD, WRONG owner and
-#: must not be treated as a re-home target.
+#: Facts exist. They carry a company_id. That row is still alive, its sec_cik
+#: is NULL, and its name does NOT verifiably agree with the SEC registrant,
+#: either because it disagrees or because there is no registrant name to check
+#: against. This is the signature of a deliberate identity clear that was never
+#: followed by a re-home. The pointer is a record of the OLD owner and must not
+#: be treated as a re-home target.
+#:
+#: The unverifiable case lands HERE rather than in SAFE_POINTER on purpose.
+#: `names_agree` fails open with no authority, and SAFE_POINTER's meaning is
+#: "the name checks out, stamp the CIK back onto this row". Letting a
+#: no-authority verdict reach that bucket turns "nothing was checked" into an
+#: instruction to restore an identity nobody verified.
 WRONG_POINTER = "orphaned_facts_wrong_pointer"
 
 #: Facts exist and carry NO company_id at all. `financial_facts.company_id` is
@@ -508,9 +515,11 @@ def render(report: dict[str, Any]) -> str:
     titles = {
         WRONG_POINTER: (
             "Facts orphaned by an identity clear that was never re-homed",
-            "Their facts still point at the row that used to hold the CIK. That "
-            "row's name DISAGREES with the SEC registrant, which is why the CIK "
-            "was cleared off it. Do NOT stamp it back. Re-home to the receiver.",
+            "Their facts still point at the row that used to hold the CIK, and "
+            "that row's name does NOT verifiably agree with the SEC registrant. "
+            "The `pointed at` column gives the row and the reason. Do NOT stamp "
+            "the CIK back onto it. Re-home to the receiver, or mint a correctly "
+            "named row if there is none.",
         ),
         UNBOUND: (
             "Facts orphaned by a deleted or merged-away row",
@@ -540,13 +549,15 @@ def render(report: dict[str, Any]) -> str:
         out.append("")
         out.append(why)
         out.append("")
-        out.append("| CIK | registrant | facts | filings | receiving row |")
-        out.append("| --- | --- | --- | --- | --- |")
+        out.append(
+            "| CIK | registrant | facts | filings | pointed at | receiving row |"
+        )
+        out.append("| --- | --- | --- | --- | --- | --- |")
         for r in rows:
             out.append(
                 f"| `{r['cik']}` | {r.get('registrant') or 'unknown to cik_tickers'}"
                 f" ({r.get('registrant_ticker') or '-'}) | {r['facts']} | "
-                f"{r['filings']} | {_receiver_cell(r)} |"
+                f"{r['filings']} | {_pointer_cell(r)} | {_receiver_cell(r)} |"
             )
 
     supp = report["unclaimed"]["suppressed"]
@@ -603,6 +614,23 @@ def render(report: dict[str, Any]) -> str:
             out.append(f"| `{s['cik']}` | {s['section']} | {s['why']} |")
 
     return "\n".join(out)
+
+
+def _pointer_cell(entry: dict) -> str:
+    """The row the facts still point at, and WHY it was not accepted.
+
+    The reason is printed rather than summarised because the two ways a pointer
+    fails verification call for different work. "disagree" means the clear was
+    right and a different row must take the CIK. "rejected fail-open: no
+    authority name" means nothing was checked at all, because SEC does not list
+    this CIK with a ticker, and someone has to establish the identity by hand.
+    """
+    p = entry.get("pointer")
+    if not p:
+        return "nothing, company_id is NULL on every fact"
+    if p.get("state") == "dangling":
+        return f"`{p.get('company_id')}`, a row that no longer exists"
+    return f"`{p.get('name')}` ({p.get('why')})"
 
 
 def _receiver_cell(entry: dict) -> str:

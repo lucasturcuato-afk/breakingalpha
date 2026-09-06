@@ -143,6 +143,34 @@ class TestTheStrandingItExistsToCatch(unittest.TestCase):
         )
         self.assertEqual([h["cik"] for h in r["unclaimed"][UNBOUND]], [103379])
 
+    def test_an_uncheckable_pointer_is_never_called_safe(self):
+        """The fail-open leak, found by mutation and not by reading.
+
+        `names_agree` FAILS OPEN when there is no authority name, which is
+        correct for a write gate whose cost model is "a rejection costs a
+        missing identifier, never a wrong one". Here the same True means
+        NOTHING WAS CHECKED, and SAFE_POINTER's whole meaning is "the name
+        checks out, stamp the CIK back onto this row". Letting a no-authority
+        verdict reach that bucket turns silence into an instruction.
+
+        cik_tickers only lists CIKs SEC publishes with a ticker, so a delisted
+        or fund CIK reaches this path in production, not just in a test.
+        """
+        r = run(
+            fact_ciks={320193, 999001},
+            fact_counts={999001: 500},
+            filing_counts={999001: 1},
+            companies=[HEALTHY, WRONG_NAMED],
+            fact_pointers={999001: ["row-vanguard"]},
+            registrants={},  # SEC lists no ticker for it, so no authority name
+        )
+        self.assertEqual(r["unclaimed"][SAFE_POINTER], [])
+        hit = r["unclaimed"][WRONG_POINTER][0]
+        self.assertEqual(hit["cik"], 999001)
+        self.assertFalse(hit["pointer"]["names_agree"])
+        self.assertIn("fail-open", hit["pointer"]["why"])
+        self.assertIn("fail-open", render(r))
+
     def test_an_agreeing_pointer_is_a_separate_and_benign_bucket(self):
         """A row that merely lost its CIK is directly fixable and must not be
         reported next to the wrong-identity case, which is not."""
