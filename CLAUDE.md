@@ -183,6 +183,14 @@ traps is not exempt from being one.
   apply with nothing lost. Had it applied cleanly it would have silently mixed
   two sessions' work into one diff. Commit to a scratch branch instead, or use
   `git worktree add` for the thing you were about to stash for.
+- THE DEV SERVER PARKS AN ELEMENT OVER THE BOTTOM LEFT OF THE VIEWPORT.
+  Next's dev tools indicator renders as `NEXTJS-PORTAL` and it does not exist
+  in a production build. Hit-test a bottom bar on `next dev` and the leftmost
+  control answers with the portal, which reads exactly like the navigation
+  trap this programme has now found on three separate screens. It invents a
+  blocker rather than hiding one, so the report is confident and wrong.
+  Measure poles, bars and anything else anchored to the bottom of the viewport
+  on a production build only.
 - LAYOUT QUANTISES TO A 1/64px GRID AND THE CSSOM SERIALISES TO SIX
   SIGNIFICANT DIGITS, and those two facts disagree. A grid-exact
   `16.953125px` comes back out of `getComputedStyle` as `16.9531px`, one grid
