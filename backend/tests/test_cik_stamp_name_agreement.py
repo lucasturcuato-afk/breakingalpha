@@ -353,3 +353,40 @@ class FinnhubAuthorGateTests(unittest.TestCase):
             self._c("FDBC", "Fidelity D & D Bancorp Inc"),
         ]
         self.assertIsNone(_pick_us_primary(res, our_name="Fidelity"))
+
+
+class BoundedSubsetRule(unittest.TestCase):
+    """The subset branch was unbounded while the head-prefix branch was not.
+
+    Replayed against live Finnhub /search on 2026-09-06: 'Energy Capital'
+    returns 'El Paso Energy Capital Trust I' at rank 1, the subset branch
+    accepted it on two shared tokens, and EP PR C reached a companies row.
+    Same shape the head-prefix bound was written to reject, on the branch that
+    never got the bound.
+    """
+
+    def test_rejects_a_non_leading_subset_that_adds_more_than_one_token(self):
+        # {energy, capital} is a subset of {el, paso, energy, capital, trust}
+        # with 2 shared tokens. Unbounded, that is an accept.
+        self.assertFalse(
+            names_agree("Energy Capital", "El Paso Energy Capital Trust I")[0]
+        )
+
+    def test_still_accepts_a_leading_subset_however_much_is_added(self):
+        # Position carries the claim when the bound cannot.
+        self.assertTrue(names_agree("Grocery Outlet", "Grocery Outlet Holding Corp.")[0])
+
+    def test_still_accepts_a_bounded_subset_that_does_not_lead(self):
+        # One extra identity token is inside the bound regardless of position.
+        self.assertTrue(names_agree("Norwegian Cruise", "Norwegian Cruise Line")[0])
+
+    def test_the_twenty_stamped_rows_are_unaffected(self):
+        # Measured: of the CIK-bearing rows in prod, the ones the subset branch
+        # accepted are all either leading or within the bound. The tightening
+        # costs none of them. These are drawn from that set.
+        for ours, authority in [
+            ("Theravance Biopharma", "Theravance Biopharma, Inc."),
+            ("PennantPark Investment", "PennantPark Investment Corp"),
+            ("Guardian Pharmacy Services", "Guardian Pharmacy Services, Inc."),
+        ]:
+            self.assertTrue(names_agree(ours, authority)[0], f"{ours}/{authority}")

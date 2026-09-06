@@ -142,6 +142,56 @@ def _load_eligible_companies(supabase, batch_size: int = 1000) -> list:
         offset += batch_size
 
 
+def _ticker_already_held(supabase, ticker: str, exclude_id: str) -> Optional[str]:
+    """Name of another companies row already holding `ticker`, else None.
+
+    THERE IS NO UNIQUE INDEX BEHIND `companies.ticker`. Nothing in the database
+    refuses a second holder and nothing reports one, so every duplicate ticker
+    in prod got in through this gap: a row is matched by name, the symbol is
+    already carried by a different row, and the write lands anyway. The damage
+    is not on the company page (both resolvers rank a CIK-bearing row first)
+    but in src/app/api/radar/follows/route.ts, which reads
+    .eq("ticker", ...).limit(1) with NO ORDER BY and takes whichever row
+    Postgres hands back.
+
+    Case-insensitive because the duplicates in prod differ by case as well as
+    by row. `.limit(1)` is used for EXISTENCE only; its length is never read as
+    a count of holders.
+    """
+    resp = (
+        supabase.table("companies")
+        .select("id, name")
+        .ilike("ticker", ticker)
+        .neq("id", exclude_id)
+        .limit(1)
+        .execute()
+    )
+    rows = resp.data or []
+    if not rows:
+        return None
+    return rows[0].get("name") or rows[0].get("id") or "unknown row"
+
+
+def write_ticker_guarded(supabase, cid: str, name: str, ticker: str) -> str:
+    """Write `ticker` onto row `cid` unless another row already holds it.
+
+    Returns "written" or "duplicate". Exists as its own function so the
+    DECISION NOT TO WRITE is testable: a test that only exercises
+    _ticker_already_held stays green when the call is deleted from the loop,
+    which is a guard with no proof behind it.
+    """
+    holder = _ticker_already_held(supabase, ticker, cid)
+    if holder is not None:
+        print(
+            "backfill_tickers: SKIP duplicate {!r} for {!r}: already held by {!r}".format(
+                ticker, name, holder
+            )
+        )
+        return "duplicate"
+    supabase.table("companies").update({"ticker": ticker}).eq("id", cid).execute()
+    return "written"
+
+
 def _format_eta(seconds: float) -> str:
     if seconds < 60:
         return "{:.0f}s".format(seconds)
@@ -192,6 +242,7 @@ def main() -> int:
     updated = 0
     no_match = 0
     errored = 0
+    duplicate_skipped = 0
     processed = 0
     sample_logged = 0
     started = time.time()
@@ -242,9 +293,9 @@ def main() -> int:
                 no_match += 1
             else:
                 try:
-                    supabase.table("companies").update({"ticker": ticker}).eq(
-                        "id", cid
-                    ).execute()
+                    if write_ticker_guarded(supabase, cid, name, ticker) == "duplicate":
+                        duplicate_skipped += 1
+                        continue
                     updated += 1
                 except Exception as ex:  # noqa: BLE001
                     errored += 1
@@ -266,10 +317,14 @@ def main() -> int:
         print("backfill_tickers: interrupted", file=sys.stderr)
         return 130
 
-    skipped = 0  # rows with an existing ticker AND rows below the gate are excluded server-side
+    # Rows with an existing ticker AND rows below the mention gate are excluded
+    # server-side, so `skipped` counts only writes this run declined: today that
+    # is the duplicate-holder guard.
+    skipped = duplicate_skipped
     print(
-        "inserted={} skipped={} no_match={} errored={} total={}".format(
-            updated, skipped, no_match, errored, total if not args.dry_run else processed
+        "inserted={} skipped={} duplicate_skipped={} no_match={} errored={} total={}".format(
+            updated, skipped, duplicate_skipped, no_match, errored,
+            total if not args.dry_run else processed
         )
     )
 

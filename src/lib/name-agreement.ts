@@ -135,6 +135,16 @@ function acronymOf(short: Set<string>, longSeq: string[]): boolean {
  * authority adds at most MAX_HEAD_PREFIX_EXTRA identity tokens. The
  * positional test uses RAW tokens so a brand that genuinely ends in a legal
  * form ("Urban Company" vs "URBAN OUTFITTERS INC") cannot pose as a prefix. */
+/** `shorter`'s raw token sequence is a LEADING run of `longer`'s. Raw tokens,
+ * nothing dropped but single-character debris, for the reason on
+ * headPrefixAgrees. */
+function isLeadingRun(shorter: string, longer: string): boolean {
+  const s = tokens(shorter, new Set<string>());
+  const l = tokens(longer, new Set<string>());
+  if (!s.length) return false;
+  return l.slice(0, s.length).join(" ") === s.join(" ");
+}
+
 function headPrefixAgrees(ourName: string, authorityName: string): boolean {
   const ours = tokens(ourName, new Set<string>());
   const theirs = tokens(authorityName, new Set<string>());
@@ -181,7 +191,22 @@ export function namesAgree(
   const oursSubset = sortedOurs.every((t) => theirs.has(t));
   const theirsSubset = sortedTheirs.every((t) => ours.has(t));
   if ((oursSubset || theirsSubset) && shared >= MIN_SHARED_TOKENS) {
-    return { agrees: true, reason: `subset with ${shared} shared tokens` };
+    // BOUNDED, for the same reason headPrefixAgrees is bounded. An unbounded
+    // subset accepts "Energy Capital" inside "El Paso Energy Capital Trust I",
+    // a private PE firm matched to a preferred-share trust, and that is how
+    // EP PR C reached a companies row. Accept when the longer name adds almost
+    // nothing, OR when the shorter one LEADS it. Position is what rejects the
+    // "Vanguard" inside "AMERICAN VANGUARD CORP" shape.
+    const [shorter, longer] = oursSubset
+      ? [ourName, authorityName]
+      : [authorityName, ourName];
+    const smaller = oursSubset ? ours : theirs;
+    const bigger = oursSubset ? theirs : ours;
+    let extra = 0;
+    for (const t of bigger) if (!smaller.has(t)) extra++;
+    if (extra <= MAX_HEAD_PREFIX_EXTRA || isLeadingRun(shorter, longer)) {
+      return { agrees: true, reason: `subset with ${shared} shared tokens` };
+    }
   }
 
   const ratio = difflibRatio(sortedOurs.join(" "), sortedTheirs.join(" "));
