@@ -42,7 +42,7 @@ test("a ticker without an exchange never asserts an exchange", () => {
   }
 });
 
-test("a real exchange value is printed when we hold one", () => {
+test("a real exchange value is printed when the row carries one", () => {
   assert.equal(
     formatSubtitle(detail({ ticker: "CF", exchange: "NYSE", sector: "Materials" })),
     "NYSE · Materials",

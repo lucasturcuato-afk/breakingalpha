@@ -115,7 +115,7 @@ test("verdict: assemble the report", async () => {
 
   expect(
     byPass("empty").length + byPass("populated").length,
-    "the walk must have visited something: pressure-report/ holds no route visits, so 10-walk-empty " +
+    "the walk must have visited something: pressure-report/ contains no route visits, so 10-walk-empty " +
       "and 30-walk-populated did not run against a live server before this verdict. Run the suite in " +
       "file order with `npm run test:pressure` (see docs/runbooks/e2e-suites.md)",
   ).toBeGreaterThan(0);
