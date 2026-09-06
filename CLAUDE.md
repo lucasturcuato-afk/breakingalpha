@@ -62,8 +62,9 @@ rendered-fixture proof substitutes for it on data-access and logic changes.
 - A visual smoke test is required before every PR merge.
 - Before opening a PR, run /preflight; the hard gates (tsc, lint, build) must
   pass. e2e is advisory, not a blocking gate. See the Preflight gate section.
-- Agents never merge to main, apply migrations, or dispatch production pipeline
-  runs. Surface these for a human.
+- Agents never merge to main or dispatch production pipeline runs. Surface
+  these for a human. Applying SQL is no longer on that list; see the Database
+  writes section below for what an agent may apply and what still stops.
 - **This repo is PUBLIC. Never publish live product data to it.** PR bodies, PR
   comments, issues and commit messages are world-readable. Keep out: row counts
   and volumes (deals, graded calls, articles, follows, watchlist entries),
@@ -76,6 +77,39 @@ rendered-fixture proof substitutes for it on data-access and logic changes.
   fragments already in the public source are fine. When in doubt, leave it out
   and say what you left out.
 
+
+## Database writes
+
+Agents apply SQL themselves. The old rule ("agents never apply migrations") and
+its enforcing hook are gone, replaced by these five rules. They are the whole
+constraint: what is not listed here needs no permission.
+
+- **VERIFY first, every time.** Run the migration's section 0 before its APPLY
+  section and compare against the expected results the file states. If any
+  number differs, STOP and report the difference. There is no blind apply, and
+  "the file said it would be 85" is not a reason to run an UPDATE that a
+  SELECT just said touches 4,000 rows.
+- **These four stop and come to the human, always:** `DROP TABLE`,
+  `DROP COLUMN`, `TRUNCATE`, and any `DELETE` or `UPDATE` with no `WHERE`
+  clause. Surface the statement and wait. Everything else, including
+  `CREATE TABLE`, `ALTER TABLE ADD COLUMN`, `CREATE INDEX`, `CREATE POLICY`,
+  and a scoped `UPDATE` or `DELETE` that has a `WHERE`, the agent applies.
+- **Before any destructive statement, count first.** Report the exact number of
+  rows it will touch, from a `SELECT count(*)` carrying the identical
+  predicate. A destructive statement whose blast radius was never measured does
+  not run. This is what makes the rule above a decision rather than a guess.
+- **After every apply, MEASURE.** Run the file's section 2 and report the real
+  numbers it returned. Never "should have worked", never "applied
+  successfully" on its own. An apply with no measurement is an unverified
+  claim, and the difference is the whole point of the layout.
+- **Migrations stay files in `sql/`,** numbered, with the same
+  VERIFY / APPLY / MEASURE layout. Applying one does not replace writing it
+  down: the file is the record of what ran and the only thing a future reader
+  can audit. Never apply SQL that exists only in a shell command.
+
+A `HAND-APPLY` header on an older file in `sql/` predates this section and does
+not override it. The four destructive statements above stop regardless of what
+any file header says.
 
 ## Preflight gate
 Hard gates, must pass before any PR: tsc (0 errors), lint (0 errors), build
