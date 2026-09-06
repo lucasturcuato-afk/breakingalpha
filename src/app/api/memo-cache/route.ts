@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseWithUser } from "@/lib/supabase-server";
+import { getServiceSupabase } from "@/lib/supabase-service";
 
 // ---------------------------------------------------------------------------
 // /api/memo-cache
@@ -92,10 +93,7 @@ export async function GET(request: NextRequest) {
     // Service-role client; outputs RLS is row-level user_id scoped but we
     // filter explicitly on user_id below so the service role only acts as
     // an RLS bypass for clean indexed lookups.
-    const svc = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    );
+    const svc = getServiceSupabase();
 
     const cutoff = new Date(Date.now() - CACHE_TTL_HOURS * 60 * 60 * 1000).toISOString();
     // WD139: filter by target_company in the query (indexed JSONB path lookup),

@@ -38,6 +38,10 @@ from collections import Counter
 from datetime import datetime, timezone, timedelta
 
 from supabase import create_client
+try:
+    from supabase_client import service_client  # cron context: cwd=backend/
+except ImportError:  # pragma: no cover - test/dev context: cwd=repo-root
+    from backend.supabase_client import service_client
 from google import genai
 from google.genai import types
 
@@ -183,7 +187,7 @@ def build_brief_improvement_addendum(brief_type: str, lookback_days: int = 7) ->
         quality_rows: list[dict] = []
         try:
             resp = (
-                supabase.table("brief_quality_scores")
+                service_client().table("brief_quality_scores")
                 .select("soft_flags")
                 .eq("brief_type", brief_type)
                 .gte("created_at", cutoff)

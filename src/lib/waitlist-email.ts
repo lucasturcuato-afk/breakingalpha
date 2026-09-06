@@ -56,9 +56,9 @@ const TEXT_BODY = [HEADING, P1, P2, P3, P4, P5, SIGNOFF, CLOSING, FOOTER].join(
  */
 function makeServiceClient(): SupabaseClient | null {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key =
-    process.env.SUPABASE_SERVICE_ROLE_KEY ||
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  // Service role only. No anon fallback: RLS rejects anon on these tables and
+  // the failure would surface as an opaque empty result or 500 (see supabase-service.ts).
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) return null;
   return createClient(url, key, { auth: { persistSession: false } });
 }

@@ -46,6 +46,10 @@ except Exception:
 
 import numpy as np
 from supabase import create_client
+try:
+    from supabase_client import service_client  # cron context: cwd=backend/
+except ImportError:  # pragma: no cover - test/dev context: cwd=repo-root
+    from backend.supabase_client import service_client
 from google import genai
 
 # Reuse the existing embedding helper so the same Gemini model + dimensions
@@ -276,7 +280,7 @@ def _fetch_live_thesis_embeddings(sb) -> list[dict]:
 
     thesis_ids = [t["id"] for t in theses]
     emb_resp = (
-        sb.table("content_embeddings")
+        service_client().table("content_embeddings")
         .select("content_id, embedding")
         .eq("content_type", "thesis")
         .in_("content_id", thesis_ids)

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 import { getSupabaseWithUser } from "@/lib/supabase-server";
 import { recordOutput, isOutputType, OUTPUT_TYPES } from "@/lib/outputs";
+import { getServiceSupabase } from "@/lib/supabase-service";
 
 /**
  * Lightweight endpoint to record an output row without regenerating content.
@@ -44,10 +44,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const svcSupabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-  );
+  const svcSupabase = getServiceSupabase();
 
   const outputId = await recordOutput(svcSupabase, {
     output_type: body.output_type,

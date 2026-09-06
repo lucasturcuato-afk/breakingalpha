@@ -43,6 +43,7 @@ import embedding_job
 import thesis_generator
 import sector_backfill
 import flag_report
+import supabase_client
 
 logger = logging.getLogger("run")
 if not logger.handlers:
@@ -129,6 +130,9 @@ if __name__ == "__main__":
     # `gh run view <id> --log | grep '\[FLAGS\]'`, not with a five-run grep dig.
     # See backend/flag_report.py for why. Never raises.
     flag_report.emit()
+    # Role claim of each bound key, never the key. Answers "which role is
+    # this run actually using?" from the log alone.
+    supabase_client.assert_key_roles()
 
     pipeline_t0 = time.time()
 

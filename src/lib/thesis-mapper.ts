@@ -38,7 +38,6 @@ export interface RawThesisRow {
   ticker?: string | null;
   horizon?: string | null;
   check_after?: string | null;
-  notes?: string | null;
   generated_at?: string | null;
   verifiable_signal?: string | null;
   user_id?: string | null;
@@ -78,8 +77,7 @@ function coerceEvidenceChain(value: unknown): ThesisItem["evidence_chain"] {
 }
 
 /**
- * Map a raw `theses` row (plus optional flattened `notes` from a
- * `thesis_notes` join) into the UI `ThesisItem` shape.
+ * Map a raw `theses` row into the UI `ThesisItem` shape.
  *
  * Safe to call on unknown-shaped objects — unexpected fields are discarded,
  * missing fields fall through to conservative defaults (`WATCH`, `new-signal`).
@@ -123,7 +121,6 @@ export function mapThesisRow(row: RawThesisRow): MappedThesis {
     ticker: typeof row.ticker === "string" ? row.ticker : null,
     horizon: typeof row.horizon === "string" ? row.horizon : null,
     check_after: typeof row.check_after === "string" ? row.check_after : null,
-    notes: typeof row.notes === "string" ? row.notes : null,
     generated_at: generatedAt,
     output_id: typeof row.output_id === "string" ? row.output_id : null,
   };

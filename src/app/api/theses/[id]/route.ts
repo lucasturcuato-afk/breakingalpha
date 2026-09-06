@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 import { getSupabaseWithUser } from "@/lib/supabase-server";
 import { mapThesisRow } from "@/lib/thesis-mapper";
+import { getServiceSupabase } from "@/lib/supabase-service";
 
 export const dynamic = "force-dynamic";
 
@@ -26,11 +26,7 @@ export async function PATCH(
   // Service-role client: bypasses RLS so the write succeeds even though the
   // theses table currently has no UPDATE policy. Ownership is enforced in code
   // below (see the ownership guard) rather than via RLS.
-  const supabaseAdmin = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { auth: { persistSession: false } },
-  );
+  const supabaseAdmin = getServiceSupabase();
 
   const { id } = await params;
   const body = await request.json();

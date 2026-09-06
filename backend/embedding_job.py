@@ -9,6 +9,10 @@ import os
 import time
 from datetime import datetime, timedelta, timezone
 from supabase import create_client
+try:
+    from supabase_client import service_client  # cron context: cwd=backend/
+except ImportError:  # pragma: no cover - test/dev context: cwd=repo-root
+    from backend.supabase_client import service_client
 from google import genai
 
 supabase = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_ANON_KEY"])
@@ -101,7 +105,7 @@ def _embedded_among(content_type: str, candidate_ids: list) -> set:
         chunk = candidate_ids[i:i + _PROBE_CHUNK]
         try:
             rows = (
-                supabase.table("content_embeddings")
+                service_client().table("content_embeddings")
                 .select("content_id")
                 .eq("content_type", content_type)
                 .in_("content_id", chunk)

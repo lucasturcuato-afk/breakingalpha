@@ -181,6 +181,12 @@ class EmbeddingScaleTest(unittest.TestCase):
         orig = embedding_job.supabase
         embedding_job.supabase = fake
         self.addCleanup(lambda: setattr(embedding_job, "supabase", orig))
+        # The content_embeddings probe reads through the service client now
+        # (RLS on, no policy: an anon read returns [] with no error), so the
+        # seam the probe goes through is patched to the same fake.
+        orig_svc = embedding_job.service_client
+        embedding_job.service_client = lambda: fake
+        self.addCleanup(lambda: setattr(embedding_job, "service_client", orig_svc))
         return fake
 
     # --- Invariant 1: no id EXCLUSION filter, no unbounded id list -----------

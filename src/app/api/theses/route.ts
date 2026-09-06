@@ -1,38 +1,21 @@
 import { NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
-import { createClient } from "@supabase/supabase-js";
 import { getSupabaseWithUser } from "@/lib/supabase-server";
 import { mapThesisRow, dedupByTitleSector, thesisDedupKey, thesisFuzzyKey } from "@/lib/thesis-mapper";
 import { getUserProfile, sectorWeight } from "@/lib/user-profile";
 import { recordOutput } from "@/lib/outputs";
 import { THESIS_FRONTEND_PROMPT_VERSION } from "@/lib/output-constants";
 import { enforceThesisRecommendation, hasThesisViolation } from "@/lib/thesis-recommendation-guard";
+import { getServiceSupabase } from "@/lib/supabase-service";
 
 export const dynamic = "force-dynamic";
-
-// ── Phase 0.1: thesis_notes DDL (printed on first GET) ──
-const THESIS_NOTES_DDL = `
-create table if not exists public.thesis_notes (
-  id uuid primary key default gen_random_uuid(),
-  thesis_id uuid not null references public.theses(id) on delete cascade,
-  content text not null default '',
-  updated_at timestamptz not null default now(),
-  unique (thesis_id)
-);
-create index if not exists thesis_notes_thesis_id_idx on public.thesis_notes(thesis_id);
-`;
 
 // ── GET /api/theses — fetch theses with dedupe + digest ──
 export async function GET() {
   const { supabase, user } = await getSupabaseWithUser();
   if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
-  // Print DDL for thesis_notes (informational)
-  console.log("[theses GET] thesis_notes DDL (run in Supabase SQL editor if not already applied):");
-  console.log(THESIS_NOTES_DDL);
-
   try {
-    // Fetch theses with optional thesis_notes join
     let theses: Record<string, unknown>[] = [];
     try {
       const { data, error: thesesErr } = await supabase
@@ -41,41 +24,16 @@ export async function GET() {
           "id, title, rationale, sector, conviction, catalyst, catalyst_note, " +
           "bear_case, adversarial_score, passed_adversarial, outcome, outcome_notes, " +
           "signal_breakdown, evidence_chain, supporting_articles, ticker, horizon, " +
-          "check_after, status, generated_at, source, verifiable_signal, " +
-          "thesis_notes(content, updated_at)"
+          "check_after, status, generated_at, source, verifiable_signal"
         )
         .order("generated_at", { ascending: false })
         .limit(100);
-      if (thesesErr) {
-        console.warn("[theses GET] thesis join failed, retrying without notes:", thesesErr.message);
-        // Fallback: fetch without the thesis_notes join
-        const { data: fallback, error: fallbackErr } = await supabase
-          .from("theses")
-          .select("*")
-          .order("generated_at", { ascending: false })
-          .limit(100);
-        if (fallbackErr) throw fallbackErr;
-        theses = (fallback || []) as unknown as Record<string, unknown>[];
-      } else {
-        theses = (data || []) as unknown as Record<string, unknown>[];
-      }
+      if (thesesErr) throw thesesErr;
+      theses = (data || []) as unknown as Record<string, unknown>[];
     } catch (e) {
       console.error("[theses GET] theses fetch failed:", e);
       return NextResponse.json({ theses: [], digest: null, error: "Failed to fetch theses" });
     }
-
-    // Flatten thesis_notes into a top-level `notes` field
-    theses = theses.map((t) => {
-      const notesJoin = t.thesis_notes;
-      let notes: string | null = null;
-      if (Array.isArray(notesJoin) && notesJoin.length > 0) {
-        notes = (notesJoin[0] as Record<string, unknown>).content as string || null;
-      } else if (notesJoin && typeof notesJoin === "object" && !Array.isArray(notesJoin)) {
-        notes = (notesJoin as Record<string, unknown>).content as string || null;
-      }
-      const { thesis_notes: _, ...rest } = t;
-      return { ...rest, notes };
-    });
 
     // Dedup by `${title.trim().toLowerCase()}|${sector}`, keeping the most
     // recent by generated_at. Single source of truth in thesis-mapper.ts so
@@ -204,10 +162,7 @@ export async function POST() {
     const validIds = new Set<string>();
 
     // Service-role client for pipeline tables (not gated on user session/RLS)
-    const adminSupabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    );
+    const adminSupabase = getServiceSupabase();
 
     // 1. Pull the most recent run_id from trend_clusters within the last 48h
     const lookbackIso = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();

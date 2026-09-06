@@ -36,7 +36,6 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
-import { createClient } from "@supabase/supabase-js";
 
 import { getSupabaseWithUser } from "@/lib/supabase-server";
 import { recordOutput } from "@/lib/outputs";
@@ -50,6 +49,7 @@ import {
   type OverviewCacheContent,
   type OverviewInputs,
 } from "@/lib/company-overview";
+import { getServiceSupabase } from "@/lib/supabase-service";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
@@ -57,11 +57,7 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 // user-scoped; the normalized overview is company-scoped, not user data).
 // autoRefreshToken:false avoids a retained refresh ticker on reused instances.
 function serviceClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { auth: { persistSession: false, autoRefreshToken: false } },
-  );
+  return getServiceSupabase();
 }
 
 export async function POST(request: NextRequest) {

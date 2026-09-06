@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
-import { createClient } from "@supabase/supabase-js";
 import { thesisDedupKey, thesisFuzzyKey } from "@/lib/thesis-mapper";
+import { getServiceSupabase } from "@/lib/supabase-service";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -46,10 +46,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  const adminSupabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-  );
+  const adminSupabase = getServiceSupabase();
 
   // 1. Fetch all theses with null ticker
   const { data: nullTickerRows, error: fetchErr } = await adminSupabase
