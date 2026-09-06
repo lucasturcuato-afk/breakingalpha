@@ -390,3 +390,49 @@ class BoundedSubsetRule(unittest.TestCase):
             ("Guardian Pharmacy Services", "Guardian Pharmacy Services, Inc."),
         ]:
             self.assertTrue(names_agree(ours, authority)[0], f"{ours}/{authority}")
+
+
+class IssuerSymbolShape(unittest.TestCase):
+    """The US-primary filter looked for a PERIOD and never anticipated a SPACE.
+
+    Finnhub returns {"type": "Common Stock", "symbol": "EP PR C",
+    "displaySymbol": "EP PR C", "description": "El Paso Energy Capital Trust I"}.
+    Typed Common Stock, no period, so it passed every filter and reached a
+    companies row. It is preferred series C, not a company symbol.
+    """
+
+    @staticmethod
+    def _c(sym, desc, type_="Common Stock"):
+        return {"symbol": sym, "displaySymbol": sym, "description": desc, "type": type_}
+
+    def test_rejects_a_preferred_share_designation(self):
+        res = [self._c("EP PR C", "El Paso Energy Capital Trust I")]
+        self.assertIsNone(_pick_us_primary(res, our_name=None))
+
+    def test_rejects_the_same_shape_already_live_in_prod(self):
+        # TRTN PR A sits on a CIK-bearing row today. Same shape, same gap.
+        res = [self._c("TRTN PR A", "Triton International Ltd")]
+        self.assertIsNone(_pick_us_primary(res, our_name=None))
+
+    def test_rejects_a_pre_ipo_placeholder(self):
+        # Four letters after a hyphen are not a share class.
+        res = [self._c("IPO-ELLT", "Elliott Opportunity")]
+        self.assertIsNone(_pick_us_primary(res, our_name=None))
+
+    def test_keeps_both_spellings_of_a_real_class_share(self):
+        # Some feeds write Moog Inc Class A as MOG-A and some as MOG.A.
+        self.assertEqual(
+            _pick_us_primary([self._c("MOG-A", "Moog Inc")], our_name=None), "MOG-A"
+        )
+        self.assertEqual(
+            _pick_us_primary([self._c("BRK.B", "Berkshire Hathaway Inc")], our_name=None),
+            "BRK.B",
+        )
+
+    def test_keeps_ordinary_symbols_of_every_length(self):
+        for sym in ["KO", "MARA", "SSNLF", "V", "NCLH"]:
+            self.assertEqual(
+                _pick_us_primary([self._c(sym, "Some Issuer Inc")], our_name=None),
+                sym,
+                sym,
+            )

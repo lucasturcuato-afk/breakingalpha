@@ -13,7 +13,10 @@ from __future__ import annotations
 import unittest
 
 from backend.scripts.backfill_tickers import (
+    CLEARED_TICKER_VIEW,
+    JournalUnavailable,
     _ticker_already_held,
+    load_cleared_tickers,
     write_ticker_guarded,
 )
 
@@ -146,4 +149,106 @@ class GuardedWriteRefusesTheDuplicate(unittest.TestCase):
         c = _Client(list(ROWS))
         outcome = write_ticker_guarded(c, "row-bare", "Marathon Digital", "MARA")
         self.assertEqual(outcome, "written")
+        self.assertEqual(c.writes, [("row-bare", {"ticker": "MARA"})])
+
+
+class _JournalQuery:
+    def __init__(self, rows, fail=False):
+        self.rows, self.fail = rows, fail
+        self.lo = self.hi = None
+
+    def select(self, *_a, **_k):
+        return self
+
+    def order(self, *_a, **_k):
+        return self
+
+    def range(self, lo, hi):
+        self.lo, self.hi = lo, hi
+        return self
+
+    def execute(self):
+        if self.fail:
+            raise RuntimeError('{"code":"PGRST205","message":"Could not find the table"}')
+        return _Resp(self.rows[self.lo : self.hi + 1])
+
+
+class _JournalClient:
+    def __init__(self, rows, fail=False):
+        self.rows, self.fail = rows, fail
+
+    def table(self, name):
+        assert name == CLEARED_TICKER_VIEW, name
+        return _JournalQuery(self.rows, self.fail)
+
+
+class ClearedTickerJournal(unittest.TestCase):
+    """A ticker cleared on purpose must not be re-proposed.
+
+    0038 retired 'EP PR C' from both holders by hand. The backfill selects on
+    ticker IS NULL, which is exactly the state that clear creates, and Finnhub
+    returns the same symbol for the same name. Without the journal the clear
+    reverses itself on the next run.
+    """
+
+    def test_reads_the_cleared_pairs(self):
+        rows = [
+            {"row_id": "row-a", "cleared_ticker": "EP PR C"},
+            {"row_id": "row-b", "cleared_ticker": "NCLH"},
+        ]
+        got = load_cleared_tickers(_JournalClient(rows))
+        self.assertEqual(got, {"row-a": {"EP PR C"}, "row-b": {"NCLH"}})
+
+    def test_normalises_case_so_a_lowercase_match_still_blocks(self):
+        rows = [{"row_id": "row-a", "cleared_ticker": " nclh "}]
+        self.assertEqual(load_cleared_tickers(_JournalClient(rows)), {"row-a": {"NCLH"}})
+
+    def test_pages_past_the_silent_1000_row_cap(self):
+        rows = [
+            {"row_id": "row-{}".format(i), "cleared_ticker": "T{}".format(i)}
+            for i in range(1500)
+        ]
+        got = load_cleared_tickers(_JournalClient(rows))
+        # A bare .execute() is capped at 1000 with no error, and a silently
+        # short journal is a silently disabled guard.
+        self.assertEqual(len(got), 1500)
+
+    def test_an_unreadable_journal_refuses_to_run_rather_than_proceeding(self):
+        # FAILS CLOSED, unlike the names_agree gate upstream. A missing journal
+        # is indistinguishable from an empty one, and proceeding would
+        # re-propose exactly what a human cleared.
+        with self.assertRaises(JournalUnavailable):
+            load_cleared_tickers(_JournalClient([], fail=True))
+
+
+class GuardedWriteConsultsTheJournal(unittest.TestCase):
+    """Covers the DECISION, not just the loader. Same lesson as the duplicate
+    guard: a test that exercises only load_cleared_tickers stays green when the
+    consult is deleted from the write path."""
+
+    def test_a_cleared_ticker_produces_no_write_and_no_holder_lookup(self):
+        c = _Client(list(ROWS))
+        out = write_ticker_guarded(
+            c, "row-ecp", "Energy Capital Partners", "EP PR C",
+            {"row-ecp": {"EP PR C"}},
+        )
+        self.assertEqual(out, "cleared")
+        self.assertEqual(c.writes, [], "a cleared ticker must not reach the database")
+
+    def test_the_journal_is_consulted_before_the_duplicate_check(self):
+        # Both guards would refuse NCLH. The journal reason is the specific one
+        # and is the one worth printing.
+        c = _Client(list(ROWS))
+        out = write_ticker_guarded(
+            c, "row-bare", "NCLH", "NCLH", {"row-bare": {"NCLH"}}
+        )
+        self.assertEqual(out, "cleared")
+        self.assertEqual(c.writes, [])
+
+    def test_a_clear_on_a_different_row_does_not_block_this_one(self):
+        c = _Client(list(ROWS))
+        out = write_ticker_guarded(
+            c, "row-bare", "Marathon Digital", "MARA", {"some-other-row": {"MARA"}}
+        )
+        self.assertEqual(out, "written")
         self.assertEqual(c.writes, [("row-bare", {"ticker": "MARA"})])

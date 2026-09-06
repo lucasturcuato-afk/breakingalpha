@@ -57,6 +57,21 @@ ACCEPTED_FINNHUB_TYPES = frozenset({"Common Stock", "ADR", "NY Reg Shrs"})
 # BRK.B) that the default no-period filter rejects.
 _CLASS_SHARE_RE = re.compile(r"^[A-Z]{1,5}\.(A|B)$")
 
+# A US issuer symbol, and nothing else. The existing US-primary filter looks
+# for a PERIOD in displaySymbol, so it rejects foreign listings (SHELL.AS) and
+# admits everything else. It never anticipated a SPACE.
+#
+# Finnhub returns {"type": "Common Stock", "symbol": "EP PR C",
+# "displaySymbol": "EP PR C", "description": "El Paso Energy Capital Trust I"}.
+# Typed Common Stock, no period, so it passed every filter and reached a
+# companies row. "EP PR C" is preferred series C, not a company symbol.
+# "TRTN PR A" is the same shape and is live on a CIK-bearing row today.
+#
+# The hyphen class form is admitted alongside the dot form: some feeds write
+# Moog Inc Class A as MOG-A and some as MOG.A, and both are real. Four letters
+# after a hyphen are not a share class, which is what rejects IPO-ELLT.
+_ISSUER_SYMBOL_RE = re.compile(r"^[A-Z]{1,5}([.-][AB])?$")
+
 # Hard overrides for names where Finnhub /search returns a worse-than-desired
 # ticker (e.g. BRK.A, ~$700K/share with thin volume) but the better one (BRK.B)
 # is reachable only by direct symbol query. Keys are lowercase post-canonicalize.
@@ -372,7 +387,16 @@ def _pick_us_primary(
     sym = primary[0].get("symbol")
     if not sym or not isinstance(sym, str):
         return None
-    return sym.strip() or None
+    sym = sym.strip()
+    if not sym:
+        return None
+    # SHAPE GATE, last because it judges the answer rather than the candidate.
+    # A rejection means "do not stamp", so its cost is a missing ticker and
+    # never a wrong one, which is the direction every rule in this file
+    # resolves toward.
+    if not _ISSUER_SYMBOL_RE.match(sym):
+        return None
+    return sym
 
 
 def search_finnhub_ticker(

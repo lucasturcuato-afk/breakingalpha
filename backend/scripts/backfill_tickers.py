@@ -142,6 +142,59 @@ def _load_eligible_companies(supabase, batch_size: int = 1000) -> list:
         offset += batch_size
 
 
+class JournalUnavailable(RuntimeError):
+    """The clear_ticker journal could not be read."""
+
+
+# norm_v2 is NOT exposed through PostgREST ("Only the following schemas are
+# exposed: public, graphql_public"), so the journal is reached through a
+# read-only view in public. sql/proposals/0042 creates it.
+CLEARED_TICKER_VIEW = "cleared_ticker_journal"
+
+
+def load_cleared_tickers(supabase) -> dict:
+    """{row_id: {TICKER, ...}} for every op = 'clear_ticker' journal entry.
+
+    RAISES JournalUnavailable if the view is missing or unreadable.
+
+    THIS ONE FAILS CLOSED, and that is the opposite of the names_agree gate
+    directly upstream. There, a missing authority is safe to ignore: cik_tickers
+    is accretive, so staleness can only ADD authority rows and a fail-closed
+    gate would blank rows that are correctly stamped today. Here a missing
+    journal is indistinguishable from an EMPTY one, and proceeding would
+    re-propose exactly the tickers a human cleared on purpose. A backfill that
+    cannot read the journal must not run.
+
+    Paginated. A bare .execute() is capped at 1000 rows with no error, and a
+    silently short journal is a silently disabled guard.
+    """
+    out: dict = {}
+    offset = 0
+    batch = 1000
+    while True:
+        try:
+            resp = (
+                supabase.table(CLEARED_TICKER_VIEW)
+                .select("row_id, cleared_ticker")
+                .order("row_id")
+                .range(offset, offset + batch - 1)
+                .execute()
+            )
+        except Exception as ex:  # noqa: BLE001
+            raise JournalUnavailable(
+                "cannot read {}: {}. Apply sql/proposals/0042 first; refusing to "
+                "run without the clear_ticker journal.".format(CLEARED_TICKER_VIEW, ex)
+            ) from ex
+        rows = resp.data or []
+        for r in rows:
+            t = (r.get("cleared_ticker") or "").strip().upper()
+            if t:
+                out.setdefault(r.get("row_id"), set()).add(t)
+        if len(rows) < batch:
+            return out
+        offset += batch
+
+
 def _ticker_already_held(supabase, ticker: str, exclude_id: str) -> Optional[str]:
     """Name of another companies row already holding `ticker`, else None.
 
@@ -172,14 +225,27 @@ def _ticker_already_held(supabase, ticker: str, exclude_id: str) -> Optional[str
     return rows[0].get("name") or rows[0].get("id") or "unknown row"
 
 
-def write_ticker_guarded(supabase, cid: str, name: str, ticker: str) -> str:
-    """Write `ticker` onto row `cid` unless another row already holds it.
+def write_ticker_guarded(supabase, cid: str, name: str, ticker: str, cleared=None) -> str:
+    """Write `ticker` onto row `cid` unless a guard refuses it.
 
-    Returns "written" or "duplicate". Exists as its own function so the
-    DECISION NOT TO WRITE is testable: a test that only exercises
-    _ticker_already_held stays green when the call is deleted from the loop,
-    which is a guard with no proof behind it.
+    Returns "written", "cleared" or "duplicate". EVERY GUARD LIVES HERE rather
+    than in the caller's loop, because a test that exercises only the lookup
+    helpers stays green when the call is deleted from the loop, and that is a
+    guard with no proof behind it. It happened once in this file already.
+
+    Order matters. The journal is consulted FIRST: "a human cleared this on
+    purpose" is a more specific reason to refuse than "someone else holds it",
+    and it is the one worth printing.
     """
+    want = (ticker or "").strip().upper()
+    if want and want in (cleared or {}).get(cid, set()):
+        print(
+            "backfill_tickers: SKIP {!r} for {!r}: cleared on purpose, journal row_id {}".format(
+                ticker, name, cid
+            )
+        )
+        return "cleared"
+
     holder = _ticker_already_held(supabase, ticker, cid)
     if holder is not None:
         print(
@@ -222,6 +288,11 @@ def main() -> int:
     mode = "DRY-RUN" if args.dry_run else "LIVE"
     print("backfill_tickers: starting (mode={})".format(mode))
 
+    cleared = load_cleared_tickers(supabase)
+    print(
+        "backfill_tickers: clear_ticker journal loaded for {} row(s)".format(len(cleared))
+    )
+
     rows = _load_eligible_companies(supabase)
     total = len(rows)
     # Per-company nominal cost is one Finnhub call (best case) plus
@@ -243,6 +314,7 @@ def main() -> int:
     no_match = 0
     errored = 0
     duplicate_skipped = 0
+    cleared_skipped = 0
     processed = 0
     sample_logged = 0
     started = time.time()
@@ -274,6 +346,7 @@ def main() -> int:
             )
             time.sleep(SLEEP_BETWEEN_CALLS_SEC)
 
+
             if args.dry_run:
                 sample_logged += 1
                 shown = ticker if ticker else "NO MATCH"
@@ -293,7 +366,13 @@ def main() -> int:
                 no_match += 1
             else:
                 try:
-                    if write_ticker_guarded(supabase, cid, name, ticker) == "duplicate":
+                    outcome = write_ticker_guarded(
+                        supabase, cid, name, ticker, cleared
+                    )
+                    if outcome == "cleared":
+                        cleared_skipped += 1
+                        continue
+                    if outcome == "duplicate":
                         duplicate_skipped += 1
                         continue
                     updated += 1
@@ -320,10 +399,10 @@ def main() -> int:
     # Rows with an existing ticker AND rows below the mention gate are excluded
     # server-side, so `skipped` counts only writes this run declined: today that
     # is the duplicate-holder guard.
-    skipped = duplicate_skipped
+    skipped = duplicate_skipped + cleared_skipped
     print(
-        "inserted={} skipped={} duplicate_skipped={} no_match={} errored={} total={}".format(
-            updated, skipped, duplicate_skipped, no_match, errored,
+        "inserted={} skipped={} duplicate_skipped={} cleared_skipped={} no_match={} errored={} total={}".format(
+            updated, skipped, duplicate_skipped, cleared_skipped, no_match, errored,
             total if not args.dry_run else processed
         )
     )
