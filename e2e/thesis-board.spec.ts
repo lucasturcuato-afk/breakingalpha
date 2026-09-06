@@ -2,16 +2,12 @@ import { test, expect } from "@playwright/test";
 
 test.describe("Thesis Board", () => {
   test("loads thesis board page", async ({ page }) => {
+    // /thesis-board is a redirect now: theses live on the Radar calls tab
+    // as tracked views. The old class/empty-state/generate anchors are gone.
     await page.goto("/thesis-board");
-
-    // Should show either thesis list or empty state
-    const thesisList = page.locator("[class*='thesis']").first();
-    const emptyState = page.getByText("No theses yet");
-    const generateBtn = page.getByRole("button", { name: /Generate Theses/ });
-
-    await expect(thesisList.or(emptyState).or(generateBtn)).toBeVisible({
-      timeout: 15_000,
-    });
+    await page.waitForURL(/\/radar\/calls/, { timeout: 15_000 });
+    await expect(page.getByRole("link", { name: "Calls" }).first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator("text=Application error")).not.toBeVisible();
   });
 
   test("generate theses button works", async ({ page }) => {

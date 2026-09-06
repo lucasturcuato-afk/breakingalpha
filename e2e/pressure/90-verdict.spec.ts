@@ -113,6 +113,11 @@ test("verdict: assemble the report", async () => {
   console.log(`\npressure-report/REPORT.md written. ${unique.length} distinct findings, ${criticals.length} critical.`);
   for (const c of criticals) console.log(`  CRITICAL ${c.rule} @ ${c.screen}: ${c.title}`);
 
-  expect(byPass("empty").length + byPass("populated").length, "the walk must have visited something").toBeGreaterThan(0);
+  expect(
+    byPass("empty").length + byPass("populated").length,
+    "the walk must have visited something: pressure-report/ holds no route visits, so 10-walk-empty " +
+      "and 30-walk-populated did not run against a live server before this verdict. Run the suite in " +
+      "file order with `npm run test:pressure` (see docs/runbooks/e2e-suites.md)",
+  ).toBeGreaterThan(0);
   expect(criticals, `critical findings: ${criticals.map((c) => `${c.rule}@${c.screen}`).join(", ")}`).toEqual([]);
 });

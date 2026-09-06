@@ -26,7 +26,8 @@ test.describe("Deal Flow", () => {
     await page.waitForTimeout(3_000);
 
     // Stage filter tabs
-    const allTab = page.getByRole("button", { name: /ALL/i });
+    // /ALL/i also matched "Show all types"; anchor on the tab label.
+    const allTab = page.getByRole("button", { name: /^All\b/ });
     await expect(allTab).toBeVisible();
 
     const announcedTab = page.getByRole("button", { name: /ANNOUNCED/i });
