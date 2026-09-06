@@ -1016,7 +1016,30 @@ export default function EveningWrapPage() {
   };
 
   return (
-    <>
+    <AppShell
+      pageTitle="Evening Wrap"
+      mood={liveMood.mood}
+      moodHeadline={liveMood.moodHeadline}
+      moodDetails={liveMood.moodDetails}
+      /* THE PHONE GETS THE TAB BAR HERE, and this prop is the whole of it.
+         Below `md` it gates out the desk's mood bar, topbar and footer, which
+         are chrome stacked on a screen that already draws its own masthead,
+         and it leaves the bar. `/ledger` and `/record` are one tap away from
+         this screen and both mount the shell exactly this way. There is no
+         second way to mount a shell in this repo and this change does not
+         invent one. Above `md` the flag does nothing at all. */
+      mobileFullBleed
+      rightPanel={
+        <>
+          <PanelWidget title="Tracked Views">
+            <ActiveThesesWidget />
+          </PanelWidget>
+          <PanelWidget title="Watchlist">
+            <WatchlistWidget />
+          </PanelWidget>
+        </>
+      }
+    >
       {/* The mobile Evening Wrap. A new component composed beside the desk
           layout below, never an edit to it: nothing in the desktop render
           changes shape, and above the breakpoint this branch does not exist.
@@ -1038,19 +1061,37 @@ export default function EveningWrapPage() {
           when there is one. There is no state in which it has to defer to the
           desk layout, so there is no width at which both should draw.
 
-          It sits OUTSIDE AppShell rather than inside it, and that is the
-          design rather than a shortcut. The prototype gates its nav on
+          IT SITS INSIDE AppShell NOW, AND THAT IS THIS CHANGE. It used to be
+          composed beside the shell, with the shell itself wrapped in the
+          `hidden md:contents` gate below. Measured at 320 and 390, signed in,
+          both themes, on a production build: `nav[aria-label="Primary"]` was
+          in the tree with its own computed display `flex`, all four poles
+          measured 0 by 0, `document.elementFromPoint` at each pole centre
+          answered with the ticker strip, and a tap changed nothing. Sixteen
+          results, sixteen failures. The bar was NOT absent from the tree and
+          the route was NOT missing a shell: the gate one level up was
+          `display:none` below the breakpoint and took the whole shell with it,
+          the bar included. Browser back was the reader's only exit, which on a
+          phone is a gesture rather than a control.
+
+          The prototype gates its nav on
           `showNav: ['dash','ledger','watch','ask'].includes(s.screen)` at line
-          3460, so `evening` renders full screen with no bottom bar and no pole
-          lit. That is DECISIONS.md open item O2, a recorded design bug, and
-          this reproduces it rather than resolving it. Mounting the shell here
-          would put a tab bar on a surface the design draws without one, and
-          `mobile-tab-bar.tsx` is not this unit's to edit either way.
+          3460, so `evening` draws full screen there with no bottom bar. That is
+          DECISIONS.md open item O2, a recorded design bug, and this route stops
+          reproducing it. `mobile-tab-bar.tsx` is untouched and needed no edit:
+          `/evening-wrap` is already in the Ledger pole's `owns` list, so that
+          pole lights on arrival and the masthead's `Ledger` link is no longer
+          the single exit.
 
           Suspense is required, not decorative: the branch reads `?stage=` with
           `useSearchParams`, which needs a boundary above whatever calls it. */}
       <Suspense fallback={null}>
-        <div className="md:hidden">
+        {/* `h-full` is load bearing and is the Ledger's measurement, not a
+            guess. `main#main-content` gives this subtree a definite content box
+            and `PageTransition` passes it through, but a gate div shrink-wraps
+            its child and the chain dies here, which makes the screen root's own
+            `minHeight: 100%` inert. See the same note in `/ledger`. */}
+        <div className="md:hidden h-full">
           <EveningWrapMobile stage={mobileStage} data={mobileData} />
         </div>
       </Suspense>
@@ -1058,24 +1099,9 @@ export default function EveningWrapPage() {
       {/* `md:contents`, not `md:block`. Above the breakpoint this wrapper has
           to vanish from the box tree exactly as it did before the mobile
           branch existed, or the desk layout is measured inside a block box it
-          never had. Below the breakpoint it is display:none. */}
+          never had. Below the breakpoint it is display:none. It wraps the desk
+          body alone now; the shell moved above both branches. */}
       <div className="hidden md:contents">
-    <AppShell
-      pageTitle="Evening Wrap"
-      mood={liveMood.mood}
-      moodHeadline={liveMood.moodHeadline}
-      moodDetails={liveMood.moodDetails}
-      rightPanel={
-        <>
-          <PanelWidget title="Tracked Views">
-            <ActiveThesesWidget />
-          </PanelWidget>
-          <PanelWidget title="Watchlist">
-            <WatchlistWidget />
-          </PanelWidget>
-        </>
-      }
-    >
       <TickerStrip />
       <div className="px-6 pt-3">
         <PersonalizationBanner />
@@ -1841,9 +1867,8 @@ export default function EveningWrapPage() {
         content={leadMemoContent}
         type="brief"
       />
-    </AppShell>
       </div>
-    </>
+    </AppShell>
   );
 }
 
