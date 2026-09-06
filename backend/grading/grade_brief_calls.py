@@ -65,6 +65,7 @@ from backend.grading.benchmarks import (  # noqa: F401
 from backend.grading.price_attribution import PriceAttributionGrader
 from backend.grading.resolver import Outcome, default_resolver
 from backend.verdict_vocabulary import VERDICT_WORD, verdict_word
+from backend.call_horizons import is_missing_column_error
 
 
 #: Whether the grading loop may call an LLM at all.
@@ -271,6 +272,60 @@ def call_to_graded_input(call: dict, mode: str) -> dict:
     }
 
 
+UNGRADABLE = "ungradable"
+GRADEABLE = "gradeable"
+FIX_FILE = "sql/0041_backfill_resolve_on_graded_legacy.sql"
+
+
+def missing_horizon_report(rows: list[dict]) -> dict:
+    """Classify calls with resolve_on NULL by what the row SAYS about itself.
+
+    ungradable: grading_status = 'ungradable'. The row states it cannot be
+                graded and carries the reason (sql/0041 marks the legacy calls
+                whose horizon was never captured). Counted per reason and
+                printed every run, never selected.
+    defect:     grading_status = 'gradeable' with no resolve_on. The write
+                path always sets resolve_on on a gradeable row, so this came
+                from a path that dropped it. main() fails on it, naming the
+                ids and the fix.
+
+    No date logic: the row is the authority. Pure, no IO.
+    """
+    ungradable = [r for r in rows if r.get("grading_status") == UNGRADABLE]
+    defects = [r for r in rows if r.get("grading_status") != UNGRADABLE]
+    by_reason: dict[str, int] = {}
+    for r in ungradable:
+        key = str(r.get("ungradable_reason") or "unstated")
+        by_reason[key] = by_reason.get(key, 0) + 1
+    return {
+        "ungradable": len(ungradable),
+        "by_reason": by_reason,
+        "defects": len(defects),
+        "defect_ids": [r.get("id") for r in defects],
+        "defect_brief_dates": sorted({str(r.get("brief_date") or "")[:10] for r in defects}),
+    }
+
+
+def fetch_missing_horizons(sb) -> list[dict]:
+    """Every call with resolve_on NULL, with what it says about itself. Small
+    by construction and bounded at the PostgREST cap, which is asserted."""
+    resp = (
+        sb.table("morning_brief_calls")
+        .select("id, brief_date, grading_status, ungradable_reason", count="exact")
+        .is_("resolve_on", "null")
+        .order("id")
+        .limit(1000)
+        .execute()
+    )
+    rows = resp.data or []
+    if resp.count is not None and resp.count != len(rows):
+        raise RuntimeError(
+            f"morning_brief_calls: {resp.count} rows have resolve_on NULL but only "
+            f"{len(rows)} were returned (PostgREST cap); refusing to report a short count"
+        )
+    return rows
+
+
 def fetch_due_calls(sb, today: str, mode: str) -> list[dict]:
     """
     The calls this run should grade, before the already-graded filter.
@@ -280,7 +335,7 @@ def fetch_due_calls(sb, today: str, mode: str) -> list[dict]:
     """
     q = sb.table("morning_brief_calls").select("*")
     if mode == HORIZON_MODE_ACTIVE:
-        q = q.not_.is_("resolve_on", "null").lte("resolve_on", today)
+        q = q.not_.is_("resolve_on", "null").lte("resolve_on", today).eq("grading_status", GRADEABLE)
     else:
         q = q.eq("brief_date", today)
     return q.execute().data or []
@@ -333,6 +388,35 @@ def main() -> None:
     # selected in either mode.
     calls = fetch_due_calls(sb, today, mode)
     print(f"[grade] horizon mode: {mode} ({len(calls)} candidate calls)")
+
+    # The rows the due-scan can never select, said out loud every run. A row
+    # that says ungradable is counted by reason. A gradeable row with no
+    # resolve_on is a write-path defect and fails the run. This is the fourth
+    # silent skip found in one week; the skip stays where the row states it,
+    # the silence does not. No date logic: the row is the authority.
+    try:
+        missing = missing_horizon_report(fetch_missing_horizons(sb))
+    except Exception as e:
+        if is_missing_column_error(e):
+            print(
+                "::error::morning_brief_calls has no grading_status column, so the "
+                f"grader cannot tell a legacy call from a defect. Apply {FIX_FILE} "
+                "before this grader version runs."
+            )
+            raise SystemExit(3)
+        raise
+    reasons = ", ".join(f"{k}: {v}" for k, v in sorted(missing["by_reason"].items())) or "none"
+    print(f"[grade] skipped: {missing['ungradable']} call(s) marked ungradable ({reasons})")
+    if missing["defects"]:
+        print(
+            f"::error::{missing['defects']} gradeable call(s) have resolve_on NULL and can never "
+            f"be graded: brief_date(s) {', '.join(missing['defect_brief_dates'])}, ids "
+            f"{missing['defect_ids'][:10]}. Every gradeable row must carry resolve_on "
+            "(synthesize.extract_and_persist_claims). If these are legacy calls, apply "
+            f"{FIX_FILE}, which marks them ungradable with the reason; otherwise find the "
+            "write path that dropped it before the next run."
+        )
+        raise SystemExit(3)
 
     # Filter out already-graded calls (idempotent re-runs).
     if calls:

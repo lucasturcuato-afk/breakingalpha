@@ -22,9 +22,9 @@ import macro_calendar
 import bea_calendar
 from brief_voice_guard import enforce_brief_voice, has_voice_violation
 try:
-    from call_horizons import resolve_on_for_days
+    from call_horizons import resolve_on_for_days, is_missing_column_error
 except Exception:  # pragma: no cover - path differs between runner and tests
-    from backend.call_horizons import resolve_on_for_days
+    from backend.call_horizons import resolve_on_for_days, is_missing_column_error
 try:
     from call_falsifiability import apply_gate as apply_falsifiability_gate
 except Exception:  # pragma: no cover - path differs between runner and tests
@@ -1558,10 +1558,27 @@ def extract_and_persist_claims(
     # stays out of the due-scan, which is the correct fail-closed behavior.
     _OPTIONAL_COLS = ("is_lead", "resolve_on")
     try:
-        supabase_admin.table("morning_brief_calls").insert(rows).execute()
+        try:
+            supabase_admin.table("morning_brief_calls").insert(rows).execute()
+        except Exception as first:
+            # One retry of the FULL row before anything else: a transient
+            # connection recycle used to fall straight through to the
+            # column-stripping branch below and write calls without resolve_on,
+            # which grade_brief_calls can never select. Stripping is only right
+            # when the column is genuinely absent.
+            if is_missing_column_error(first):
+                raise
+            print(f"  ⚠ claims extraction: full insert failed once ({first}); retrying the full row")
+            supabase_admin.table("morning_brief_calls").insert(rows).execute()
     except Exception as e:
+        if not is_missing_column_error(e):
+            # Not a schema gap. Do NOT write rows without resolve_on: a call
+            # stored that way is excluded from grading forever, silently. Let
+            # the caller's non-fatal guard log it; the brief still ships and
+            # the claims can be re-extracted, which a NULL row cannot be.
+            raise
         print(f"  ⚠ claims extraction: full insert failed ({e}); retrying without "
-              f"{'/'.join(_OPTIONAL_COLS)} (migration 0013/0014 may be unapplied)")
+              f"{'/'.join(_OPTIONAL_COLS)} (migration 0013/0014 is not applied)")
         try:
             _rows_base = [
                 {k: v for k, v in r.items() if k not in _OPTIONAL_COLS} for r in rows

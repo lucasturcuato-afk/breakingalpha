@@ -89,7 +89,10 @@ class _FakeQuery:
         rows = self._rows
         for kind, col, val in self.filters:
             if kind == "eq":
-                rows = [r for r in rows if r.get(col) == val]
+                # grading_status is NOT NULL DEFAULT 'gradeable' (sql/0041); a
+                # fixture row that omits it reads as the default, as the DB would.
+                default = "gradeable" if col == "grading_status" else None
+                rows = [r for r in rows if r.get(col, default) == val]
             elif kind == "lte":
                 rows = [r for r in rows if r.get(col) is not None and r[col] <= val]
             elif kind == "not.is" and val == "null":
@@ -248,6 +251,18 @@ class TestDueScan(unittest.TestCase):
         # The query itself must carry the NOT NULL guard, not just the data.
         self.assertIn(("not.is", "resolve_on", "null"), sb.last_query.filters)
         self.assertIn(("lte", "resolve_on", self.TODAY), sb.last_query.filters)
+
+    def test_a_row_that_says_ungradable_is_never_due_even_with_a_horizon(self):
+        """sql/0041 marks legacy calls grading_status = 'ungradable'. The
+        due-scan honours the marker itself, not the NULL resolve_on that
+        happens to accompany it today."""
+        rows = [
+            {"id": "marked", "brief_date": "2026-05-01", "resolve_on": "2026-05-01",
+             "grading_status": "ungradable", "ungradable_reason": "horizon_never_captured"},
+            {"id": "due", "brief_date": "2026-05-01", "resolve_on": "2026-05-01"},
+        ]
+        got = fetch_due_calls(_FakeSB(rows), self.TODAY, HORIZON_MODE_ACTIVE)
+        self.assertEqual([r["id"] for r in got], ["due"])
 
     def test_off_mode_selection_is_byte_identical_to_today_only(self):
         rows = [

@@ -62,6 +62,7 @@ DEFAULT_HORIZON = HORIZON_SESSION
 #: it; it is a guardrail so a future map edit cannot ship a 2-year window.
 MAX_HORIZON_DAYS = 90
 
+
 VALID_HORIZON_TYPES = frozenset(HORIZON_DAYS)
 
 
@@ -168,3 +169,24 @@ def resolve_on_for_days(brief_date: object, raw_days: object) -> str | None:
     if base is None:
         return None
     return (base + timedelta(days=normalize_horizon_days(raw_days))).isoformat()
+
+
+def is_missing_column_error(exc: object) -> bool:
+    """True when a PostgREST/Postgres error says a COLUMN does not exist.
+
+    The only condition under which synthesize.extract_and_persist_claims may
+    insert calls without resolve_on/is_lead: migrations 0013/0014 not applied.
+    Any other failure (a recycled connection, a timeout, an RLS refusal) must
+    not be answered by stripping the column, because a call stored without
+    resolve_on is excluded from grading forever. Matched on the PostgREST code
+    (PGRST204: column not in the schema cache), the Postgres code (42703:
+    undefined column) and the two message shapes they carry.
+    """
+    text = str(exc)
+    low = text.lower()
+    return (
+        "PGRST204" in text
+        or "42703" in text
+        or ("column" in low and "does not exist" in low)
+        or ("could not find the" in low and "column" in low)
+    )
