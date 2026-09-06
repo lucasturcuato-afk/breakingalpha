@@ -1,0 +1,369 @@
+name: Verify Frontend (src)
+
+# Issue 875. Today a src/-only PR fires zero checks: the only pull_request
+# workflow in this repo is verify-py.yml and it is path-filtered to backend/.
+# Every frontend gate figure in this repo has been self-reported by the agent
+# that wrote the code. This workflow makes six of them machine-checked.
+#
+# Shape is copied from verify-py.yml, which is the house pattern.
+#
+# NO SECRETS, no env file, no deploy, no migration, no pipeline, no Gemini.
+# Each of the six gates was measured to pass with no .env present. `next build`
+# is a compile, not a boot: the 500s that a missing .env.local causes are
+# runtime, and this job never starts the server.
+#
+# Egress: registry.npmjs.org for npm ci, and fonts.googleapis.com because
+# next/font fetches the three font families at build time. One local build
+# attempt of two failed on a transient Google Fonts fetch. If this job goes red
+# with "Failed to fetch <family> from Google Fonts", that is the network, not
+# the code. Re-run the job.
+
+on:
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'tests/unit/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'tsconfig.json'
+      - 'next.config.ts'
+      - 'postcss.config.mjs'
+      - 'eslint.config.mjs'
+      - 'scripts/design-lint.mjs'
+      - 'scripts/read-lint.mjs'
+      - '.github/workflows/verify-frontend.yml'
+  # Also on pushes to the trunk. A gate that only runs pre-merge cannot tell you
+  # that the trunk itself went red, which is exactly how backend/tests/ stayed
+  # broken for four weeks. Same reason verify-py.yml carries this trigger.
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/**'
+      - 'tests/unit/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'tsconfig.json'
+      - 'next.config.ts'
+      - 'postcss.config.mjs'
+      - 'eslint.config.mjs'
+      - 'scripts/design-lint.mjs'
+      - 'scripts/read-lint.mjs'
+      - '.github/workflows/verify-frontend.yml'
+
+concurrency:
+  group: verify-frontend-${{ github.ref }}
+  # Superseding is right on a PR branch: only the latest commit matters there.
+  # It is wrong on the trunk. Cancelling a trunk run discards the only answer
+  # anyone will ever get for that commit, which is the failure mode this
+  # trigger exists to close.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# Least privilege: the gates only read the checked-out code.
+permissions:
+  contents: read
+
+jobs:
+  verify-frontend:
+    name: tsc + eslint + unit + ratchets + build
+    runs-on: ubuntu-latest
+    steps:
+      # TRAP 1. actions/checkout defaults to fetch-depth 1. Both ratchet gates
+      # diff `<base>...HEAD`, three dots, which needs the merge base, and a
+      # depth-1 clone has no merge base to find. The gate would then either die
+      # on a bad ref or, worse, see an empty diff and exit 0. fetch-depth 0 is
+      # the fix. Measured cost: size-pack is about 236 MiB, so expect roughly
+      # 15 to 25 seconds of checkout. If that ever matters, `filter: blob:none`
+      # keeps the full commit graph the merge base needs while skipping
+      # historical blobs. Not done here because it cannot be tested pre-merge.
+      - name: Checkout with full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Node 24.x, and the version is load bearing, so do not drift it casually.
+      # Measured on this workflow's own first two runs against this same tree:
+      #
+      #   22.x           unit suite RED, 3 of 1251 fail
+      #   24.x, v24.20.0 all six gates green, 1251 of 1251
+      #
+      # The 22.x failures are all in tests/unit/company-lost-race-recovery.test.ts,
+      # which patches Module._resolveFilename to point a `server-only` import at
+      # `node:util`. Under 22.x that resolved name reaches readFileSync and dies
+      # with ENOENT on 'node:util'. That is a test harness defect, not app code,
+      # and it is logged for a follow-up rather than papered over here. Until it
+      # is fixed, this pin is what keeps the unit gate meaningful.
+      - name: Set up Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+          cache: npm
+
+      - name: Install pinned deps
+        run: npm ci
+
+      # TRAP 2. $GITHUB_BASE_REF is a branch name, not a SHA, and it is unset on
+      # push. So the base is resolved per event.
+      #
+      #  pull_request -> the base commit of the PR. Combined with the scripts'
+      #    three-dot diff this asks "what did this branch add", which is the
+      #    ratchet question.
+      #
+      #  push to trunk -> github.event.before, the previous trunk tip. This asks
+      #    "did THIS merge make the trunk worse", which is the four-week
+      #    question from verify-py.yml's header, and it is the same question the
+      #    PR run asked, so a PR that was green and a trunk push that is red
+      #    means something real happened in between: a stale base, a bad squash,
+      #    or a direct push. `--all` is the other defensible choice and it
+      #    answers a different question, namely how much debt the trunk carries
+      #    in total. That number is known, it is large, and it does not move
+      #    between pushes, so as a gate it would fail every trunk run forever
+      #    and teach everyone to ignore this workflow. It belongs in a separate
+      #    scheduled debt report, not here.
+      #
+      # A base that cannot be resolved is a hard failure, never a skip. Same
+      # principle as trap 4: a gate that cannot see the diff must not report
+      # success.
+      - name: Resolve the diff base for the ratchet gates
+        id: base
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            BASE="$PR_BASE_SHA"
+            ORIGIN="pull_request base sha"
+          else
+            BASE="$PUSH_BEFORE_SHA"
+            ORIGIN="previous trunk tip (github.event.before)"
+          fi
+          if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
+            echo "::error::No diff base for a $EVENT_NAME event. Expected the $ORIGIN and got '$BASE'."
+            echo "::error::A branch creation or a force push produces this. The ratchet gates cannot run blind."
+            exit 1
+          fi
+          if ! git cat-file -e "${BASE}^{commit}" 2>/dev/null; then
+            echo "::error::Base commit $BASE is not in this clone. fetch-depth is wrong, see trap 1."
+            exit 1
+          fi
+          if ! MB="$(git merge-base "$BASE" HEAD)"; then
+            echo "::error::No merge base between $BASE and HEAD. The history is too shallow to ratchet against."
+            exit 1
+          fi
+          echo "Diff base: $BASE  ($ORIGIN)"
+          echo "Merge base: $MB"
+          echo "base=$BASE" >> "$GITHUB_OUTPUT"
+
+      # TRAP 4, first half, and the fix for trap 1's silent mode. The path
+      # filter above is the reason this invariant is sound: this job only starts
+      # because at least one filtered path changed, so an empty diff means the
+      # diff is invisible to us, not that nothing changed.
+      #
+      # The two per-script counts below are the contradiction detectors each
+      # ratchet step checks its own "no lintable files touched" line against.
+      # Both are scoped to src/ on purpose. Neither script excludes anything
+      # under src/, and each one's extension set is fixed, so inside src/ these
+      # counts reproduce the script's own file selection exactly and cannot
+      # drift as the exclusion lists outside src/ change. A count that tried to
+      # mirror the full selection would drift, and a drifted detector blocks
+      # real PRs, which is a worse outcome than the trap it guards.
+      - name: Confirm the diff is visible
+        id: diff
+        env:
+          BASE: ${{ steps.base.outputs.base }}
+        run: |
+          set -euo pipefail
+          git diff --name-only --diff-filter=d "${BASE}...HEAD" > "$RUNNER_TEMP/changed-files.txt"
+          TOTAL="$(wc -l < "$RUNNER_TEMP/changed-files.txt" | tr -d ' ')"
+          if [ "$TOTAL" -eq 0 ]; then
+            echo "::error::The diff against $BASE is empty, but a path filter fired to start this job."
+            echo "::error::That is a diff this run cannot see, not a run with nothing to check."
+            exit 1
+          fi
+          SRC_DESIGN="$(grep -cE '^src/.*\.(ts|tsx|js|jsx|css|mdx)$' "$RUNNER_TEMP/changed-files.txt" || true)"
+          SRC_READ="$(grep -E '^src/.*\.(ts|tsx)$' "$RUNNER_TEMP/changed-files.txt" | grep -vcE '\.d\.ts$' || true)"
+          echo "Diff against $BASE: $TOTAL file(s) changed."
+          echo "In src/: $SRC_DESIGN for design-lint, $SRC_READ for read-lint."
+          cat "$RUNNER_TEMP/changed-files.txt"
+          echo "src_design=$SRC_DESIGN" >> "$GITHUB_OUTPUT"
+          echo "src_read=$SRC_READ" >> "$GITHUB_OUTPUT"
+
+      # TRAP 3. Both ratchet scripts refuse to run, exit 2, when a file in the
+      # diff has uncommitted edits, because the diff numbers lines in HEAD's
+      # blob while the linter reads the working tree. A fresh checkout is clean
+      # and `npm ci` was measured not to rewrite package-lock.json, so this
+      # assert should never fire. It is here so that if it ever does, the log
+      # names the cause instead of leaving an exit 2 to be read as a script bug.
+      #
+      # --untracked-files=no on purpose: the scripts test `git diff --name-only
+      # HEAD`, which sees tracked modifications and nothing else. An untracked
+      # file cannot be in the diff, so it cannot desynchronise the added-line
+      # map, and a bare `git status --porcelain` here would fire on .next/,
+      # next-env.d.ts and this job's own log files. Matching the scripts is the
+      # point; being stricter than them only invents failures.
+      - name: Assert a clean tree for the ratchet gates
+        if: ${{ !cancelled() }}
+        run: |
+          set -euo pipefail
+          DIRTY="$(git status --porcelain --untracked-files=no)"
+          if [ -n "$DIRTY" ]; then
+            echo "::error::The tree is not clean. Both ratchet gates refuse to run against a dirty tree."
+            echo "$DIRTY"
+            exit 1
+          fi
+          echo "Tree is clean."
+
+      # REPORTING, not gating, and the reason is a measurement rather than a
+      # preference: the trunk is already red here. See the PR body for the count
+      # and the single file. Flip continue-on-error off, and this becomes the
+      # blocking gate it should be, the moment that file type-checks.
+      - name: Typecheck (reporting only, the trunk is red)
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          npx tsc --noEmit 2>&1 | tee "$RUNNER_TEMP/tsc.txt" || true
+          COUNT="$(grep -cE 'error TS' "$RUNNER_TEMP/tsc.txt" || true)"
+          if [ "$COUNT" -gt 0 ]; then
+            echo "::warning::tsc: $COUNT error(s). NOT blocking yet: the trunk carried these before this workflow existed."
+            exit 1
+          fi
+          echo "::notice::tsc is clean. This gate can be promoted to blocking."
+
+      # GATING. `eslint` exits 0 on warnings, so the known warning floor does
+      # not block and a new error does. No extra ratchet needed here.
+      - name: ESLint
+        if: ${{ !cancelled() }}
+        run: npm run lint
+
+      # GATING.
+      - name: Unit suite
+        if: ${{ !cancelled() }}
+        run: npm run test:unit
+
+      # GATING, and it must stay --since. `--all` on this script counts in the
+      # thousands of errors across the whole app and exits 1 every time, so it
+      # can only ever be a debt report.
+      #
+      # TRAP 4, issue 742. `design-lint --since` prints "no lintable files
+      # touched" and exits 0 when its file set comes out empty. As a CI result
+      # that is a false pass: it is indistinguishable from a real green, and
+      # nobody reads the log to tell them apart. Two things make it honest here.
+      #
+      #  1. The step above already proved the diff is non-empty and failed the
+      #     job if it was not. So this line can no longer mean "the ratchet was
+      #     blind", which is the failure mode that matters.
+      #  2. When the line does appear it ends the step as an explicit SKIPPED
+      #     notice, never a plain pass, and it is contradicted by any src/ file
+      #     in the same diff, which fails the job.
+      - name: design-lint ratchet
+        if: ${{ !cancelled() }}
+        env:
+          BASE: ${{ steps.base.outputs.base }}
+          SRC_COUNT: ${{ steps.diff.outputs.src_design }}
+        run: |
+          set -o pipefail
+          if node scripts/design-lint.mjs --since "$BASE" 2>&1 | tee "$RUNNER_TEMP/design-lint.txt"; then
+            RC=0
+          else
+            RC=$?
+          fi
+          if grep -qF 'no lintable files touched' "$RUNNER_TEMP/design-lint.txt"; then
+            if [ "$SRC_COUNT" -gt 0 ]; then
+              echo "::error::design-lint saw no lintable files while the diff has $SRC_COUNT under src/. It could not see the diff."
+              exit 1
+            fi
+            echo "::notice::design-lint SKIPPED, not passed: this diff carries no file in its scope."
+            exit 0
+          fi
+          exit "$RC"
+
+      # PARTLY GATING, per the sixty-merge replay.
+      #
+      # The script cannot express per-check severity. It has no severity at all:
+      # every path through it ends in exit 0, by its own design, because the
+      # ratchet was deferred to a follow-up. So severity is applied here, from
+      # its output, whose line format is fixed and machine-readable.
+      #
+      #  check 1, defaulted-unchecked-read -> GATING on new findings under src/
+      #  check 2, error-or-empty           -> reporting. 38 percent false-positive
+      #                                       rate, and its one firing in sixty
+      #                                       merges landed on the exemplary fix.
+      #  check 3, single-without-pgrst116  -> reporting. Never once fired on new
+      #                                       code in sixty merges, and its
+      #                                       gating regex matches console.error.
+      #
+      # The src/ restriction on check 1 is deliberate. Unlike --all, this
+      # script's --since mode carries no src/ prefix filter, so it also reaches
+      # e2e/, tests/, scripts/ and the legacy frontend/ app. Those scan to zero
+      # findings today, so it is inert, but a PR touching both src/ and legacy
+      # frontend/ would otherwise be blocked by dead code. That gap is logged
+      # separately and is not fixed here.
+      - name: read-lint ratchet (check 1 gates, checks 2 and 3 report)
+        if: ${{ !cancelled() }}
+        env:
+          BASE: ${{ steps.base.outputs.base }}
+          SRC_COUNT: ${{ steps.diff.outputs.src_read }}
+        run: |
+          set -o pipefail
+          if node scripts/read-lint.mjs --since "$BASE" 2>&1 | tee "$RUNNER_TEMP/read-lint.txt"; then
+            RC=0
+          else
+            RC=$?
+          fi
+          if [ "$RC" -ne 0 ]; then
+            echo "::error::read-lint could not complete, exit $RC. Bad ref or a dirty tree."
+            exit "$RC"
+          fi
+          if grep -qF 'no lintable files touched' "$RUNNER_TEMP/read-lint.txt"; then
+            if [ "$SRC_COUNT" -gt 0 ]; then
+              echo "::error::read-lint saw no lintable files while the diff has $SRC_COUNT under src/. It could not see the diff."
+              exit 1
+            fi
+            echo "::notice::read-lint SKIPPED, not passed: this diff carries no file in its scope."
+            exit 0
+          fi
+          C1_SRC="$(grep -cE '^READ  src/.*\[defaulted-unchecked-read\]' "$RUNNER_TEMP/read-lint.txt" || true)"
+          C1_OTHER="$(grep -cE '^READ  .*\[defaulted-unchecked-read\]' "$RUNNER_TEMP/read-lint.txt" || true)"
+          C1_OTHER=$((C1_OTHER - C1_SRC))
+          C2="$(grep -cE '^READ  .*\[error-or-empty\]' "$RUNNER_TEMP/read-lint.txt" || true)"
+          C3="$(grep -cE '^READ  .*\[single-without-pgrst116\]' "$RUNNER_TEMP/read-lint.txt" || true)"
+          echo "::notice::read-lint new findings: check 1 in src/ $C1_SRC, check 1 elsewhere $C1_OTHER, check 2 $C2, check 3 $C3."
+          if [ "$C1_SRC" -gt 0 ]; then
+            echo "::error::read-lint check 1 (defaulted-unchecked-read): $C1_SRC new finding(s) under src/."
+            echo "::error::A read that did not answer is being drawn as a read that answered empty. Name the error channel."
+            exit 1
+          fi
+
+      # GATING, and last because it is the slowest step and the only one with a
+      # third-party network dependency. Everything above it gives feedback in
+      # under a minute.
+      - name: Build
+        if: ${{ !cancelled() }}
+        run: npm run build
+
+      - name: Summary
+        if: ${{ !cancelled() }}
+        env:
+          BASE: ${{ steps.base.outputs.base }}
+          SRC_DESIGN: ${{ steps.diff.outputs.src_design }}
+          SRC_READ: ${{ steps.diff.outputs.src_read }}
+        run: |
+          set -euo pipefail
+          {
+            echo "### Frontend gates"
+            echo ""
+            echo "Diff base \`$BASE\`. In src/: $SRC_DESIGN file(s) for design-lint, $SRC_READ for read-lint."
+            echo ""
+            echo "| gate | posture |"
+            echo "| --- | --- |"
+            echo "| tsc | reporting, the trunk is red |"
+            echo "| eslint | gating |"
+            echo "| test:unit | gating |"
+            echo "| design-lint --since | gating |"
+            echo "| read-lint --since check 1 | gating, src/ only |"
+            echo "| read-lint --since checks 2 and 3 | reporting |"
+            echo "| build | gating |"
+          } >> "$GITHUB_STEP_SUMMARY"
