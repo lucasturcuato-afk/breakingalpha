@@ -146,3 +146,41 @@ test("gate is symmetric on the equal-token-set path", () => {
   assert.equal(agrees("Twist Bioscience Corp", "Twist Bioscience Corp"), true);
   assert.equal(agrees("Foo Inc", "Foo Corporation"), true);
 });
+
+// Mirror of BoundedSubsetRule in backend/tests/test_cik_stamp_name_agreement.py.
+// The subset branch was unbounded while the head-prefix branch was not.
+test("bounded subset rejects a non-leading subset that adds more than one token", () => {
+  // {energy, capital} is a subset of {el, paso, energy, capital, trust} with
+  // two shared tokens. Unbounded, that is an accept, and it is how EP PR C
+  // reached a companies row.
+  assert.equal(agrees("Energy Capital", "El Paso Energy Capital Trust I"), false);
+});
+
+test("bounded subset still accepts a leading subset however much is added", () => {
+  // Both pairs add TWO identity tokens, so MAX_HEAD_PREFIX_EXTRA alone rejects
+  // them and only the leading test lets them through. Live registrant names.
+  // An earlier version used a pair whose token sets were EQUAL once the weak
+  // and legal forms were stripped, so it passed on the equality branch and
+  // never reached the subset branch it claimed to cover.
+  for (const [ours, authority] of [
+    ["Check Point", "CHECK POINT SOFTWARE TECHNOLOGIES LTD"],
+    ["Kratos Defense", "KRATOS DEFENSE & SECURITY SOLUTIONS, INC."],
+  ]) {
+    const { agrees: ok, reason } = namesAgree(ours, authority);
+    assert.equal(ok, true, `${ours}/${authority}`);
+    assert.ok(
+      reason.startsWith("subset"),
+      `${ours}/${authority} accepted by ${reason}, not the subset branch`,
+    );
+  }
+});
+
+test("bounded subset still accepts a bounded subset that does not lead", () => {
+  assert.equal(agrees("Norwegian Cruise", "Norwegian Cruise Line"), true);
+});
+
+test("bounded subset leaves the currently stamped rows alone", () => {
+  assert.equal(agrees("Theravance Biopharma", "Theravance Biopharma, Inc."), true);
+  assert.equal(agrees("PennantPark Investment", "PennantPark Investment Corp"), true);
+  assert.equal(agrees("Guardian Pharmacy Services", "Guardian Pharmacy Services, Inc."), true);
+});

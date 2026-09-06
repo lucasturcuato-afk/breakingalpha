@@ -129,6 +129,18 @@ def _acronym_of(short: set[str], long_seq: list[str]) -> bool:
     return sorted(t[0] for t in long_seq) == sorted(s)
 
 
+def _is_leading_run(shorter: str, longer: str) -> bool:
+    """`shorter`'s raw token sequence is a LEADING run of `longer`'s.
+
+    Raw tokens, nothing dropped but single-character debris, for the reason
+    given on _head_prefix_agrees: stripping legal forms first lets a brand
+    whose name genuinely ends in one masquerade as a bare prefix.
+    """
+    s_seq = _tokens(shorter, set())
+    l_seq = _tokens(longer, set())
+    return bool(s_seq) and l_seq[: len(s_seq)] == s_seq
+
+
 def _head_prefix_agrees(our_name: str, authority_name: str) -> bool:
     """Our tokens form a LEADING run of the authority's token sequence AND
     the authority adds at most MAX_HEAD_PREFIX_EXTRA identity tokens.
@@ -172,7 +184,20 @@ def names_agree(
 
     shared = ours & theirs
     if (ours <= theirs or theirs <= ours) and len(shared) >= MIN_SHARED_TOKENS:
-        return True, f"subset with {len(shared)} shared tokens"
+        # BOUNDED, for the same reason the head-prefix rule is bounded. An
+        # unbounded subset accepts 'Energy Capital' inside 'El Paso Energy
+        # Capital Trust I', which is a private PE firm matched to a
+        # preferred-share trust, and it is how EP PR C reached a companies row.
+        # The head-prefix rule already carries position + bound; this branch
+        # never got them. Accept when the longer name adds almost nothing, OR
+        # when the shorter one LEADS it (position is what rejects the
+        # 'Vanguard' inside 'AMERICAN VANGUARD CORP' shape).
+        if ours <= theirs:
+            shorter, longer, extra = our_name, authority_name, theirs - ours
+        else:
+            shorter, longer, extra = authority_name, our_name, ours - theirs
+        if len(extra) <= MAX_HEAD_PREFIX_EXTRA or _is_leading_run(shorter, longer):
+            return True, f"subset with {len(shared)} shared tokens"
 
     a, b = " ".join(sorted(ours)), " ".join(sorted(theirs))
     ratio = difflib.SequenceMatcher(None, a, b).ratio()
