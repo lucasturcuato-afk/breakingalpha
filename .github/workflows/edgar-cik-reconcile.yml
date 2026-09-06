@@ -81,8 +81,10 @@ jobs:
             --json reconcile.json > reconcile.md
           rc=$?
           echo "rc=${rc}" >> "$GITHUB_OUTPUT"
+          # To the log only. The tool writes $GITHUB_STEP_SUMMARY itself, on
+          # every path including the could-not-run one, so appending here as
+          # well would print the whole report twice.
           cat reconcile.md
-          cat reconcile.md >> "$GITHUB_STEP_SUMMARY"
           exit 0
 
       - name: Open, update or close the tracking issue
