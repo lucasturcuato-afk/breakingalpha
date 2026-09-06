@@ -3,11 +3,28 @@ import assert from "node:assert/strict";
 
 import { formatSubtitle } from "./CompanyDetailHeader";
 import type { CompanyDetail } from "@/lib/data-access/getCompanyDetail";
+import { computeTone } from "@/lib/tone";
+import { computeAttention } from "@/lib/attention";
+import { ARTICLE_DAYS_FAST } from "@/lib/article-window";
 
 // Minimal CompanyDetail. Only ticker, exchange and sector reach formatSubtitle;
 // the rest is structural so the fixture type-checks against the real interface.
+//
+// The tone and attention members are built by calling the real aggregators on
+// empty input rather than by asserting a shape onto a literal. Two `as` casts
+// used to stand here and both were false. `tone` claimed an evidence of null,
+// which ToneSummary documents as always populated even in the insufficient
+// case, and `attention` asserted an empty object onto AttentionSummary. A cast
+// silences the compiler without making the value true, so the fixture drifted
+// away from the interface it claims to model. computeTone([], []) and
+// computeAttention(0, 0) are the insufficient-coverage values a real company
+// with no scored mentions gets, they are checked, and they cannot drift.
 function detail(over: Partial<CompanyDetail>): CompanyDetail {
   return {
+    // Not read by formatSubtitle. Present because CompanyDetail requires it:
+    // it is a companies.id primary key and every resolved page has one, so the
+    // fixture must have one too.
+    companyId: "00000000-0000-0000-0000-000000000000",
     canonical: "Test Co",
     display: "Test Co",
     ticker: null,
@@ -19,9 +36,13 @@ function detail(over: Partial<CompanyDetail>): CompanyDetail {
     mentions: 0,
     mentions7d: [],
     sentiment7d: [],
-    tone: { level: null, direction: null, evidence: null } as CompanyDetail["tone"],
-    attention: {} as CompanyDetail["attention"],
+    tone: computeTone([], []),
+    attention: computeAttention(0, 0),
     articles: [],
+    // An empty article list is not a truncated one, and the window is the
+    // unescalated first rung, which is what a zero-row read leaves in place.
+    articlesTruncated: false,
+    articleWindowDays: ARTICLE_DAYS_FAST,
     themes: [],
     memo: null,
     isPrivate: false,
