@@ -156,7 +156,18 @@ UPDATE public.morning_brief_calls c
 
 -- 2b. The ungradable rows are exactly the legacy set, all with the reason.
 --     Expect one row: n 220, reasons {horizon_never_captured}, newest
---     2026-07-22, with_outcome 0.
+--     2026-07-01, with_outcome 0.
+--
+--     newest is 2026-07-01 here and 2026-07-22 in 0a because the two measure
+--     DIFFERENT SETS. 0a's newest_null is the max over all 305 rows that had
+--     resolve_on NULL; 2b's newest is the max over the 220 this file MARKED,
+--     which excludes the 85 that 1b gave a resolve_on. The newest row of the
+--     305 is one of those 85. Verified against the live table 2026-09-06 by
+--     listing every row with brief_date in [2026-07-01, 2026-07-22]: 82 rows,
+--     of which the only 3 ungradable sit at 2026-07-01, and all 79 later ones
+--     are gradeable with resolve_on = brief_date and an outcome row, which is
+--     1b's signature. This comment read 2026-07-22 before that check and was
+--     wrong; the data was not.
 --
 --   SELECT count(*) AS n,
 --          array_agg(DISTINCT ungradable_reason) AS reasons,
