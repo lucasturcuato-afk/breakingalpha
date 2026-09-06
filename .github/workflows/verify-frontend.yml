@@ -215,22 +215,36 @@ jobs:
           fi
           echo "Tree is clean."
 
-      # REPORTING, not gating, and the reason is a measurement rather than a
-      # preference: the trunk is already red here. See the PR body for the count
-      # and the single file. Flip continue-on-error off, and this becomes the
-      # blocking gate it should be, the moment that file type-checks.
-      - name: Typecheck (reporting only, the trunk is red)
+      # GATING as of the PR that made the trunk type-check. This step shipped
+      # under continue-on-error because the trunk was red, with the promotion
+      # deferred to the moment the offending file compiled. That moment is now,
+      # so the line is gone and this is a blocking gate.
+      #
+      # Two annotation changes came with it. A failure is ::error:: rather than
+      # ::warning::, matching every other gating step here, because a warning on
+      # a blocking gate is an annotation that does not surface as the failure it
+      # actually is. And the tsc exit code is now read instead of discarded: the
+      # old `|| true` meant a tsc that died before printing a single "error TS"
+      # line, on a bad tsconfig or an install that left no compiler, scored
+      # COUNT 0 and passed. Harmless while reporting, a false green once
+      # blocking. Same principle as traps 3 and 4 above: a gate that could not
+      # run must never report success.
+      - name: Typecheck
         if: ${{ !cancelled() }}
-        continue-on-error: true
         run: |
           set -o pipefail
-          npx tsc --noEmit 2>&1 | tee "$RUNNER_TEMP/tsc.txt" || true
+          RC=0
+          npx tsc --noEmit 2>&1 | tee "$RUNNER_TEMP/tsc.txt" || RC=$?
           COUNT="$(grep -cE 'error TS' "$RUNNER_TEMP/tsc.txt" || true)"
           if [ "$COUNT" -gt 0 ]; then
-            echo "::warning::tsc: $COUNT error(s). NOT blocking yet: the trunk carried these before this workflow existed."
+            echo "::error::tsc: $COUNT error(s). The tree must type-check."
             exit 1
           fi
-          echo "::notice::tsc is clean. This gate can be promoted to blocking."
+          if [ "$RC" -ne 0 ]; then
+            echo "::error::tsc exited $RC without printing a single 'error TS' line. The compiler did not run, so this is not a pass."
+            exit "$RC"
+          fi
+          echo "::notice::tsc is clean, 0 errors."
 
       # GATING. `eslint` exits 0 on warnings, so the known warning floor does
       # not block and a new error does. No extra ratchet needed here.
@@ -359,7 +373,7 @@ jobs:
             echo ""
             echo "| gate | posture |"
             echo "| --- | --- |"
-            echo "| tsc | reporting, the trunk is red |"
+            echo "| tsc | gating |"
             echo "| eslint | gating |"
             echo "| test:unit | gating |"
             echo "| design-lint --since | gating |"
