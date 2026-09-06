@@ -50,7 +50,9 @@ test.describe("Shell & Navigation", () => {
         await page.waitForTimeout(500);
       }
       await sidebar.getByRole("link", { name: route.name, exact: route.exact }).click();
-      await page.waitForURL(`**${route.url}`, { timeout: 10_000 });
+      // The local gate runs on a dev server; the first hit of a route compiles
+      // it, which can exceed 10s. 30s is the compile budget, not a product SLA.
+      await page.waitForURL(`**${route.url}`, { timeout: 30_000 });
       await expect(page).toHaveURL(new RegExp(route.url));
 
       // No crash

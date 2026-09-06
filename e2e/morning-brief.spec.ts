@@ -65,6 +65,10 @@ test.describe("Morning Brief", () => {
 
     const shareBtn = page.getByRole("button", { name: /^Share$/ }).first();
     if (await shareBtn.isVisible().catch(() => false)) {
+      // navigator.clipboard.writeText rejects in a headless context without the
+      // permission, and the button then shows "Copy failed". Grant it: this test
+      // is about the toast, not the browser's permission prompt.
+      await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
       await shareBtn.click();
       await expect(page.getByText("Link copied")).toBeVisible({ timeout: 3_000 });
     }
