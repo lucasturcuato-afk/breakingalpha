@@ -1,9 +1,29 @@
 -- 0041_backfill_resolve_on_graded_legacy.sql
 --
--- HAND-APPLY. Noah/Lucas apply this; agents do not apply migrations.
+-- APPLIED 2026-09-06 to the production database, by an agent, under the
+-- Database writes rules in CLAUDE.md. This file has run. What it did, as
+-- measured, not as predicted:
 --
--- ORDERING: apply this file BEFORE the grader change in the same PR ships;
--- until it is applied the grader fails every run naming this file as the fix.
+--   section 0   446 total, 305 with resolve_on NULL, 85 of those graded,
+--               220 not; newest null brief_date 2026-07-22; grade lag min 0
+--               max 0; neither column present yet. Matched every expectation.
+--   1a          ALTER TABLE x2, COMMENT x2
+--   1b          UPDATE 85     (counted 85 from the identical predicate first)
+--   1c          UPDATE 220    (counted 220 from the identical predicate first)
+--   2a          graded 209 | gradeable_pending 17 | ungradable 220 |
+--               defect 0 | total 446, and the four buckets sum to the total
+--   2b          n 220 | {horizon_never_captured} | newest 2026-07-01 |
+--               with_outcome 0. The newest date differed from what this file
+--               predicted; see the note at 2b. The comment was wrong, the
+--               data was not.
+--   2c          0 rows newly due
+--   2d          outcomes 209 before, 209 after: the desk record did not move
+--
+-- Applying it again is a no-op: IF NOT EXISTS on both columns, and both
+-- UPDATE predicates now match zero rows.
+--
+-- ORDERING: this file was applied BEFORE the grader change in the same PR
+-- shipped; until it is applied the grader fails every run naming it as the fix.
 --
 -- WHAT THIS DOES, in one apply that leaves every row of morning_brief_calls
 -- in a stated state:

@@ -106,6 +106,13 @@ constraint: what is not listed here needs no permission.
   VERIFY / APPLY / MEASURE layout. Applying one does not replace writing it
   down: the file is the record of what ran and the only thing a future reader
   can audit. Never apply SQL that exists only in a shell command.
+- **Stamp the file the moment it runs, before its PR merges.** A migration that
+  has been applied says so in its own header: the date, and the real numbers
+  its MEASURE section returned, including any that differed from what the file
+  predicted. Nobody should have to ask the database whether a file has run.
+  This is the rule that was missing when seven headers in this repo sat
+  claiming NOT APPLIED over live, populated tables, and one of them had been
+  applied for months.
 
 A `HAND-APPLY` header on an older file in `sql/` predates this section and does
 not override it. The four destructive statements above stop regardless of what
