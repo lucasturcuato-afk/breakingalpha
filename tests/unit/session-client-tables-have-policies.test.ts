@@ -35,12 +35,12 @@ const SKIP_DIRS = new Set(["node_modules", ".next", "venv", ".git", ".claude", "
  * listed with the query that settles it.
  */
 const POLICY_OUTSIDE_REPO: Record<string, string> = {
-  articles: "anon read returns rows, 2026-09-05",
-  aliases: "anon read returns rows, 2026-09-05",
-  company_mentions: "anon read returns rows, 2026-09-05",
-  pattern_library: "anon read returns rows, 2026-09-05",
-  source_credibility: "anon read returns rows, 2026-09-05",
-  weekly_digests: "anon read returns rows, 2026-09-05",
+  articles: "anon read answers rows, 2026-09-05",
+  aliases: "anon read answers rows, 2026-09-05",
+  company_mentions: "anon read answers rows, 2026-09-05",
+  pattern_library: "anon read answers rows, 2026-09-05",
+  source_credibility: "anon read answers rows, 2026-09-05",
+  weekly_digests: "anon read answers rows, 2026-09-05",
   outputs:
     "owner-scoped; not provable through PostgREST. Settle with: SELECT policyname, cmd FROM pg_policies WHERE tablename = 'outputs'",
   output_user_feedback:
