@@ -4,9 +4,9 @@
  * WHY. RLS enabled with zero policies does not error: a session read returns
  * [] and a session write is rejected, and the route renders a confident empty
  * state. thesis_notes sat in that state from the day its route shipped (the
- * table held zero rows to the service role on 2026-09-05), and the follow
- * matcher's RPC read content_embeddings the same way. Both fixes are SQL that
- * a human applies; this test is what stops the next one.
+ * table held zero rows to the service role on 2026-09-05; the feature was
+ * removed rather than fixed), and the follow matcher's RPC read
+ * content_embeddings the same way. This test is what stops the next one.
  *
  * WHAT IT PINS. For every file that binds a client from getSupabaseWithUser,
  * every table that client `.from()`s must be covered by a CREATE POLICY in a
@@ -100,16 +100,16 @@ export function sessionClientReads(): Map<string, Set<string>> {
 
 test("the scanner sees the session client's reads (guards the test itself)", () => {
   const reads = sessionClientReads();
-  // thesis_notes is the case this test exists for; if the scanner cannot see
-  // it, every other assertion here passes vacuously.
-  assert.ok(reads.has("thesis_notes"), "scanner did not find thesis_notes read via the session client");
+  // If the scanner cannot see the most-read tables, every other assertion
+  // here passes vacuously. watchlist is read from eight files, theses from
+  // four; both have committed policies.
   assert.ok(reads.has("watchlist"), "scanner did not find the watchlist reads");
+  assert.ok(reads.has("theses"), "scanner did not find the theses reads");
+  assert.ok(reads.size >= 10, `scanner found only ${reads.size} tables; the regex is probably broken`);
 });
 
-test("thesis_notes has an owner-scoped policy committed (sql/0039)", () => {
-  const p = policiedTables();
-  assert.ok(p.has("thesis_notes"), "no CREATE POLICY ... ON thesis_notes in committed SQL");
-  assert.match(SQL_TEXT, /CREATE POLICY thesis_notes_owner_select[\s\S]*?auth\.uid\(\) = user_id/);
+test("thesis_notes is no longer read through the session client (the feature was removed)", () => {
+  assert.ok(!sessionClientReads().has("thesis_notes"), "a session-client read of thesis_notes came back");
 });
 
 test("every table read through the session client has a policy in repo SQL, or a dated live verification", () => {

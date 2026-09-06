@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { MemoModal } from "@/components/memo/MemoModal";
 import { getSectorStyle } from "@/lib/sector-colors";
 import { outcomeDisplayLabel } from "@/lib/track-record-live-score";
@@ -135,21 +135,7 @@ interface ThesisDetailPanelProps {
   activeSignalCount?: number;
 }
 
-function SectionSkeleton() {
-  return (
-    <div className="space-y-2">
-      <Skeleton className="h-3 w-24" />
-      <Skeleton className="h-3 w-full" />
-      <Skeleton className="h-3 w-3/4" />
-    </div>
-  );
-}
-
 export function ThesisDetailPanel({ thesis, articles, onArchive, onRegenerate, activeSignalCount = 0 }: ThesisDetailPanelProps) {
-  const [noteText, setNoteText] = useState("");
-  const [noteSaved, setNoteSaved] = useState(false);
-  const [noteFailed, setNoteFailed] = useState(false);
-  const [noteLoading, setNoteLoading] = useState(false);
   const [confirmArchive, setConfirmArchive] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [generatingMemo, setGeneratingMemo] = useState(false);
@@ -157,7 +143,6 @@ export function ThesisDetailPanel({ thesis, articles, onArchive, onRegenerate, a
   const [memoContent, setMemoContent] = useState("");
   const [bearOpen, setBearOpen] = useState(false);
   const [expandedEvidenceDuplicates, setExpandedEvidenceDuplicates] = useState<Set<string>>(new Set());
-  const notesRef = useRef<HTMLTextAreaElement>(null);
 
   function toggleEvidenceDuplicates(articleId: string) {
     setExpandedEvidenceDuplicates((prev) => {
@@ -167,70 +152,16 @@ export function ThesisDetailPanel({ thesis, articles, onArchive, onRegenerate, a
       return next;
     });
   }
-  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Load note from API
-  const loadNote = useCallback(async (thesisId: string) => {
-    setNoteLoading(true);
-    try {
-      const res = await fetch(`/api/theses/notes?thesis_id=${thesisId}`);
-      const data = await res.json();
-      setNoteText(data.note?.content || "");
-    } catch {
-      setNoteText("");
-    } finally {
-      setNoteLoading(false);
-    }
-  }, []);
 
   useEffect(() => {
     if (!thesis?.id) return;
-    // If thesis has notes from the API response, use that first
-    if (thesis.notes) {
-      setNoteText(thesis.notes);
-      setNoteLoading(false);
-    } else {
-      loadNote(thesis.id);
-    }
-    setNoteSaved(false);
     setConfirmArchive(false);
     setBearOpen(false);
-  }, [thesis?.id, thesis?.notes, loadNote]);
+  }, [thesis?.id]);
 
   const showToast = (msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(null), 2000);
-  };
-
-  const saveNote = useCallback(async () => {
-    if (!thesis?.id) return;
-    try {
-      const res = await fetch("/api/theses/notes", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ thesis_id: thesis.id, content: noteText }),
-      });
-      // fetch() resolves on a 500. Before this check the panel showed "Saved"
-      // for every note the server had just refused (thesis_notes had RLS on
-      // and no policy, so the refusal was unconditional; see sql/0039).
-      if (!res.ok) throw new Error(`save failed: ${res.status}`);
-      setNoteSaved(true);
-      setNoteFailed(false);
-      setTimeout(() => setNoteSaved(false), 2000);
-    } catch (e) {
-      console.error("Failed to save note:", e);
-      setNoteFailed(true);
-    }
-  }, [thesis?.id, noteText]);
-
-  const handleNoteChange = (val: string) => {
-    setNoteText(val);
-    setNoteFailed(false);
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-  };
-
-  const handleNoteBlur = () => {
-    saveNote();
   };
 
   const handleArchive = async () => {
@@ -544,36 +475,6 @@ export function ThesisDetailPanel({ thesis, articles, onArchive, onRegenerate, a
             )}
           </div>
         </div>
-
-        <div className="h-px bg-border-base" />
-
-        {/* Your Notes */}
-        <div>
-          <div className="font-sans text-[10px] font-semibold text-text-muted mb-2 border-l-2 border-border-base pl-2">Your notes</div>
-          {noteLoading ? (
-            <SectionSkeleton />
-          ) : (
-            <>
-              <textarea
-                ref={notesRef}
-                value={noteText}
-                onChange={(e) => handleNoteChange(e.target.value)}
-                onBlur={handleNoteBlur}
-                placeholder="Add your research notes here..."
-                className="w-full min-h-[80px] font-sans text-[12px] text-text-primary bg-cream border border-border-base rounded-lg px-3 py-2 resize-none focus:outline-none focus:border-gold placeholder:text-text-muted transition-colors"
-              />
-              <div className="flex items-center mt-1.5">
-                {noteFailed ? (
-                  <span className="font-sans text-[10px] text-signal-dn">Failed to save</span>
-                ) : (
-                  <span className={`font-sans text-[10px] transition-opacity duration-300 ${noteSaved ? "text-signal-up opacity-100" : "opacity-0"}`}>
-                    &#10003; Saved
-                  </span>
-                )}
-              </div>
-            </>
-          )}
-        </div>
       </div>
 
       {/* ── FOOTER ── */}
@@ -585,13 +486,6 @@ export function ThesisDetailPanel({ thesis, articles, onArchive, onRegenerate, a
           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gold text-cream font-sans text-[11px] font-semibold hover:bg-gold-dark transition-colors disabled:opacity-50 cursor-pointer"
         >
           {generatingMemo ? "Generating..." : "✦ Generate Memo"}
-        </button>
-        <button
-          type="button"
-          onClick={() => notesRef.current?.focus()}
-          className="font-sans text-[11px] px-3 py-1.5 rounded-lg border border-border-base hover:border-border-hover text-text-secondary transition-colors cursor-pointer"
-        >
-          Add Note
         </button>
         {!confirmArchive ? (
           <button

@@ -60,7 +60,6 @@ export interface ThesisItem {
   horizon?: string | null;
   check_after?: string | null;
   // Notes
-  notes?: string | null;
   // Timestamp
   generated_at?: string | null;
   // Sparkline cache
